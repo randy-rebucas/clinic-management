@@ -37,12 +37,42 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
+    
+    console.log('Creating patient with data:', JSON.stringify(body, null, 2));
+    
+    // Auto-generate patientCode if not provided
+    if (!body.patientCode) {
+      const lastPatient = await Patient.findOne({ patientCode: { $exists: true, $ne: null } })
+        .sort({ patientCode: -1 })
+        .exec();
+      
+      let nextNumber = 1;
+      if (lastPatient?.patientCode) {
+        const match = lastPatient.patientCode.match(/(\d+)$/);
+        if (match) {
+          nextNumber = parseInt(match[1], 10) + 1;
+        }
+      }
+      
+      body.patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
+    }
+    
     const patient = await Patient.create(body);
     return NextResponse.json({ success: true, data: patient }, { status: 201 });
   } catch (error: any) {
+    console.error('Error creating patient:', error);
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      errors: error.errors,
+    });
+    
     if (error.name === 'ValidationError') {
+      // Extract validation error messages
+      const validationErrors = Object.values(error.errors || {}).map((err: any) => err.message).join(', ');
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: validationErrors || error.message },
         { status: 400 }
       );
     }
@@ -53,7 +83,7 @@ export async function POST(request: NextRequest) {
       );
     }
     return NextResponse.json(
-      { success: false, error: 'Failed to create patient' },
+      { success: false, error: error.message || 'Failed to create patient' },
       { status: 500 }
     );
   }

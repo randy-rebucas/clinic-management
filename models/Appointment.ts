@@ -20,6 +20,11 @@ export interface IAppointment extends Document {
   // Status (merged enums from both models)
   status: 'pending' | 'scheduled' | 'confirmed' | 'rescheduled' | 'no-show' | 'completed' | 'cancelled';
   
+  // Walk-in queue support
+  isWalkIn?: boolean;
+  queueNumber?: number;
+  estimatedWaitTime?: number; // in minutes
+  
   // Details
   reason?: string; // optional (was required in original, optional in Extended)
   notes?: string;
@@ -89,6 +94,19 @@ const AppointmentSchema: Schema = new Schema(
       type: String,
       enum: ['pending', 'scheduled', 'confirmed', 'rescheduled', 'no-show', 'completed', 'cancelled'],
       default: 'scheduled',
+    },
+    
+    // Walk-in queue support
+    isWalkIn: {
+      type: Boolean,
+      default: false,
+    },
+    queueNumber: {
+      type: Number,
+      index: true,
+    },
+    estimatedWaitTime: {
+      type: Number, // in minutes
     },
     
     // Details

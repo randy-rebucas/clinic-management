@@ -4,9 +4,25 @@ import Appointment from '@/models/Appointment';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 
+// Email reminder function (placeholder - implement with your email service)
+async function sendAppointmentReminder(appointment: any) {
+  const patient = appointment.patient;
+  const appointmentDate = new Date(appointment.appointmentDate);
+  const appointmentTime = appointment.appointmentTime;
+  
+  console.log('Sending appointment reminder:', {
+    to: patient.email,
+    patient: `${patient.firstName} ${patient.lastName}`,
+    date: appointmentDate.toLocaleDateString(),
+    time: appointmentTime,
+  });
+  
+  // TODO: Implement actual email sending
+}
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   // User authentication check
   const session = await verifySession();
@@ -17,7 +33,8 @@ export async function GET(
 
   try {
     await connectDB();
-    const appointment = await Appointment.findById(params.id)
+    const { id } = await params;
+    const appointment = await Appointment.findById(id)
       .populate('patient', 'firstName lastName email phone')
       .populate('doctor', 'firstName lastName specialization');
     if (!appointment) {
@@ -37,7 +54,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   // User authentication check
   const session = await verifySession();
@@ -48,8 +65,9 @@ export async function PUT(
 
   try {
     await connectDB();
+    const { id } = await params;
     const body = await request.json();
-    const appointment = await Appointment.findByIdAndUpdate(params.id, body, {
+    const appointment = await Appointment.findByIdAndUpdate(id, body, {
       new: true,
       runValidators: true,
     })
@@ -61,6 +79,12 @@ export async function PUT(
         { status: 404 }
       );
     }
+    
+    // Send reminder if status changed to confirmed
+    if (body.status === 'confirmed' && appointment.patient) {
+      sendAppointmentReminder(appointment).catch(console.error);
+    }
+    
     return NextResponse.json({ success: true, data: appointment });
   } catch (error: any) {
     if (error.name === 'ValidationError') {
@@ -78,7 +102,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   // User authentication check
   const session = await verifySession();
@@ -89,7 +113,8 @@ export async function DELETE(
 
   try {
     await connectDB();
-    const appointment = await Appointment.findByIdAndDelete(params.id);
+    const { id } = await params;
+    const appointment = await Appointment.findByIdAndDelete(id);
     if (!appointment) {
       return NextResponse.json(
         { success: false, error: 'Appointment not found' },

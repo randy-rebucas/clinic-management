@@ -23,6 +23,52 @@ export interface IPhysicalExam {
   other?: string;
 }
 
+export interface ISOAPNotes {
+  // Subjective - patient's description of symptoms
+  subjective?: string;
+  
+  // Objective - measurable observations (vitals, physical exam)
+  objective?: string;
+  
+  // Assessment - clinical impression/diagnosis
+  assessment?: string;
+  
+  // Plan - treatment plan
+  plan?: string;
+}
+
+export interface ITreatmentPlan {
+  medications?: Array<{
+    name: string;
+    dosage: string;
+    frequency: string;
+    duration: string;
+    instructions?: string;
+  }>;
+  procedures?: Array<{
+    name: string;
+    description?: string;
+    scheduledDate?: Date;
+  }>;
+  lifestyle?: Array<{
+    category: string; // diet, exercise, etc.
+    instructions: string;
+  }>;
+  followUp?: {
+    date?: Date;
+    instructions?: string;
+    reminderSent?: boolean;
+  };
+}
+
+export interface IDigitalSignature {
+  providerName: string;
+  providerId: Types.ObjectId;
+  signatureData: string; // Base64 encoded signature image
+  signedAt: Date;
+  ipAddress?: string;
+}
+
 export interface IVisit extends Document {
   patient: Types.ObjectId;
   visitCode: string;
@@ -38,8 +84,18 @@ export interface IVisit extends Document {
     description?: string;
     primary?: boolean;
   }>;
-  assessment?: string; // clinical impression
-  plan?: string; // management plan text
+  assessment?: string; // clinical impression (legacy, use SOAP.assessment)
+  plan?: string; // management plan text (legacy, use SOAP.plan)
+  
+  // SOAP Notes structure
+  soapNotes?: ISOAPNotes;
+  
+  // Treatment Plan
+  treatmentPlan?: ITreatmentPlan;
+  
+  // Digital Signature
+  digitalSignature?: IDigitalSignature;
+  
   prescriptions: Types.ObjectId[];
   labsOrdered: Types.ObjectId[];
   imagingOrdered: Types.ObjectId[];
@@ -47,6 +103,7 @@ export interface IVisit extends Document {
   attachments: IAttachment[];
   notes?: string;
   followUpDate?: Date;
+  followUpReminderSent?: boolean;
   status: 'open' | 'closed' | 'cancelled';
   createdAt: Date;
   updatedAt: Date;
@@ -98,8 +155,51 @@ const VisitSchema: Schema = new Schema(
         primary: { type: Boolean, default: false },
       },
     ],
-    assessment: { type: String }, // clinical impression
-    plan: { type: String }, // management plan text
+    assessment: { type: String }, // clinical impression (legacy)
+    plan: { type: String }, // management plan text (legacy)
+    
+    // SOAP Notes
+    soapNotes: {
+      subjective: { type: String },
+      objective: { type: String },
+      assessment: { type: String },
+      plan: { type: String },
+    },
+    
+    // Treatment Plan
+    treatmentPlan: {
+      medications: [{
+        name: { type: String, required: true },
+        dosage: { type: String },
+        frequency: { type: String },
+        duration: { type: String },
+        instructions: { type: String },
+      }],
+      procedures: [{
+        name: { type: String, required: true },
+        description: { type: String },
+        scheduledDate: { type: Date },
+      }],
+      lifestyle: [{
+        category: { type: String },
+        instructions: { type: String },
+      }],
+      followUp: {
+        date: { type: Date },
+        instructions: { type: String },
+        reminderSent: { type: Boolean, default: false },
+      },
+    },
+    
+    // Digital Signature
+    digitalSignature: {
+      providerName: { type: String, required: true },
+      providerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+      signatureData: { type: String, required: true }, // Base64 encoded
+      signedAt: { type: Date, default: Date.now },
+      ipAddress: { type: String },
+    },
+    
     prescriptions: [{ type: Schema.Types.ObjectId, ref: 'Prescription' }],
     labsOrdered: [{ type: Schema.Types.ObjectId, ref: 'LabResult' }],
     imagingOrdered: [{ type: Schema.Types.ObjectId, ref: 'Imaging' }],
@@ -107,6 +207,7 @@ const VisitSchema: Schema = new Schema(
     attachments: [AttachmentSchema],
     notes: { type: String },
     followUpDate: { type: Date },
+    followUpReminderSent: { type: Boolean, default: false },
     status: { type: String, enum: ['open', 'closed', 'cancelled'], default: 'open' },
   },
   { timestamps: true }

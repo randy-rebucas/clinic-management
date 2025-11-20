@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 
 interface Patient {
   _id: string;
+  patientCode?: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -63,19 +64,61 @@ export default function PatientsPageClient() {
         : '/api/patients';
       const method = editingPatient ? 'PUT' : 'POST';
 
-      const allergiesArray = formData.allergies
-        .split(',')
-        .map((a: string) => a.trim())
-        .filter((a: string) => a.length > 0);
+      // Handle allergies - already in structured format from form
+      const allergiesArray = Array.isArray(formData.allergies)
+        ? formData.allergies
+        : formData.allergies
+            ?.split(',')
+            .map((a: string) => a.trim())
+            .filter((a: string) => a.length > 0)
+            .map((substance: string) => ({ substance, reaction: '', severity: 'unknown' })) || [];
+
+      // Clean up identifiers - only include if they have values
+      const identifiers = formData.identifiers
+        ? {
+            ...(formData.identifiers.philHealth?.trim() && { philHealth: formData.identifiers.philHealth.trim() }),
+            ...(formData.identifiers.govId?.trim() && { govId: formData.identifiers.govId.trim() }),
+          }
+        : undefined;
+
+      // Only include identifiers if it has at least one property
+      const cleanedIdentifiers = identifiers && Object.keys(identifiers).length > 0 ? identifiers : undefined;
+
+      // Prepare the payload
+      const payload: any = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        dateOfBirth: new Date(formData.dateOfBirth),
+        address: {
+          street: formData.address.street,
+          city: formData.address.city,
+          state: formData.address.state,
+          zipCode: formData.address.zipCode,
+        },
+        emergencyContact: {
+          name: formData.emergencyContact.name,
+          phone: formData.emergencyContact.phone,
+          relationship: formData.emergencyContact.relationship,
+        },
+        allergies: allergiesArray,
+      };
+
+      // Add optional fields only if they have values
+      if (formData.middleName?.trim()) payload.middleName = formData.middleName.trim();
+      if (formData.suffix?.trim()) payload.suffix = formData.suffix.trim();
+      if (formData.sex && formData.sex !== 'unknown') payload.sex = formData.sex;
+      if (formData.civilStatus?.trim()) payload.civilStatus = formData.civilStatus.trim();
+      if (formData.nationality?.trim()) payload.nationality = formData.nationality.trim();
+      if (formData.occupation?.trim()) payload.occupation = formData.occupation.trim();
+      if (formData.medicalHistory?.trim()) payload.medicalHistory = formData.medicalHistory.trim();
+      if (cleanedIdentifiers) payload.identifiers = cleanedIdentifiers;
 
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          allergies: allergiesArray,
-          dateOfBirth: new Date(formData.dateOfBirth),
-        }),
+        body: JSON.stringify(payload),
       });
 
       // Check for authentication errors
@@ -91,19 +134,28 @@ export default function PatientsPageClient() {
       } else {
         const text = await res.text();
         console.error('API returned non-JSON response:', text.substring(0, 500));
-        alert('Failed to save patient: API error');
+        console.error('Response status:', res.status);
+        console.error('Response headers:', Object.fromEntries(res.headers.entries()));
+        alert(`Failed to save patient: API error (Status: ${res.status})\n\n${text.substring(0, 200)}`);
         return;
       }
+      
       if (data.success) {
         setShowForm(false);
         setEditingPatient(null);
         fetchPatients();
       } else {
-        alert('Error: ' + data.error);
+        console.error('API error response:', data);
+        alert('Error: ' + (data.error || 'Unknown error occurred'));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save patient:', error);
-      alert('Failed to save patient');
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      });
+      alert(`Failed to save patient: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -181,18 +233,19 @@ export default function PatientsPageClient() {
         {/* Form Modal/Overlay */}
         {showForm && (
           <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-              {/* Backdrop */}
-              <div
-                className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-                onClick={() => {
-                  setShowForm(false);
-                  setEditingPatient(null);
-                }}
-              />
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
+              onClick={() => {
+                setShowForm(false);
+                setEditingPatient(null);
+              }}
+            />
 
+            {/* Modal Container */}
+            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
               {/* Modal */}
-              <div className="inline-block align-bottom bg-white rounded-2xl shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+              <div className="relative inline-block align-bottom bg-white rounded-2xl shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full z-10">
                 <div className="px-4 sm:px-6 py-5 sm:py-6 border-b border-gray-200">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xl font-bold text-gray-900">
@@ -280,6 +333,9 @@ export default function PatientsPageClient() {
                             <div className="text-sm font-semibold text-gray-900">
                               {patient.firstName} {patient.lastName}
                             </div>
+                            {patient.patientCode && (
+                              <div className="text-xs text-gray-500">ID: {patient.patientCode}</div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -292,6 +348,16 @@ export default function PatientsPageClient() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end space-x-2">
+                          <Link
+                            href={`/patients/${patient._id}`}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
+                          >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            View
+                          </Link>
                           <button
                             onClick={() => {
                               setEditingPatient(patient);
@@ -334,6 +400,9 @@ export default function PatientsPageClient() {
                         <h3 className="text-base font-semibold text-gray-900 truncate">
                           {patient.firstName} {patient.lastName}
                         </h3>
+                        {patient.patientCode && (
+                          <p className="text-xs text-gray-500 truncate">ID: {patient.patientCode}</p>
+                        )}
                         <p className="text-sm text-gray-600 truncate">{patient.email}</p>
                         <p className="text-sm text-gray-500 truncate">{patient.phone}</p>
                       </div>
@@ -344,6 +413,16 @@ export default function PatientsPageClient() {
                       DOB: {new Date(patient.dateOfBirth).toLocaleDateString()}
                     </span>
                     <div className="flex space-x-2">
+                      <Link
+                        href={`/patients/${patient._id}`}
+                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
+                      >
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                        View
+                      </Link>
                       <button
                         onClick={() => {
                           setEditingPatient(patient);
