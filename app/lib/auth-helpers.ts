@@ -19,7 +19,7 @@ export async function requireAuth() {
  * @param allowedRoles - Array of roles that are allowed
  * @returns SessionPayload if authenticated and authorized
  */
-export async function requireRole(allowedRoles: ('admin' | 'user' | 'doctor')[]) {
+export async function requireRole(allowedRoles: ('admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant')[]) {
   const session = await requireAuth();
   
   if (!allowedRoles.includes(session.role)) {
@@ -44,8 +44,8 @@ export async function requireAdmin() {
  * @returns true if user has required role
  */
 export function hasRole(
-  session: { role: 'admin' | 'user' | 'doctor' } | null,
-  allowedRoles: ('admin' | 'user' | 'doctor')[]
+  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' } | null,
+  allowedRoles: ('admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant')[]
 ): boolean {
   if (!session) return false;
   return allowedRoles.includes(session.role);
@@ -56,8 +56,32 @@ export function hasRole(
  * @param session - Current session
  * @returns true if user is admin
  */
-export function isAdmin(session: { role: 'admin' | 'user' | 'doctor' } | null): boolean {
+export function isAdmin(session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' } | null): boolean {
   return hasRole(session, ['admin']);
+}
+
+/**
+ * Check if user has permission for a resource and action
+ * @param session - Current session
+ * @param resource - Resource name (e.g., 'patients', 'appointments')
+ * @param action - Action name (e.g., 'read', 'write', 'delete')
+ * @returns true if user has permission
+ */
+export async function hasPermission(
+  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant'; userId: string } | null,
+  resource: string,
+  action: string
+): Promise<boolean> {
+  if (!session) return false;
+  
+  // Import permissions utility
+  const { hasPermission: checkPermission } = await import('@/lib/permissions');
+  
+  // Get user's custom permissions if any
+  await connectDB();
+  const user = await User.findById(session.userId).select('permissions').lean();
+  
+  return checkPermission(session.role, resource, action, user?.permissions);
 }
 
 /**

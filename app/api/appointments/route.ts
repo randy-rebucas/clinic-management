@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
     const patientId = searchParams.get('patientId');
     const status = searchParams.get('status');
     const isWalkIn = searchParams.get('isWalkIn');
+    const room = searchParams.get('room');
 
     let query: any = {};
     if (date) {
@@ -42,6 +43,9 @@ export async function GET(request: NextRequest) {
     }
     if (isWalkIn !== null && isWalkIn !== undefined) {
       query.isWalkIn = isWalkIn === 'true';
+    }
+    if (room) {
+      query.room = room;
     }
 
     const appointments = await Appointment.find(query)

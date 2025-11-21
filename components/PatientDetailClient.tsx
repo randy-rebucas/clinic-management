@@ -35,11 +35,18 @@ interface Patient {
     govId?: string;
   };
   medicalHistory?: string;
+  preExistingConditions?: Array<{
+    condition: string;
+    diagnosisDate?: string;
+    status: 'active' | 'resolved' | 'chronic';
+    notes?: string;
+  }>;
   allergies?: Array<string | {
     substance: string;
     reaction: string;
     severity: string;
   }>;
+  familyHistory?: Record<string, string>;
   attachments?: Array<{
     _id: string;
     filename: string;
@@ -51,6 +58,13 @@ interface Patient {
   }>;
   createdAt: string;
   updatedAt: string;
+}
+
+interface PatientAlert {
+  type: 'allergy' | 'unpaid_balance' | 'critical_condition' | 'missing_info';
+  severity: 'high' | 'medium' | 'low';
+  message: string;
+  details?: any;
 }
 
 interface Visit {
@@ -70,6 +84,7 @@ interface Visit {
 export default function PatientDetailClient({ patientId }: { patientId: string }) {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
+  const [alerts, setAlerts] = useState<PatientAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'emr' | 'files'>('overview');
   const [showQR, setShowQR] = useState(false);
@@ -78,6 +93,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
   useEffect(() => {
     fetchPatient();
     fetchVisits();
+    fetchAlerts();
   }, [patientId]);
 
   const fetchPatient = async () => {
@@ -109,6 +125,20 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
       }
     } catch (error) {
       console.error('Failed to fetch visits:', error);
+    }
+  };
+
+  const fetchAlerts = async () => {
+    try {
+      const res = await fetch(`/api/patients/${patientId}/alerts`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setAlerts(data.data.alerts || []);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch alerts:', error);
     }
   };
 
@@ -202,7 +232,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">
           <div className="mb-4 sm:mb-0">
             <div className="flex items-center space-x-3 mb-2">
               <Link
@@ -249,10 +279,10 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
         {showQR && (
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen px-4">
-              <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={() => setShowQR(false)} />
-              <div className="relative bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl font-bold text-gray-900">Patient QR Code</h3>
+              <div className="fixed inset-0 bg-black/30 backdrop-blur-md" onClick={() => setShowQR(false)} />
+              <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-md w-full z-10">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-base font-semibold text-gray-900">Patient QR Code</h3>
                   <button
                     onClick={() => setShowQR(false)}
                     className="text-gray-400 hover:text-gray-500"
@@ -278,8 +308,60 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
           </div>
         )}
 
+        {/* Patient Alerts */}
+        {alerts.length > 0 && (
+          <div className="mb-3 space-y-2">
+            {alerts.map((alert, idx) => (
+              <div
+                key={idx}
+                className={`rounded-lg border-l-4 p-4 ${
+                  alert.severity === 'high'
+                    ? 'bg-red-50 border-red-500'
+                    : alert.severity === 'medium'
+                    ? 'bg-yellow-50 border-yellow-500'
+                    : 'bg-blue-50 border-blue-500'
+                }`}
+              >
+                <div className="flex items-start">
+                  <div className="flex-shrink-0">
+                    {alert.type === 'allergy' && (
+                      <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    )}
+                    {alert.type === 'unpaid_balance' && (
+                      <svg className="h-5 w-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )}
+                    {alert.type === 'critical_condition' && (
+                      <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    )}
+                    {alert.type === 'missing_info' && (
+                      <svg className="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="ml-3 flex-1">
+                    <p className={`text-sm font-medium ${
+                      alert.severity === 'high' ? 'text-red-800' :
+                      alert.severity === 'medium' ? 'text-yellow-800' :
+                      'text-blue-800'
+                    }`}>
+                      {alert.message}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Tabs */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-3">
           <div className="border-b border-gray-200">
             <nav className="flex -mb-px">
               <button
@@ -315,11 +397,11 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
             </nav>
           </div>
 
-          <div className="p-6">
+          <div className="p-3">
             {/* Overview Tab */}
             {activeTab === 'overview' && (
               <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {/* Basic Information */}
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
@@ -435,10 +517,56 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                         {patient.medicalHistory || 'No medical history recorded'}
                       </dd>
                     </div>
+                    {patient.preExistingConditions && patient.preExistingConditions.length > 0 && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500 mb-2">Pre-existing Conditions</dt>
+                        <dd className="text-sm text-gray-900">
+                          <ul className="list-disc list-inside space-y-1">
+                            {patient.preExistingConditions.map((condition, idx) => (
+                              <li key={idx}>
+                                <span className="font-medium">{condition.condition}</span>
+                                {condition.status && (
+                                  <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${
+                                    condition.status === 'active' ? 'bg-red-100 text-red-800' :
+                                    condition.status === 'chronic' ? 'bg-orange-100 text-orange-800' :
+                                    'bg-green-100 text-green-800'
+                                  }`}>
+                                    {condition.status}
+                                  </span>
+                                )}
+                                {condition.diagnosisDate && (
+                                  <span className="text-gray-500 ml-2">
+                                    (Diagnosed: {new Date(condition.diagnosisDate).toLocaleDateString()})
+                                  </span>
+                                )}
+                                {condition.notes && (
+                                  <div className="text-gray-600 text-xs ml-4 mt-1">{condition.notes}</div>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </dd>
+                      </div>
+                    )}
                     <div>
                       <dt className="text-sm font-medium text-gray-500 mb-2">Allergies</dt>
                       <dd className="text-sm text-gray-900">{formatAllergies()}</dd>
                     </div>
+                    {patient.familyHistory && Object.keys(patient.familyHistory).length > 0 && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500 mb-2">Family History</dt>
+                        <dd className="text-sm text-gray-900">
+                          <ul className="list-disc list-inside space-y-1">
+                            {Object.entries(patient.familyHistory).map(([condition, relation]) => (
+                              <li key={condition}>
+                                <span className="font-medium">{condition}</span>
+                                {relation && <span className="text-gray-600 ml-2">({relation})</span>}
+                              </li>
+                            ))}
+                          </ul>
+                        </dd>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -456,56 +584,72 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                     <p className="text-gray-600">Medical records will appear here once visits are created.</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {visits.map((visit) => (
-                      <div key={visit._id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3 mb-2">
-                              <span className="text-sm font-semibold text-gray-900">{visit.visitCode}</span>
-                              <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full capitalize">
-                                {visit.visitType}
-                              </span>
-                              <span className={`text-xs px-2 py-1 rounded-full ${
-                                visit.status === 'closed' ? 'bg-green-100 text-green-800' :
-                                visit.status === 'open' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
-                                {visit.status}
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-600 mb-2">
-                              Date: {new Date(visit.date).toLocaleDateString()}
-                            </p>
-                            {visit.chiefComplaint && (
-                              <p className="text-sm text-gray-700 mb-2">
-                                <span className="font-medium">Chief Complaint:</span> {visit.chiefComplaint}
-                              </p>
-                            )}
-                            {visit.diagnoses && visit.diagnoses.length > 0 && (
-                              <div className="mt-2">
-                                <p className="text-sm font-medium text-gray-700 mb-1">Diagnoses:</p>
-                                <ul className="list-disc list-inside text-sm text-gray-600">
-                                  {visit.diagnoses.map((diag, idx) => (
-                                    <li key={idx}>
-                                      {diag.code && <span className="font-mono">{diag.code}</span>}
-                                      {diag.description && ` - ${diag.description}`}
-                                      {diag.primary && <span className="text-blue-600 ml-1">(Primary)</span>}
-                                    </li>
-                                  ))}
-                                </ul>
+                  <div className="relative">
+                    {/* Timeline View */}
+                    <div className="relative pl-8 border-l-2 border-gray-200">
+                      {visits
+                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                        .map((visit, index) => (
+                          <div key={visit._id} className="relative mb-8">
+                            {/* Timeline dot */}
+                            <div className="absolute -left-[21px] top-0 w-4 h-4 bg-blue-600 rounded-full border-4 border-white shadow-sm"></div>
+                            
+                            {/* Timeline content */}
+                            <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center space-x-3 mb-2">
+                                    <span className="text-sm font-semibold text-gray-900">{visit.visitCode}</span>
+                                    <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full capitalize">
+                                      {visit.visitType}
+                                    </span>
+                                    <span className={`text-xs px-2 py-1 rounded-full ${
+                                      visit.status === 'closed' ? 'bg-green-100 text-green-800' :
+                                      visit.status === 'open' ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {visit.status}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm font-medium text-gray-700 mb-2">
+                                    {new Date(visit.date).toLocaleDateString('en-US', {
+                                      weekday: 'long',
+                                      year: 'numeric',
+                                      month: 'long',
+                                      day: 'numeric',
+                                    })}
+                                  </p>
+                                  {visit.chiefComplaint && (
+                                    <p className="text-sm text-gray-700 mb-2">
+                                      <span className="font-medium">Chief Complaint:</span> {visit.chiefComplaint}
+                                    </p>
+                                  )}
+                                  {visit.diagnoses && visit.diagnoses.length > 0 && (
+                                    <div className="mt-2">
+                                      <p className="text-sm font-medium text-gray-700 mb-1">Diagnoses:</p>
+                                      <ul className="list-disc list-inside text-sm text-gray-600">
+                                        {visit.diagnoses.map((diag, idx) => (
+                                          <li key={idx}>
+                                            {diag.code && <span className="font-mono">{diag.code}</span>}
+                                            {diag.description && ` - ${diag.description}`}
+                                            {diag.primary && <span className="text-blue-600 ml-1">(Primary)</span>}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
+                                <Link
+                                  href={`/visits/${visit._id}`}
+                                  className="ml-4 text-blue-600 hover:text-blue-700 text-sm font-medium whitespace-nowrap"
+                                >
+                                  View Details →
+                                </Link>
                               </div>
-                            )}
+                            </div>
                           </div>
-                          <Link
-                            href={`/visits/${visit._id}`}
-                            className="ml-4 text-blue-600 hover:text-blue-700 text-sm font-medium"
-                          >
-                            View Details →
-                          </Link>
-                        </div>
-                      </div>
-                    ))}
+                        ))}
+                    </div>
                   </div>
                 )}
               </div>

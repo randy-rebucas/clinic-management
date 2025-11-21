@@ -47,6 +47,29 @@ export interface IPrescription extends Document {
     signedAt: Date;
   };
   printable?: boolean; // Whether prescription is printable
+  // Archive tracking
+  copies?: {
+    patientCopy?: {
+      printedAt?: Date;
+      printedBy?: Types.ObjectId;
+      digitalCopySent?: boolean;
+      sentAt?: Date;
+    };
+    clinicCopy?: {
+      archivedAt?: Date;
+      archivedBy?: Types.ObjectId;
+      location?: string; // Physical or digital location
+    };
+  };
+  // Drug interaction check results
+  drugInteractions?: Array<{
+    medication1: string;
+    medication2: string;
+    severity: 'mild' | 'moderate' | 'severe' | 'contraindicated';
+    description: string;
+    recommendation?: string;
+    checkedAt: Date;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -109,6 +132,33 @@ const PrescriptionSchema: Schema = new Schema(
       signedAt: { type: Date },
     },
     printable: { type: Boolean, default: true },
+    copies: {
+      patientCopy: {
+        printedAt: { type: Date },
+        printedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        digitalCopySent: { type: Boolean, default: false },
+        sentAt: { type: Date },
+      },
+      clinicCopy: {
+        archivedAt: { type: Date },
+        archivedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        location: { type: String },
+      },
+    },
+    drugInteractions: [
+      {
+        medication1: { type: String, required: true },
+        medication2: { type: String, required: true },
+        severity: {
+          type: String,
+          enum: ['mild', 'moderate', 'severe', 'contraindicated'],
+          required: true,
+        },
+        description: { type: String, required: true },
+        recommendation: { type: String },
+        checkedAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );

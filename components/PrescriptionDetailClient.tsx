@@ -55,6 +55,27 @@ interface Prescription {
     signatureData: string;
     signedAt: string;
   };
+  drugInteractions?: Array<{
+    medication1: string;
+    medication2: string;
+    severity: 'mild' | 'moderate' | 'severe' | 'contraindicated';
+    description: string;
+    recommendation?: string;
+    checkedAt: string;
+  }>;
+  copies?: {
+    patientCopy?: {
+      printedAt?: string;
+      printedBy?: string;
+      digitalCopySent?: boolean;
+      sentAt?: string;
+    };
+    clinicCopy?: {
+      archivedAt?: string;
+      archivedBy?: string;
+      location?: string;
+    };
+  };
 }
 
 export default function PrescriptionDetailClient({ prescriptionId }: { prescriptionId: string }) {
@@ -121,8 +142,8 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
     }
   };
 
-  const handlePrint = () => {
-    window.open(`/api/prescriptions/${prescriptionId}/print`, '_blank');
+  const handlePrint = (copyType: 'patient' | 'clinic' = 'patient') => {
+    window.open(`/api/prescriptions/${prescriptionId}/print?copy=${copyType}`, '_blank');
   };
 
   if (loading) {
@@ -140,7 +161,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Prescription not found</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-3">Prescription not found</h2>
           <Link href="/prescriptions" className="text-blue-600 hover:text-blue-700">
             Back to Prescriptions
           </Link>
@@ -162,8 +183,8 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
-          <div className="mb-4 sm:mb-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">
+          <div className="mb-2 sm:mb-0">
             <div className="flex items-center space-x-3 mb-2">
               <Link href="/prescriptions" className="text-gray-500 hover:text-gray-700">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -177,19 +198,30 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
             </p>
           </div>
           <div className="flex items-center space-x-3">
-            <button
-              onClick={handlePrint}
-              className="inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-              </svg>
-              Print
-            </button>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => handlePrint('patient')}
+                className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Patient Copy
+              </button>
+              <button
+                onClick={() => handlePrint('clinic')}
+                className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Clinic Copy
+              </button>
+            </div>
             {prescription.status !== 'dispensed' && (
               <button
                 onClick={() => setShowDispenseForm(true)}
-                className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700"
+                className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors"
               >
                 Record Dispense
               </button>
@@ -198,9 +230,9 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
         </div>
 
         {/* Patient Info */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Patient Information</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-3">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Patient Information</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <p className="text-sm font-medium text-gray-500">Name</p>
               <p className="text-sm text-gray-900">
@@ -241,20 +273,20 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
         </div>
 
         {/* Medications */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Medications</h3>
-          <div className="space-y-4">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-3">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Medications</h3>
+          <div className="space-y-3">
             {prescription.medications.map((medication, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <h4 className="text-base font-semibold text-gray-900">
+              <div key={index} className="border border-gray-200 rounded-md p-2.5">
+                <div className="flex items-start justify-between mb-1.5">
+                  <h4 className="text-sm font-semibold text-gray-900">
                     {index + 1}. {medication.name}
                     {medication.genericName && (
                       <span className="text-sm font-normal text-gray-500 ml-2">({medication.genericName})</span>
                     )}
                   </h4>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600 ml-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs text-gray-600 ml-3">
                   {medication.strength && (
                     <div><strong>Strength:</strong> {medication.strength}</div>
                   )}
@@ -287,10 +319,100 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
           </div>
         </div>
 
+        {/* Drug Interactions */}
+        {prescription.drugInteractions && prescription.drugInteractions.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-3">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Drug Interactions</h3>
+            <div className="space-y-3">
+              {prescription.drugInteractions.map((interaction, idx) => (
+                <div
+                  key={idx}
+                  className={`p-3 rounded-lg border-2 ${
+                    interaction.severity === 'contraindicated' || interaction.severity === 'severe'
+                      ? 'border-red-500 bg-red-50'
+                      : interaction.severity === 'moderate'
+                      ? 'border-yellow-500 bg-yellow-50'
+                      : 'border-blue-500 bg-blue-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-semibold">
+                      {interaction.medication1} + {interaction.medication2}
+                    </div>
+                    <span
+                      className={`px-2 py-1 rounded text-xs font-medium ${
+                        interaction.severity === 'contraindicated'
+                          ? 'bg-red-600 text-white'
+                          : interaction.severity === 'severe'
+                          ? 'bg-red-500 text-white'
+                          : interaction.severity === 'moderate'
+                          ? 'bg-yellow-500 text-white'
+                          : 'bg-blue-500 text-white'
+                      }`}
+                    >
+                      {interaction.severity.toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-700 mb-1">{interaction.description}</p>
+                  {interaction.recommendation && (
+                    <p className="text-sm text-gray-600 italic">{interaction.recommendation}</p>
+                  )}
+                  {interaction.checkedAt && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Checked: {new Date(interaction.checkedAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Archive Status */}
+        {prescription.copies && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-3">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Archive Status</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {prescription.copies.patientCopy && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Patient Copy</h4>
+                  {prescription.copies.patientCopy.printedAt && (
+                    <p className="text-sm text-gray-600">
+                      Printed: {new Date(prescription.copies.patientCopy.printedAt).toLocaleString()}
+                    </p>
+                  )}
+                  {prescription.copies.patientCopy.digitalCopySent && (
+                    <p className="text-sm text-gray-600">
+                      Digital copy sent: {prescription.copies.patientCopy.sentAt
+                        ? new Date(prescription.copies.patientCopy.sentAt).toLocaleString()
+                        : 'Yes'}
+                    </p>
+                  )}
+                </div>
+              )}
+              {prescription.copies.clinicCopy && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Clinic Copy</h4>
+                  {prescription.copies.clinicCopy.archivedAt && (
+                    <p className="text-sm text-gray-600">
+                      Archived: {new Date(prescription.copies.clinicCopy.archivedAt).toLocaleString()}
+                    </p>
+                  )}
+                  {prescription.copies.clinicCopy.location && (
+                    <p className="text-sm text-gray-600">
+                      Location: {prescription.copies.clinicCopy.location}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Dispensing Status */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Dispensing Status</h3>
-          <div className="mb-4">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-3">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Dispensing Status</h3>
+          <div className="mb-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-gray-600">Prescribed</span>
               <span className="text-sm font-medium text-gray-900">{totalPrescribed}</span>
@@ -342,7 +464,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
 
         {/* Digital Signature */}
         {prescription.digitalSignature && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-3">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Digital Signature</h3>
             <div className="flex items-center space-x-4">
               <div className="border-2 border-gray-200 rounded-lg p-2 bg-white">
@@ -368,22 +490,22 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
         {showDispenseForm && (
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen px-4">
-              <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowDispenseForm(false)} />
-              <div className="relative bg-white rounded-2xl shadow-xl p-6 max-w-md w-full z-10">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Record Dispense</h3>
-                <div className="space-y-4">
+              <div className="fixed inset-0 bg-black/30 backdrop-blur-md" onClick={() => setShowDispenseForm(false)} />
+              <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-md w-full z-10">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Record Dispense</h3>
+                <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Pharmacy Name *</label>
+                    <label className="block text-xs font-medium text-gray-700">Pharmacy Name *</label>
                     <input
                       type="text"
                       required
                       value={dispenseForm.pharmacyName}
                       onChange={(e) => setDispenseForm({ ...dispenseForm, pharmacyName: e.target.value })}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Quantity Dispensed *</label>
+                    <label className="block text-xs font-medium text-gray-700">Quantity Dispensed *</label>
                     <input
                       type="number"
                       required
@@ -391,7 +513,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                       max={totalPrescribed - totalDispensed}
                       value={dispenseForm.quantityDispensed}
                       onChange={(e) => setDispenseForm({ ...dispenseForm, quantityDispensed: parseInt(e.target.value) || 0 })}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                     <p className="text-xs text-gray-500 mt-1">
                       Remaining: {totalPrescribed - totalDispensed}
@@ -403,7 +525,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                       type="text"
                       value={dispenseForm.trackingNumber}
                       onChange={(e) => setDispenseForm({ ...dispenseForm, trackingNumber: e.target.value })}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -412,19 +534,19 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                       value={dispenseForm.notes}
                       onChange={(e) => setDispenseForm({ ...dispenseForm, notes: e.target.value })}
                       rows={3}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   <div className="flex justify-end space-x-3 pt-4">
                     <button
                       onClick={() => setShowDispenseForm(false)}
-                      className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                      className="px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleDispense}
-                      className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700"
+                      className="px-3 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors"
                     >
                       Record Dispense
                     </button>

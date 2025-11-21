@@ -8,6 +8,13 @@ interface AllergyEntry {
   severity: string;
 }
 
+interface PreExistingCondition {
+  condition: string;
+  diagnosisDate?: string;
+  status: 'active' | 'resolved' | 'chronic';
+  notes?: string;
+}
+
 interface PatientFormData {
   firstName: string;
   middleName?: string;
@@ -36,7 +43,9 @@ interface PatientFormData {
     govId?: string;
   };
   medicalHistory: string;
+  preExistingConditions: PreExistingCondition[];
   allergies: AllergyEntry[];
+  familyHistory: Record<string, string>;
 }
 
 interface PatientFormProps {
@@ -116,14 +125,26 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
       govId: '',
     },
     medicalHistory: initialData?.medicalHistory || '',
+    preExistingConditions: (initialData as any)?.preExistingConditions || [],
     allergies: parseInitialAllergies(),
+    familyHistory: (initialData as any)?.familyHistory || {},
   });
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    // Filter out empty allergies
+    // Filter out empty allergies and conditions
     const filteredAllergies = formData.allergies.filter((a) => a.substance.trim().length > 0);
-    onSubmit({ ...formData, allergies: filteredAllergies });
+    const filteredConditions = formData.preExistingConditions.filter((c) => c.condition.trim().length > 0);
+    // Filter out empty family history entries
+    const filteredFamilyHistory = Object.fromEntries(
+      Object.entries(formData.familyHistory).filter(([condition, relation]) => condition.trim().length > 0)
+    );
+    onSubmit({ 
+      ...formData, 
+      allergies: filteredAllergies,
+      preExistingConditions: filteredConditions,
+      familyHistory: filteredFamilyHistory,
+    });
   };
 
   const addAllergy = () => {
@@ -150,7 +171,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
     <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto">
       {/* Basic Information */}
       <div className="border-b pb-4">
-        <h3 className="text-lg font-medium mb-4">Basic Information</h3>
+        <h3 className="text-sm font-semibold mb-3 text-gray-900">Basic Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">First Name *</label>
@@ -159,7 +180,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               required
               value={formData.firstName}
               onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -168,7 +189,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               type="text"
               value={formData.middleName}
               onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -178,7 +199,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               required
               value={formData.lastName}
               onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -188,7 +209,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               value={formData.suffix}
               onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
               placeholder="Jr., Sr., III"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -198,7 +219,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               required
               value={formData.dateOfBirth}
               onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -206,7 +227,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
             <select
               value={formData.sex}
               onChange={(e) => setFormData({ ...formData, sex: e.target.value as any })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             >
               <option value="unknown">Unknown</option>
               <option value="male">Male</option>
@@ -221,7 +242,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               value={formData.civilStatus}
               onChange={(e) => setFormData({ ...formData, civilStatus: e.target.value })}
               placeholder="Single, Married, Divorced, etc."
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -230,7 +251,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               type="text"
               value={formData.nationality}
               onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -239,7 +260,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               type="text"
               value={formData.occupation}
               onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -247,7 +268,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
 
       {/* Contact Information */}
       <div className="border-b pb-4">
-        <h3 className="text-lg font-medium mb-4">Contact Information</h3>
+        <h3 className="text-sm font-semibold mb-3 text-gray-900">Contact Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">Email *</label>
@@ -256,7 +277,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               required
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -266,14 +287,14 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               required
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
         </div>
       </div>
 
       <div className="border-t pt-4">
-        <h3 className="text-lg font-medium mb-4">Address</h3>
+        <h3 className="text-sm font-semibold mb-3 text-gray-900">Address</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700">Street</label>
@@ -287,7 +308,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   address: { ...formData.address, street: e.target.value },
                 })
               }
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -302,7 +323,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   address: { ...formData.address, city: e.target.value },
                 })
               }
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -317,7 +338,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   address: { ...formData.address, state: e.target.value },
                 })
               }
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -332,14 +353,14 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   address: { ...formData.address, zipCode: e.target.value },
                 })
               }
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
         </div>
       </div>
 
       <div className="border-t pt-4">
-        <h3 className="text-lg font-medium mb-4">Emergency Contact</h3>
+        <h3 className="text-sm font-semibold mb-3 text-gray-900">Emergency Contact</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">Name</label>
@@ -353,7 +374,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   emergencyContact: { ...formData.emergencyContact, name: e.target.value },
                 })
               }
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -368,7 +389,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   emergencyContact: { ...formData.emergencyContact, phone: e.target.value },
                 })
               }
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -386,7 +407,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   },
                 })
               }
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -394,7 +415,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
 
       {/* Identifiers */}
       <div className="border-b pb-4">
-        <h3 className="text-lg font-medium mb-4">Identifiers</h3>
+        <h3 className="text-sm font-semibold mb-3 text-gray-900">Identifiers</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">PhilHealth ID</label>
@@ -407,7 +428,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   identifiers: { ...formData.identifiers, philHealth: e.target.value },
                 })
               }
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -421,7 +442,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   identifiers: { ...formData.identifiers, govId: e.target.value },
                 })
               }
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -429,7 +450,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
 
       {/* Medical Information */}
       <div className="border-b pb-4">
-        <h3 className="text-lg font-medium mb-4">Medical Information</h3>
+        <h3 className="text-sm font-semibold mb-3 text-gray-900">Medical Information</h3>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">Medical History</label>
@@ -438,7 +459,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               onChange={(e) => setFormData({ ...formData, medicalHistory: e.target.value })}
               rows={4}
               placeholder="Enter patient's medical history..."
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -465,7 +486,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                         value={allergy.substance}
                         onChange={(e) => updateAllergy(index, 'substance', e.target.value)}
                         placeholder="e.g., Penicillin"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -475,7 +496,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                         value={allergy.reaction}
                         onChange={(e) => updateAllergy(index, 'reaction', e.target.value)}
                         placeholder="e.g., Rash, Anaphylaxis"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -483,7 +504,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                       <select
                         value={allergy.severity}
                         onChange={(e) => updateAllergy(index, 'severity', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       >
                         <option value="unknown">Unknown</option>
                         <option value="mild">Mild</option>
@@ -506,22 +527,176 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               </div>
             )}
           </div>
+          
+          {/* Pre-existing Conditions */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">Pre-existing Conditions</label>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData({
+                    ...formData,
+                    preExistingConditions: [
+                      ...formData.preExistingConditions,
+                      { condition: '', status: 'active' },
+                    ],
+                  });
+                }}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              >
+                + Add Condition
+              </button>
+            </div>
+            {formData.preExistingConditions.length === 0 ? (
+              <p className="text-sm text-gray-500 mt-1">No pre-existing conditions recorded. Click "Add Condition" to add one.</p>
+            ) : (
+              <div className="space-y-3 mt-2">
+                {formData.preExistingConditions.map((condition, index) => (
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end border border-gray-200 rounded-lg p-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600">Condition</label>
+                      <input
+                        type="text"
+                        value={condition.condition}
+                        onChange={(e) => {
+                          const updated = [...formData.preExistingConditions];
+                          updated[index] = { ...updated[index], condition: e.target.value };
+                          setFormData({ ...formData, preExistingConditions: updated });
+                        }}
+                        placeholder="e.g., Diabetes, Hypertension"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600">Status</label>
+                      <select
+                        value={condition.status}
+                        onChange={(e) => {
+                          const updated = [...formData.preExistingConditions];
+                          updated[index] = { ...updated[index], status: e.target.value as any };
+                          setFormData({ ...formData, preExistingConditions: updated });
+                        }}
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="active">Active</option>
+                        <option value="chronic">Chronic</option>
+                        <option value="resolved">Resolved</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600">Diagnosis Date</label>
+                      <input
+                        type="date"
+                        value={condition.diagnosisDate || ''}
+                        onChange={(e) => {
+                          const updated = [...formData.preExistingConditions];
+                          updated[index] = { ...updated[index], diagnosisDate: e.target.value };
+                          setFormData({ ...formData, preExistingConditions: updated });
+                        }}
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600">Notes</label>
+                      <input
+                        type="text"
+                        value={condition.notes || ''}
+                        onChange={(e) => {
+                          const updated = [...formData.preExistingConditions];
+                          updated[index] = { ...updated[index], notes: e.target.value };
+                          setFormData({ ...formData, preExistingConditions: updated });
+                        }}
+                        placeholder="Optional notes"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData({
+                            ...formData,
+                            preExistingConditions: formData.preExistingConditions.filter((_, i) => i !== index),
+                          });
+                        }}
+                        className="w-full px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md border border-red-200"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Family History */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">Family History</label>
+              <button
+                type="button"
+                onClick={() => {
+                  const condition = prompt('Enter condition (e.g., Diabetes):');
+                  if (condition && condition.trim()) {
+                    const relation = prompt('Enter family relation (e.g., Father, Mother):') || '';
+                    setFormData({
+                      ...formData,
+                      familyHistory: {
+                        ...formData.familyHistory,
+                        [condition.trim()]: relation.trim(),
+                      },
+                    });
+                  }
+                }}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              >
+                + Add Family History
+              </button>
+            </div>
+            {Object.keys(formData.familyHistory).length === 0 ? (
+              <p className="text-sm text-gray-500 mt-1">No family history recorded. Click "Add Family History" to add one.</p>
+            ) : (
+              <div className="space-y-2 mt-2">
+                {Object.entries(formData.familyHistory).map(([condition, relation], index) => (
+                  <div key={index} className="flex items-center justify-between p-2 border border-gray-200 rounded-lg">
+                    <div className="flex-1">
+                      <span className="text-sm font-medium text-gray-900">{condition}</span>
+                      {relation && <span className="text-sm text-gray-600 ml-2">({relation})</span>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = { ...formData.familyHistory };
+                        delete updated[condition];
+                        setFormData({ ...formData, familyHistory: updated });
+                      }}
+                      className="px-2 py-1 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="flex justify-end space-x-3 pt-4">
+      <div className="flex justify-end space-x-2 pt-3 border-t border-gray-200">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            className="px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
         )}
         <button
           type="submit"
-          className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+          className="px-3 py-1.5 border border-transparent rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
         >
           Save Patient
         </button>

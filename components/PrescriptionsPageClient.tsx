@@ -173,19 +173,19 @@ export default function PrescriptionsPageClient() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <div className="min-h-screen bg-gray-50">
+      <div className="w-full px-4 py-3">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">
           <div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">E-Prescriptions</h1>
-            <p className="text-gray-600 text-sm sm:text-base">Manage prescriptions and track dispensing</p>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">E-Prescriptions</h1>
+            <p className="text-gray-600 text-sm">Manage prescriptions and track dispensing</p>
           </div>
           <button
             onClick={() => setShowForm(true)}
-            className="inline-flex items-center justify-center px-4 sm:px-6 py-2.5 sm:py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-sm hover:shadow-md hover:from-blue-700 hover:to-blue-800 transition-all duration-200 mt-4 sm:mt-0"
+            className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-md shadow-sm hover:shadow hover:from-blue-700 hover:to-blue-800 transition-all duration-200 mt-2 sm:mt-0"
           >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             New Prescription
@@ -196,8 +196,8 @@ export default function PrescriptionsPageClient() {
         {showForm && (
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen px-4">
-              <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowForm(false)} />
-              <div className="relative bg-white rounded-2xl shadow-xl p-6 max-w-4xl w-full z-10 max-h-[90vh] overflow-y-auto">
+              <div className="fixed inset-0 bg-black/30 backdrop-blur-md" onClick={() => setShowForm(false)} />
+              <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-4xl w-full z-10 max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-xl font-bold text-gray-900">New Prescription</h2>
                   <button

@@ -1,0 +1,85 @@
+import { NextRequest, NextResponse } from 'next/server';
+import connectDB from '@/lib/mongodb';
+import InventoryItem from '@/models/Inventory';
+import { verifySession } from '@/app/lib/dal';
+import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+
+export async function GET(request: NextRequest) {
+  const session = await verifySession();
+
+  if (!session) {
+    return unauthorizedResponse();
+  }
+
+  try {
+    await connectDB();
+    const searchParams = request.nextUrl.searchParams;
+    const category = searchParams.get('category');
+    const status = searchParams.get('status');
+    const lowStock = searchParams.get('lowStock') === 'true';
+
+    let query: any = {};
+    if (category) {
+      query.category = category;
+    }
+    if (status) {
+      query.status = status;
+    }
+    if (lowStock) {
+      query.status = { $in: ['low-stock', 'out-of-stock'] };
+    }
+
+    const items = await InventoryItem.find(query)
+      .populate('medicineId', 'name genericName')
+      .populate('lastRestockedBy', 'name')
+      .sort({ name: 1 });
+
+    return NextResponse.json({ success: true, data: items });
+  } catch (error: any) {
+    console.error('Error fetching inventory:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch inventory' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const session = await verifySession();
+
+  if (!session) {
+    return unauthorizedResponse();
+  }
+
+  // Only admin can add inventory items
+  if (session.role !== 'admin') {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized' },
+      { status: 403 }
+    );
+  }
+
+  try {
+    await connectDB();
+    const body = await request.json();
+
+    const item = await InventoryItem.create(body);
+    await item.populate('medicineId', 'name genericName');
+    await item.populate('lastRestockedBy', 'name');
+
+    return NextResponse.json({ success: true, data: item }, { status: 201 });
+  } catch (error: any) {
+    console.error('Error creating inventory item:', error);
+    if (error.name === 'ValidationError') {
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: 400 }
+      );
+    }
+    return NextResponse.json(
+      { success: false, error: 'Failed to create inventory item' },
+      { status: 500 }
+    );
+  }
+}
+

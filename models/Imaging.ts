@@ -40,6 +40,7 @@ const ImagingSchema: Schema = new Schema(
 ImagingSchema.index({ patient: 1, orderDate: -1 });
 ImagingSchema.index({ visit: 1 });
 ImagingSchema.index({ orderedBy: 1 });
+ImagingSchema.index({ reportedBy: 1 });
 ImagingSchema.index({ status: 1 });
 
 export default mongoose.models.Imaging || mongoose.model<IImaging>('Imaging', ImagingSchema);

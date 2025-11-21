@@ -17,6 +17,9 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
+    const searchParams = request.nextUrl.searchParams;
+    const copyType = searchParams.get('copy') || 'patient'; // 'patient' or 'clinic'
+    
     const prescription = await Prescription.findById(id)
       .populate('patient', 'firstName lastName patientCode email phone dateOfBirth')
       .populate('prescribedBy', 'name email')
@@ -29,8 +32,28 @@ export async function GET(
       );
     }
 
+    // Update archive tracking
+    if (copyType === 'patient') {
+      prescription.copies = prescription.copies || {};
+      prescription.copies.patientCopy = {
+        ...prescription.copies.patientCopy,
+        printedAt: new Date(),
+        printedBy: session.userId as any,
+      };
+      await prescription.save();
+    } else if (copyType === 'clinic') {
+      prescription.copies = prescription.copies || {};
+      prescription.copies.clinicCopy = {
+        ...prescription.copies.clinicCopy,
+        archivedAt: new Date(),
+        archivedBy: session.userId as any,
+        location: 'Digital Archive',
+      };
+      await prescription.save();
+    }
+
     // Generate HTML for printable prescription
-    const html = generatePrescriptionHTML(prescription);
+    const html = generatePrescriptionHTML(prescription, copyType);
 
     return new NextResponse(html, {
       headers: {
@@ -46,10 +69,11 @@ export async function GET(
   }
 }
 
-function generatePrescriptionHTML(prescription: any): string {
+function generatePrescriptionHTML(prescription: any, copyType: string = 'patient'): string {
   const patient = prescription.patient;
   const provider = prescription.prescribedBy;
   const date = new Date(prescription.issuedAt).toLocaleDateString();
+  const isPatientCopy = copyType === 'patient';
 
   return `
 <!DOCTYPE html>
@@ -137,9 +161,10 @@ function generatePrescriptionHTML(prescription: any): string {
 </head>
 <body>
   <div class="header">
-    <h1>PRESCRIPTION</h1>
+    <h1>PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h1>
     <div style="text-align: right; margin-top: -30px;">
       <strong>Code:</strong> ${prescription.prescriptionCode}
+      ${!isPatientCopy ? `<br><small style="color: #6b7280;">Archived: ${new Date().toLocaleString()}</small>` : ''}
     </div>
   </div>
 

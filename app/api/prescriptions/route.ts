@@ -87,6 +87,15 @@ export async function POST(request: NextRequest) {
       };
     }
 
+    // Handle drug interactions (save if provided)
+    if (body.drugInteractions && Array.isArray(body.drugInteractions)) {
+      // Ensure checkedAt is a Date object
+      body.drugInteractions = body.drugInteractions.map((interaction: any) => ({
+        ...interaction,
+        checkedAt: interaction.checkedAt ? new Date(interaction.checkedAt) : new Date(),
+      }));
+    }
+
     const prescription = await Prescription.create(body);
     await prescription.populate('patient', 'firstName lastName patientCode');
     await prescription.populate('prescribedBy', 'name email');

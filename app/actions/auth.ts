@@ -131,6 +131,21 @@ export async function login(
     // Create session
     await createSession(user._id.toString(), user.email, user.role);
 
+    // Log login for audit trail
+    try {
+      const { logLogin } = await import('@/lib/audit');
+      await logLogin(
+        user._id.toString(),
+        user.email,
+        user.role,
+        undefined, // IP address would need to be passed from request
+        undefined // User agent would need to be passed from request
+      );
+    } catch (error) {
+      // Don't fail login if audit logging fails
+      console.error('Error logging login:', error);
+    }
+
     revalidatePath('/');
     redirect('/');
   } catch (error) {

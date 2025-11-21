@@ -225,7 +225,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">
           <div className="mb-4 sm:mb-0">
             <div className="flex items-center space-x-3 mb-2">
               <Link href="/doctors" className="text-gray-500 hover:text-gray-700">
@@ -240,7 +240,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
         </div>
 
         {/* Tabs */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-3">
           <div className="border-b border-gray-200">
             <nav className="flex -mb-px">
               <button
@@ -289,11 +289,11 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
             </nav>
           </div>
 
-          <div className="p-6">
+          <div className="p-3">
             {/* Profile Tab */}
             {activeTab === 'profile' && (
               <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
                     <dl className="space-y-3">
@@ -401,16 +401,16 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                 {showScheduleForm && (
                   <div className="fixed inset-0 z-50 overflow-y-auto">
                     <div className="flex items-center justify-center min-h-screen px-4">
-                      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowScheduleForm(false)} />
-                      <div className="relative bg-white rounded-2xl shadow-xl p-6 max-w-md w-full z-10">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Schedule</h3>
-                        <div className="space-y-4">
+                      <div className="fixed inset-0 bg-black/30 backdrop-blur-md" onClick={() => setShowScheduleForm(false)} />
+                      <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-md w-full z-10">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-3">Edit Schedule</h3>
+                        <div className="space-y-3">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700">Day of Week</label>
+                            <label className="block text-xs font-medium text-gray-700">Day of Week</label>
                             <select
                               value={scheduleForm.dayOfWeek}
                               onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfWeek: parseInt(e.target.value) })}
-                              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                             >
                               {[0, 1, 2, 3, 4, 5, 6].map((day) => (
                                 <option key={day} value={day}>
@@ -421,21 +421,21 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                           </div>
                           <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-sm font-medium text-gray-700">Start Time</label>
+                              <label className="block text-xs font-medium text-gray-700">Start Time</label>
                               <input
                                 type="time"
                                 value={scheduleForm.startTime}
                                 onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700">End Time</label>
+                              <label className="block text-xs font-medium text-gray-700">End Time</label>
                               <input
                                 type="time"
                                 value={scheduleForm.endTime}
                                 onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                               />
                             </div>
                           </div>
@@ -444,9 +444,9 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                               type="checkbox"
                               checked={scheduleForm.isAvailable}
                               onChange={(e) => setScheduleForm({ ...scheduleForm, isAvailable: e.target.checked })}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              className="rounded border-gray-200 text-blue-600 focus:ring-1 focus:ring-blue-500"
                             />
-                            <label className="ml-2 text-sm text-gray-700">Available on this day</label>
+                            <label className="ml-2 text-xs text-gray-700">Available on this day</label>
                           </div>
                           <div className="flex justify-end space-x-3 pt-4">
                             <button
@@ -523,18 +523,18 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                 {showNoteForm && (
                   <div className="fixed inset-0 z-50 overflow-y-auto">
                     <div className="flex items-center justify-center min-h-screen px-4">
-                      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowNoteForm(false)} />
-                      <div className="relative bg-white rounded-2xl shadow-xl p-6 max-w-md w-full z-10">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Internal Note</h3>
-                        <form onSubmit={handleAddNote} className="space-y-4">
+                      <div className="fixed inset-0 bg-black/30 backdrop-blur-md" onClick={() => setShowNoteForm(false)} />
+                      <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-md w-full z-10">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-3">Add Internal Note</h3>
+                        <form onSubmit={handleAddNote} className="space-y-3">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700">Note</label>
+                            <label className="block text-xs font-medium text-gray-700">Note</label>
                             <textarea
                               required
                               value={newNote.note}
                               onChange={(e) => setNewNote({ ...newNote, note: e.target.value })}
                               rows={4}
-                              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                             />
                           </div>
                           <div className="flex items-center">
@@ -542,21 +542,21 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                               type="checkbox"
                               checked={newNote.isImportant}
                               onChange={(e) => setNewNote({ ...newNote, isImportant: e.target.checked })}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              className="rounded border-gray-200 text-blue-600 focus:ring-1 focus:ring-blue-500"
                             />
-                            <label className="ml-2 text-sm text-gray-700">Mark as important</label>
+                            <label className="ml-2 text-xs text-gray-700">Mark as important</label>
                           </div>
-                          <div className="flex justify-end space-x-3 pt-4">
+                          <div className="flex justify-end space-x-2 pt-3 border-t border-gray-200">
                             <button
                               type="button"
                               onClick={() => setShowNoteForm(false)}
-                              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                              className="px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
                             >
                               Cancel
                             </button>
                             <button
                               type="submit"
-                              className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
+                              className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 transition-colors"
                             >
                               Add Note
                             </button>

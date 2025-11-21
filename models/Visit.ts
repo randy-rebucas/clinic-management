@@ -214,6 +214,7 @@ const VisitSchema: Schema = new Schema(
 );
 
 VisitSchema.index({ patient: 1, date: -1 });
+VisitSchema.index({ provider: 1 });
 
 export default mongoose.models.Visit || mongoose.model<IVisit>('Visit', VisitSchema);
 

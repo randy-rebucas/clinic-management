@@ -196,7 +196,7 @@ export default function VisitForm({
     <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto">
       {/* Basic Information */}
       <div className="border-b pb-4">
-        <h3 className="text-lg font-medium mb-4">Basic Information</h3>
+        <h3 className="text-sm font-semibold mb-3 text-gray-900">Basic Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">Patient *</label>
@@ -204,7 +204,7 @@ export default function VisitForm({
               required
               value={formData.patient}
               onChange={(e) => setFormData({ ...formData, patient: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             >
               <option value="">Select a patient</option>
               {patients.map((patient) => (
@@ -220,7 +220,7 @@ export default function VisitForm({
               required
               value={formData.visitType}
               onChange={(e) => setFormData({ ...formData, visitType: e.target.value as any })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             >
               <option value="consultation">Consultation</option>
               <option value="follow-up">Follow-up</option>
@@ -235,7 +235,7 @@ export default function VisitForm({
               type="text"
               value={formData.chiefComplaint}
               onChange={(e) => setFormData({ ...formData, chiefComplaint: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -297,7 +297,7 @@ export default function VisitForm({
               }
               rows={4}
               placeholder="Patient reports..."
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -314,7 +314,7 @@ export default function VisitForm({
               }
               rows={4}
               placeholder="Vitals: BP 120/80, HR 72, Temp 37°C. Physical exam findings..."
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -331,7 +331,7 @@ export default function VisitForm({
               }
               rows={3}
               placeholder="Clinical impression..."
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -348,7 +348,7 @@ export default function VisitForm({
               }
               rows={4}
               placeholder="Plan: Medications, procedures, follow-up..."
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -363,7 +363,7 @@ export default function VisitForm({
               value={formData.historyOfPresentIllness}
               onChange={(e) => setFormData({ ...formData, historyOfPresentIllness: e.target.value })}
               rows={4}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -499,7 +499,7 @@ export default function VisitForm({
       {/* Diagnoses Section */}
       <div className="border-t pt-4">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">Diagnoses (ICD-10)</h3>
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Diagnoses (ICD-10)</h3>
           <button
             type="button"
             onClick={addDiagnosis}
@@ -679,7 +679,7 @@ export default function VisitForm({
               type="date"
               value={formData.followUpDate}
               onChange={(e) => setFormData({ ...formData, followUpDate: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -701,7 +701,7 @@ export default function VisitForm({
               }
               rows={3}
               placeholder="Follow-up instructions..."
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -730,7 +730,7 @@ export default function VisitForm({
           <button
             type="button"
             onClick={() => setShowSignaturePad(true)}
-            className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:border-blue-500 hover:text-blue-600"
+            className="w-full px-3 py-1.5 border border-dashed border-gray-200 rounded-md text-xs font-medium text-gray-700 hover:border-blue-500 hover:text-blue-600 transition-colors"
           >
             + Add Digital Signature
           </button>
@@ -741,8 +741,8 @@ export default function VisitForm({
       {showSignaturePad && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowSignaturePad(false)} />
-            <div className="relative bg-white rounded-2xl shadow-xl p-6 max-w-2xl w-full z-10">
+            <div className="fixed inset-0 bg-black/30 backdrop-blur-md" onClick={() => setShowSignaturePad(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-2xl w-full z-10">
               <SignaturePad
                 onSave={handleSignatureSave}
                 onCancel={() => setShowSignaturePad(false)}
@@ -752,6 +752,30 @@ export default function VisitForm({
           </div>
         </div>
       )}
+
+      {/* Clinical Images Upload */}
+      <div className="border-t pt-4">
+        <h3 className="text-sm font-medium text-gray-700 mb-3">Clinical Images & Attachments</h3>
+        <p className="text-xs text-gray-500 mb-3">
+          Upload clinical images, X-rays, or other documents related to this visit
+        </p>
+        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+          <input
+            type="file"
+            accept="image/*,.pdf,.doc,.docx"
+            multiple
+            onChange={(e) => {
+              // Note: File uploads should be handled separately via API
+              // This is just a placeholder - actual upload should be done after visit creation
+              console.log('Files selected:', e.target.files);
+            }}
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+          />
+          <p className="text-xs text-gray-500 mt-2">
+            Note: Files can be uploaded after saving the visit from the visit detail page.
+          </p>
+        </div>
+      </div>
 
       {/* Additional Notes */}
       <div>
@@ -765,19 +789,19 @@ export default function VisitForm({
       </div>
 
       {/* Form Actions */}
-      <div className="flex justify-end space-x-3 pt-4 border-t">
+      <div className="flex justify-end space-x-2 pt-3 border-t border-gray-200">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            className="px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
         )}
         <button
           type="submit"
-          className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+          className="px-3 py-1.5 border border-transparent rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
         >
           Save Visit
         </button>

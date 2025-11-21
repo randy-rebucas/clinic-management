@@ -51,6 +51,12 @@ export interface IPatient extends Document {
   
   // Medical information
   medicalHistory?: string; // from original Patient
+  preExistingConditions?: Array<{
+    condition: string;
+    diagnosisDate?: Date;
+    status: 'active' | 'resolved' | 'chronic';
+    notes?: string;
+  }>; // Pre-existing conditions
   allergies?: Array<string | {
     substance: string;
     reaction: string;
@@ -73,6 +79,26 @@ export interface IPatient extends Document {
   };
   
   familyHistory?: Map<string, string>; // e.g. { diabetes: 'father', cancer: 'mother' }
+  
+  // Billing & Discount Eligibility
+  discountEligibility?: {
+    pwd?: {
+      eligible: boolean;
+      idNumber?: string;
+      expiryDate?: Date;
+    };
+    senior?: {
+      eligible: boolean;
+      idNumber?: string;
+    };
+    membership?: {
+      eligible: boolean;
+      membershipType?: string;
+      membershipNumber?: string;
+      expiryDate?: Date;
+      discountPercentage?: number;
+    };
+  };
   
   // Status and attachments
   active?: boolean;
@@ -183,6 +209,19 @@ const PatientSchema: Schema = new Schema(
       type: String,
       default: '',
     },
+    // Pre-existing conditions
+    preExistingConditions: [
+      {
+        condition: { type: String, required: true },
+        diagnosisDate: { type: Date },
+        status: {
+          type: String,
+          enum: ['active', 'resolved', 'chronic'],
+          default: 'active',
+        },
+        notes: { type: String },
+      },
+    ],
     // Support both simple string array and structured objects
     allergies: [
       {
@@ -223,7 +262,25 @@ const PatientSchema: Schema = new Schema(
       type: Map,
       of: String,
     },
-    
+    // Billing & Discount Eligibility
+    discountEligibility: {
+      pwd: {
+        eligible: Boolean,
+        idNumber: String,
+        expiryDate: Date,
+      },
+      senior: {
+        eligible: Boolean,
+        idNumber: String,
+      },
+      membership: {
+        eligible: Boolean,
+        membershipType: String,
+        membershipNumber: String,
+        expiryDate: Date,
+        discountPercentage: Number,
+      },
+    },
     // Status and attachments
     active: {
       type: Boolean,
@@ -238,8 +295,8 @@ const PatientSchema: Schema = new Schema(
 
 // Indexes
 PatientSchema.index({ lastName: 1, firstName: 1 });
-PatientSchema.index({ email: 1 });
-PatientSchema.index({ patientCode: 1 });
+// email is already indexed via unique: true
+// patientCode is already indexed via index: true and unique: true
 
 // Virtual for full name
 PatientSchema.virtual('fullName').get(function (this: IPatient) {

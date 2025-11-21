@@ -159,10 +159,12 @@ export default function DoctorsPageClient() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-blue-600"></div>
-          <p className="mt-4 text-gray-600">Loading doctors...</p>
+      <div className="w-full px-4 py-3">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600"></div>
+            <p className="mt-3 text-sm text-gray-600">Loading doctors...</p>
+          </div>
         </div>
       </div>
     );
@@ -236,29 +238,29 @@ export default function DoctorsPageClient() {
           const noShowRate = total > 0 ? (noShow / total) * 100 : 0;
 
           return (
-            <div key={doctor._id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="flex items-start justify-between mb-4">
+            <div key={doctor._id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+              <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
+                  <h3 className="text-sm font-semibold text-gray-900">
                     {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
                   </h3>
-                  <p className="text-sm text-gray-600">{doctor.specialization}</p>
+                  <p className="text-xs text-gray-600">{doctor.specialization}</p>
                 </div>
                 <Link
                   href={`/doctors/${doctor._id}`}
-                  className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                  className="text-blue-600 hover:text-blue-700 text-xs font-medium"
                 >
                   View Details →
                 </Link>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
-                  <div className="text-2xl font-bold text-gray-900">{total}</div>
-                  <div className="text-sm text-gray-600">Total Appointments</div>
+                  <div className="text-xl font-bold text-gray-900">{total}</div>
+                  <div className="text-xs text-gray-600">Total Appointments</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-green-600">{completed}</div>
-                  <div className="text-sm text-gray-600">Completed</div>
+                  <div className="text-xl font-bold text-green-600">{completed}</div>
+                  <div className="text-xs text-gray-600">Completed</div>
                   <div className="text-xs text-gray-500">{Math.round(completionRate)}%</div>
                 </div>
                 <div>
@@ -280,19 +282,19 @@ export default function DoctorsPageClient() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <div className="min-h-screen bg-gray-50">
+      <div className="w-full px-4 py-3">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">
           <div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">Doctors & Staff</h1>
-            <p className="text-gray-600 text-sm sm:text-base">Manage doctor profiles, schedules, and performance</p>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">Doctors & Staff</h1>
+            <p className="text-gray-600 text-sm">Manage doctor profiles, schedules, and performance</p>
           </div>
           <button
             onClick={() => setShowForm(true)}
-            className="inline-flex items-center justify-center px-4 sm:px-6 py-2.5 sm:py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-sm hover:shadow-md hover:from-blue-700 hover:to-blue-800 transition-all duration-200 mt-4 sm:mt-0"
+            className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-md shadow-sm hover:shadow hover:from-blue-700 hover:to-blue-800 transition-all duration-200 mt-2 sm:mt-0"
           >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             Add Doctor
@@ -300,12 +302,12 @@ export default function DoctorsPageClient() {
         </div>
 
         {/* View Mode Tabs */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-3">
           <div className="border-b border-gray-200">
             <nav className="flex -mb-px">
               <button
                 onClick={() => setViewMode('list')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                className={`py-2 px-3 text-xs font-medium border-b-2 transition-colors ${
                   viewMode === 'list'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -315,7 +317,7 @@ export default function DoctorsPageClient() {
               </button>
               <button
                 onClick={() => setViewMode('roster')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                className={`py-2 px-3 text-xs font-medium border-b-2 transition-colors ${
                   viewMode === 'roster'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -325,7 +327,7 @@ export default function DoctorsPageClient() {
               </button>
               <button
                 onClick={() => setViewMode('performance')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                className={`py-2 px-3 text-xs font-medium border-b-2 transition-colors ${
                   viewMode === 'performance'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -341,20 +343,20 @@ export default function DoctorsPageClient() {
         {showForm && (
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen px-4">
-              <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowForm(false)} />
-              <div className="relative bg-white rounded-2xl shadow-xl p-6 max-w-2xl w-full z-10 max-h-[90vh] overflow-y-auto">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-bold text-gray-900">Add New Doctor</h2>
+              <div className="fixed inset-0 bg-black/30 backdrop-blur-md" onClick={() => setShowForm(false)} />
+              <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-2xl w-full z-10 max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center mb-3">
+                  <h2 className="text-base font-semibold text-gray-900">Add New Doctor</h2>
                   <button
                     onClick={() => setShowForm(false)}
                     className="text-gray-400 hover:text-gray-500"
                   >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </div>
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Title</label>
@@ -363,7 +365,7 @@ export default function DoctorsPageClient() {
                         value={formData.title}
                         onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                         placeholder="Dr., Prof., etc."
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -373,7 +375,7 @@ export default function DoctorsPageClient() {
                         required
                         value={formData.firstName}
                         onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -383,7 +385,7 @@ export default function DoctorsPageClient() {
                         required
                         value={formData.lastName}
                         onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -393,7 +395,7 @@ export default function DoctorsPageClient() {
                         required
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -403,7 +405,7 @@ export default function DoctorsPageClient() {
                         required
                         value={formData.phone}
                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -413,7 +415,7 @@ export default function DoctorsPageClient() {
                         required
                         value={formData.specialization}
                         onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -423,7 +425,7 @@ export default function DoctorsPageClient() {
                         required
                         value={formData.licenseNumber}
                         onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -432,7 +434,7 @@ export default function DoctorsPageClient() {
                         type="text"
                         value={formData.department}
                         onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -440,7 +442,7 @@ export default function DoctorsPageClient() {
                       <select
                         value={formData.status}
                         onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       >
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
@@ -448,17 +450,17 @@ export default function DoctorsPageClient() {
                       </select>
                     </div>
                   </div>
-                  <div className="flex justify-end space-x-3 pt-4">
+                  <div className="flex justify-end space-x-2 pt-3 border-t border-gray-200">
                     <button
                       type="button"
                       onClick={() => setShowForm(false)}
-                      className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                      className="px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                      className="px-3 py-1.5 border border-transparent rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
                     >
                       Add Doctor
                     </button>

@@ -63,6 +63,7 @@ export default function AppointmentsPageClient() {
   const [formData, setFormData] = useState({
     patient: '',
     doctor: '',
+    room: '',
     appointmentDate: '',
     appointmentTime: '',
     duration: 30,
@@ -71,6 +72,8 @@ export default function AppointmentsPageClient() {
     status: 'scheduled' as const,
     isWalkIn: false,
   });
+  const [filterDoctor, setFilterDoctor] = useState<string>('');
+  const [filterRoom, setFilterRoom] = useState<string>('');
   const router = useRouter();
 
   useEffect(() => {
@@ -118,7 +121,14 @@ export default function AppointmentsPageClient() {
   const fetchAppointmentsForDate = async (date: Date) => {
     try {
       const dateStr = date.toISOString().split('T')[0];
-      const res = await fetch(`/api/appointments?date=${dateStr}`);
+      let url = `/api/appointments?date=${dateStr}`;
+      if (filterDoctor) {
+        url += `&doctorId=${filterDoctor}`;
+      }
+      if (filterRoom) {
+        url += `&room=${encodeURIComponent(filterRoom)}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
@@ -129,6 +139,12 @@ export default function AppointmentsPageClient() {
       console.error('Failed to fetch appointments:', error);
     }
   };
+
+  useEffect(() => {
+    if (selectedDate) {
+      fetchAppointmentsForDate(selectedDate);
+    }
+  }, [selectedDate, filterDoctor, filterRoom]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -316,24 +332,24 @@ export default function AppointmentsPageClient() {
   const walkInQueue = getWalkInQueue();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <div className="min-h-screen bg-gray-50">
+      <div className="w-full px-4 py-3">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">
           <div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">Appointments</h1>
-            <p className="text-gray-600 text-sm sm:text-base">Manage appointments and walk-in queue</p>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">Appointments</h1>
+            <p className="text-gray-600 text-sm">Manage appointments and walk-in queue</p>
           </div>
-          <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
+          <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
             <button
               onClick={() => {
                 setFormData({ ...formData, isWalkIn: false, appointmentDate: selectedDate.toISOString().split('T')[0] });
                 setShowWalkInForm(false);
                 setShowForm(true);
               }}
-              className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-sm hover:shadow-md hover:from-blue-700 hover:to-blue-800 transition-all"
+              className="inline-flex items-center px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-md shadow-sm hover:shadow hover:from-blue-700 hover:to-blue-800 transition-all"
             >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               Schedule Appointment
@@ -344,9 +360,9 @@ export default function AppointmentsPageClient() {
                 setShowForm(false);
                 setShowWalkInForm(true);
               }}
-              className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-orange-600 to-orange-700 rounded-lg shadow-sm hover:shadow-md hover:from-orange-700 hover:to-orange-800 transition-all"
+              className="inline-flex items-center px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-orange-600 to-orange-700 rounded-md shadow-sm hover:shadow hover:from-orange-700 hover:to-orange-800 transition-all"
             >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               Add Walk-In
@@ -355,12 +371,12 @@ export default function AppointmentsPageClient() {
         </div>
 
         {/* View Mode Tabs */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-3">
           <div className="border-b border-gray-200">
             <nav className="flex -mb-px">
               <button
                 onClick={() => setViewMode('calendar')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                className={`py-2 px-3 text-xs font-medium border-b-2 transition-colors ${
                   viewMode === 'calendar'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -370,7 +386,7 @@ export default function AppointmentsPageClient() {
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                className={`py-2 px-3 text-xs font-medium border-b-2 transition-colors ${
                   viewMode === 'list'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -380,7 +396,7 @@ export default function AppointmentsPageClient() {
               </button>
               <button
                 onClick={() => setViewMode('queue')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                className={`py-2 px-3 text-xs font-medium border-b-2 transition-colors ${
                   viewMode === 'queue'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -401,11 +417,58 @@ export default function AppointmentsPageClient() {
                 selectedDate={selectedDate}
                 onDateSelect={setSelectedDate}
               />
+              {/* Filters */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mt-4">
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">Filters</h4>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Doctor</label>
+                    <select
+                      value={filterDoctor}
+                      onChange={(e) => setFilterDoctor(e.target.value)}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                    >
+                      <option value="">All Doctors</option>
+                      {doctors.map((doctor) => (
+                        <option key={doctor._id} value={doctor._id}>
+                          {doctor.firstName} {doctor.lastName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Room</label>
+                    <input
+                      type="text"
+                      value={filterRoom}
+                      onChange={(e) => setFilterRoom(e.target.value)}
+                      placeholder="Filter by room..."
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+                  {(filterDoctor || filterRoom) && (
+                    <button
+                      onClick={() => {
+                        setFilterDoctor('');
+                        setFilterRoom('');
+                      }}
+                      className="w-full px-3 py-2 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
             <div className="lg:col-span-2">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">
                   Appointments for {formatDate(selectedDate.toISOString())}
+                  {(filterDoctor || filterRoom) && (
+                    <span className="text-sm font-normal text-gray-500 ml-2">
+                      (Filtered{filterDoctor ? ' by doctor' : ''}{filterRoom ? ' by room' : ''})
+                    </span>
+                  )}
                 </h3>
                 {selectedDateAppointments.length === 0 ? (
                   <div className="text-center py-12">
@@ -448,6 +511,9 @@ export default function AppointmentsPageClient() {
                             </p>
                             <p className="text-sm text-gray-500">
                               {formatTime(appointment.appointmentTime)} ({appointment.duration} min)
+                              {appointment.room && (
+                                <span className="ml-2 text-blue-600">• Room: {appointment.room}</span>
+                              )}
                             </p>
                             {appointment.reason && (
                               <p className="text-sm text-gray-500 mt-1">Reason: {appointment.reason}</p>
@@ -543,6 +609,9 @@ export default function AppointmentsPageClient() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                           {formatDate(appointment.appointmentDate)} at {formatTime(appointment.appointmentTime)}
+                          {appointment.room && (
+                            <div className="text-xs text-blue-600 mt-1">Room: {appointment.room}</div>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(appointment.status)}`}>
@@ -596,8 +665,8 @@ export default function AppointmentsPageClient() {
 
         {/* Walk-In Queue View */}
         {viewMode === 'queue' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Today's Walk-In Queue</h3>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Today's Walk-In Queue</h3>
             {walkInQueue.length === 0 ? (
               <div className="text-center py-12">
                 <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -652,13 +721,13 @@ export default function AppointmentsPageClient() {
         {(showForm || showWalkInForm) && (
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen px-4">
-              <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => {
+              <div className="fixed inset-0 bg-black/30 backdrop-blur-md" onClick={() => {
                 setShowForm(false);
                 setShowWalkInForm(false);
               }} />
-              <div className="relative bg-white rounded-2xl shadow-xl p-6 max-w-2xl w-full z-10">
+              <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-2xl w-full z-10">
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-bold text-gray-900">
+                  <h2 className="text-base font-semibold text-gray-900">
                     {showWalkInForm ? 'Add Walk-In Patient' : 'Schedule Appointment'}
                   </h2>
                   <button
@@ -666,14 +735,14 @@ export default function AppointmentsPageClient() {
                       setShowForm(false);
                       setShowWalkInForm(false);
                     }}
-                    className="text-gray-400 hover:text-gray-500"
+                    className="text-gray-400 hover:text-gray-500 transition-colors"
                   >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </div>
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Patient *</label>
@@ -681,7 +750,7 @@ export default function AppointmentsPageClient() {
                         required
                         value={formData.patient}
                         onChange={(e) => setFormData({ ...formData, patient: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       >
                         <option value="">Select a patient</option>
                         {patients.map((patient) => (
@@ -697,7 +766,7 @@ export default function AppointmentsPageClient() {
                         required
                         value={formData.doctor}
                         onChange={(e) => setFormData({ ...formData, doctor: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       >
                         <option value="">Select a doctor</option>
                         {doctors.map((doctor) => (
@@ -715,7 +784,7 @@ export default function AppointmentsPageClient() {
                         value={formData.appointmentDate}
                         onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value })}
                         min={new Date().toISOString().split('T')[0]}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -725,7 +794,7 @@ export default function AppointmentsPageClient() {
                         required
                         value={formData.appointmentTime}
                         onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -737,7 +806,17 @@ export default function AppointmentsPageClient() {
                         step="15"
                         value={formData.duration}
                         onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Room (Optional)</label>
+                      <input
+                        type="text"
+                        value={formData.room}
+                        onChange={(e) => setFormData({ ...formData, room: e.target.value })}
+                        placeholder="e.g., Room 101, Consultation Room A"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
@@ -745,7 +824,7 @@ export default function AppointmentsPageClient() {
                       <select
                         value={formData.status}
                         onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       >
                         <option value="scheduled">Scheduled</option>
                         <option value="confirmed">Confirmed</option>
@@ -769,7 +848,7 @@ export default function AppointmentsPageClient() {
                       value={formData.notes}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                       rows={3}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   <div className="flex justify-end space-x-3 pt-4">
@@ -779,13 +858,13 @@ export default function AppointmentsPageClient() {
                         setShowForm(false);
                         setShowWalkInForm(false);
                       }}
-                      className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                      className="px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                      className="px-3 py-1.5 border border-transparent rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
                     >
                       {showWalkInForm ? 'Add Walk-In' : 'Schedule Appointment'}
                     </button>

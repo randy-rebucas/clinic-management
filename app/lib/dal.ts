@@ -1,4 +1,4 @@
-import { SignJWT, jwtVerify } from 'jose';
+import { SignJWT, jwtVerify, JWTPayload } from 'jose';
 import { cookies } from 'next/headers';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
@@ -11,15 +11,20 @@ const encodedKey = new TextEncoder().encode(
   secretKey || 'default-secret-key-change-in-production-dev-only'
 );
 
-export interface SessionPayload {
+export interface SessionPayload extends JWTPayload {
   userId: string;
   email: string;
-  role: 'admin' | 'user' | 'doctor';
-  expiresAt: Date;
+  role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant';
+  expiresAt: number | Date;
 }
 
 export async function encrypt(payload: SessionPayload): Promise<string> {
-  return new SignJWT(payload)
+  // Convert expiresAt to number if it's a Date for JWT compatibility
+  const jwtPayload: JWTPayload = {
+    ...payload,
+    expiresAt: payload.expiresAt instanceof Date ? payload.expiresAt.getTime() / 1000 : payload.expiresAt,
+  };
+  return new SignJWT(jwtPayload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
@@ -33,10 +38,25 @@ export async function decrypt(session: string | undefined = ''): Promise<Session
       algorithms: ['HS256'],
     });
     
-    const sessionPayload = payload as SessionPayload;
+    // Validate payload structure
+    if (
+      typeof payload !== 'object' ||
+      !payload ||
+      typeof (payload as any).userId !== 'string' ||
+      typeof (payload as any).email !== 'string' ||
+      typeof (payload as any).role !== 'string'
+    ) {
+      return null;
+    }
+    
+    const sessionPayload = payload as unknown as SessionPayload;
     
     // Check if session has expired
-    if (sessionPayload.expiresAt && new Date(sessionPayload.expiresAt) < new Date()) {
+    const expiresAt = typeof sessionPayload.expiresAt === 'number' 
+      ? new Date(sessionPayload.expiresAt * 1000) 
+      : new Date(sessionPayload.expiresAt);
+    
+    if (expiresAt && expiresAt < new Date()) {
       return null;
     }
     
@@ -47,7 +67,7 @@ export async function decrypt(session: string | undefined = ''): Promise<Session
   }
 }
 
-export async function createSession(userId: string, email: string, role: 'admin' | 'user' | 'doctor') {
+export async function createSession(userId: string, email: string, role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant') {
   try {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
     const session = await encrypt({ userId, email, role, expiresAt });
@@ -130,7 +150,11 @@ export async function verifySession(): Promise<SessionPayload | null> {
     }
 
     // Additional expiration check
-    if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
+    const expiresAt = typeof session.expiresAt === 'number' 
+      ? new Date(session.expiresAt * 1000) 
+      : new Date(session.expiresAt);
+    
+    if (expiresAt && expiresAt < new Date()) {
       // Session expired - delete it
       await deleteSession();
       return null;
@@ -151,10 +175,13 @@ export async function getUser() {
 
     await connectDB();
     const user = await User.findById(session.userId).select('-password').lean();
-    if (!user) return null;
+    if (!user || Array.isArray(user)) return null;
+    
+    // Type assertion for lean() result
+    const userObj = user as { _id: { toString(): string }; [key: string]: any };
     return {
-      ...user,
-      _id: user._id.toString(),
+      ...userObj,
+      _id: userObj._id.toString(),
     };
   } catch (error) {
     console.error('Failed to get user:', error);

@@ -25,6 +25,9 @@ export interface IAppointment extends Document {
   queueNumber?: number;
   estimatedWaitTime?: number; // in minutes
   
+  // Room/Location support
+  room?: string; // Room number or name (e.g., "Room 101", "Consultation Room A")
+  
   // Details
   reason?: string; // optional (was required in original, optional in Extended)
   notes?: string;
@@ -109,6 +112,13 @@ const AppointmentSchema: Schema = new Schema(
       type: Number, // in minutes
     },
     
+    // Room/Location support
+    room: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    
     // Details
     reason: {
       type: String,
@@ -133,11 +143,12 @@ const AppointmentSchema: Schema = new Schema(
 
 // Indexes for efficient queries
 AppointmentSchema.index({ appointmentDate: 1, appointmentTime: 1 });
-AppointmentSchema.index({ scheduledAt: 1 });
+// scheduledAt is already indexed inline (index: true)
 AppointmentSchema.index({ doctor: 1, appointmentDate: 1 });
 AppointmentSchema.index({ provider: 1, scheduledAt: 1 });
 AppointmentSchema.index({ patient: 1, status: 1 });
 AppointmentSchema.index({ status: 1 });
+AppointmentSchema.index({ room: 1, appointmentDate: 1, appointmentTime: 1 });
 
 // Virtual for computed scheduledAt from appointmentDate + appointmentTime
 AppointmentSchema.virtual('computedScheduledAt').get(function (this: IAppointment) {

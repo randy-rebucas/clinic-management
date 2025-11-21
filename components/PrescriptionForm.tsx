@@ -81,6 +81,14 @@ export default function PrescriptionForm({
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [digitalSignature, setDigitalSignature] = useState<string | null>(null);
+  const [drugInteractions, setDrugInteractions] = useState<Array<{
+    medication1: string;
+    medication2: string;
+    severity: 'mild' | 'moderate' | 'severe' | 'contraindicated';
+    description: string;
+    recommendation?: string;
+  }>>([]);
+  const [checkingInteractions, setCheckingInteractions] = useState(false);
 
   useEffect(() => {
     if (formData.patient) {
@@ -113,6 +121,20 @@ export default function PrescriptionForm({
       alert('Please add at least one medication');
       return;
     }
+    
+    // Warn about severe interactions
+    const severeInteractions = drugInteractions.filter(
+      i => i.severity === 'contraindicated' || i.severity === 'severe'
+    );
+    if (severeInteractions.length > 0) {
+      const proceed = confirm(
+        `Warning: ${severeInteractions.length} severe or contraindicated drug interaction(s) detected. Are you sure you want to proceed?`
+      );
+      if (!proceed) {
+        return;
+      }
+    }
+    
     onSubmit({
       ...formData,
       digitalSignature: digitalSignature
@@ -121,6 +143,10 @@ export default function PrescriptionForm({
             signatureData: digitalSignature,
           }
         : undefined,
+      drugInteractions: drugInteractions.length > 0 ? drugInteractions.map(i => ({
+        ...i,
+        checkedAt: new Date(),
+      })) : undefined,
     });
   };
 
@@ -144,10 +170,18 @@ export default function PrescriptionForm({
   };
 
   const removeMedication = (index: number) => {
+    const updated = formData.medications.filter((_, i) => i !== index);
     setFormData({
       ...formData,
-      medications: formData.medications.filter((_, i) => i !== index),
+      medications: updated,
     });
+    
+    // Recheck interactions after removal
+    if (updated.length >= 2) {
+      checkInteractions(updated);
+    } else {
+      setDrugInteractions([]);
+    }
   };
 
   const selectMedicine = (medicine: Medicine, index: number) => {
@@ -178,6 +212,11 @@ export default function PrescriptionForm({
     setFormData({ ...formData, medications: updated });
     setShowMedicineSearch(false);
     setMedicineSearch('');
+    
+    // Check interactions after adding medication
+    if (updated.length >= 2) {
+      checkInteractions(updated);
+    }
   };
 
   const updateMedication = (index: number, field: string, value: any) => {
@@ -193,6 +232,42 @@ export default function PrescriptionForm({
     }
 
     setFormData({ ...formData, medications: updated });
+    
+    // Check interactions when medications change
+    if (updated.length >= 2 && updated.every(m => m.name.trim())) {
+      checkInteractions(updated);
+    } else {
+      setDrugInteractions([]);
+    }
+  };
+
+  const checkInteractions = async (medications: Medication[]) => {
+    if (medications.length < 2) {
+      setDrugInteractions([]);
+      return;
+    }
+
+    setCheckingInteractions(true);
+    try {
+      const response = await fetch('/api/prescriptions/check-interactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          medications: medications.map(m => ({ name: m.name, genericName: m.genericName })),
+          patientId: formData.patient || undefined,
+          includePatientMedications: true,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setDrugInteractions(data.data.interactions || []);
+      }
+    } catch (error) {
+      console.error('Error checking interactions:', error);
+    } finally {
+      setCheckingInteractions(false);
+    }
   };
 
   const calculateDosageForMedication = (index: number) => {
@@ -235,7 +310,7 @@ export default function PrescriptionForm({
           required
           value={formData.patient}
           onChange={(e) => setFormData({ ...formData, patient: e.target.value })}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
         >
           <option value="">Select a patient</option>
           {patients.map((patient) => (
@@ -248,17 +323,68 @@ export default function PrescriptionForm({
         </select>
       </div>
 
+      {/* Drug Interactions Warning */}
+      {drugInteractions.length > 0 && (
+        <div className="mb-4 p-4 rounded-lg border-2" style={{
+          borderColor: drugInteractions.some(i => i.severity === 'contraindicated' || i.severity === 'severe')
+            ? '#dc2626' : drugInteractions.some(i => i.severity === 'moderate') ? '#f59e0b' : '#3b82f6',
+          backgroundColor: drugInteractions.some(i => i.severity === 'contraindicated' || i.severity === 'severe')
+            ? '#fee2e2' : drugInteractions.some(i => i.severity === 'moderate') ? '#fef3c7' : '#dbeafe',
+        }}>
+          <div className="flex items-start">
+            <svg className="w-5 h-5 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <div className="flex-1">
+              <h4 className="font-semibold mb-2">Drug Interaction Warning</h4>
+              <div className="space-y-2">
+                {drugInteractions.map((interaction, idx) => (
+                  <div key={idx} className="text-sm">
+                    <strong>{interaction.medication1}</strong> + <strong>{interaction.medication2}</strong>
+                    <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium ${
+                      interaction.severity === 'contraindicated' ? 'bg-red-600 text-white' :
+                      interaction.severity === 'severe' ? 'bg-red-500 text-white' :
+                      interaction.severity === 'moderate' ? 'bg-yellow-500 text-white' :
+                      'bg-blue-500 text-white'
+                    }`}>
+                      {interaction.severity.toUpperCase()}
+                    </span>
+                    <p className="mt-1 text-gray-700">{interaction.description}</p>
+                    {interaction.recommendation && (
+                      <p className="mt-1 text-gray-600 italic">{interaction.recommendation}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Medications */}
       <div>
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">Medications</h3>
-          <button
-            type="button"
-            onClick={addMedication}
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-          >
-            + Add Medication
-          </button>
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Medications</h3>
+          <div className="flex items-center space-x-3">
+            {checkingInteractions && (
+              <span className="text-xs text-gray-500">Checking interactions...</span>
+            )}
+            <button
+              type="button"
+              onClick={() => formData.medications.length >= 2 && checkInteractions(formData.medications)}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              disabled={formData.medications.length < 2 || checkingInteractions}
+            >
+              🔍 Check Interactions
+            </button>
+            <button
+              type="button"
+              onClick={addMedication}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              + Add Medication
+            </button>
+          </div>
         </div>
 
         {formData.medications.length === 0 ? (
@@ -291,10 +417,10 @@ export default function PrescriptionForm({
                       }}
                       onFocus={() => setShowMedicineSearch(true)}
                       placeholder="Type to search medicines..."
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                     {showMedicineSearch && medicineResults.length > 0 && (
-                      <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                      <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
                         {medicineResults.map((medicine) => (
                           <button
                             key={medicine._id}
@@ -328,7 +454,7 @@ export default function PrescriptionForm({
                       required
                       value={medication.name}
                       onChange={(e) => updateMedication(index, 'name', e.target.value)}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   {medication.genericName && (
@@ -338,7 +464,7 @@ export default function PrescriptionForm({
                         type="text"
                         value={medication.genericName}
                         readOnly
-                        className="block w-full rounded-md border-gray-300 shadow-sm bg-gray-100 text-sm"
+                        className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm bg-gray-50"
                       />
                     </div>
                   )}
@@ -349,7 +475,7 @@ export default function PrescriptionForm({
                       value={medication.form || ''}
                       onChange={(e) => updateMedication(index, 'form', e.target.value)}
                       placeholder="tablet, capsule, etc."
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -359,7 +485,7 @@ export default function PrescriptionForm({
                       value={medication.strength || ''}
                       onChange={(e) => updateMedication(index, 'strength', e.target.value)}
                       placeholder="500 mg"
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -393,7 +519,7 @@ export default function PrescriptionForm({
                       value={medication.frequency || ''}
                       onChange={(e) => updateMedication(index, 'frequency', e.target.value)}
                       placeholder="BID, TID, QID, etc."
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -403,7 +529,7 @@ export default function PrescriptionForm({
                       min="1"
                       value={medication.durationDays || 7}
                       onChange={(e) => updateMedication(index, 'durationDays', parseInt(e.target.value) || 7)}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -413,7 +539,7 @@ export default function PrescriptionForm({
                       min="1"
                       value={medication.quantity || 0}
                       onChange={(e) => updateMedication(index, 'quantity', parseInt(e.target.value) || 0)}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -423,7 +549,7 @@ export default function PrescriptionForm({
                       onChange={(e) => updateMedication(index, 'instructions', e.target.value)}
                       rows={2}
                       placeholder="Take with food, etc."
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -440,7 +566,7 @@ export default function PrescriptionForm({
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           rows={3}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
         />
       </div>
 
@@ -478,8 +604,8 @@ export default function PrescriptionForm({
       {showSignaturePad && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowSignaturePad(false)} />
-            <div className="relative bg-white rounded-2xl shadow-xl p-6 max-w-2xl w-full z-10">
+            <div className="fixed inset-0 bg-black/30 backdrop-blur-md" onClick={() => setShowSignaturePad(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-2xl w-full z-10">
               <SignaturePad
                 onSave={(signatureData) => {
                   setDigitalSignature(signatureData);
@@ -494,19 +620,19 @@ export default function PrescriptionForm({
       )}
 
       {/* Form Actions */}
-      <div className="flex justify-end space-x-3 pt-4 border-t">
+      <div className="flex justify-end space-x-2 pt-3 border-t border-gray-200">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            className="px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
         )}
         <button
           type="submit"
-          className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+          className="px-3 py-1.5 border border-transparent rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
         >
           Create Prescription
         </button>

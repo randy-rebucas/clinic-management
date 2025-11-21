@@ -1,0 +1,156 @@
+import mongoose, { Schema, Document, Types } from 'mongoose';
+
+export type ReferralStatus = 'pending' | 'accepted' | 'completed' | 'declined' | 'cancelled';
+export type ReferralType = 'doctor_to_doctor' | 'patient_to_patient' | 'external';
+
+export interface IReferral extends Document {
+  // Referral identification
+  referralCode: string; // Unique referral code
+  type: ReferralType;
+  
+  // Referring party (doctor or patient)
+  referringDoctor?: Types.ObjectId; // Doctor making the referral
+  referringPatient?: Types.ObjectId; // Patient making the referral
+  referringClinic?: string; // External clinic name
+  referringContact?: {
+    name: string;
+    phone?: string;
+    email?: string;
+  };
+  
+  // Receiving party
+  receivingDoctor?: Types.ObjectId; // Doctor receiving the referral
+  receivingClinic?: string; // Clinic receiving the referral
+  
+  // Patient information
+  patient: Types.ObjectId; // Patient being referred
+  
+  // Referral details
+  reason: string; // Reason for referral
+  urgency: 'routine' | 'urgent' | 'stat';
+  specialty?: string; // Required specialty
+  notes?: string; // Additional notes
+  
+  // Clinical information
+  chiefComplaint?: string;
+  diagnosis?: string;
+  relevantHistory?: string;
+  medications?: string[];
+  attachments?: Array<{
+    filename: string;
+    url: string;
+    uploadDate: Date;
+  }>;
+  
+  // Status tracking
+  status: ReferralStatus;
+  referredDate: Date;
+  acceptedDate?: Date;
+  completedDate?: Date;
+  declinedDate?: Date;
+  declinedReason?: string;
+  
+  // Visit/appointment tracking
+  visit?: Types.ObjectId; // Visit created from referral
+  appointment?: Types.ObjectId; // Appointment created from referral
+  
+  // Follow-up
+  followUpRequired: boolean;
+  followUpDate?: Date;
+  followUpNotes?: string;
+  
+  // Feedback
+  feedback?: {
+    rating?: number; // 1-5
+    comments?: string;
+    submittedBy: Types.ObjectId;
+    submittedAt: Date;
+  };
+  
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const ReferralSchema: Schema = new Schema(
+  {
+    referralCode: { type: String, required: true, unique: true, index: true },
+    type: {
+      type: String,
+      enum: ['doctor_to_doctor', 'patient_to_patient', 'external'],
+      required: true,
+      index: true,
+    },
+    referringDoctor: { type: Schema.Types.ObjectId, ref: 'Doctor', index: true },
+    referringPatient: { type: Schema.Types.ObjectId, ref: 'Patient', index: true },
+    referringClinic: { type: String, trim: true },
+    referringContact: {
+      name: { type: String, required: true },
+      phone: { type: String },
+      email: { type: String },
+    },
+    receivingDoctor: { type: Schema.Types.ObjectId, ref: 'Doctor', index: true },
+    receivingClinic: { type: String, trim: true },
+    patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
+    reason: { type: String, required: true },
+    urgency: {
+      type: String,
+      enum: ['routine', 'urgent', 'stat'],
+      default: 'routine',
+      index: true,
+    },
+    specialty: { type: String, trim: true },
+    notes: { type: String },
+    chiefComplaint: { type: String },
+    diagnosis: { type: String },
+    relevantHistory: { type: String },
+    medications: [{ type: String }],
+    attachments: [{
+      filename: { type: String, required: true },
+      url: { type: String, required: true },
+      uploadDate: { type: Date, default: Date.now },
+    }],
+    status: {
+      type: String,
+      enum: ['pending', 'accepted', 'completed', 'declined', 'cancelled'],
+      default: 'pending',
+      index: true,
+    },
+    referredDate: { type: Date, default: Date.now, required: true },
+    acceptedDate: { type: Date },
+    completedDate: { type: Date },
+    declinedDate: { type: Date },
+    declinedReason: { type: String },
+    visit: { type: Schema.Types.ObjectId, ref: 'Visit', index: true },
+    appointment: { type: Schema.Types.ObjectId, ref: 'Appointment', index: true },
+    followUpRequired: { type: Boolean, default: false },
+    followUpDate: { type: Date },
+    followUpNotes: { type: String },
+    feedback: {
+      rating: { type: Number, min: 1, max: 5 },
+      comments: { type: String },
+      submittedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      submittedAt: { type: Date },
+    },
+  },
+  { timestamps: true }
+);
+
+// Indexes
+ReferralSchema.index({ referringDoctor: 1, status: 1 });
+ReferralSchema.index({ receivingDoctor: 1, status: 1 });
+ReferralSchema.index({ patient: 1, status: 1 });
+ReferralSchema.index({ status: 1, referredDate: -1 });
+ReferralSchema.index({ type: 1, status: 1 });
+ReferralSchema.index({ 'feedback.submittedBy': 1 });
+
+// Pre-save hook to generate referral code
+ReferralSchema.pre('save', async function (next) {
+  if (!this.referralCode) {
+    const count = await mongoose.models.Referral?.countDocuments() || 0;
+    this.referralCode = `REF-${Date.now()}-${count + 1}`;
+  }
+  next();
+});
+
+export default mongoose.models.Referral || mongoose.model<IReferral>('Referral', ReferralSchema);
+
