@@ -56,14 +56,13 @@ const QueueSchema: Schema = new Schema(
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
     patientName: { type: String, required: true },
     appointment: { type: Schema.Types.ObjectId, ref: 'Appointment', index: true },
-    visit: { type: Schema.Types.ObjectId, ref: 'Visit', index: true },
+    visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
     doctor: { type: Schema.Types.ObjectId, ref: 'Doctor', index: true },
     room: { type: Schema.Types.ObjectId, ref: 'Room', index: true },
     status: {
       type: String,
       enum: ['waiting', 'in-progress', 'completed', 'cancelled', 'no-show'],
       default: 'waiting',
-      index: true,
     },
     priority: { type: Number, default: 0, index: true }, // Lower = higher priority
     estimatedWaitTime: { type: Number }, // Minutes
@@ -77,7 +76,7 @@ const QueueSchema: Schema = new Schema(
       type: String,
       enum: ['manual', 'qr_code', 'kiosk'],
     },
-    qrCode: { type: String, index: true },
+    qrCode: { type: String },
     notes: { type: String },
   },
   { timestamps: true }

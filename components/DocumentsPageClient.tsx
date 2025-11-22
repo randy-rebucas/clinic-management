@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Heading, IconButton } from '@radix-ui/themes';
 
 interface Document {
   _id: string;
@@ -79,212 +80,218 @@ export default function DocumentsPageClient() {
 
   if (loading) {
     return (
-      <div className="w-full px-4 py-3">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600"></div>
-            <p className="mt-3 text-sm text-gray-600">Loading documents...</p>
-          </div>
-        </div>
-      </div>
+      <Box p="4" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Flex direction="column" align="center" gap="3">
+          <Spinner size="3" />
+          <Text>Loading documents...</Text>
+        </Flex>
+      </Box>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="w-full px-4 py-3">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-0.5">Documents</h1>
-            <p className="text-gray-600 text-xs">Manage clinic documents</p>
-          </div>
-          <Link
-            href="/documents/upload"
-            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors mt-1.5 sm:mt-0"
-          >
-            <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <Box p="4">
+      {/* Header */}
+      <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3" mb="3">
+        <Box>
+          <Heading size="7" mb="1">Documents</Heading>
+          <Text size="2" color="gray">Manage clinic documents</Text>
+        </Box>
+        <Button asChild size="3">
+          <Link href="/documents/upload">
+            <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             Upload Document
           </Link>
-        </div>
+        </Button>
+      </Flex>
 
-        {/* Search and Filters */}
-        <div className="mb-2 space-y-1.5">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search by title, document code, or patient name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="block w-full px-2.5 py-1 pl-8 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            />
-            <svg className="absolute left-2 top-1 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1 text-gray-400 hover:text-gray-600"
+      {/* Search and Filters */}
+      <Card mb="3">
+        <Box p="3">
+          <Flex direction={{ initial: 'column', sm: 'row' }} gap="3">
+            <Box flexGrow="1">
+              <TextField.Root size="2" style={{ width: '100%' }}>
+                <TextField.Slot>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
+                  </svg>
+                </TextField.Slot>
+                <input
+                  type="text"
+                  placeholder="Search by title, document code, or patient name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ 
+                    all: 'unset', 
+                    flex: 1, 
+                    width: '100%',
+                    padding: '0',
+                    fontSize: 'var(--font-size-2)',
+                    lineHeight: 'var(--line-height-2)'
+                  }}
+                />
+                {searchQuery && (
+                  <TextField.Slot>
+                    <IconButton
+                      size="1"
+                      variant="ghost"
+                      onClick={() => setSearchQuery('')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                    </IconButton>
+                  </TextField.Slot>
+                )}
+              </TextField.Root>
+            </Box>
+            <Box style={{ minWidth: '180px' }}>
+              <Select.Root
+                value={filterCategory}
+                onValueChange={(value) => setFilterCategory(value)}
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-              className="block px-2 py-1 text-xs border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">All Categories</option>
-              {categories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="block px-2 py-1 text-xs border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="archived">Archived</option>
-              <option value="deleted">Deleted</option>
-            </select>
+                <Select.Trigger placeholder="All Categories" />
+                <Select.Content>
+                  <Select.Item value="all">All Categories</Select.Item>
+                  {categories.map((cat) => (
+                    <Select.Item key={cat} value={cat}>
+                      {cat.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </Box>
+            <Box style={{ minWidth: '180px' }}>
+              <Select.Root
+                value={filterStatus}
+                onValueChange={(value) => setFilterStatus(value)}
+              >
+                <Select.Trigger placeholder="All Statuses" />
+                <Select.Content>
+                  <Select.Item value="all">All Statuses</Select.Item>
+                  <Select.Item value="active">Active</Select.Item>
+                  <Select.Item value="archived">Archived</Select.Item>
+                  <Select.Item value="deleted">Deleted</Select.Item>
+                </Select.Content>
+              </Select.Root>
+            </Box>
             {(searchQuery || filterCategory !== 'all' || filterStatus !== 'all') && (
-              <button
+              <Button
                 onClick={() => {
                   setSearchQuery('');
                   setFilterCategory('all');
                   setFilterStatus('all');
                 }}
-                className="text-xs text-gray-600 hover:text-gray-900 font-medium inline-flex items-center gap-1 px-2 py-1"
+                variant="soft"
+                size="2"
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
                 Clear
-              </button>
+              </Button>
             )}
-          </div>
-        </div>
+          </Flex>
+        </Box>
+      </Card>
 
-        {/* Documents Table */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-2.5 py-1.5 border-b border-gray-200 flex justify-between items-center">
-            <h2 className="text-xs font-semibold text-gray-900">Documents</h2>
-            <span className="text-xs text-gray-500">
+      {/* Documents Table */}
+      <Card>
+        <Box p="3">
+          <Flex justify="between" align="center" mb="3">
+            <Heading size="3">Documents</Heading>
+            <Text size="2" color="gray">
               {filteredDocuments.length} {filteredDocuments.length === 1 ? 'document' : 'documents'}
-            </span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Document Code
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Title
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Category
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Patient
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Upload Date
-                  </th>
-                  <th className="px-2 py-1 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredDocuments.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-2 py-6 text-center">
-                      <div className="flex flex-col items-center">
-                        <svg className="w-8 h-8 text-gray-400 mb-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <p className="text-xs font-medium text-gray-900 mb-0.5">
-                          {searchQuery || filterCategory !== 'all' || filterStatus !== 'all' ? 'No documents match your filters' : 'No documents found'}
-                        </p>
-                        <p className="text-xs text-gray-500 mb-2">
-                          {searchQuery || filterCategory !== 'all' || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Upload your first document to get started'}
-                        </p>
-                        {!searchQuery && filterCategory === 'all' && filterStatus === 'all' && (
-                          <Link
-                            href="/documents/upload"
-                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                          >
-                            <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                            </svg>
-                            Upload Document
-                          </Link>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredDocuments.map((doc) => (
-                    <tr key={doc._id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs font-medium text-gray-900">
-                        {doc.documentCode}
-                      </td>
-                      <td className="px-2 py-1.5 text-xs text-gray-900 max-w-xs truncate">
+            </Text>
+          </Flex>
+          {filteredDocuments.length === 0 ? (
+            <Box p="8" style={{ textAlign: 'center' }}>
+              <Box mb="3">
+                <svg style={{ width: '48px', height: '48px', margin: '0 auto', color: 'var(--gray-9)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </Box>
+              <Heading size="3" mb="1">
+                {searchQuery || filterCategory !== 'all' || filterStatus !== 'all' ? 'No documents match your filters' : 'No documents found'}
+              </Heading>
+              <Text size="2" color="gray" mb="3" as="div">
+                {searchQuery || filterCategory !== 'all' || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Upload your first document to get started'}
+              </Text>
+              {!searchQuery && filterCategory === 'all' && filterStatus === 'all' && (
+                <Button asChild>
+                  <Link href="/documents/upload">
+                    <svg style={{ width: '14px', height: '14px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Upload Document
+                  </Link>
+                </Button>
+              )}
+            </Box>
+          ) : (
+            <Table.Root>
+              <Table.Header>
+                <Table.Row>
+                  <Table.ColumnHeaderCell>Document Code</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Title</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Category</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Patient</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Upload Date</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell style={{ textAlign: 'right' }}>Actions</Table.ColumnHeaderCell>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {filteredDocuments.map((doc) => (
+                  <Table.Row key={doc._id}>
+                    <Table.Cell>
+                      <Text size="2" weight="medium">{doc.documentCode}</Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Text size="2" style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {doc.title}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs text-gray-500">
+                      </Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Text size="2" color="gray">
                         {doc.category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs text-gray-500">
+                      </Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Badge size="1" variant="soft">
                         {doc.documentType.toUpperCase()}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">
-                        {doc.patient?._id ? (
-                          <Link 
-                            href={`/patients/${doc.patient._id}`}
-                            className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                          >
+                      </Badge>
+                    </Table.Cell>
+                    <Table.Cell>
+                      {doc.patient?._id ? (
+                        <Link href={`/patients/${doc.patient._id}`}>
+                          <Text size="2" weight="medium" style={{ color: 'var(--blue-9)', textDecoration: 'none' }}>
                             {doc.patient.firstName} {doc.patient.lastName}
-                          </Link>
-                        ) : (
-                          <span className="text-xs text-gray-400">N/A</span>
-                        )}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs text-gray-500">
-                        {new Date(doc.uploadDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-right text-xs font-medium">
-                        <Link
-                          href={`/documents/${doc._id}`}
-                          className="text-blue-600 hover:text-blue-800 hover:underline"
-                        >
-                          View →
+                          </Text>
                         </Link>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+                      ) : (
+                        <Text size="2" color="gray">N/A</Text>
+                      )}
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Text size="2" color="gray">
+                        {new Date(doc.uploadDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </Text>
+                    </Table.Cell>
+                    <Table.Cell style={{ textAlign: 'right' }}>
+                      <Button asChild size="1" variant="soft" color="blue">
+                        <Link href={`/documents/${doc._id}`}>
+                          View
+                        </Link>
+                      </Button>
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table.Root>
+          )}
+        </Box>
+      </Card>
+    </Box>
   );
 }
-

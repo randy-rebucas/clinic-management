@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
       userEmail: session?.email || 'qr_checkin',
       userRole: session?.role || 'public',
       action: 'update',
-      resource: 'queue',
+      resource: 'system',
       resourceId: queue._id,
       description: `Patient checked in via QR code: ${queue.queueNumber}`,
       metadata: {

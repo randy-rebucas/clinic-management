@@ -91,9 +91,9 @@ export async function GET(
       } : {}),
     });
 
-    const totalRevenue = invoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
-    const totalBilled = invoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
-    const outstandingRevenue = invoices.reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
+    const totalRevenue = invoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
+    const totalBilled = invoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
+    const outstandingRevenue = invoices.reduce((sum: number, inv: any) => sum + (inv.outstandingBalance || 0), 0);
 
     // Calculate average appointments per day
     const daysDiff = startDate && endDate
@@ -142,7 +142,7 @@ export async function GET(
         days: daysDiff,
       },
       dailyAverage: {
-        appointments: parseFloat(avgAppointmentsPerDay),
+        appointments: parseFloat(String(avgAppointmentsPerDay || 0)),
         visits: (totalVisits / daysDiff).toFixed(2),
         prescriptions: (totalPrescriptions / daysDiff).toFixed(2),
         revenue: (totalRevenue / daysDiff).toFixed(2),
@@ -174,9 +174,9 @@ export async function GET(
         outstandingRevenue,
       },
       metrics: {
-        completionRate: parseFloat(completionRate),
-        noShowRate: parseFloat(noShowRate),
-        avgAppointmentsPerDay: parseFloat(avgAppointmentsPerDay),
+        completionRate: parseFloat(String(completionRate || 0)),
+        noShowRate: parseFloat(String(noShowRate || 0)),
+        avgAppointmentsPerDay: parseFloat(String(avgAppointmentsPerDay || 0)),
         revenuePerVisit: totalVisits > 0 ? (totalRevenue / totalVisits).toFixed(2) : 0,
         prescriptionsPerVisit: totalVisits > 0 ? (totalPrescriptions / totalVisits).toFixed(2) : 0,
       },

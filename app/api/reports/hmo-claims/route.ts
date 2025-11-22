@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
 
     // Calculate totals
     const totalClaims = invoices.length;
-    const totalClaimAmount = invoices.reduce((sum, inv) => sum + (inv.insurance?.coverageAmount || inv.total || 0), 0);
+    const totalClaimAmount = invoices.reduce((sum: number, inv: any) => sum + (inv.insurance?.coverageAmount || inv.total || 0), 0);
     const pendingClaims = invoices.filter(inv => inv.insurance?.status === 'pending').length;
     const approvedClaims = invoices.filter(inv => inv.insurance?.status === 'approved').length;
     const rejectedClaims = invoices.filter(inv => inv.insurance?.status === 'rejected').length;
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
     ).length;
     const backlogAmount = invoices
       .filter(inv => inv.insurance?.status === 'pending' || inv.insurance?.status === 'approved')
-      .reduce((sum, inv) => sum + (inv.insurance?.coverageAmount || inv.total || 0), 0);
+      .reduce((sum: number, inv: any) => sum + (inv.insurance?.coverageAmount || inv.total || 0), 0);
 
     // Age of claims (days since creation)
     const claimsWithAge = invoices.map((inv: any) => {
@@ -126,8 +126,8 @@ export async function GET(request: NextRequest) {
     });
 
     const avgDaysPending = claimsWithAge
-      .filter(c => c.status === 'pending')
-      .reduce((sum, c) => sum + c.daysSinceCreation, 0) / (pendingClaims || 1);
+      .filter((c: any) => c.status === 'pending')
+      .reduce((sum: number, c: any) => sum + c.daysSinceCreation, 0) / (pendingClaims || 1);
 
     return NextResponse.json({
       success: true,

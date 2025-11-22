@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { QRCode } from 'react-qr-code';
+import QRCode from 'react-qr-code';
+import { Button, Flex, Box, AlertDialog, Skeleton } from '@radix-ui/themes';
+import { useSetting } from './SettingsContext';
 
 interface Patient {
   _id: string;
@@ -130,7 +132,12 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'visits' | 'appointments' | 'prescriptions' | 'invoices' | 'lab-results' | 'files'>('overview');
   const [showQR, setShowQR] = useState(false);
+  const [fileToDelete, setFileToDelete] = useState<string | null>(null);
+  const [deleteFileDialogOpen, setDeleteFileDialogOpen] = useState(false);
   const router = useRouter();
+  
+  // Call hooks before any conditional returns
+  const currency = useSetting('billingSettings.currency', 'USD');
 
   useEffect(() => {
     fetchPatient();
@@ -270,16 +277,23 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     }
   };
 
-  const handleDeleteFile = async (fileId: string) => {
-    if (!confirm('Are you sure you want to delete this file?')) return;
+  const handleDeleteFileClick = (fileId: string) => {
+    setFileToDelete(fileId);
+    setDeleteFileDialogOpen(true);
+  };
+
+  const handleDeleteFile = async () => {
+    if (!fileToDelete) return;
 
     try {
-      const res = await fetch(`/api/patients/${patientId}/files/${fileId}`, {
+      const res = await fetch(`/api/patients/${patientId}/files/${fileToDelete}`, {
         method: 'DELETE',
       });
 
       if (res.ok) {
         fetchPatient(); // Refresh patient data
+        setDeleteFileDialogOpen(false);
+        setFileToDelete(null);
       } else {
         alert('Failed to delete file');
       }
@@ -303,12 +317,16 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-blue-600"></div>
-          <p className="mt-4 text-gray-600">Loading patient...</p>
-        </div>
-      </div>
+      <Box p="4" style={{ minHeight: '100vh' }}>
+        <Flex direction="column" gap="4">
+          <Skeleton height="40px" width="300px" />
+          <Flex gap="4" wrap="wrap">
+            <Skeleton height="200px" style={{ flex: '1 1 300px' }} />
+            <Skeleton height="200px" style={{ flex: '1 1 300px' }} />
+          </Flex>
+          <Skeleton height="400px" />
+        </Flex>
+      </Box>
     );
   }
 
@@ -324,16 +342,16 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
       </div>
     );
   }
-
+  
   const qrValue = patient.patientCode || patient._id;
   const fullName = [patient.firstName, patient.middleName, patient.lastName, patient.suffix]
     .filter(Boolean)
     .join(' ');
-
+  
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', {
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'PHP',
+      currency: currency,
       minimumFractionDigits: 2,
     }).format(amount);
   };
@@ -1231,7 +1249,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                               </a>
                             )}
                             <button
-                              onClick={() => handleDeleteFile(file._id)}
+                              onClick={() => handleDeleteFileClick(file._id)}
                               className="px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100"
                             >
                               Delete
@@ -1247,6 +1265,31 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
           </div>
         </div>
       </div>
+
+      {/* Delete File Alert Dialog */}
+      <AlertDialog.Root open={deleteFileDialogOpen} onOpenChange={setDeleteFileDialogOpen}>
+        <AlertDialog.Content>
+          <AlertDialog.Title>Delete File</AlertDialog.Title>
+          <AlertDialog.Description>
+            Are you sure you want to delete this file? This action cannot be undone.
+          </AlertDialog.Description>
+          <Flex gap="3" mt="4" justify="end">
+            <AlertDialog.Cancel>
+              <Button variant="soft" color="gray" onClick={() => {
+                setDeleteFileDialogOpen(false);
+                setFileToDelete(null);
+              }}>
+                Cancel
+              </Button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action>
+              <Button variant="solid" color="red" onClick={handleDeleteFile}>
+                Delete
+              </Button>
+            </AlertDialog.Action>
+          </Flex>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
     </div>
   );
 }

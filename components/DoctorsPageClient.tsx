@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Heading, IconButton } from '@radix-ui/themes';
 
 interface Doctor {
   _id: string;
@@ -153,29 +154,15 @@ export default function DoctorsPageClient() {
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-green-100 text-green-800';
-      case 'inactive':
-        return 'bg-gray-100 text-gray-800';
-      case 'on-leave':
-        return 'bg-yellow-100 text-yellow-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
 
   if (loading) {
     return (
-      <div className="w-full px-4 py-3">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600"></div>
-            <p className="mt-3 text-sm text-gray-600">Loading doctors...</p>
-          </div>
-        </div>
-      </div>
+      <Box p="4" style={{ minHeight: '256px' }}>
+        <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+          <Spinner size="3" />
+          <Text>Loading doctors...</Text>
+        </Flex>
+      </Box>
     );
   }
 
@@ -191,480 +178,434 @@ export default function DoctorsPageClient() {
     return true;
   });
 
-  // Duty Roster View
-  const renderRosterView = () => {
-    const daysOfWeek = [0, 1, 2, 3, 4, 5, 6];
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-    return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase">Doctor</th>
-                {dayNames.map((day, index) => (
-                  <th key={index} className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase">
-                    {day}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {doctors.filter(d => d.status === 'active').map((doctor) => (
-                <tr key={doctor._id} className="hover:bg-gray-50">
-                  <td className="px-2 py-1.5 whitespace-nowrap">
-                    <div className="text-xs font-medium text-gray-900">
-                      {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
-                    </div>
-                    <div className="text-xs text-gray-500">{doctor.specialization}</div>
-                  </td>
-                  {daysOfWeek.map((day) => {
-                    const schedule = doctor.schedule?.find((s) => s.dayOfWeek === day);
-                    return (
-                      <td key={day} className="px-2 py-1.5 text-center">
-                        {schedule && schedule.isAvailable ? (
-                          <div className="text-xs">
-                            <div className="text-green-600 font-medium">
-                              {formatTime(schedule.startTime)} - {formatTime(schedule.endTime)}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  };
-
-  // Performance View
-  const renderPerformanceView = () => {
-    return (
-      <div className="space-y-2">
-        {doctors.map((doctor) => {
-          const metrics = doctor.performanceMetrics;
-          const total = metrics?.totalAppointments || 0;
-          const completed = metrics?.completedAppointments || 0;
-          const cancelled = metrics?.cancelledAppointments || 0;
-          const noShow = metrics?.noShowAppointments || 0;
-          const completionRate = total > 0 ? (completed / total) * 100 : 0;
-          const cancellationRate = total > 0 ? (cancelled / total) * 100 : 0;
-          const noShowRate = total > 0 ? (noShow / total) * 100 : 0;
-
-          return (
-            <div key={doctor._id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <h3 className="text-xs font-semibold text-gray-900">
-                    {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
-                  </h3>
-                  <p className="text-xs text-gray-600">{doctor.specialization}</p>
-                </div>
-                <Link
-                  href={`/doctors/${doctor._id}`}
-                  className="text-blue-600 hover:text-blue-800 text-xs font-medium hover:underline"
-                >
-                  View →
-                </Link>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                <div>
-                  <div className="text-sm font-bold text-gray-900">{total}</div>
-                  <div className="text-xs text-gray-600">Total</div>
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-green-600">{completed}</div>
-                  <div className="text-xs text-gray-600">Completed</div>
-                  <div className="text-xs text-gray-500">{Math.round(completionRate)}%</div>
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-red-600">{cancelled}</div>
-                  <div className="text-xs text-gray-600">Cancelled</div>
-                  <div className="text-xs text-gray-500">{Math.round(cancellationRate)}%</div>
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-yellow-600">{noShow}</div>
-                  <div className="text-xs text-gray-600">No-Show</div>
-                  <div className="text-xs text-gray-500">{Math.round(noShowRate)}%</div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="w-full px-4 py-3">
-        {/* Notifications */}
-        {error && (
-          <div className="mb-2 bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-lg flex items-center justify-between">
-            <span className="text-xs">{error}</span>
-            <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        )}
-        {success && (
-          <div className="mb-2 bg-green-50 border border-green-200 text-green-800 px-3 py-2 rounded-lg flex items-center justify-between">
-            <span className="text-xs">{success}</span>
-            <button onClick={() => setSuccess(null)} className="text-green-600 hover:text-green-800">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        )}
+    <Box p="4">
+      {/* Notifications */}
+      {error && (
+        <Callout.Root color="red" size="2" mb="2">
+          <Callout.Text>{error}</Callout.Text>
+        </Callout.Root>
+      )}
+      {success && (
+        <Callout.Root color="green" size="2" mb="2">
+          <Callout.Text>{success}</Callout.Text>
+        </Callout.Root>
+      )}
 
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-0.5">Doctors & Staff</h1>
-            <p className="text-gray-600 text-xs">Manage doctor profiles, schedules, and performance</p>
-          </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="inline-flex items-center justify-center px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors mt-1.5 sm:mt-0"
-          >
-            <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Doctor
-          </button>
-        </div>
+      {/* Header */}
+      <Flex justify="between" align={{ sm: 'center' }} mb="2" direction={{ initial: 'column', sm: 'row' }} gap="2">
+        <Box>
+          <Heading size="7" mb="1">Doctors & Staff</Heading>
+          <Text size="2" color="gray">Manage doctor profiles, schedules, and performance</Text>
+        </Box>
+        <Button onClick={() => setShowForm(true)} size="2">
+          Add Doctor
+        </Button>
+      </Flex>
 
-        {/* View Mode Tabs */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-2">
-          <div className="border-b border-gray-200">
-            <nav className="flex -mb-px">
-              <button
-                onClick={() => setViewMode('list')}
-                className={`py-1.5 px-2.5 text-xs font-medium border-b-2 transition-colors ${
-                  viewMode === 'list'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Doctor Profiles
-              </button>
-              <button
-                onClick={() => setViewMode('roster')}
-                className={`py-1.5 px-2.5 text-xs font-medium border-b-2 transition-colors ${
-                  viewMode === 'roster'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Duty Roster
-              </button>
-              <button
-                onClick={() => setViewMode('performance')}
-                className={`py-1.5 px-2.5 text-xs font-medium border-b-2 transition-colors ${
-                  viewMode === 'performance'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Performance Reports
-              </button>
-            </nav>
-          </div>
-        </div>
+      {/* View Mode Tabs */}
+      <Card size="2" variant="surface" mb="2">
+        <Tabs.Root value={viewMode} onValueChange={(value) => setViewMode(value as any)}>
+          <Tabs.List>
+            <Tabs.Trigger value="list">Doctor Profiles</Tabs.Trigger>
+            <Tabs.Trigger value="roster">Duty Roster</Tabs.Trigger>
+            <Tabs.Trigger value="performance">Performance Reports</Tabs.Trigger>
+          </Tabs.List>
+        </Tabs.Root>
+      </Card>
 
-        {/* Form Modal */}
-        {showForm && (
-          <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen px-4">
-              <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowForm(false)} />
-              <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-3 max-w-2xl w-full z-10 max-h-[90vh] overflow-y-auto">
-                <div className="flex justify-between items-center mb-2">
-                  <h2 className="text-sm font-semibold text-gray-900">Add New Doctor</h2>
-                  <button
-                    onClick={() => setShowForm(false)}
-                    className="text-gray-400 hover:text-gray-500"
+      {/* Form Modal */}
+      <Dialog.Root open={showForm} onOpenChange={(open) => {
+        if (!open) setShowForm(false);
+      }}>
+        <Dialog.Content style={{ maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
+          <Dialog.Title>Add New Doctor</Dialog.Title>
+          <form onSubmit={handleSubmit}>
+            <Flex direction="column" gap="3" py="4">
+              <Flex direction={{ initial: 'column', md: 'row' }} gap="2" wrap="wrap">
+                <Box flexGrow="1" minWidth="200px">
+                  <Text size="1" weight="medium" mb="1" as="div">Title</Text>
+                  <TextField.Root size="2">
+                    <input
+                      type="text"
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      placeholder="Dr., Prof., etc."
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1" minWidth="200px">
+                  <Text size="1" weight="medium" mb="1" as="div">First Name <Text color="red">*</Text></Text>
+                  <TextField.Root size="2">
+                    <input
+                      type="text"
+                      required
+                      value={formData.firstName}
+                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1" minWidth="200px">
+                  <Text size="1" weight="medium" mb="1" as="div">Last Name <Text color="red">*</Text></Text>
+                  <TextField.Root size="2">
+                    <input
+                      type="text"
+                      required
+                      value={formData.lastName}
+                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1" minWidth="200px">
+                  <Text size="1" weight="medium" mb="1" as="div">Email <Text color="red">*</Text></Text>
+                  <TextField.Root size="2" type="email">
+                    <input
+                      required
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1" minWidth="200px">
+                  <Text size="1" weight="medium" mb="1" as="div">Phone <Text color="red">*</Text></Text>
+                  <TextField.Root size="2" type="tel">
+                    <input
+                      required
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1" minWidth="200px">
+                  <Text size="1" weight="medium" mb="1" as="div">Specialization <Text color="red">*</Text></Text>
+                  <TextField.Root size="2">
+                    <input
+                      type="text"
+                      required
+                      value={formData.specialization}
+                      onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1" minWidth="200px">
+                  <Text size="1" weight="medium" mb="1" as="div">License Number <Text color="red">*</Text></Text>
+                  <TextField.Root size="2">
+                    <input
+                      type="text"
+                      required
+                      value={formData.licenseNumber}
+                      onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1" minWidth="200px">
+                  <Text size="1" weight="medium" mb="1" as="div">Department</Text>
+                  <TextField.Root size="2">
+                    <input
+                      type="text"
+                      value={formData.department}
+                      onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1" minWidth="200px">
+                  <Text size="1" weight="medium" mb="1" as="div">Status</Text>
+                  <Select.Root
+                    value={formData.status}
+                    onValueChange={(value) => setFormData({ ...formData, status: value as any })}
+                    size="2"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                <form onSubmit={handleSubmit} className="space-y-2">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Title</label>
-                      <input
-                        type="text"
-                        value={formData.title}
-                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                        placeholder="Dr., Prof., etc."
-                        className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">First Name *</label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.firstName}
-                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Last Name *</label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.lastName}
-                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Email *</label>
-                      <input
-                        type="email"
-                        required
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Phone *</label>
-                      <input
-                        type="tel"
-                        required
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Specialization *</label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.specialization}
-                        onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-                        className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">License Number *</label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.licenseNumber}
-                        onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
-                        className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
-                      <input
-                        type="text"
-                        value={formData.department}
-                        onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                        className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
-                      <select
-                        value={formData.status}
-                        onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                        className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                        <option value="on-leave">On Leave</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="flex justify-end space-x-2 pt-2 border-t border-gray-200">
-                    <button
-                      type="button"
-                      onClick={() => setShowForm(false)}
-                      className="px-2.5 py-1 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-2.5 py-1 border border-transparent rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-                    >
-                      Add Doctor
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        )}
+                    <Select.Trigger />
+                    <Select.Content>
+                      <Select.Item value="active">Active</Select.Item>
+                      <Select.Item value="inactive">Inactive</Select.Item>
+                      <Select.Item value="on-leave">On Leave</Select.Item>
+                    </Select.Content>
+                  </Select.Root>
+                </Box>
+              </Flex>
+              <Flex justify="end" gap="2" pt="3" style={{ borderTop: '1px solid var(--gray-6)' }}>
+                <Button type="button" onClick={() => setShowForm(false)} variant="soft" size="2">
+                  Cancel
+                </Button>
+                <Button type="submit" size="2">
+                  Add Doctor
+                </Button>
+              </Flex>
+            </Flex>
+          </form>
+        </Dialog.Content>
+      </Dialog.Root>
 
-        {/* List View */}
-        {viewMode === 'list' && (
-          <>
-            {/* Search and Filters */}
-            <div className="mb-2 space-y-1.5">
-              <div className="relative">
+      {/* List View */}
+      {viewMode === 'list' && (
+        <>
+          {/* Search and Filters */}
+          <Card mb="2">
+            <Flex direction="column" gap="2" p="2">
+              <TextField.Root size="2">
+                <TextField.Slot side="left">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
+                  </svg>
+                </TextField.Slot>
                 <input
                   type="text"
                   placeholder="Search by name, specialization, or email..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="block w-full px-2.5 py-1 pl-8 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  value={searchQuery || ''}
+                  onChange={(e) => setSearchQuery(e.target.value || '')}
+                  style={{ all: 'unset', flex: 1 }}
                 />
-                <svg className="absolute left-2 top-1 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
                 {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2 top-1 text-gray-400 hover:text-gray-600"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                  <TextField.Slot side="right">
+                    <IconButton
+                      variant="ghost"
+                      size="1"
+                      onClick={() => setSearchQuery('')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="1.2"/>
+                      </svg>
+                    </IconButton>
+                  </TextField.Slot>
                 )}
-              </div>
-              <div className="flex gap-2">
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="block px-2 py-1 text-xs border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              </TextField.Root>
+              <Flex gap="2">
+                <Select.Root
+                  value={filterStatus || 'all'}
+                  onValueChange={(value) => setFilterStatus(value || 'all')}
+                  size="1"
                 >
-                  <option value="all">All Statuses</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="on-leave">On Leave</option>
-                </select>
+                  <Select.Trigger />
+                  <Select.Content>
+                    <Select.Item value="all">All Statuses</Select.Item>
+                    <Select.Item value="active">Active</Select.Item>
+                    <Select.Item value="inactive">Inactive</Select.Item>
+                    <Select.Item value="on-leave">On Leave</Select.Item>
+                  </Select.Content>
+                </Select.Root>
                 {(searchQuery || filterStatus !== 'all') && (
-                  <button
+                  <Button
                     onClick={() => {
                       setSearchQuery('');
                       setFilterStatus('all');
                     }}
-                    className="text-xs text-gray-600 hover:text-gray-900 font-medium inline-flex items-center gap-1 px-2 py-1"
+                    variant="soft"
+                    size="1"
                   >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
                     Clear
-                  </button>
+                  </Button>
                 )}
-              </div>
-            </div>
+              </Flex>
+            </Flex>
+          </Card>
 
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-2.5 py-1.5 border-b border-gray-200 flex justify-between items-center">
-                <h2 className="text-xs font-semibold text-gray-900">Doctors</h2>
-                <span className="text-xs text-gray-500">
-                  {filteredDoctors.length} {filteredDoctors.length === 1 ? 'doctor' : 'doctors'}
-                </span>
-              </div>
-              {filteredDoctors.length === 0 ? (
-                <div className="px-2 py-6 text-center">
-                  <svg className="mx-auto w-8 h-8 text-gray-400 mb-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                  <p className="text-xs font-medium text-gray-900 mb-0.5">
-                    {searchQuery || filterStatus !== 'all' ? 'No doctors match your filters' : 'No doctors found'}
-                  </p>
-                  <p className="text-xs text-gray-500 mb-2">
-                    {searchQuery || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Get started by adding your first doctor'}
-                  </p>
-                  {!searchQuery && filterStatus === 'all' && (
-                    <button
-                      onClick={() => setShowForm(true)}
-                      className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                    >
-                      <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Add First Doctor
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-200">
-                  {filteredDoctors.map((doctor) => (
-                    <div key={doctor._id} className="p-2.5 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-1.5">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-semibold">
-                              {doctor.firstName.charAt(0)}{doctor.lastName.charAt(0)}
-                            </div>
-                            <div className="flex-1">
-                              <h3 className="text-sm font-semibold text-gray-900">
-                                {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
-                              </h3>
-                              <p className="text-xs text-gray-600">{doctor.specialization}</p>
-                              {doctor.department && (
-                                <p className="text-xs text-gray-500">{doctor.department}</p>
-                              )}
-                            </div>
-                            <span className={`px-1 py-0.5 text-xs font-semibold rounded-full ${getStatusColor(doctor.status)}`}>
+          <Card>
+            <Flex justify="between" align="center" p="2" style={{ borderBottom: '1px solid var(--gray-6)' }}>
+              <Heading size="3">Doctors</Heading>
+              <Text size="2" color="gray">
+                {filteredDoctors.length} {filteredDoctors.length === 1 ? 'doctor' : 'doctors'}
+              </Text>
+            </Flex>
+            {filteredDoctors.length === 0 ? (
+              <Box p="6" style={{ textAlign: 'center' }}>
+                <Text size="5" color="gray" mb="2" as="div">👨‍⚕️</Text>
+                <Heading size="4" mb="1">
+                  {searchQuery || filterStatus !== 'all' ? 'No doctors match your filters' : 'No doctors found'}
+                </Heading>
+                <Text size="2" color="gray" mb="2" as="div">
+                  {searchQuery || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Get started by adding your first doctor'}
+                </Text>
+                {!searchQuery && filterStatus === 'all' && (
+                  <Button onClick={() => setShowForm(true)} size="2">
+                    Add First Doctor
+                  </Button>
+                )}
+              </Box>
+            ) : (
+              <Flex direction="column">
+                {filteredDoctors.map((doctor) => (
+                  <Card key={doctor._id} size="1" style={{ borderRadius: 0, borderTop: '1px solid var(--gray-6)' }}>
+                    <Flex justify="between" align="start">
+                      <Flex align="start" gap="2" style={{ flex: 1 }}>
+                        <Box
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                            background: 'var(--blue-9)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {doctor.firstName.charAt(0)}{doctor.lastName.charAt(0)}
+                        </Box>
+                        <Box style={{ flex: 1 }}>
+                          <Flex align="center" gap="2" mb="1">
+                            <Text size="2" weight="bold">
+                              {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
+                            </Text>
+                            <Badge
+                              color={
+                                doctor.status === 'active'
+                                  ? 'green'
+                                  : doctor.status === 'inactive'
+                                  ? 'gray'
+                                  : 'yellow'
+                              }
+                              size="1"
+                            >
                               {doctor.status || 'active'}
-                            </span>
-                          </div>
-                          <div className="ml-10 space-y-0.5">
-                            <p className="text-xs text-gray-600">{doctor.email}</p>
-                            <p className="text-xs text-gray-600">{doctor.phone}</p>
-                            <p className="text-xs text-gray-500">License: {doctor.licenseNumber}</p>
+                            </Badge>
+                          </Flex>
+                          <Text size="1" color="gray">{doctor.specialization}</Text>
+                          {doctor.department && (
+                            <Text size="1" color="gray">{doctor.department}</Text>
+                          )}
+                          <Flex direction="column" gap="0.5" mt="1">
+                            <Text size="1" color="gray">{doctor.email}</Text>
+                            <Text size="1" color="gray">{doctor.phone}</Text>
+                            <Text size="1" color="gray">License: {doctor.licenseNumber}</Text>
                             {doctor.schedule && doctor.schedule.length > 0 && (
-                              <div className="mt-1">
-                                <p className="text-xs font-medium text-gray-700 mb-0.5">Schedule:</p>
-                                <div className="flex flex-wrap gap-1">
+                              <Box mt="1">
+                                <Text size="1" weight="medium" mb="1" as="div">Schedule:</Text>
+                                <Flex gap="1" wrap="wrap">
                                   {doctor.schedule
                                     .filter((s) => s.isAvailable)
                                     .map((s, idx) => (
-                                      <span key={idx} className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded">
+                                      <Badge key={idx} size="1" color="blue">
                                         {getDayName(s.dayOfWeek).substring(0, 3)} {formatTime(s.startTime)}-{formatTime(s.endTime)}
-                                      </span>
+                                      </Badge>
                                     ))}
-                                </div>
-                              </div>
+                                </Flex>
+                              </Box>
                             )}
-                          </div>
-                        </div>
-                        <div className="ml-2">
-                          <Link
-                            href={`/doctors/${doctor._id}`}
-                            className="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100"
-                          >
-                            View →
-                          </Link>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                          </Flex>
+                        </Box>
+                      </Flex>
+                      <Button asChild variant="soft" color="blue" size="1">
+                        <Link href={`/doctors/${doctor._id}`}>View →</Link>
+                      </Button>
+                    </Flex>
+                  </Card>
+                ))}
+              </Flex>
+            )}
+          </Card>
           </>
         )}
 
-        {/* Roster View */}
-        {viewMode === 'roster' && renderRosterView()}
+      {/* Roster View */}
+      {viewMode === 'roster' && (
+        <Card>
+          <Box style={{ overflowX: 'auto' }}>
+            <Table.Root>
+              <Table.Header>
+                <Table.Row>
+                  <Table.ColumnHeaderCell>Doctor</Table.ColumnHeaderCell>
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                    <Table.ColumnHeaderCell key={day} style={{ textAlign: 'center' }}>
+                      {day}
+                    </Table.ColumnHeaderCell>
+                  ))}
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {doctors.filter(d => d.status === 'active').map((doctor) => (
+                  <Table.Row key={doctor._id}>
+                    <Table.Cell>
+                      <Text size="2" weight="medium">
+                        {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
+                      </Text>
+                      <Text size="1" color="gray">{doctor.specialization}</Text>
+                    </Table.Cell>
+                    {[0, 1, 2, 3, 4, 5, 6].map((day) => {
+                      const schedule = doctor.schedule?.find((s) => s.dayOfWeek === day);
+                      return (
+                        <Table.Cell key={day} style={{ textAlign: 'center' }}>
+                          {schedule && schedule.isAvailable ? (
+                            <Text size="1" color="green" weight="medium">
+                              {formatTime(schedule.startTime)} - {formatTime(schedule.endTime)}
+                            </Text>
+                          ) : (
+                            <Text size="1" color="gray">—</Text>
+                          )}
+                        </Table.Cell>
+                      );
+                    })}
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table.Root>
+          </Box>
+        </Card>
+      )}
 
-        {/* Performance View */}
-        {viewMode === 'performance' && renderPerformanceView()}
-      </div>
-    </div>
+      {/* Performance View */}
+      {viewMode === 'performance' && (
+        <Flex direction="column" gap="2">
+          {doctors.map((doctor) => {
+            const metrics = doctor.performanceMetrics;
+            const total = metrics?.totalAppointments || 0;
+            const completed = metrics?.completedAppointments || 0;
+            const cancellationRate = total > 0 ? ((metrics?.cancelledAppointments || 0) / total) * 100 : 0;
+            const noShowRate = total > 0 ? ((metrics?.noShowAppointments || 0) / total) * 100 : 0;
+            const completionRate = total > 0 ? (completed / total) * 100 : 0;
+
+            return (
+              <Card key={doctor._id} size="1">
+                <Flex justify="between" align="start" mb="2">
+                  <Box>
+                    <Heading size="3">
+                      {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
+                    </Heading>
+                    <Text size="2" color="gray">{doctor.specialization}</Text>
+                  </Box>
+                  <Button asChild variant="soft" color="blue" size="1">
+                    <Link href={`/doctors/${doctor._id}`}>View →</Link>
+                  </Button>
+                </Flex>
+                <Flex gap="2" wrap="wrap">
+                  <Box>
+                    <Text size="3" weight="bold">{total}</Text>
+                    <Text size="1" color="gray">Total</Text>
+                  </Box>
+                  <Box>
+                    <Text size="3" weight="bold">{completed}</Text>
+                    <Text size="1" color="gray">Completed</Text>
+                  </Box>
+                  <Box>
+                    <Text size="3" weight="bold">{completionRate.toFixed(1)}%</Text>
+                    <Text size="1" color="gray">Completion Rate</Text>
+                  </Box>
+                  <Box>
+                    <Text size="3" weight="bold">{cancellationRate.toFixed(1)}%</Text>
+                    <Text size="1" color="gray">Cancellation Rate</Text>
+                  </Box>
+                  <Box>
+                    <Text size="3" weight="bold">{noShowRate.toFixed(1)}%</Text>
+                    <Text size="1" color="gray">No-Show Rate</Text>
+                  </Box>
+                </Flex>
+              </Card>
+            );
+          })}
+        </Flex>
+      )}
+    </Box>
   );
 }

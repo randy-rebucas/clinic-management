@@ -158,10 +158,10 @@ const DocumentSchema: Schema = new Schema(
     appointment: { type: Schema.Types.ObjectId, ref: 'Appointment', index: true },
     labResult: { type: Schema.Types.ObjectId, ref: 'LabResult', index: true },
     invoice: { type: Schema.Types.ObjectId, ref: 'Invoice', index: true },
-    tags: [{ type: String, trim: true, index: true }],
+    tags: [{ type: String, trim: true }],
     scanned: { type: Boolean, default: false },
     ocrText: { type: String },
-    expiryDate: { type: Date, index: true },
+    expiryDate: { type: Date },
     metadata: { type: Schema.Types.Mixed }, // Additional metadata
     referral: ReferralSchema,
     imaging: ImagingSchema,

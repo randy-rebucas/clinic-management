@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Button, Card, Flex, Box, Text, Avatar, Separator, Dialog } from '@radix-ui/themes';
 
 interface NavItem {
   href: string;
@@ -27,9 +28,9 @@ export default function MobileMenu({ navItems, user }: MobileMenuProps) {
   return (
     <>
       {/* Menu Button */}
-      <button
+      <Button
+        variant="ghost"
         onClick={() => setIsOpen(!isOpen)}
-        className="inline-flex items-center justify-center p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
         aria-label="Toggle menu"
         aria-expanded={isOpen}
       >
@@ -42,35 +43,35 @@ export default function MobileMenu({ navItems, user }: MobileMenuProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         )}
-      </button>
+      </Button>
 
       {/* Mobile Menu Overlay */}
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 md:hidden"
-            onClick={() => setIsOpen(false)}
-          />
-          <div className="fixed top-16 right-0 left-0 bg-white border-b border-gray-200 shadow-xl z-50 md:hidden animate-in slide-in-from-top duration-200">
-            <div className="px-4 py-4 space-y-1">
-              {/* User Info */}
-              <div className="px-3 py-3 mb-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-semibold shadow-sm">
-                    {user.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
-                      {user.name}
-                    </p>
-                    <p className="text-xs text-gray-600 truncate">
-                      {user.role}
-                    </p>
-                  </div>
-                </div>
-              </div>
+      <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
+        <Dialog.Content style={{ maxWidth: '100vw', margin: 0, position: 'fixed', top: '64px', left: 0, right: 0, bottom: 0, borderRadius: 0 }}>
+          <Flex direction="column" gap="2" p="4">
+            {/* User Info */}
+            <Card size="2" style={{ background: 'var(--blue-3)' }}>
+              <Flex align="center" gap="3">
+                <Avatar
+                  size="3"
+                  fallback={user.name.charAt(0).toUpperCase()}
+                  style={{ background: 'var(--blue-9)' }}
+                />
+                <Box style={{ flex: 1, minWidth: 0 }}>
+                  <Text size="2" weight="bold" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {user.name}
+                  </Text>
+                  <Text size="1" color="gray" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {user.role}
+                  </Text>
+                </Box>
+              </Flex>
+            </Card>
 
-              {/* Navigation Items */}
+            <Separator />
+
+            {/* Navigation Items */}
+            <Flex direction="column" gap="1">
               {navItems.map((item) => {
                 const isActive = pathname === item.href;
                 return (
@@ -78,26 +79,33 @@ export default function MobileMenu({ navItems, user }: MobileMenuProps) {
                     key={item.href}
                     href={item.href}
                     onClick={() => setIsOpen(false)}
-                    className={`flex items-center space-x-3 px-3 py-3 rounded-lg transition-colors ${
-                      isActive
-                        ? 'bg-blue-50 text-blue-700 font-semibold border border-blue-200'
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }`}
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
-                    </svg>
-                    <span>{item.label}</span>
-                    {isActive && (
-                      <div className="ml-auto w-2 h-2 bg-blue-600 rounded-full" />
-                    )}
+                    <Card
+                      size="1"
+                      style={{
+                        background: isActive ? 'var(--blue-3)' : 'transparent',
+                        border: isActive ? '1px solid var(--blue-6)' : '1px solid transparent',
+                      }}
+                    >
+                      <Flex align="center" gap="3">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
+                        </svg>
+                        <Text size="2" weight={isActive ? 'bold' : 'regular'} color={isActive ? 'blue' : 'gray'}>
+                          {item.label}
+                        </Text>
+                        {isActive && (
+                          <Box style={{ marginLeft: 'auto', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--blue-9)' }} />
+                        )}
+                      </Flex>
+                    </Card>
                   </Link>
                 );
               })}
-            </div>
-          </div>
-        </>
-      )}
+            </Flex>
+          </Flex>
+        </Dialog.Content>
+      </Dialog.Root>
     </>
   );
 }

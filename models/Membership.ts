@@ -70,7 +70,7 @@ const TransactionSchema: Schema = new Schema(
 const MembershipSchema: Schema = new Schema(
   {
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, unique: true, index: true },
-    membershipNumber: { type: String, required: true, unique: true, index: true },
+    membershipNumber: { type: String, required: true, unique: true },
     tier: {
       type: String,
       enum: ['bronze', 'silver', 'gold', 'platinum'],
@@ -87,7 +87,7 @@ const MembershipSchema: Schema = new Schema(
     totalPointsEarned: { type: Number, default: 0, min: 0 },
     totalPointsRedeemed: { type: Number, default: 0, min: 0 },
     joinDate: { type: Date, default: Date.now, required: true },
-    expiryDate: { type: Date, index: true },
+    expiryDate: { type: Date },
     renewalDate: { type: Date },
     discountPercentage: { type: Number, default: 0, min: 0, max: 100 },
     benefits: [{ type: String }],
@@ -100,13 +100,13 @@ const MembershipSchema: Schema = new Schema(
 );
 
 // Indexes
-MembershipSchema.index({ membershipNumber: 1 });
+// membershipNumber is already indexed via unique: true
 MembershipSchema.index({ tier: 1, status: 1 });
 MembershipSchema.index({ points: -1 });
 MembershipSchema.index({ expiryDate: 1 });
 
 // Pre-save hook to generate membership number and set tier benefits
-MembershipSchema.pre('save', async function (next) {
+MembershipSchema.pre('save', async function (this: IMembership, next) {
   if (!this.membershipNumber) {
     const count = await mongoose.models.Membership?.countDocuments() || 0;
     this.membershipNumber = `MEM-${Date.now()}-${count + 1}`;

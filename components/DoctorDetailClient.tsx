@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Button, AlertDialog, Flex } from '@radix-ui/themes';
 
 interface Doctor {
   _id: string;
@@ -52,6 +53,8 @@ interface Doctor {
 export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleteNoteDialogOpen, setDeleteNoteDialogOpen] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'profile' | 'schedule' | 'notes' | 'performance'>('profile');
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showNoteForm, setShowNoteForm] = useState(false);
@@ -114,11 +117,16 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
     }
   };
 
-  const handleDeleteNote = async (index: number) => {
-    if (!confirm('Are you sure you want to delete this note?')) return;
+  const handleDeleteNoteClick = (index: number) => {
+    setNoteToDelete(index);
+    setDeleteNoteDialogOpen(true);
+  };
+
+  const handleDeleteNote = async () => {
+    if (noteToDelete === null) return;
 
     try {
-      const res = await fetch(`/api/doctors/${doctorId}/notes?index=${index}`, {
+      const res = await fetch(`/api/doctors/${doctorId}/notes?index=${noteToDelete}`, {
         method: 'DELETE',
       });
 
@@ -430,7 +438,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                   </div>
                 ) : (
                   <div className="text-center py-6">
-                    <p className="text-xs text-gray-600">No schedule set. Click "Add/Edit Schedule" to set availability.</p>
+                    <p className="text-xs text-gray-600">No schedule set. Click &quot;Add/Edit Schedule&quot; to set availability.</p>
                   </div>
                 )}
 
@@ -438,15 +446,15 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                 {showScheduleForm && (
                   <div className="fixed inset-0 z-50 overflow-y-auto">
                     <div className="flex items-center justify-center min-h-screen px-4">
-                      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowScheduleForm(false)} />
-                      <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-3 max-w-md w-full z-10">
-                        <div className="flex justify-between items-center mb-2">
-                          <h3 className="text-sm font-semibold text-gray-900">Edit Schedule</h3>
+                      <div className="fixed inset-0 bg-black/30 backdrop-blur-md transition-opacity" onClick={() => setShowScheduleForm(false)} />
+                      <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-md w-full z-10">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-base font-semibold text-gray-900">Edit Schedule</h3>
                           <button
                             onClick={() => setShowScheduleForm(false)}
-                            className="text-gray-400 hover:text-gray-500"
+                            className="text-gray-400 hover:text-gray-500 transition-colors"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           </button>
@@ -550,7 +558,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                             </span>
                           </div>
                           <button
-                            onClick={() => handleDeleteNote(index)}
+                            onClick={() => handleDeleteNoteClick(index)}
                             className="text-red-600 hover:text-red-800 text-xs"
                           >
                             Delete
@@ -562,7 +570,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                   </div>
                 ) : (
                   <div className="text-center py-6">
-                    <p className="text-xs text-gray-600">No internal notes. Click "Add Note" to add one.</p>
+                    <p className="text-xs text-gray-600">No internal notes. Click &quot;Add Note&quot; to add one.</p>
                   </div>
                 )}
 
@@ -570,15 +578,15 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                 {showNoteForm && (
                   <div className="fixed inset-0 z-50 overflow-y-auto">
                     <div className="flex items-center justify-center min-h-screen px-4">
-                      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowNoteForm(false)} />
-                      <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-3 max-w-md w-full z-10">
-                        <div className="flex justify-between items-center mb-2">
-                          <h3 className="text-sm font-semibold text-gray-900">Add Internal Note</h3>
+                      <div className="fixed inset-0 bg-black/30 backdrop-blur-md transition-opacity" onClick={() => setShowNoteForm(false)} />
+                      <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-md w-full z-10">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-base font-semibold text-gray-900">Add Internal Note</h3>
                           <button
                             onClick={() => setShowNoteForm(false)}
-                            className="text-gray-400 hover:text-gray-500"
+                            className="text-gray-400 hover:text-gray-500 transition-colors"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           </button>
@@ -673,13 +681,38 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                   </div>
                 ) : (
                   <div className="text-center py-6">
-                    <p className="text-xs text-gray-600">No performance data available. Click "Refresh Data" to calculate metrics.</p>
+                    <p className="text-xs text-gray-600">No performance data available. Click &quot;Refresh Data&quot; to calculate metrics.</p>
                   </div>
                 )}
               </div>
             )}
           </div>
         </div>
+
+        {/* Delete Note Alert Dialog */}
+        <AlertDialog.Root open={deleteNoteDialogOpen} onOpenChange={setDeleteNoteDialogOpen}>
+          <AlertDialog.Content>
+            <AlertDialog.Title>Delete Note</AlertDialog.Title>
+            <AlertDialog.Description>
+              Are you sure you want to delete this note? This action cannot be undone.
+            </AlertDialog.Description>
+            <Flex gap="3" mt="4" justify="end">
+              <AlertDialog.Cancel>
+                <Button variant="soft" color="gray" onClick={() => {
+                  setDeleteNoteDialogOpen(false);
+                  setNoteToDelete(null);
+                }}>
+                  Cancel
+                </Button>
+              </AlertDialog.Cancel>
+              <AlertDialog.Action>
+                <Button variant="solid" color="red" onClick={handleDeleteNote}>
+                  Delete
+                </Button>
+              </AlertDialog.Action>
+            </Flex>
+          </AlertDialog.Content>
+        </AlertDialog.Root>
       </div>
     </div>
   );

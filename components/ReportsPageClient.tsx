@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Skeleton } from '@radix-ui/themes';
 
 interface ReportData {
   totalConsultations?: number;
@@ -223,14 +224,18 @@ export default function ReportsPageClient() {
 
   if (loading) {
     return (
-      <div className="w-full px-4 py-3">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600"></div>
-            <p className="mt-3 text-sm text-gray-600">Loading reports...</p>
-          </div>
-        </div>
-      </div>
+      <Box p="4">
+        <Flex direction="column" gap="3">
+          <Skeleton height="32px" width="200px" />
+          <Skeleton height="40px" />
+          <Flex gap="3" wrap="wrap">
+            <Skeleton height="150px" style={{ flex: '1 1 250px' }} />
+            <Skeleton height="150px" style={{ flex: '1 1 250px' }} />
+            <Skeleton height="150px" style={{ flex: '1 1 250px' }} />
+          </Flex>
+          <Skeleton height="400px" />
+        </Flex>
+      </Box>
     );
   }
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VisitForm from './VisitForm';
+import { Button, Tooltip } from '@radix-ui/themes';
 
 interface Visit {
   _id: string;
@@ -276,26 +277,30 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
             </select>
             {!editing && (
               <>
-                <button
-                  onClick={() => handlePrint('medical-certificate')}
-                  className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg shadow-sm hover:bg-green-700"
-                  title="Print Medical Certificate"
-                >
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Medical Certificate
-                </button>
-                <button
-                  onClick={() => handlePrint('lab-request')}
-                  className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-purple-600 rounded-lg shadow-sm hover:bg-purple-700"
-                  title="Print Lab Request"
-                >
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Lab Request
-                </button>
+                <Tooltip content="Print Medical Certificate">
+                  <Button
+                    onClick={() => handlePrint('medical-certificate')}
+                    color="green"
+                    size="2"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Medical Certificate
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Print Lab Request">
+                  <Button
+                    onClick={() => handlePrint('lab-request')}
+                    color="purple"
+                    size="2"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Lab Request
+                  </Button>
+                </Tooltip>
                 <button
                   onClick={() => setEditing(true)}
                   className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-sm hover:shadow-md"
@@ -314,7 +319,23 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
         {editing ? (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
             <VisitForm
-              initialData={visit}
+              initialData={{
+                patient: visit.patient._id,
+                visitType: visit.visitType as any,
+                chiefComplaint: visit.chiefComplaint,
+                historyOfPresentIllness: visit.historyOfPresentIllness,
+                vitals: visit.vitals,
+                physicalExam: visit.physicalExam,
+                diagnoses: visit.diagnoses,
+                soapNotes: visit.soapNotes,
+                treatmentPlan: visit.treatmentPlan,
+                followUpDate: visit.followUpDate,
+                notes: visit.notes,
+                digitalSignature: visit.digitalSignature ? {
+                  providerName: visit.digitalSignature.providerName,
+                  signatureData: visit.digitalSignature.signatureData,
+                } : undefined,
+              }}
               patients={[{ _id: visit.patient._id, firstName: visit.patient.firstName, lastName: visit.patient.lastName }]}
               onSubmit={handleUpdate}
               onCancel={() => setEditing(false)}

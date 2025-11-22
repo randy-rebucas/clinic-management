@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
+// Radix UI components not used - using native HTML form elements
+import { useSetting } from './SettingsContext';
 
 interface Patient {
   _id: string;
@@ -68,12 +70,24 @@ export default function InvoiceForm({
   onSubmit,
   onCancel,
 }: InvoiceFormProps) {
+  const currency = useSetting('billingSettings.currency', 'USD');
+  const defaultTaxRate = useSetting('billingSettings.taxRate', 0);
+  
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
+  
   const [formData, setFormData] = useState({
     patient: initialData?.patient || '',
     visit: initialData?.visit || '',
     items: [] as InvoiceItem[],
     discounts: [] as Discount[],
-    tax: 0,
+    tax: defaultTaxRate,
     insurance: {
       provider: '',
       policyNumber: '',
@@ -136,11 +150,28 @@ export default function InvoiceForm({
     const subtotal = formData.items.reduce((sum, item) => sum + item.total, 0);
     const discountTotal = formData.discounts.reduce((sum, disc) => sum + disc.amount, 0);
     const afterDiscount = subtotal - discountTotal;
-    const tax = formData.tax || 0;
-    const total = afterDiscount + tax;
+    // Calculate tax as percentage of after-discount amount if tax rate is set, otherwise use manual tax
+    const taxAmount = defaultTaxRate > 0 
+      ? (afterDiscount * defaultTaxRate / 100)
+      : (formData.tax || 0);
+    const total = afterDiscount + taxAmount;
 
-    return { subtotal, discountTotal, afterDiscount, tax, total };
+    return { subtotal, discountTotal, afterDiscount, tax: taxAmount, total };
   };
+  
+  // Update formData.tax when defaultTaxRate changes (for display purposes)
+  useEffect(() => {
+    if (defaultTaxRate > 0) {
+      const subtotal = formData.items.reduce((sum, item) => sum + item.total, 0);
+      const discountTotal = formData.discounts.reduce((sum, disc) => sum + disc.amount, 0);
+      const afterDiscount = subtotal - discountTotal;
+      const calculatedTax = afterDiscount * defaultTaxRate / 100;
+      // Don't update if user manually set tax to 0
+      if (formData.tax !== calculatedTax) {
+        setFormData(prev => ({ ...prev, tax: calculatedTax }));
+      }
+    }
+  }, [defaultTaxRate, formData.items, formData.discounts]);
 
   const { subtotal, discountTotal, afterDiscount, tax, total } = calculateTotals();
 
@@ -363,7 +394,7 @@ export default function InvoiceForm({
                   >
                     <div className="font-medium">{service.name}</div>
                     <div className="text-xs text-gray-500">
-                      {service.code && `${service.code} • `}₱{service.unitPrice.toLocaleString()}
+                      {service.code && `${service.code} • `}{formatCurrency(service.unitPrice)}
                     </div>
                   </button>
                 ))}
@@ -417,7 +448,7 @@ export default function InvoiceForm({
                   <div className="col-span-2">
                     <label className="block text-xs text-gray-600 mb-0.5">Total</label>
                     <div className="px-1.5 py-0.5 text-xs font-medium text-gray-900">
-                      ₱{item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrency(item.total)}
                     </div>
                   </div>
                   <div className="col-span-1">
@@ -554,14 +585,18 @@ export default function InvoiceForm({
 
       {/* Tax */}
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">Tax</label>
+        <label className="block text-xs font-medium text-gray-700 mb-0.5">
+          Tax {defaultTaxRate > 0 ? `(${defaultTaxRate}% applied automatically)` : '(Manual)'}
+        </label>
         <input
           type="number"
           min="0"
           step="0.01"
-          value={formData.tax}
+          value={defaultTaxRate > 0 ? '' : (formData.tax || 0)}
           onChange={(e) => setFormData({ ...formData, tax: parseFloat(e.target.value) || 0 })}
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+          disabled={defaultTaxRate > 0}
+          placeholder={defaultTaxRate > 0 ? 'Calculated automatically' : 'Enter tax amount'}
+          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-gray-50 disabled:cursor-not-allowed"
         />
       </div>
 
@@ -637,39 +672,41 @@ export default function InvoiceForm({
         <div className="space-y-0.5 text-xs">
           <div className="flex justify-between">
             <span className="text-gray-600">Subtotal:</span>
-            <span className="font-medium">₱{subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="font-medium">{formatCurrency(subtotal)}</span>
           </div>
           {discountTotal > 0 && (
             <div className="flex justify-between text-red-600">
               <span>Discounts:</span>
-              <span>-₱{discountTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span>-{formatCurrency(discountTotal)}</span>
             </div>
           )}
           {tax > 0 && (
             <div className="flex justify-between">
               <span className="text-gray-600">Tax:</span>
-              <span className="font-medium">₱{tax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="font-medium">{formatCurrency(tax)}</span>
             </div>
           )}
           <div className="flex justify-between text-base font-bold border-t border-gray-100 pt-1">
             <span>Total:</span>
-            <span>₱{total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span>{formatCurrency(total)}</span>
           </div>
         </div>
       </div>
 
       {/* Form Actions */}
-      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50"
-        >
-          Cancel
-        </button>
+      <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Cancel
+          </button>
+        )}
         <button
           type="submit"
-          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Create Invoice
         </button>

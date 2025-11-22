@@ -73,7 +73,7 @@ export interface IReferral extends Document {
 
 const ReferralSchema: Schema = new Schema(
   {
-    referralCode: { type: String, required: true, unique: true, index: true },
+    referralCode: { type: String, unique: true, index: true },
     type: {
       type: String,
       enum: ['doctor_to_doctor', 'patient_to_patient', 'external'],
@@ -84,9 +84,9 @@ const ReferralSchema: Schema = new Schema(
     referringPatient: { type: Schema.Types.ObjectId, ref: 'Patient', index: true },
     referringClinic: { type: String, trim: true },
     referringContact: {
-      name: { type: String, required: true },
-      phone: { type: String },
-      email: { type: String },
+      name: { type: String, trim: true },
+      phone: { type: String, trim: true },
+      email: { type: String, trim: true },
     },
     receivingDoctor: { type: Schema.Types.ObjectId, ref: 'Doctor', index: true },
     receivingClinic: { type: String, trim: true },
@@ -143,8 +143,19 @@ ReferralSchema.index({ status: 1, referredDate: -1 });
 ReferralSchema.index({ type: 1, status: 1 });
 ReferralSchema.index({ 'feedback.submittedBy': 1 });
 
+// Pre-validate hook to clean up referringContact before validation
+ReferralSchema.pre('validate', function (this: IReferral, next) {
+  // Clean up referringContact if it doesn't have a name
+  if (this.referringContact) {
+    if (!this.referringContact.name || (typeof this.referringContact.name === 'string' && this.referringContact.name.trim() === '')) {
+      this.referringContact = undefined;
+    }
+  }
+  next();
+});
+
 // Pre-save hook to generate referral code
-ReferralSchema.pre('save', async function (next) {
+ReferralSchema.pre('save', async function (this: IReferral, next) {
   if (!this.referralCode) {
     const count = await mongoose.models.Referral?.countDocuments() || 0;
     this.referralCode = `REF-${Date.now()}-${count + 1}`;

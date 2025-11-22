@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import PatientForm from '@/components/PatientForm';
 import { useRouter } from 'next/navigation';
+import { Button, TextField, Select, Dialog, Card, Flex, Box, Text, Spinner, Badge, AlertDialog, Tooltip, IconButton, Separator, Heading, Callout } from '@radix-ui/themes';
 
 interface Patient {
   _id: string;
@@ -24,21 +25,83 @@ type SortOption = 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc' | 'code-as
 
 export default function PatientsPageClient() {
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [filteredPatients, setFilteredPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [patientToDelete, setPatientToDelete] = useState<string | null>(null);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<SortOption>('date-desc');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<SortOption>('name-asc');
+  const [filters, setFilters] = useState({
+    sex: 'all',
+    active: 'all',
+    minAge: '',
+    maxAge: '',
+    city: '',
+    state: '',
+  });
+  const [showFilters, setShowFilters] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const router = useRouter();
 
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Fetch patients when filters or search change
   useEffect(() => {
     fetchPatients();
-  }, []);
+  }, [debouncedSearchQuery, sortBy, filters]);
 
   const fetchPatients = async () => {
     try {
-      const res = await fetch('/api/patients');
+      setLoading(true);
+      
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (debouncedSearchQuery.trim()) {
+        params.append('search', debouncedSearchQuery.trim());
+      }
+      if (filters.sex !== 'all') {
+        params.append('sex', filters.sex);
+      }
+      if (filters.active !== 'all') {
+        params.append('active', filters.active);
+      }
+      if (filters.minAge) {
+        params.append('minAge', filters.minAge);
+      }
+      if (filters.maxAge) {
+        params.append('maxAge', filters.maxAge);
+      }
+      if (filters.city) {
+        params.append('city', filters.city);
+      }
+      if (filters.state) {
+        params.append('state', filters.state);
+      }
+      
+      // Map sortBy to API format
+      const sortMap: Record<SortOption, { sortBy: string; sortOrder: string }> = {
+        'name-asc': { sortBy: 'name', sortOrder: 'asc' },
+        'name-desc': { sortBy: 'name', sortOrder: 'desc' },
+        'date-asc': { sortBy: 'dateOfBirth', sortOrder: 'asc' },
+        'date-desc': { sortBy: 'dateOfBirth', sortOrder: 'desc' },
+        'code-asc': { sortBy: 'patientCode', sortOrder: 'asc' },
+        'code-desc': { sortBy: 'patientCode', sortOrder: 'desc' },
+      };
+      const sort = sortMap[sortBy];
+      params.append('sortBy', sort.sortBy);
+      params.append('sortOrder', sort.sortOrder);
+      
+      const res = await fetch(`/api/patients?${params.toString()}`);
       
       // Check for authentication errors
       if (res.status === 401) {
@@ -57,60 +120,43 @@ export default function PatientsPageClient() {
       }
       if (data.success) {
         setPatients(data.data);
-        setFilteredPatients(data.data);
       } else {
         console.error('Failed to fetch patients:', data.error);
+        setError(data.error || 'Failed to fetch patients');
       }
     } catch (error) {
       console.error('Failed to fetch patients:', error);
+      setError('Failed to fetch patients');
     } finally {
       setLoading(false);
     }
   };
 
-  // Filter and sort patients
-  useEffect(() => {
-    let filtered = [...patients];
-
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter((patient) => {
-        const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
-        const email = patient.email?.toLowerCase() || '';
-        const phone = patient.phone?.toLowerCase() || '';
-        const code = patient.patientCode?.toLowerCase() || '';
-        return (
-          fullName.includes(query) ||
-          email.includes(query) ||
-          phone.includes(query) ||
-          code.includes(query)
-        );
-      });
-    }
-
-    // Apply sorting
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'name-asc':
-          return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
-        case 'name-desc':
-          return `${b.firstName} ${b.lastName}`.localeCompare(`${a.firstName} ${a.lastName}`);
-        case 'date-asc':
-          return new Date(a.dateOfBirth).getTime() - new Date(b.dateOfBirth).getTime();
-        case 'date-desc':
-          return new Date(b.dateOfBirth).getTime() - new Date(a.dateOfBirth).getTime();
-        case 'code-asc':
-          return (a.patientCode || '').localeCompare(b.patientCode || '');
-        case 'code-desc':
-          return (b.patientCode || '').localeCompare(a.patientCode || '');
-        default:
-          return 0;
-      }
+  // Patients are already filtered and sorted on the server
+  const filteredPatients = patients;
+  
+  // Count active filters
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.sex !== 'all') count++;
+    if (filters.active !== 'all') count++;
+    if (filters.minAge) count++;
+    if (filters.maxAge) count++;
+    if (filters.city) count++;
+    if (filters.state) count++;
+    return count;
+  }, [filters]);
+  
+  const clearFilters = () => {
+    setFilters({
+      sex: 'all',
+      active: 'all',
+      minAge: '',
+      maxAge: '',
+      city: '',
+      state: '',
     });
-
-    setFilteredPatients(filtered);
-  }, [patients, searchQuery, sortBy]);
+  };
 
   const handleSubmit = async (formData: any) => {
     try {
@@ -191,17 +237,21 @@ export default function PatientsPageClient() {
         console.error('API returned non-JSON response:', text.substring(0, 500));
         console.error('Response status:', res.status);
         console.error('Response headers:', Object.fromEntries(res.headers.entries()));
-        alert(`Failed to save patient: API error (Status: ${res.status})\n\n${text.substring(0, 200)}`);
+        setError(`Failed to save patient: API error (Status: ${res.status})`);
+        setTimeout(() => setError(null), 5000);
         return;
       }
       
       if (data.success) {
         setShowForm(false);
         setEditingPatient(null);
+        setSuccess(editingPatient ? 'Patient updated successfully!' : 'Patient created successfully!');
+        setTimeout(() => setSuccess(null), 3000);
         fetchPatients();
       } else {
         console.error('API error response:', data);
-        alert('Error: ' + (data.error || 'Unknown error occurred'));
+        setError('Error: ' + (data.error || 'Unknown error occurred'));
+        setTimeout(() => setError(null), 5000);
       }
     } catch (error: any) {
       console.error('Failed to save patient:', error);
@@ -210,15 +260,21 @@ export default function PatientsPageClient() {
         stack: error.stack,
         name: error.name,
       });
-      alert(`Failed to save patient: ${error.message || 'Unknown error'}`);
+      setError(`Failed to save patient: ${error.message || 'Unknown error'}`);
+      setTimeout(() => setError(null), 5000);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this patient?')) return;
+  const handleDeleteClick = (id: string) => {
+    setPatientToDelete(id);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!patientToDelete) return;
 
     try {
-      const res = await fetch(`/api/patients/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/patients/${patientToDelete}`, { method: 'DELETE' });
       
       // Check for authentication errors
       if (res.status === 401) {
@@ -233,430 +289,531 @@ export default function PatientsPageClient() {
       } else {
         const text = await res.text();
         console.error('API returned non-JSON response:', text.substring(0, 500));
-        alert('Failed to delete patient: API error');
+        setError('Failed to delete patient: API error');
+        setTimeout(() => setError(null), 5000);
         return;
       }
       if (data.success) {
         fetchPatients();
+        setDeleteDialogOpen(false);
+        setPatientToDelete(null);
+        setSuccess('Patient deleted successfully!');
+        setTimeout(() => setSuccess(null), 3000);
       } else {
-        alert('Error: ' + data.error);
+        setError('Error: ' + data.error);
+        setTimeout(() => setError(null), 5000);
       }
     } catch (error) {
       console.error('Failed to delete patient:', error);
-      alert('Failed to delete patient');
+      setError('Failed to delete patient');
+      setTimeout(() => setError(null), 5000);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-blue-600"></div>
-          <p className="mt-4 text-gray-600">Loading patients...</p>
-        </div>
-      </div>
+      <Box p="4" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Flex direction="column" align="center" gap="3">
+          <Spinner size="3" />
+          <Text>Loading patients...</Text>
+        </Flex>
+      </Box>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="w-full px-4 py-3">
-        {/* Header */}
-        <div className="mb-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">
-            <div className="mb-2 sm:mb-0">
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">
-                Patients
-              </h1>
-              <p className="text-gray-600 text-sm">
-                Manage patient records and information
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setEditingPatient(null);
-                setShowForm(true);
-              }}
-              className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-md shadow-sm hover:shadow hover:from-blue-700 hover:to-blue-800 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
-              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add New Patient
-            </button>
-          </div>
+    <Box p="4">
+      {/* Error/Success Messages */}
+      {error && (
+        <Callout.Root color="red" mb="3">
+          <Callout.Text>{error}</Callout.Text>
+        </Callout.Root>
+      )}
+      {success && (
+        <Callout.Root color="green" mb="3">
+          <Callout.Text>{success}</Callout.Text>
+        </Callout.Root>
+      )}
 
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-            <div className="bg-white rounded-lg border border-gray-200 p-2">
-              <p className="text-xs text-gray-600 mb-0.5">Total Patients</p>
-              <p className="text-lg font-bold text-gray-900">{patients.length}</p>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-2">
-              <p className="text-xs text-gray-600 mb-0.5">Showing</p>
-              <p className="text-lg font-bold text-gray-900">{filteredPatients.length}</p>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-2">
-              <p className="text-xs text-gray-600 mb-0.5">This Month</p>
-              <p className="text-lg font-bold text-gray-900">
+      {/* Header */}
+      <Box mb="4">
+        <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3" mb="3">
+          <Box>
+            <Heading size="7" mb="1">Patients</Heading>
+            <Text size="2" color="gray">Manage patient records and information</Text>
+          </Box>
+          <Button
+            onClick={() => {
+              setEditingPatient(null);
+              setShowForm(true);
+            }}
+            size="3"
+          >
+            Add New Patient
+          </Button>
+        </Flex>
+
+        {/* Quick Stats */}
+        <Flex gap="2" mb="3" wrap="wrap">
+          <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
+            <Box p="2">
+              <Text size="1" color="gray" mb="1" as="div">Total Patients</Text>
+              <Text size="5" weight="bold">{patients.length}</Text>
+            </Box>
+          </Card>
+          <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
+            <Box p="2">
+              <Text size="1" color="gray" mb="1" as="div">Showing</Text>
+              <Text size="5" weight="bold">{filteredPatients.length}</Text>
+            </Box>
+          </Card>
+          <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
+            <Box p="2">
+              <Text size="1" color="gray" mb="1" as="div">This Month</Text>
+              <Text size="5" weight="bold">
                 {patients.filter((p) => {
                   const created = new Date((p as any).createdAt || 0);
                   const now = new Date();
                   return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
                 }).length}
-              </p>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-2">
-              <p className="text-xs text-gray-600 mb-0.5">Active</p>
-              <p className="text-lg font-bold text-gray-900">
+              </Text>
+            </Box>
+          </Card>
+          <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
+            <Box p="2">
+              <Text size="1" color="gray" mb="1" as="div">Active</Text>
+              <Text size="5" weight="bold">
                 {patients.filter((p) => (p as any).active !== false).length}
-              </p>
-            </div>
-          </div>
+              </Text>
+            </Box>
+          </Card>
+        </Flex>
 
-          {/* Search and Filter Bar */}
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
-            <div className="flex flex-col sm:flex-row gap-3">
+        {/* Search and Filter Bar */}
+        <Card>
+          <Box p="3">
+            <Flex direction={{ initial: 'column', sm: 'row' }} gap="3" mb={debouncedSearchQuery || activeFilterCount > 0 ? "2" : "0"}>
               {/* Search Input */}
-              <div className="flex-1 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search by name, email, phone, or patient code..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                />
-              </div>
+              <Box flexGrow="1" style={{ minWidth: 0 }}>
+                <TextField.Root size="2" style={{ width: '100%' }}>
+                  <TextField.Slot>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
+                    </svg>
+                  </TextField.Slot>
+                  <input
+                    type="text"
+                    placeholder="Search by name, email, phone, code, or location..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    style={{ 
+                      all: 'unset', 
+                      flex: 1, 
+                      width: '100%',
+                      padding: '0',
+                      fontSize: 'var(--font-size-2)',
+                      lineHeight: 'var(--line-height-2)'
+                    }}
+                  />
+                  {searchQuery && (
+                    <TextField.Slot>
+                      <Button 
+                        variant="ghost" 
+                        size="1" 
+                        onClick={() => setSearchQuery('')}
+                        style={{ cursor: 'pointer', padding: '4px' }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                        </svg>
+                      </Button>
+                    </TextField.Slot>
+                  )}
+                </TextField.Root>
+              </Box>
 
               {/* Sort Dropdown */}
-              <div className="sm:w-48">
-                <select
+              <Box style={{ minWidth: '180px' }}>
+                <Select.Root
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as SortOption)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  onValueChange={(value) => setSortBy(value as SortOption)}
                 >
-                  <option value="date-desc">Newest First</option>
-                  <option value="date-asc">Oldest First</option>
-                  <option value="name-asc">Name (A-Z)</option>
-                  <option value="name-desc">Name (Z-A)</option>
-                  <option value="code-asc">Code (A-Z)</option>
-                  <option value="code-desc">Code (Z-A)</option>
-                </select>
-              </div>
+                  <Select.Trigger placeholder="Sort by..." />
+                  <Select.Content>
+                    <Select.Item value="name-asc">Name (A-Z)</Select.Item>
+                    <Select.Item value="name-desc">Name (Z-A)</Select.Item>
+                    <Select.Item value="date-desc">Date of Birth (Newest)</Select.Item>
+                    <Select.Item value="date-asc">Date of Birth (Oldest)</Select.Item>
+                    <Select.Item value="code-asc">Patient Code (A-Z)</Select.Item>
+                    <Select.Item value="code-desc">Patient Code (Z-A)</Select.Item>
+                  </Select.Content>
+                </Select.Root>
+              </Box>
 
-              {/* Clear Search */}
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+              {/* Filter Toggle Button */}
+              <Button
+                variant={showFilters || activeFilterCount > 0 ? "solid" : "soft"}
+                size="2"
+                onClick={() => setShowFilters(!showFilters)}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '4px' }}>
+                  <path d="M2 4h12M4 8h8M6 12h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+                Filters
+                {activeFilterCount > 0 && (
+                  <Badge size="1" variant="solid" color="blue" style={{ marginLeft: '6px' }}>
+                    {activeFilterCount}
+                  </Badge>
+                )}
+              </Button>
+            </Flex>
 
-        {/* Form Modal/Overlay */}
-        {showForm && (
-          <div className="fixed inset-0 z-50 overflow-y-auto">
-            {/* Backdrop */}
-            <div
-              className="fixed inset-0 bg-black/30 backdrop-blur-md transition-opacity"
-              onClick={() => {
+            {/* Filter Panel */}
+            {showFilters && (
+              <Box pt="3" style={{ borderTop: '1px solid var(--gray-6)' }}>
+                <Flex direction={{ initial: 'column', sm: 'row' }} gap="3" wrap="wrap">
+                  {/* Sex Filter */}
+                  <Box style={{ minWidth: '140px', flex: '1 1 140px' }}>
+                    <Text size="1" weight="medium" mb="1" as="div">Sex</Text>
+                    <Select.Root
+                      value={filters.sex}
+                      onValueChange={(value) => setFilters({ ...filters, sex: value })}
+                    >
+                      <Select.Trigger />
+                      <Select.Content>
+                        <Select.Item value="all">All</Select.Item>
+                        <Select.Item value="male">Male</Select.Item>
+                        <Select.Item value="female">Female</Select.Item>
+                        <Select.Item value="other">Other</Select.Item>
+                      </Select.Content>
+                    </Select.Root>
+                  </Box>
+
+                  {/* Active Status Filter */}
+                  <Box style={{ minWidth: '140px', flex: '1 1 140px' }}>
+                    <Text size="1" weight="medium" mb="1" as="div">Status</Text>
+                    <Select.Root
+                      value={filters.active}
+                      onValueChange={(value) => setFilters({ ...filters, active: value })}
+                    >
+                      <Select.Trigger />
+                      <Select.Content>
+                        <Select.Item value="all">All</Select.Item>
+                        <Select.Item value="true">Active</Select.Item>
+                        <Select.Item value="false">Inactive</Select.Item>
+                      </Select.Content>
+                    </Select.Root>
+                  </Box>
+
+                  {/* Age Range Filters */}
+                  <Box style={{ minWidth: '100px', flex: '1 1 100px' }}>
+                    <Text size="1" weight="medium" mb="1" as="div">Min Age</Text>
+                    <TextField.Root
+                      size="2"
+                      type="number"
+                      placeholder="Min"
+                      value={filters.minAge}
+                      onChange={(e) => setFilters({ ...filters, minAge: e.target.value })}
+                    />
+                  </Box>
+                  <Box style={{ minWidth: '100px', flex: '1 1 100px' }}>
+                    <Text size="1" weight="medium" mb="1" as="div">Max Age</Text>
+                    <TextField.Root
+                      size="2"
+                      type="number"
+                      placeholder="Max"
+                      value={filters.maxAge}
+                      onChange={(e) => setFilters({ ...filters, maxAge: e.target.value })}
+                    />
+                  </Box>
+
+                  {/* City Filter */}
+                  <Box style={{ minWidth: '140px', flex: '1 1 140px' }}>
+                    <Text size="1" weight="medium" mb="1" as="div">City</Text>
+                    <TextField.Root
+                      size="2"
+                      placeholder="City"
+                      value={filters.city}
+                      onChange={(e) => setFilters({ ...filters, city: e.target.value })}
+                    />
+                  </Box>
+
+                  {/* State Filter */}
+                  <Box style={{ minWidth: '140px', flex: '1 1 140px' }}>
+                    <Text size="1" weight="medium" mb="1" as="div">State</Text>
+                    <TextField.Root
+                      size="2"
+                      placeholder="State"
+                      value={filters.state}
+                      onChange={(e) => setFilters({ ...filters, state: e.target.value })}
+                    />
+                  </Box>
+
+                  {/* Clear Filters Button */}
+                  {activeFilterCount > 0 && (
+                    <Box style={{ display: 'flex', alignItems: 'flex-end' }}>
+                      <Button
+                        variant="soft"
+                        size="2"
+                        onClick={clearFilters}
+                      >
+                        Clear Filters
+                      </Button>
+                    </Box>
+                  )}
+                </Flex>
+              </Box>
+            )}
+
+            {/* Results Count */}
+            {(debouncedSearchQuery || activeFilterCount > 0) && (
+              <Box pt="2" style={{ borderTop: '1px solid var(--gray-6)' }}>
+                <Text size="2" color="gray">
+                  Found {filteredPatients.length} {filteredPatients.length === 1 ? 'patient' : 'patients'}
+                </Text>
+              </Box>
+            )}
+          </Box>
+        </Card>
+      </Box>
+
+      {/* Form Modal/Overlay */}
+      <Dialog.Root open={showForm} onOpenChange={(open) => {
+        if (!open) {
+          setShowForm(false);
+          setEditingPatient(null);
+        }
+      }}>
+        <Dialog.Content style={{ maxWidth: '800px' }}>
+          <Dialog.Title>
+            {editingPatient ? 'Edit Patient' : 'New Patient'}
+          </Dialog.Title>
+          <Box py="4">
+            <PatientForm
+              initialData={editingPatient ? {
+                ...editingPatient,
+                sex: editingPatient.sex as 'male' | 'female' | 'other' | 'unknown' | undefined,
+                address: editingPatient.address ? {
+                  street: (editingPatient.address as any).street || '',
+                  city: editingPatient.address.city || '',
+                  state: editingPatient.address.state || '',
+                  zipCode: (editingPatient.address as any).zipCode || '',
+                } : {
+                  street: '',
+                  city: '',
+                  state: '',
+                  zipCode: '',
+                },
+                emergencyContact: (editingPatient as any).emergencyContact || {
+                  name: '',
+                  phone: '',
+                  relationship: '',
+                },
+              } : undefined}
+              onSubmit={handleSubmit}
+              onCancel={() => {
                 setShowForm(false);
                 setEditingPatient(null);
               }}
             />
+          </Box>
+        </Dialog.Content>
+      </Dialog.Root>
 
-            {/* Modal Container */}
-            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-              {/* Modal */}
-              <div className="relative inline-block align-bottom bg-white rounded-lg shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full z-10">
-                <div className="px-6 py-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {editingPatient ? 'Edit Patient' : 'New Patient'}
-                    </h3>
-                    <button
-                      onClick={() => {
-                        setShowForm(false);
-                        setEditingPatient(null);
-                      }}
-                      className="text-gray-400 hover:text-gray-500 transition-colors"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-                <div className="px-6 pb-6">
-                  <PatientForm
-                    initialData={editingPatient ? {
-                      ...editingPatient,
-                      sex: editingPatient.sex as 'male' | 'female' | 'other' | 'unknown' | undefined,
-                      address: editingPatient.address ? {
-                        street: (editingPatient.address as any).street || '',
-                        city: editingPatient.address.city || '',
-                        state: editingPatient.address.state || '',
-                        zipCode: (editingPatient.address as any).zipCode || '',
-                      } : {
-                        street: '',
-                        city: '',
-                        state: '',
-                        zipCode: '',
-                      },
-                      emergencyContact: (editingPatient as any).emergencyContact || {
-                        name: '',
-                        phone: '',
-                        relationship: '',
-                      },
-                    } : undefined}
-                    onSubmit={handleSubmit}
-                    onCancel={() => {
-                      setShowForm(false);
-                      setEditingPatient(null);
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Patients List */}
-        {filteredPatients.length === 0 && patients.length > 0 ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
-            <svg className="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <h3 className="text-sm font-semibold text-gray-900 mb-1">No patients found</h3>
-            <p className="text-gray-600 mb-3 text-xs">Try adjusting your search or filter criteria.</p>
-            <button
-              onClick={() => setSearchQuery('')}
-              className="inline-flex items-center px-3 py-1.5 text-sm font-semibold text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
-            >
+      {/* Patients List */}
+      {filteredPatients.length === 0 && patients.length > 0 ? (
+        <Card>
+          <Box p="8" style={{ textAlign: 'center' }}>
+            <Box mb="3">
+              <svg style={{ width: '48px', height: '48px', margin: '0 auto', color: 'var(--gray-9)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </Box>
+            <Heading size="3" mb="1">No patients found</Heading>
+            <Text size="2" color="gray" mb="3" as="div">Try adjusting your search or filter criteria.</Text>
+            <Button onClick={() => setSearchQuery('')} variant="soft" color="blue">
               Clear Search
-            </button>
-          </div>
-        ) : filteredPatients.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 text-center">
-            <svg className="mx-auto h-8 w-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-            <h3 className="text-sm font-semibold text-gray-900 mb-1">No patients found</h3>
-            <p className="text-gray-600 mb-3 text-xs">Get started by adding your first patient.</p>
-            <button
+            </Button>
+          </Box>
+        </Card>
+      ) : filteredPatients.length === 0 ? (
+        <Card>
+          <Box p="4" style={{ textAlign: 'center' }}>
+            <Box mb="2">
+              <svg style={{ width: '48px', height: '48px', margin: '0 auto', color: 'var(--gray-9)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </Box>
+            <Heading size="3" mb="1">No patients found</Heading>
+            <Text size="2" color="gray" mb="3" as="div">Get started by adding your first patient.</Text>
+            <Button
               onClick={() => {
                 setEditingPatient(null);
                 setShowForm(true);
               }}
-              className="inline-flex items-center px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-md shadow-sm hover:shadow hover:from-blue-700 hover:to-blue-800 transition-all duration-200"
             >
-              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
               Add First Patient
-            </button>
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            {/* Desktop Table */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Patient
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Contact
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Date of Birth
-                    </th>
-                    <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredPatients.map((patient) => (
-                    <tr key={patient._id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-semibold mr-2">
-                            {patient.firstName.charAt(0)}{patient.lastName.charAt(0)}
-                          </div>
-                          <div>
-                            <div className="text-sm font-semibold text-gray-900">
+            </Button>
+          </Box>
+        </Card>
+      ) : (
+        <Box>
+          <Flex direction="column" gap="2">
+            {filteredPatients.map((patient) => {
+              const age = Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+              return (
+                <Card key={patient._id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/patients/${patient._id}`)}>
+                  <Box p="3">
+                    <Flex align="center" gap="3" justify="between" wrap={{ initial: 'wrap', sm: 'nowrap' }}>
+                      {/* Patient Info */}
+                      <Flex align="center" gap="3" style={{ flex: 1, minWidth: 0 }}>
+                        <Box
+                          style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '50%',
+                            background: 'var(--blue-9)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontSize: '16px',
+                            fontWeight: 'bold',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {patient.firstName.charAt(0)}{patient.lastName.charAt(0)}
+                        </Box>
+                        <Box style={{ flex: 1, minWidth: 0 }}>
+                          <Flex align="center" gap="2" mb="1" wrap="wrap">
+                            <Text size="3" weight="bold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {patient.firstName} {patient.lastName}
-                            </div>
+                            </Text>
                             {patient.patientCode && (
-                              <div className="text-xs text-gray-500">ID: {patient.patientCode}</div>
+                              <Badge size="1" variant="soft" color="gray">
+                                {patient.patientCode}
+                              </Badge>
                             )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{patient.email}</div>
-                        <div className="text-xs text-gray-500">{patient.phone}</div>
-                        {patient.address && (
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            {patient.address.city}, {patient.address.state}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <div className="text-sm text-gray-600">
-                          {new Date(patient.dateOfBirth).toLocaleDateString()}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {patient.sex && patient.sex !== 'unknown' && (
-                            <span className="capitalize">{patient.sex}</span>
-                          )}
-                          {(() => {
-                            const age = Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-                            return age > 0 ? ` • ${age} years` : '';
-                          })()}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end space-x-1.5">
-                          <Link
-                            href={`/patients/${patient._id}`}
-                            className="inline-flex items-center px-2 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 transition-colors"
-                            title="View Details"
-                          >
-                            <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                            View
-                          </Link>
-                          <Link
-                            href={`/appointments/new?patientId=${patient._id}`}
-                            className="inline-flex items-center px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 rounded-md hover:bg-purple-100 transition-colors"
-                            title="Schedule Appointment"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                          </Link>
-                          <button
+                            {patient.sex && patient.sex !== 'unknown' && (
+                              <Badge size="1" variant="soft" color="blue" style={{ textTransform: 'capitalize' }}>
+                                {patient.sex}
+                              </Badge>
+                            )}
+                            {age > 0 && (
+                              <Text size="2" color="gray">
+                                {age} years
+                              </Text>
+                            )}
+                          </Flex>
+                          <Flex direction="column" gap="1">
+                            <Flex align="center" gap="2" wrap="wrap">
+                              <Text size="2" color="gray" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                                {patient.email}
+                              </Text>
+                              <Text size="2" color="gray" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                </svg>
+                                {patient.phone}
+                              </Text>
+                              <Text size="2" color="gray" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                {new Date(patient.dateOfBirth).toLocaleDateString()}
+                              </Text>
+                              {patient.address && (patient.address.city || patient.address.state) && (
+                                <Text size="2" color="gray" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  </svg>
+                                  {[patient.address.city, patient.address.state].filter(Boolean).join(', ')}
+                                </Text>
+                              )}
+                            </Flex>
+                          </Flex>
+                        </Box>
+                      </Flex>
+
+                      {/* Actions */}
+                      <Flex gap="1" align="center" onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0 }}>
+                        <Tooltip content="View Details">
+                          <Button asChild size="2" variant="soft" color="green">
+                            <Link href={`/patients/${patient._id}`}>
+                              <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </Link>
+                          </Button>
+                        </Tooltip>
+                        <Tooltip content="Schedule Appointment">
+                          <Button asChild size="2" variant="soft" color="purple">
+                            <Link href={`/appointments/new?patientId=${patient._id}`}>
+                              <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                            </Link>
+                          </Button>
+                        </Tooltip>
+                        <Tooltip content="Edit Patient">
+                          <Button
                             onClick={() => {
                               setEditingPatient(patient);
                               setShowForm(true);
                             }}
-                            className="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
-                            title="Edit Patient"
+                            size="2"
+                            variant="soft"
+                            color="blue"
                           >
-                            <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(patient._id)}
-                            className="inline-flex items-center px-2 py-1 text-xs font-medium text-red-700 bg-red-50 rounded-md hover:bg-red-100 transition-colors"
-                            title="Delete Patient"
+                          </Button>
+                        </Tooltip>
+                        <Tooltip content="Delete Patient">
+                          <Button
+                            onClick={() => handleDeleteClick(patient._id)}
+                            size="2"
+                            variant="soft"
+                            color="red"
                           >
-                            <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                          </Button>
+                        </Tooltip>
+                      </Flex>
+                    </Flex>
+                  </Box>
+                </Card>
+              );
+            })}
+          </Flex>
+        </Box>
+      )}
 
-            {/* Mobile Cards */}
-            <div className="md:hidden divide-y divide-gray-200">
-              {filteredPatients.map((patient) => (
-                <div key={patient._id} className="p-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center space-x-3 flex-1 min-w-0">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-semibold flex-shrink-0">
-                        {patient.firstName.charAt(0)}{patient.lastName.charAt(0)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-base font-semibold text-gray-900 truncate">
-                          {patient.firstName} {patient.lastName}
-                        </h3>
-                        {patient.patientCode && (
-                          <p className="text-xs text-gray-500 truncate">ID: {patient.patientCode}</p>
-                        )}
-                        <p className="text-sm text-gray-600 truncate">{patient.email}</p>
-                        <p className="text-sm text-gray-500 truncate">{patient.phone}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                    <div className="text-xs text-gray-500">
-                      <div>DOB: {new Date(patient.dateOfBirth).toLocaleDateString()}</div>
-                      {(() => {
-                        const age = Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-                        return age > 0 ? <div>{age} years old</div> : null;
-                      })()}
-                    </div>
-                    <div className="flex space-x-2">
-                      <Link
-                        href={`/patients/${patient._id}`}
-                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
-                      >
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
-                        View
-                      </Link>
-                      <Link
-                        href={`/appointments/new?patientId=${patient._id}`}
-                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </Link>
-                      <button
-                        onClick={() => {
-                          setEditingPatient(patient);
-                          setShowForm(true);
-                        }}
-                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-                      >
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(patient._id)}
-                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
-                      >
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog.Root open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialog.Content>
+            <AlertDialog.Title>Delete Patient</AlertDialog.Title>
+            <AlertDialog.Description>
+              Are you sure you want to delete this patient? This action cannot be undone.
+            </AlertDialog.Description>
+            <Flex gap="3" mt="4" justify="end">
+              <AlertDialog.Cancel>
+                <Button variant="soft" color="gray">Cancel</Button>
+              </AlertDialog.Cancel>
+              <AlertDialog.Action>
+                <Button variant="solid" color="red" onClick={handleDelete}>Delete</Button>
+              </AlertDialog.Action>
+            </Flex>
+          </AlertDialog.Content>
+        </AlertDialog.Root>
+      </Box>
+    );
+  }

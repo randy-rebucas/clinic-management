@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getSettings } from '@/lib/settings';
 
 export async function GET(request: NextRequest) {
   // User authentication check
@@ -75,6 +76,14 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
+    
+    // Get settings for defaults
+    const settings = await getSettings();
+    
+    // Set default duration if not provided
+    if (!body.duration) {
+      body.duration = settings.appointmentSettings?.defaultDuration || 30;
+    }
     
     // Auto-generate appointmentCode if not provided
     if (!body.appointmentCode) {

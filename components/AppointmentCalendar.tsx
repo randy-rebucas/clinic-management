@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Button, Flex, Box, Text, Card, Badge } from '@radix-ui/themes';
 
 interface Appointment {
   _id: string;
@@ -30,7 +31,6 @@ export default function AppointmentCalendar({
   appointments,
   selectedDate,
   onDateSelect,
-  onAppointmentClick,
 }: AppointmentCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(selectedDate);
 
@@ -120,87 +120,101 @@ export default function AppointmentCalendar({
   const days = getDaysInMonth(currentMonth);
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">
-          {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-        </h3>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => navigateMonth('prev')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <button
-            onClick={goToToday}
-            className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-          >
-            Today
-          </button>
-          <button
-            onClick={() => navigateMonth('next')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-7 gap-1 mb-2">
-        {dayNames.map((day) => (
-          <div key={day} className="text-center text-xs font-medium text-gray-500 py-2">
-            {day}
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-1">
-        {days.map((date, index) => {
-          const dayAppointments = getAppointmentsForDate(date);
-          const appointmentCount = dayAppointments.length;
-          const hasWalkIn = dayAppointments.some((apt) => apt.isWalkIn);
-
-          return (
-            <button
-              key={index}
-              onClick={() => date && onDateSelect(date)}
-              disabled={!date}
-              className={`
-                aspect-square p-1 rounded-lg text-sm transition-all
-                ${!date ? 'cursor-default' : 'cursor-pointer hover:bg-gray-50'}
-                ${isToday(date) ? 'ring-2 ring-blue-500' : ''}
-                ${isSelected(date) ? 'bg-blue-100 font-semibold' : 'bg-gray-50'}
-                ${date && date < new Date(new Date().setHours(0, 0, 0, 0)) ? 'opacity-50' : ''}
-              `}
+    <Card>
+      <Flex direction="column" gap="4" p="4">
+        <Flex align="center" justify="between">
+          <Text size="4" weight="bold">
+            {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+          </Text>
+          <Flex align="center" gap="2">
+            <Button
+              variant="ghost"
+              size="1"
+              onClick={() => navigateMonth('prev')}
+              aria-label="Previous month"
             >
-              <div className="flex flex-col items-center justify-center h-full">
-                <span className={isSelected(date) ? 'text-blue-700' : 'text-gray-700'}>
-                  {date?.getDate()}
-                </span>
-                {appointmentCount > 0 && (
-                  <div className="flex items-center space-x-1 mt-1">
-                    <span
-                      className={`text-xs px-1.5 py-0.5 rounded ${
-                        hasWalkIn
-                          ? 'bg-orange-100 text-orange-700'
-                          : 'bg-blue-100 text-blue-700'
-                      }`}
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </Button>
+            <Button variant="soft" color="blue" size="1" onClick={goToToday}>
+              Today
+            </Button>
+            <Button
+              variant="ghost"
+              size="1"
+              onClick={() => navigateMonth('next')}
+              aria-label="Next month"
+            >
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Button>
+          </Flex>
+        </Flex>
+
+        <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '8px' }}>
+          {dayNames.map((day) => (
+            <Box key={day} style={{ textAlign: 'center' }} py="2">
+              <Text size="1" weight="medium" color="gray">
+                {day}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+
+        <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+          {days.map((date, index) => {
+            const dayAppointments = getAppointmentsForDate(date);
+            const appointmentCount = dayAppointments.length;
+            const hasWalkIn = dayAppointments.some((apt) => apt.isWalkIn);
+            const isPastDate = date && date < new Date(new Date().setHours(0, 0, 0, 0));
+
+            return (
+              <Button
+                key={index}
+                variant={isSelected(date) ? 'solid' : 'ghost'}
+                color={isSelected(date) ? 'blue' : 'gray'}
+                size="1"
+                onClick={() => date && onDateSelect(date)}
+                disabled={!date}
+                style={{
+                  aspectRatio: '1',
+                  padding: '4px',
+                  position: 'relative',
+                  opacity: isPastDate ? 0.5 : 1,
+                  ...(isToday(date) && !isSelected(date)
+                    ? {
+                        border: '2px solid var(--blue-9)',
+                      }
+                    : {}),
+                }}
+              >
+                <Flex direction="column" align="center" justify="center" gap="1" style={{ height: '100%' }}>
+                  <Text
+                    size="2"
+                    weight={isSelected(date) ? 'bold' : 'regular'}
+                    color={isSelected(date) ? 'blue' : 'gray'}
+                  >
+                    {date?.getDate()}
+                  </Text>
+                  {appointmentCount > 0 && (
+                    <Badge
+                      size="1"
+                      color={hasWalkIn ? 'orange' : 'blue'}
+                      variant="soft"
+                      style={{ marginTop: '2px' }}
                     >
                       {appointmentCount}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+                    </Badge>
+                  )}
+                </Flex>
+              </Button>
+            );
+          })}
+        </Box>
+      </Flex>
+    </Card>
   );
 }
 

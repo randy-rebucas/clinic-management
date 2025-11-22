@@ -66,7 +66,7 @@ const NotificationSchema: Schema = new Schema(
     read: { type: Boolean, default: false, index: true },
     readAt: { type: Date },
     metadata: { type: Schema.Types.Mixed },
-    expiresAt: { type: Date, index: true },
+    expiresAt: { type: Date },
   },
   { timestamps: true }
 );

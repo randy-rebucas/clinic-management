@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import InventoryForm from './InventoryForm';
+// Radix UI components not used - using native HTML elements
 
 export default function InventoryFormClient() {
   const [submitting, setSubmitting] = useState(false);

@@ -33,12 +33,10 @@ const RoomSchema: Schema = new Schema(
       required: [true, 'Room name is required'],
       unique: true,
       trim: true,
-      index: true,
     },
     roomNumber: {
       type: String,
       trim: true,
-      index: true,
     },
     floor: {
       type: Number,
@@ -69,7 +67,6 @@ const RoomSchema: Schema = new Schema(
       type: String,
       enum: ['available', 'occupied', 'maintenance', 'unavailable'],
       default: 'available',
-      index: true,
     },
     notes: {
       type: String,
@@ -98,7 +95,7 @@ const RoomSchema: Schema = new Schema(
 // Indexes for efficient queries
 RoomSchema.index({ roomType: 1, status: 1 });
 RoomSchema.index({ status: 1 });
-RoomSchema.index({ name: 1 });
+// name is already indexed via unique: true
 
 export default mongoose.models.Room || mongoose.model<IRoom>('Room', RoomSchema);
 

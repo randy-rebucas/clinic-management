@@ -112,7 +112,7 @@ const PharmacyDispenseSchema: Schema = new Schema(
 
 const PrescriptionSchema: Schema = new Schema(
   {
-    prescriptionCode: { type: String, required: true, unique: true, index: true },
+    prescriptionCode: { type: String, required: true, unique: true },
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true },
     prescribedBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -168,7 +168,7 @@ PrescriptionSchema.index({ patient: 1, issuedAt: -1 });
 PrescriptionSchema.index({ visit: 1 });
 PrescriptionSchema.index({ prescribedBy: 1 });
 PrescriptionSchema.index({ status: 1 });
-PrescriptionSchema.index({ prescriptionCode: 1 });
+// prescriptionCode is already indexed via unique: true
 
 export default mongoose.models.Prescription || mongoose.model<IPrescription>('Prescription', PrescriptionSchema);
 

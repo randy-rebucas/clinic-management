@@ -73,19 +73,19 @@ export async function GET(request: NextRequest) {
       .sort({ createdAt: -1 });
 
     // Calculate totals
-    const totalBilled = invoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
-    const totalPaid = invoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
-    const totalOutstanding = invoices.reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
-    const totalDiscounts = invoices.reduce((sum, inv) => {
-      const discountTotal = inv.discounts?.reduce((dSum, d) => dSum + (d.amount || 0), 0) || 0;
+    const totalBilled = invoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
+    const totalPaid = invoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
+    const totalOutstanding = invoices.reduce((sum: number, inv: any) => sum + (inv.outstandingBalance || 0), 0);
+    const totalDiscounts = invoices.reduce((sum: number, inv: any) => {
+      const discountTotal = inv.discounts?.reduce((dSum: number, d: any) => dSum + (d.amount || 0), 0) || 0;
       return sum + discountTotal;
     }, 0);
-    const totalTax = invoices.reduce((sum, inv) => sum + (inv.tax || 0), 0);
+    const totalTax = invoices.reduce((sum: number, inv: any) => sum + (inv.tax || 0), 0);
 
     // Group by payment method
     const byPaymentMethod: Record<string, number> = {};
-    invoices.forEach((inv) => {
-      inv.payments?.forEach((payment) => {
+    invoices.forEach((inv: any) => {
+      inv.payments?.forEach((payment: any) => {
         const method = payment.method || 'unknown';
         byPaymentMethod[method] = (byPaymentMethod[method] || 0) + (payment.amount || 0);
       });

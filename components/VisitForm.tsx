@@ -2,6 +2,7 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import SignaturePad from './SignaturePad';
+import { Button, TextField, Flex, Box, Text, Checkbox, Popover } from '@radix-ui/themes';
 
 interface VisitFormData {
   patient: string;
@@ -121,18 +122,30 @@ export default function VisitForm({
       }, 300);
       return () => clearTimeout(timer);
     } else {
-      setIcd10Results([]);
+      // Using setTimeout to avoid synchronous setState in effect
+      setTimeout(() => {
+        setIcd10Results([]);
+      }, 0);
     }
   }, [icd10Search]);
 
+  // Sync selected patient when formData.patient changes
   useEffect(() => {
     if (formData.patient) {
       const patient = patients.find((p) => p._id === formData.patient);
-      setSelectedPatient(patient || null);
-      if (patient) {
-        setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-      }
+      // Using setTimeout to avoid synchronous setState in effect
+      const timer = setTimeout(() => {
+        setSelectedPatient(patient || null);
+        if (patient) {
+          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+        }
+      }, 0);
+      return () => clearTimeout(timer);
+    } else {
+      setSelectedPatient(null);
+      setPatientSearch('');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.patient, patients]);
 
   useEffect(() => {
@@ -246,43 +259,51 @@ export default function VisitForm({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">Patient *</label>
-            <div className="relative mt-1 patient-search-container">
-              <input
-                type="text"
-                required
-                value={patientSearch}
-                onChange={(e) => {
-                  setPatientSearch(e.target.value);
-                  setShowPatientSearch(true);
-                  if (!e.target.value) {
-                    setFormData({ ...formData, patient: '' });
-                    setSelectedPatient(null);
-                  }
-                }}
-                onFocus={() => setShowPatientSearch(true)}
-                placeholder="Type to search patients..."
-                className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              />
-              {showPatientSearch && filteredPatients.length > 0 && (
-                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                  {filteredPatients.map((patient) => (
-                    <button
-                      key={patient._id}
-                      type="button"
-                      onClick={() => selectPatient(patient)}
-                      className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
-                    >
-                      <div className="font-medium">{patient.firstName} {patient.lastName}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {showPatientSearch && patientSearch && filteredPatients.length === 0 && (
-                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg">
-                  <div className="px-3 py-2 text-sm text-gray-500">No patients found</div>
-                </div>
-              )}
-            </div>
+            <Popover.Root open={showPatientSearch} onOpenChange={setShowPatientSearch}>
+              <Popover.Trigger>
+                <TextField.Root size="2" style={{ width: '100%' }}>
+                  <input
+                    type="text"
+                    required
+                    value={patientSearch}
+                    onChange={(e) => {
+                      setPatientSearch(e.target.value);
+                      setShowPatientSearch(true);
+                      if (!e.target.value) {
+                        setFormData({ ...formData, patient: '' });
+                        setSelectedPatient(null);
+                      }
+                    }}
+                    onFocus={() => setShowPatientSearch(true)}
+                    placeholder="Type to search patients..."
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Popover.Trigger>
+              <Popover.Content style={{ width: 'var(--radix-popover-trigger-width)', maxHeight: '200px', overflowY: 'auto' }}>
+                {filteredPatients.length > 0 ? (
+                  <Flex direction="column" gap="1">
+                    {filteredPatients.map((patient) => (
+                      <Button
+                        key={patient._id}
+                        variant="ghost"
+                        onClick={() => {
+                          selectPatient(patient);
+                          setShowPatientSearch(false);
+                        }}
+                        style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                      >
+                        <Text weight="medium">{patient.firstName} {patient.lastName}</Text>
+                      </Button>
+                    ))}
+                  </Flex>
+                ) : patientSearch ? (
+                  <Text size="2" color="gray">No patients found</Text>
+                ) : (
+                  <Text size="2" color="gray">Start typing to search...</Text>
+                )}
+              </Popover.Content>
+            </Popover.Root>
             {formData.patient && !selectedPatient && (
               <p className="mt-1 text-xs text-red-600">Please select a valid patient from the list</p>
             )}
@@ -316,14 +337,14 @@ export default function VisitForm({
 
       {/* Tabs for different note formats */}
       <div>
-        <nav className="flex">
+        <nav className="flex -mb-px">
           <button
             type="button"
             onClick={() => setActiveTab('soap')}
-            className={`py-2 px-4 text-sm font-medium border-b-2 ${
+            className={`py-2 px-4 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'soap'
                 ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
             SOAP Notes
@@ -331,10 +352,10 @@ export default function VisitForm({
           <button
             type="button"
             onClick={() => setActiveTab('traditional')}
-            className={`py-2 px-4 text-sm font-medium border-b-2 ${
+            className={`py-2 px-4 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'traditional'
                 ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
             Traditional Format
@@ -342,10 +363,10 @@ export default function VisitForm({
           <button
             type="button"
             onClick={() => setActiveTab('treatment')}
-            className={`py-2 px-4 text-sm font-medium border-b-2 ${
+            className={`py-2 px-4 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'treatment'
                 ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
             Treatment Plan
@@ -358,7 +379,7 @@ export default function VisitForm({
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              S - Subjective (Patient's description of symptoms)
+              S - Subjective (Patient&apos;s description of symptoms)
             </label>
             <textarea
               value={formData.soapNotes?.subjective || ''}
@@ -631,24 +652,25 @@ export default function VisitForm({
                       className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="flex items-end space-x-2">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
+                  <Flex align="end" gap="2">
+                    <Flex align="center" gap="2">
+                      <Checkbox
                         checked={diagnosis.primary || false}
-                        onChange={(e) => updateDiagnosis(index, 'primary', e.target.checked)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        onCheckedChange={(checked) => updateDiagnosis(index, 'primary', checked as boolean)}
+                        size="1"
                       />
-                      <label className="ml-2 text-xs text-gray-700">Primary</label>
-                    </div>
-                    <button
+                      <Text size="1">Primary</Text>
+                    </Flex>
+                    <Button
                       type="button"
                       onClick={() => removeDiagnosis(index)}
-                      className="px-2 py-1 text-xs text-red-600 hover:text-red-700"
+                      variant="soft"
+                      color="red"
+                      size="1"
                     >
                       Remove
-                    </button>
-                  </div>
+                    </Button>
+                  </Flex>
                 </div>
               </div>
             ))}
@@ -862,19 +884,19 @@ export default function VisitForm({
       </div>
 
       {/* Form Actions */}
-      <div className="flex justify-end space-x-2 pt-3">
+      <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
             Cancel
           </button>
         )}
         <button
           type="submit"
-          className="px-3 py-1.5 border border-transparent rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Save Visit
         </button>

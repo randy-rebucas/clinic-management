@@ -6,8 +6,6 @@ import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { sendSMS } from '@/lib/sms';
 import { sendEmail, generateLabResultEmail } from '@/lib/email';
 import { createLabResultNotification } from '@/lib/notifications';
-import { sendEmail, generateLabResultEmail } from '@/lib/email';
-import { createLabResultNotification } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,

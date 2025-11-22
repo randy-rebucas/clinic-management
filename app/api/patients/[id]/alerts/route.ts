@@ -36,9 +36,9 @@ export async function GET(
 
     // Check for allergies
     if (patient.allergies && patient.allergies.length > 0) {
-      const hasSevereAllergy = patient.allergies.some((allergy) => {
+      const hasSevereAllergy = patient.allergies.some((allergy: any) => {
         if (typeof allergy === 'object' && allergy.severity) {
-          return allergy.severity.toLowerCase() === 'severe' || allergy.severity.toLowerCase() === 'high';
+          return String(allergy.severity).toLowerCase() === 'severe' || String(allergy.severity).toLowerCase() === 'high';
         }
         return false;
       });
@@ -71,8 +71,8 @@ export async function GET(
     });
 
     if (unpaidInvoices.length > 0) {
-      const totalUnpaid = unpaidInvoices.reduce((sum, invoice) => {
-        const paid = invoice.payments?.reduce((pSum, payment) => pSum + (payment.amount || 0), 0) || 0;
+      const totalUnpaid = unpaidInvoices.reduce((sum: number, invoice: any) => {
+        const paid = invoice.payments?.reduce((pSum: number, payment: any) => pSum + (payment.amount || 0), 0) || 0;
         const total = invoice.total || 0;
         return sum + (total - paid);
       }, 0);
@@ -98,7 +98,7 @@ export async function GET(
     // Check for critical pre-existing conditions
     if (patient.preExistingConditions && patient.preExistingConditions.length > 0) {
       const criticalConditions = patient.preExistingConditions.filter(
-        (condition) => condition.status === 'active' || condition.status === 'chronic'
+        (condition: any) => condition.status === 'active' || condition.status === 'chronic'
       );
 
       if (criticalConditions.length > 0) {

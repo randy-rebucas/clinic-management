@@ -17,11 +17,20 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
+    
+    // Validate ObjectId format
+    const mongoose = await import('mongoose');
+    if (!mongoose.default.Types.ObjectId.isValid(id)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid prescription ID format' },
+        { status: 400 }
+      );
+    }
+
     const prescription = await Prescription.findById(id)
       .populate('patient', 'firstName lastName patientCode email phone dateOfBirth')
       .populate('prescribedBy', 'name email')
-      .populate('visit', 'visitCode date')
-      .populate('medications.medicineId');
+      .populate('visit', 'visitCode date');
 
     if (!prescription) {
       return NextResponse.json(
@@ -30,11 +39,45 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ success: true, data: prescription });
+    // Convert to plain object for JSON serialization
+    let prescriptionData: any;
+    if (prescription && typeof prescription.toObject === 'function') {
+      prescriptionData = prescription.toObject();
+    } else {
+      prescriptionData = prescription;
+    }
+    
+    // Optionally populate medicineId references if they exist (non-blocking)
+    if (prescriptionData.medications && Array.isArray(prescriptionData.medications)) {
+      const Medicine = mongoose.default.models.Medicine;
+      if (Medicine) {
+        // Use Promise.all for parallel fetching, but don't fail if any fail
+        const medicinePromises = prescriptionData.medications
+          .filter((med: any) => med.medicineId && mongoose.default.Types.ObjectId.isValid(med.medicineId))
+          .map(async (medication: any) => {
+            try {
+              const medicine = await Medicine.findById(medication.medicineId)
+                .select('name genericName form strength')
+                .lean();
+              if (medicine) {
+                medication.medicine = medicine;
+              }
+            } catch (err) {
+              // Silently skip if medicine not found - not critical
+            }
+          });
+        
+        // Wait for all medicine lookups, but don't fail if some fail
+        await Promise.allSettled(medicinePromises);
+      }
+    }
+
+    return NextResponse.json({ success: true, data: prescriptionData });
   } catch (error: any) {
     console.error('Error fetching prescription:', error);
+    const errorMessage = error.message || error.toString() || 'Failed to fetch prescription';
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch prescription' },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }

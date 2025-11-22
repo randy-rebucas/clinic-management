@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
+import { TextField, Select, TextArea, Button, Card, Flex, Box, Text } from '@radix-ui/themes';
 
 interface AllergyEntry {
   substance: string;
@@ -171,589 +172,623 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
   return (
     <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
       {/* Personal Information */}
-      <fieldset className="border border-gray-300 rounded-lg p-3 bg-gradient-to-br from-white to-gray-50/50 shadow-sm">
-        <legend className="px-2 text-sm font-bold text-gray-800 bg-white rounded">Personal Information</legend>
-        <div className="mt-2 space-y-2">
-          {/* Name Fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">
-                First Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.firstName}
-                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">Middle Name</label>
-              <input
-                type="text"
-                value={formData.middleName}
-                onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">
-                Last Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.lastName}
-                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">Suffix</label>
-              <input
-                type="text"
-                value={formData.suffix}
-                onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
-                placeholder="Jr., Sr., III"
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-              />
-            </div>
-          </div>
-          
-          {/* Demographics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 pt-1">
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">
-                Date of Birth <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="date"
-                required
-                value={formData.dateOfBirth}
-                onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">Sex</label>
-              <select
-                value={formData.sex}
-                onChange={(e) => setFormData({ ...formData, sex: e.target.value as any })}
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-              >
-                <option value="unknown">Unknown</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">Civil Status</label>
-              <input
-                type="text"
-                value={formData.civilStatus}
-                onChange={(e) => setFormData({ ...formData, civilStatus: e.target.value })}
-                placeholder="Single, Married, Divorced, etc."
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">Nationality</label>
-              <input
-                type="text"
-                value={formData.nationality}
-                onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-              />
-            </div>
-            <div className="space-y-1 md:col-span-2 lg:col-span-1">
-              <label className="block text-xs font-semibold text-gray-700">Occupation</label>
-              <input
-                type="text"
-                value={formData.occupation}
-                onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-              />
-            </div>
-          </div>
-        </div>
-      </fieldset>
+      <Card>
+        <Box p="3">
+          <Text size="3" weight="bold" mb="3" as="div">Personal Information</Text>
+          <Flex direction="column" gap="3">
+            {/* Name Fields */}
+            <Flex direction={{ initial: 'column', md: 'row' }} gap="2" wrap="wrap">
+              <Box flexGrow="1" minWidth="150px">
+                <Text size="1" weight="medium" mb="1" as="div">
+                  First Name <Text color="red">*</Text>
+                </Text>
+                <TextField.Root size="2">
+                  <input
+                    required
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+              <Box flexGrow="1" minWidth="150px">
+                <Text size="1" weight="medium" mb="1" as="div">Middle Name</Text>
+                <TextField.Root size="2">
+                  <input
+                    value={formData.middleName}
+                    onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+              <Box flexGrow="1" minWidth="150px">
+                <Text size="1" weight="medium" mb="1" as="div">
+                  Last Name <Text color="red">*</Text>
+                </Text>
+                <TextField.Root size="2">
+                  <input
+                    required
+                    value={formData.lastName}
+                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+              <Box flexGrow="1" minWidth="150px">
+                <Text size="1" weight="medium" mb="1" as="div">Suffix</Text>
+                <TextField.Root size="2">
+                  <input
+                    value={formData.suffix}
+                    onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
+                    placeholder="Jr., Sr., III"
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+            </Flex>
+            
+            {/* Demographics */}
+            <Flex direction={{ initial: 'column', md: 'row' }} gap="2" wrap="wrap">
+              <Box flexGrow="1" minWidth="150px">
+                <Text size="1" weight="medium" mb="1" as="div">
+                  Date of Birth <Text color="red">*</Text>
+                </Text>
+                <TextField.Root size="2">
+                  <input
+                    type="date"
+                    required
+                    value={formData.dateOfBirth}
+                    onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+              <Box flexGrow="1" minWidth="150px">
+                <Text size="1" weight="medium" mb="1" as="div">Sex</Text>
+                <Select.Root
+                  value={formData.sex}
+                  onValueChange={(value) => setFormData({ ...formData, sex: value as any })}
+                >
+                  <Select.Trigger />
+                  <Select.Content>
+                    <Select.Item value="unknown">Unknown</Select.Item>
+                    <Select.Item value="male">Male</Select.Item>
+                    <Select.Item value="female">Female</Select.Item>
+                    <Select.Item value="other">Other</Select.Item>
+                  </Select.Content>
+                </Select.Root>
+              </Box>
+              <Box flexGrow="1" minWidth="150px">
+                <Text size="1" weight="medium" mb="1" as="div">Civil Status</Text>
+                <TextField.Root size="2">
+                  <input
+                    value={formData.civilStatus}
+                    onChange={(e) => setFormData({ ...formData, civilStatus: e.target.value })}
+                    placeholder="Single, Married, Divorced, etc."
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+              <Box flexGrow="1" minWidth="150px">
+                <Text size="1" weight="medium" mb="1" as="div">Nationality</Text>
+                <TextField.Root size="2">
+                  <input
+                    value={formData.nationality}
+                    onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+              <Box flexGrow="1" minWidth="150px">
+                <Text size="1" weight="medium" mb="1" as="div">Occupation</Text>
+                <TextField.Root size="2">
+                  <input
+                    value={formData.occupation}
+                    onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+            </Flex>
+          </Flex>
+        </Box>
+      </Card>
 
       {/* Contact & Address Information */}
-      <fieldset className="border border-gray-300 rounded-lg p-3 bg-gradient-to-br from-white to-gray-50/50 shadow-sm">
-        <legend className="px-2 text-sm font-bold text-gray-800 bg-white rounded">Contact & Address</legend>
-        <div className="mt-2 space-y-2">
-          {/* Contact Info */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">
-                Email <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="email"
-                required
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">
-                Phone <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="tel"
-                required
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-              />
-            </div>
-          </div>
+      <Card>
+        <Box p="3">
+          <Text size="3" weight="bold" mb="3" as="div">Contact & Address</Text>
+          <Flex direction="column" gap="3">
+            {/* Contact Info */}
+            <Flex direction={{ initial: 'column', md: 'row' }} gap="2">
+              <Box flexGrow="1">
+                <Text size="1" weight="medium" mb="1" as="div">
+                  Email <Text color="red">*</Text>
+                </Text>
+                <TextField.Root size="2">
+                  <input
+                    type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+              <Box flexGrow="1">
+                <Text size="1" weight="medium" mb="1" as="div">
+                  Phone <Text color="red">*</Text>
+                </Text>
+                <TextField.Root size="2">
+                  <input
+                    type="tel"
+                    required
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+            </Flex>
 
-          {/* Address Fields */}
-          <div className="pt-2 border-t border-gray-200">
-            <h4 className="text-xs font-semibold text-gray-700 mb-2">Address</h4>
-            <div className="space-y-2">
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-gray-700">
-                  Street Address <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.address.street}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      address: { ...formData.address, street: e.target.value },
-                    })
-                  }
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-gray-700">
-                    City <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.address.city}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        address: { ...formData.address, city: e.target.value },
-                      })
-                    }
-                    className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-gray-700">
-                    State <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.address.state}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        address: { ...formData.address, state: e.target.value },
-                      })
-                    }
-                    className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-gray-700">
-                    Zip Code <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.address.zipCode}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        address: { ...formData.address, zipCode: e.target.value },
-                      })
-                    }
-                    className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </fieldset>
+            {/* Address Fields */}
+            <Box pt="3" style={{ borderTop: '1px solid var(--gray-6)' }}>
+              <Text size="2" weight="medium" mb="2" as="div">Address</Text>
+              <Flex direction="column" gap="2">
+                <Box>
+                  <Text size="1" weight="medium" mb="1" as="div">
+                    Street Address <Text color="red">*</Text>
+                  </Text>
+                  <TextField.Root size="2">
+                    <input
+                      required
+                      value={formData.address.street}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          address: { ...formData.address, street: e.target.value },
+                        })
+                      }
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Flex direction={{ initial: 'column', md: 'row' }} gap="2">
+                  <Box flexGrow="1">
+                    <Text size="1" weight="medium" mb="1" as="div">
+                      City <Text color="red">*</Text>
+                    </Text>
+                    <TextField.Root size="2">
+                      <input
+                        required
+                        value={formData.address.city}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            address: { ...formData.address, city: e.target.value },
+                          })
+                        }
+                        style={{ all: 'unset', flex: 1 }}
+                      />
+                    </TextField.Root>
+                  </Box>
+                  <Box flexGrow="1">
+                    <Text size="1" weight="medium" mb="1" as="div">
+                      State <Text color="red">*</Text>
+                    </Text>
+                    <TextField.Root size="2">
+                      <input
+                        required
+                        value={formData.address.state}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            address: { ...formData.address, state: e.target.value },
+                          })
+                        }
+                        style={{ all: 'unset', flex: 1 }}
+                      />
+                    </TextField.Root>
+                  </Box>
+                  <Box flexGrow="1">
+                    <Text size="1" weight="medium" mb="1" as="div">
+                      Zip Code <Text color="red">*</Text>
+                    </Text>
+                    <TextField.Root size="2">
+                      <input
+                        required
+                        value={formData.address.zipCode}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            address: { ...formData.address, zipCode: e.target.value },
+                          })
+                        }
+                        style={{ all: 'unset', flex: 1 }}
+                      />
+                    </TextField.Root>
+                  </Box>
+                </Flex>
+              </Flex>
+            </Box>
+          </Flex>
+        </Box>
+      </Card>
 
       {/* Emergency Contact & Identifiers */}
-      <fieldset className="border border-gray-300 rounded-lg p-3 bg-gradient-to-br from-white to-gray-50/50 shadow-sm">
-        <legend className="px-2 text-sm font-bold text-gray-800 bg-white rounded">Emergency Contact & Identifiers</legend>
-        <div className="mt-2 space-y-2">
-          {/* Emergency Contact */}
-          <div>
-            <h4 className="text-xs font-semibold text-gray-700 mb-2">Emergency Contact</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-gray-700">
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.emergencyContact.name}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      emergencyContact: { ...formData.emergencyContact, name: e.target.value },
-                    })
-                  }
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-gray-700">
-                  Phone <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="tel"
-                  required
-                  value={formData.emergencyContact.phone}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      emergencyContact: { ...formData.emergencyContact, phone: e.target.value },
-                    })
-                  }
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-gray-700">
-                  Relationship <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.emergencyContact.relationship}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      emergencyContact: {
-                        ...formData.emergencyContact,
-                        relationship: e.target.value,
-                      },
-                    })
-                  }
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                />
-              </div>
-            </div>
-          </div>
+      <Card>
+        <Box p="3">
+          <Text size="3" weight="bold" mb="3" as="div">Emergency Contact & Identifiers</Text>
+          <Flex direction="column" gap="3">
+            {/* Emergency Contact */}
+            <Box>
+              <Text size="2" weight="medium" mb="2" as="div">Emergency Contact</Text>
+              <Flex direction={{ initial: 'column', md: 'row' }} gap="2">
+                <Box flexGrow="1">
+                  <Text size="1" weight="medium" mb="1" as="div">
+                    Name <Text color="red">*</Text>
+                  </Text>
+                  <TextField.Root size="2">
+                    <input
+                      required
+                      value={formData.emergencyContact.name}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          emergencyContact: { ...formData.emergencyContact, name: e.target.value },
+                        })
+                      }
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1">
+                  <Text size="1" weight="medium" mb="1" as="div">
+                    Phone <Text color="red">*</Text>
+                  </Text>
+                  <TextField.Root size="2" type="tel">
+                    <input
+                      type="tel"
+                      required
+                      value={formData.emergencyContact.phone}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          emergencyContact: { ...formData.emergencyContact, phone: e.target.value },
+                        })
+                      }
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1">
+                  <Text size="1" weight="medium" mb="1" as="div">
+                    Relationship <Text color="red">*</Text>
+                  </Text>
+                  <TextField.Root size="2">
+                    <input
+                      required
+                      value={formData.emergencyContact.relationship}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          emergencyContact: {
+                            ...formData.emergencyContact,
+                            relationship: e.target.value,
+                          },
+                        })
+                      }
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+              </Flex>
+            </Box>
 
-          {/* Identifiers */}
-          <div className="pt-2 border-t border-gray-200">
-            <h4 className="text-xs font-semibold text-gray-700 mb-2">Identifiers</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-gray-700">PhilHealth ID</label>
-                <input
-                  type="text"
-                  value={formData.identifiers?.philHealth || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      identifiers: { ...formData.identifiers, philHealth: e.target.value },
-                    })
-                  }
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-gray-700">Government ID</label>
-                <input
-                  type="text"
-                  value={formData.identifiers?.govId || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      identifiers: { ...formData.identifiers, govId: e.target.value },
-                    })
-                  }
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </fieldset>
+            {/* Identifiers */}
+            <Box pt="3" style={{ borderTop: '1px solid var(--gray-6)' }}>
+              <Text size="2" weight="medium" mb="2" as="div">Identifiers</Text>
+              <Flex direction={{ initial: 'column', md: 'row' }} gap="2">
+                <Box flexGrow="1">
+                  <Text size="1" weight="medium" mb="1" as="div">PhilHealth ID</Text>
+                  <TextField.Root size="2">
+                    <input
+                      value={formData.identifiers?.philHealth || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          identifiers: { ...formData.identifiers, philHealth: e.target.value },
+                        })
+                      }
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1">
+                  <Text size="1" weight="medium" mb="1" as="div">Government ID</Text>
+                  <TextField.Root size="2">
+                    <input
+                      value={formData.identifiers?.govId || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          identifiers: { ...formData.identifiers, govId: e.target.value },
+                        })
+                      }
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+              </Flex>
+            </Box>
+          </Flex>
+        </Box>
+      </Card>
 
       {/* Medical Information */}
-      <fieldset className="border border-gray-300 rounded-lg p-3 bg-gradient-to-br from-white to-gray-50/50 shadow-sm">
-        <legend className="px-2 text-sm font-bold text-gray-800 bg-white rounded">Medical Information</legend>
-        <div className="mt-2 space-y-2">
-          <div className="space-y-1">
-            <label className="block text-xs font-semibold text-gray-700">Medical History</label>
-            <textarea
-              value={formData.medicalHistory}
-              onChange={(e) => setFormData({ ...formData, medicalHistory: e.target.value })}
-              rows={3}
-              placeholder="Enter patient's medical history, previous surgeries, chronic conditions, etc."
-              className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none resize-none"
-            />
-          </div>
+      <Card>
+        <Box p="3">
+          <Text size="3" weight="bold" mb="3" as="div">Medical Information</Text>
+          <Flex direction="column" gap="3">
+            <Box>
+              <Text size="1" weight="medium" mb="1" as="div">Medical History</Text>
+              <TextArea
+                value={formData.medicalHistory}
+                onChange={(e) => setFormData({ ...formData, medicalHistory: e.target.value })}
+                rows={3}
+                placeholder="Enter patient&apos;s medical history, previous surgeries, chronic conditions, etc."
+                size="2"
+              />
+            </Box>
 
-          {/* Allergies */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-xs font-semibold text-gray-700">Allergies</label>
-              <button
-                type="button"
-                onClick={addAllergy}
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded transition-colors"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add
-              </button>
-            </div>
-            {formData.allergies.length === 0 ? (
-              <div className="text-center py-3 px-3 bg-gray-50 rounded border border-dashed border-gray-300">
-                <p className="text-xs text-gray-500">No allergies recorded.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {formData.allergies.map((allergy, index) => (
-                  <div key={index} className="bg-white border border-gray-200 rounded p-2">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                      <div className="space-y-0.5">
-                        <label className="block text-xs font-semibold text-gray-600">Substance</label>
-                        <input
-                          type="text"
-                          value={allergy.substance}
-                          onChange={(e) => updateAllergy(index, 'substance', e.target.value)}
-                          placeholder="e.g., Penicillin"
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                        />
-                      </div>
-                      <div className="space-y-0.5">
-                        <label className="block text-xs font-semibold text-gray-600">Reaction</label>
-                        <input
-                          type="text"
-                          value={allergy.reaction}
-                          onChange={(e) => updateAllergy(index, 'reaction', e.target.value)}
-                          placeholder="e.g., Rash"
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                        />
-                      </div>
-                      <div className="space-y-0.5">
-                        <label className="block text-xs font-semibold text-gray-600">Severity</label>
-                        <select
-                          value={allergy.severity}
-                          onChange={(e) => updateAllergy(index, 'severity', e.target.value)}
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                        >
-                          <option value="unknown">Unknown</option>
-                          <option value="mild">Mild</option>
-                          <option value="moderate">Moderate</option>
-                          <option value="severe">Severe</option>
-                          <option value="life-threatening">Life-threatening</option>
-                        </select>
-                      </div>
-                      <div className="flex items-end">
-                        <button
-                          type="button"
-                          onClick={() => removeAllergy(index)}
-                          className="w-full px-2 py-1 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-200 transition-colors"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+            {/* Allergies */}
+            <Box>
+              <Flex justify="between" align="center" mb="2">
+                <Text size="1" weight="medium" as="div">Allergies</Text>
+                <Button type="button" onClick={addAllergy} size="1" variant="soft" color="blue">
+                  Add
+                </Button>
+              </Flex>
+              {formData.allergies.length === 0 ? (
+                <Box p="3" style={{ textAlign: 'center', border: '1px dashed var(--gray-6)', borderRadius: 'var(--radius-2)' }}>
+                  <Text size="1" color="gray">No allergies recorded.</Text>
+                </Box>
+              ) : (
+                <Flex direction="column" gap="2">
+                  {formData.allergies.map((allergy, index) => (
+                    <Card key={index} size="1">
+                      <Flex direction={{ initial: 'column', md: 'row' }} gap="2" wrap="wrap">
+                        <Box flexGrow="1" minWidth="150px">
+                          <Text size="1" weight="medium" mb="1" as="div">Substance</Text>
+                          <TextField.Root size="1">
+                            <input
+                              value={allergy.substance}
+                              onChange={(e) => updateAllergy(index, 'substance', e.target.value)}
+                              placeholder="e.g., Penicillin"
+                              style={{ all: 'unset', flex: 1 }}
+                            />
+                          </TextField.Root>
+                        </Box>
+                        <Box flexGrow="1" minWidth="150px">
+                          <Text size="1" weight="medium" mb="1" as="div">Reaction</Text>
+                          <TextField.Root size="1">
+                            <input
+                              value={allergy.reaction}
+                              onChange={(e) => updateAllergy(index, 'reaction', e.target.value)}
+                              placeholder="e.g., Rash"
+                              style={{ all: 'unset', flex: 1 }}
+                            />
+                          </TextField.Root>
+                        </Box>
+                        <Box flexGrow="1" minWidth="150px">
+                          <Text size="1" weight="medium" mb="1" as="div">Severity</Text>
+                          <Select.Root
+                            value={allergy.severity}
+                            onValueChange={(value) => updateAllergy(index, 'severity', value)}
+                          >
+                            <Select.Trigger />
+                            <Select.Content>
+                              <Select.Item value="unknown">Unknown</Select.Item>
+                              <Select.Item value="mild">Mild</Select.Item>
+                              <Select.Item value="moderate">Moderate</Select.Item>
+                              <Select.Item value="severe">Severe</Select.Item>
+                              <Select.Item value="life-threatening">Life-threatening</Select.Item>
+                            </Select.Content>
+                          </Select.Root>
+                        </Box>
+                        <Box flexShrink="0" style={{ display: 'flex', alignItems: 'flex-end' }}>
+                          <Button
+                            type="button"
+                            onClick={() => removeAllergy(index)}
+                            size="1"
+                            variant="soft"
+                            color="red"
+                          >
+                            Remove
+                          </Button>
+                        </Box>
+                      </Flex>
+                    </Card>
+                  ))}
+                </Flex>
+              )}
+            </Box>
           
-          {/* Pre-existing Conditions */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-xs font-semibold text-gray-700">Pre-existing Conditions</label>
-              <button
-                type="button"
-                onClick={() => {
-                  setFormData({
-                    ...formData,
-                    preExistingConditions: [
-                      ...formData.preExistingConditions,
-                      { condition: '', status: 'active' },
-                    ],
-                  });
-                }}
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded transition-colors"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add
-              </button>
-            </div>
-            {formData.preExistingConditions.length === 0 ? (
-              <div className="text-center py-3 px-3 bg-gray-50 rounded border border-dashed border-gray-300">
-                <p className="text-xs text-gray-500">No pre-existing conditions recorded.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {formData.preExistingConditions.map((condition, index) => (
-                  <div key={index} className="bg-white border border-gray-200 rounded p-2">
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
-                      <div className="space-y-0.5 md:col-span-2">
-                        <label className="block text-xs font-semibold text-gray-600">Condition</label>
-                        <input
-                          type="text"
-                          value={condition.condition}
-                          onChange={(e) => {
-                            const updated = [...formData.preExistingConditions];
-                            updated[index] = { ...updated[index], condition: e.target.value };
-                            setFormData({ ...formData, preExistingConditions: updated });
-                          }}
-                          placeholder="e.g., Diabetes"
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                        />
-                      </div>
-                      <div className="space-y-0.5">
-                        <label className="block text-xs font-semibold text-gray-600">Status</label>
-                        <select
-                          value={condition.status}
-                          onChange={(e) => {
-                            const updated = [...formData.preExistingConditions];
-                            updated[index] = { ...updated[index], status: e.target.value as any };
-                            setFormData({ ...formData, preExistingConditions: updated });
-                          }}
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                        >
-                          <option value="active">Active</option>
-                          <option value="chronic">Chronic</option>
-                          <option value="resolved">Resolved</option>
-                        </select>
-                      </div>
-                      <div className="space-y-0.5">
-                        <label className="block text-xs font-semibold text-gray-600">Date</label>
-                        <input
-                          type="date"
-                          value={condition.diagnosisDate || ''}
-                          onChange={(e) => {
-                            const updated = [...formData.preExistingConditions];
-                            updated[index] = { ...updated[index], diagnosisDate: e.target.value };
-                            setFormData({ ...formData, preExistingConditions: updated });
-                          }}
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-xs bg-white transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none"
-                        />
-                      </div>
-                      <div className="flex items-end">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormData({
-                              ...formData,
-                              preExistingConditions: formData.preExistingConditions.filter((_, i) => i !== index),
-                            });
-                          }}
-                          className="w-full px-2 py-1 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-200 transition-colors"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Family History */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-xs font-semibold text-gray-700">Family History</label>
-              <button
-                type="button"
-                onClick={() => {
-                  const condition = prompt('Enter condition (e.g., Diabetes):');
-                  if (condition && condition.trim()) {
-                    const relation = prompt('Enter family relation (e.g., Father, Mother):') || '';
+            {/* Pre-existing Conditions */}
+            <Box>
+              <Flex justify="between" align="center" mb="2">
+                <Text size="1" weight="medium" as="div">Pre-existing Conditions</Text>
+                <Button
+                  type="button"
+                  onClick={() => {
                     setFormData({
                       ...formData,
-                      familyHistory: {
-                        ...formData.familyHistory,
-                        [condition.trim()]: relation.trim(),
-                      },
+                      preExistingConditions: [
+                        ...formData.preExistingConditions,
+                        { condition: '', status: 'active' },
+                      ],
                     });
-                  }
-                }}
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded transition-colors"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add
-              </button>
-            </div>
-            {Object.keys(formData.familyHistory).length === 0 ? (
-              <div className="text-center py-3 px-3 bg-gray-50 rounded border border-dashed border-gray-300">
-                <p className="text-xs text-gray-500">No family history recorded.</p>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                {Object.entries(formData.familyHistory).map(([condition, relation], index) => (
-                  <div key={index} className="flex items-center justify-between p-2 bg-white border border-gray-200 rounded shadow-sm">
-                    <div className="flex-1">
-                      <span className="text-xs font-semibold text-gray-900">{condition}</span>
-                      {relation && <span className="text-xs text-gray-600 ml-2">({relation})</span>}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const updated = { ...formData.familyHistory };
-                        delete updated[condition];
-                        setFormData({ ...formData, familyHistory: updated });
-                      }}
-                      className="px-2 py-1 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-200 transition-colors"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </fieldset>
+                  }}
+                  size="1"
+                  variant="soft"
+                  color="blue"
+                >
+                  Add
+                </Button>
+              </Flex>
+              {formData.preExistingConditions.length === 0 ? (
+                <Box p="3" style={{ textAlign: 'center', border: '1px dashed var(--gray-6)', borderRadius: 'var(--radius-2)' }}>
+                  <Text size="1" color="gray">No pre-existing conditions recorded.</Text>
+                </Box>
+              ) : (
+                <Flex direction="column" gap="2">
+                  {formData.preExistingConditions.map((condition, index) => (
+                    <Card key={index} size="1">
+                      <Flex direction={{ initial: 'column', md: 'row' }} gap="2" wrap="wrap">
+                        <Box flexGrow="2" minWidth="200px">
+                          <Text size="1" weight="medium" mb="1" as="div">Condition</Text>
+                          <TextField.Root size="1">
+                            <input
+                              value={condition.condition}
+                              onChange={(e) => {
+                                const updated = [...formData.preExistingConditions];
+                                updated[index] = { ...updated[index], condition: e.target.value };
+                                setFormData({ ...formData, preExistingConditions: updated });
+                              }}
+                              placeholder="e.g., Diabetes"
+                              style={{ all: 'unset', flex: 1 }}
+                            />
+                          </TextField.Root>
+                        </Box>
+                        <Box flexGrow="1" minWidth="120px">
+                          <Text size="1" weight="medium" mb="1" as="div">Status</Text>
+                          <Select.Root
+                            value={condition.status}
+                            onValueChange={(value) => {
+                              const updated = [...formData.preExistingConditions];
+                              updated[index] = { ...updated[index], status: value as any };
+                              setFormData({ ...formData, preExistingConditions: updated });
+                            }}
+                          >
+                            <Select.Trigger />
+                            <Select.Content>
+                              <Select.Item value="active">Active</Select.Item>
+                              <Select.Item value="chronic">Chronic</Select.Item>
+                              <Select.Item value="resolved">Resolved</Select.Item>
+                            </Select.Content>
+                          </Select.Root>
+                        </Box>
+                        <Box flexGrow="1" minWidth="120px">
+                          <Text size="1" weight="medium" mb="1" as="div">Date</Text>
+                <TextField.Root size="1">
+                  <input
+                    type="date"
+                    value={condition.diagnosisDate || ''}
+                    onChange={(e) => {
+                      const updated = [...formData.preExistingConditions];
+                      updated[index] = { ...updated[index], diagnosisDate: e.target.value };
+                      setFormData({ ...formData, preExistingConditions: updated });
+                    }}
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+                        </Box>
+                        <Box flexShrink="0" style={{ display: 'flex', alignItems: 'flex-end' }}>
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setFormData({
+                                ...formData,
+                                preExistingConditions: formData.preExistingConditions.filter((_, i) => i !== index),
+                              });
+                            }}
+                            size="1"
+                            variant="soft"
+                            color="red"
+                          >
+                            Remove
+                          </Button>
+                        </Box>
+                      </Flex>
+                    </Card>
+                  ))}
+                </Flex>
+              )}
+            </Box>
+
+            {/* Family History */}
+            <Box>
+              <Flex justify="between" align="center" mb="2">
+                <Text size="1" weight="medium" as="div">Family History</Text>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const condition = prompt('Enter condition (e.g., Diabetes):');
+                    if (condition && condition.trim()) {
+                      const relation = prompt('Enter family relation (e.g., Father, Mother):') || '';
+                      setFormData({
+                        ...formData,
+                        familyHistory: {
+                          ...formData.familyHistory,
+                          [condition.trim()]: relation.trim(),
+                        },
+                      });
+                    }
+                  }}
+                  size="1"
+                  variant="soft"
+                  color="blue"
+                >
+                  Add
+                </Button>
+              </Flex>
+              {Object.keys(formData.familyHistory).length === 0 ? (
+                <Box p="3" style={{ textAlign: 'center', border: '1px dashed var(--gray-6)', borderRadius: 'var(--radius-2)' }}>
+                  <Text size="1" color="gray">No family history recorded.</Text>
+                </Box>
+              ) : (
+                <Flex direction="column" gap="1">
+                  {Object.entries(formData.familyHistory).map(([condition, relation], index) => (
+                    <Card key={index} size="1">
+                      <Flex justify="between" align="center">
+                        <Box flexGrow="1">
+                          <Text size="1" weight="medium">{condition}</Text>
+                          {relation && <Text size="1" color="gray" ml="2">({relation})</Text>}
+                        </Box>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...formData.familyHistory };
+                            delete updated[condition];
+                            setFormData({ ...formData, familyHistory: updated });
+                          }}
+                          size="1"
+                          variant="soft"
+                          color="red"
+                        >
+                          Remove
+                        </Button>
+                      </Flex>
+                    </Card>
+                  ))}
+                </Flex>
+              )}
+            </Box>
+          </Flex>
+        </Box>
+      </Card>
 
       {/* Form Actions */}
-      <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
+      <Flex justify="end" gap="2" pt="3" style={{ borderTop: '1px solid var(--gray-6)' }}>
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-all focus:outline-none focus:ring-1 focus:ring-gray-300"
-          >
+          <Button type="button" onClick={onCancel} variant="soft" size="2">
             Cancel
-          </button>
+          </Button>
         )}
-        <button
-          type="submit"
-          className="px-4 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded hover:from-blue-700 hover:to-blue-800 shadow-sm hover:shadow transition-all focus:outline-none focus:ring-1 focus:ring-blue-500"
-        >
+        <Button type="submit" size="2">
           Save Patient
-        </button>
-      </div>
+        </Button>
+      </Flex>
     </form>
   );
 }

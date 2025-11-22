@@ -99,7 +99,7 @@ const ThirdPartyLabSchema: Schema = new Schema(
 
 const LabResultSchema: Schema = new Schema(
   {
-    visit: { type: Schema.Types.ObjectId, ref: 'Visit', index: true },
+    visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
     orderedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     orderDate: { type: Date, default: Date.now },
@@ -115,7 +115,6 @@ const LabResultSchema: Schema = new Schema(
       type: String,
       enum: ['ordered', 'in-progress', 'completed', 'reviewed', 'cancelled'],
       default: 'ordered',
-      index: true,
     },
     attachments: [AttachmentSchema],
     reviewedBy: { type: Schema.Types.ObjectId, ref: 'User' },

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
+import { Button, TextField, Select, Card, Flex, Box, Text, Badge, Callout, Checkbox, Separator, Popover } from '@radix-ui/themes';
 
 interface Patient {
   _id: string;
@@ -279,43 +280,56 @@ export default function DocumentUploadForm({
       </div>
 
       {/* Patient Selection */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">Patient (Optional)</label>
-        <div className="relative patient-search-container">
-          <input
-            type="text"
-            value={patientSearch}
-            onChange={(e) => {
-              setPatientSearch(e.target.value);
-              setShowPatientSearch(true);
-              if (!e.target.value) {
-                setFormData({ ...formData, patient: '' });
-                setSelectedPatient(null);
-              }
-            }}
-            onFocus={() => setShowPatientSearch(true)}
-            placeholder="Type to search patients..."
-            className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-          />
-          {showPatientSearch && filteredPatients.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-              {filteredPatients.map((patient) => (
-                <button
-                  key={patient._id}
-                  type="button"
-                  onClick={() => selectPatient(patient)}
-                  className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-xs transition-colors"
-                >
-                  <div className="font-medium">{patient.firstName} {patient.lastName}</div>
-                  {patient.patientCode && (
-                    <div className="text-xs text-gray-500">{patient.patientCode}</div>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <Box>
+        <Text size="1" weight="medium" mb="1" as="div">Patient (Optional)</Text>
+        <Popover.Root open={showPatientSearch} onOpenChange={setShowPatientSearch}>
+            <Popover.Trigger>
+            <TextField.Root size="1" style={{ width: '100%' }}>
+              <input
+                type="text"
+                value={patientSearch}
+                onChange={(e) => {
+                  setPatientSearch(e.target.value);
+                  setShowPatientSearch(true);
+                  if (!e.target.value) {
+                    setFormData({ ...formData, patient: '' });
+                    setSelectedPatient(null);
+                  }
+                }}
+                onFocus={() => setShowPatientSearch(true)}
+                placeholder="Type to search patients..."
+                style={{ all: 'unset', flex: 1 }}
+              />
+            </TextField.Root>
+          </Popover.Trigger>
+          <Popover.Content style={{ width: 'var(--radix-popover-trigger-width)', maxHeight: '200px', overflowY: 'auto' }}>
+            {filteredPatients.length > 0 ? (
+              <Flex direction="column" gap="1">
+                {filteredPatients.map((patient) => (
+                  <Button
+                    key={patient._id}
+                    variant="ghost"
+                    onClick={() => {
+                      selectPatient(patient);
+                      setShowPatientSearch(false);
+                    }}
+                    style={{ justifyContent: 'flex-start', textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start' }}
+                  >
+                    <Text weight="medium" size="1">{patient.firstName} {patient.lastName}</Text>
+                    {patient.patientCode && (
+                      <Text size="1" color="gray">{patient.patientCode}</Text>
+                    )}
+                  </Button>
+                ))}
+              </Flex>
+            ) : patientSearch ? (
+              <Text size="1" color="gray">No patients found</Text>
+            ) : (
+              <Text size="1" color="gray">Start typing to search...</Text>
+            )}
+          </Popover.Content>
+        </Popover.Root>
+      </Box>
 
       {/* Visit Selection */}
       {formData.patient && visits.length > 0 && (
@@ -360,18 +374,17 @@ export default function DocumentUploadForm({
       </div>
 
       {/* Scanned */}
-      <div className="flex items-center">
-        <input
-          type="checkbox"
+      <Flex align="center" gap="2">
+        <Checkbox
           id="scanned"
           checked={formData.scanned}
-          onChange={(e) => setFormData({ ...formData, scanned: e.target.checked })}
-          className="h-3.5 w-3.5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+          onCheckedChange={(checked) => setFormData({ ...formData, scanned: checked as boolean })}
+          size="1"
         />
-        <label htmlFor="scanned" className="ml-2 text-xs text-gray-700">
+        <Text as="label" htmlFor="scanned" size="1">
           This is a scanned document
-        </label>
-      </div>
+        </Text>
+      </Flex>
 
       {/* Category-specific fields */}
       {formData.category === 'referral' && (
@@ -536,17 +549,19 @@ export default function DocumentUploadForm({
       )}
 
       {/* Form Actions */}
-      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
-        >
-          Cancel
-        </button>
+      <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Cancel
+          </button>
+        )}
         <button
           type="submit"
-          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Upload Document
         </button>

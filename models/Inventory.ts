@@ -47,7 +47,6 @@ const InventoryItemSchema: Schema = new Schema(
       type: String,
       enum: ['in-stock', 'low-stock', 'out-of-stock', 'expired'],
       default: 'in-stock',
-      index: true,
     },
   },
   { timestamps: true }
@@ -62,7 +61,7 @@ InventoryItemSchema.index({ medicineId: 1 });
 InventoryItemSchema.index({ lastRestockedBy: 1 });
 
 // Pre-save hook to update status based on quantity and expiry
-InventoryItemSchema.pre('save', function (next) {
+InventoryItemSchema.pre('save', function (this: IInventoryItem, next) {
   const now = new Date();
   
   // Check expiry

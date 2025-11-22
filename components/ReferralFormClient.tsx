@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import ReferralForm from './ReferralForm';
+// Radix UI components not used - using native HTML elements
 
 interface Patient {
   _id: string;

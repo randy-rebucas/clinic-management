@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Heading, IconButton } from '@radix-ui/themes';
 
 interface Referral {
   _id: string;
@@ -69,32 +70,32 @@ export default function ReferralsPageClient() {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): 'green' | 'blue' | 'yellow' | 'red' | 'gray' => {
     switch (status) {
       case 'completed':
-        return 'bg-green-100 text-green-800';
+        return 'green';
       case 'accepted':
-        return 'bg-blue-100 text-blue-800';
+        return 'blue';
       case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'yellow';
       case 'declined':
       case 'cancelled':
-        return 'bg-red-100 text-red-800';
+        return 'red';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'gray';
     }
   };
 
-  const getUrgencyColor = (urgency: string) => {
+  const getUrgencyColor = (urgency: string): 'red' | 'orange' | 'gray' => {
     switch (urgency) {
       case 'stat':
-        return 'bg-red-100 text-red-800';
+        return 'red';
       case 'urgent':
-        return 'bg-orange-100 text-orange-800';
+        return 'orange';
       case 'routine':
-        return 'bg-gray-100 text-gray-800';
+        return 'gray';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'gray';
     }
   };
 
@@ -115,226 +116,230 @@ export default function ReferralsPageClient() {
 
   if (loading) {
     return (
-      <div className="w-full px-4 py-3">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600"></div>
-            <p className="mt-3 text-sm text-gray-600">Loading referrals...</p>
-          </div>
-        </div>
-      </div>
+      <Box p="4" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Flex direction="column" align="center" gap="3">
+          <Spinner size="3" />
+          <Text>Loading referrals...</Text>
+        </Flex>
+      </Box>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="w-full px-4 py-3">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-0.5">Referrals</h1>
-            <p className="text-gray-600 text-xs">Manage patient referrals</p>
-          </div>
-          <Link
-            href="/referrals/new"
-            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors mt-1.5 sm:mt-0"
-          >
-            <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <Box p="4">
+      {/* Header */}
+      <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3" mb="3">
+        <Box>
+          <Heading size="7" mb="1">Referrals</Heading>
+          <Text size="2" color="gray">Manage patient referrals</Text>
+        </Box>
+        <Button asChild size="3">
+          <Link href="/referrals/new">
+            <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             New Referral
           </Link>
-        </div>
+        </Button>
+      </Flex>
 
-        {/* Search and Filters */}
-        <div className="mb-2 space-y-1.5">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search by patient name, referral code, or referring doctor..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="block w-full px-2.5 py-1 pl-8 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            />
-            <svg className="absolute left-2 top-1 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1 text-gray-400 hover:text-gray-600"
+      {/* Search and Filters */}
+      <Card mb="3">
+        <Box p="3">
+          <Flex direction={{ initial: 'column', sm: 'row' }} gap="3">
+            <Box flexGrow="1">
+              <TextField.Root size="2" style={{ width: '100%' }}>
+                <TextField.Slot>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
+                  </svg>
+                </TextField.Slot>
+                <input
+                  type="text"
+                  placeholder="Search by patient name, referral code, or referring doctor..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ 
+                    all: 'unset', 
+                    flex: 1, 
+                    width: '100%',
+                    padding: '0',
+                    fontSize: 'var(--font-size-2)',
+                    lineHeight: 'var(--line-height-2)'
+                  }}
+                />
+                {searchQuery && (
+                  <TextField.Slot>
+                    <IconButton
+                      size="1"
+                      variant="ghost"
+                      onClick={() => setSearchQuery('')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                    </IconButton>
+                  </TextField.Slot>
+                )}
+              </TextField.Root>
+            </Box>
+            <Box style={{ minWidth: '180px' }}>
+              <Select.Root
+                value={filterStatus}
+                onValueChange={(value) => setFilterStatus(value)}
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="block px-2 py-1 text-xs border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">All Statuses</option>
-              <option value="pending">Pending</option>
-              <option value="accepted">Accepted</option>
-              <option value="completed">Completed</option>
-              <option value="declined">Declined</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="block px-2 py-1 text-xs border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">All Types</option>
-              <option value="doctor_to_doctor">Doctor to Doctor</option>
-              <option value="patient_to_patient">Patient to Patient</option>
-              <option value="external">External</option>
-            </select>
+                <Select.Trigger placeholder="All Statuses" />
+                <Select.Content>
+                  <Select.Item value="all">All Statuses</Select.Item>
+                  <Select.Item value="pending">Pending</Select.Item>
+                  <Select.Item value="accepted">Accepted</Select.Item>
+                  <Select.Item value="completed">Completed</Select.Item>
+                  <Select.Item value="declined">Declined</Select.Item>
+                  <Select.Item value="cancelled">Cancelled</Select.Item>
+                </Select.Content>
+              </Select.Root>
+            </Box>
+            <Box style={{ minWidth: '180px' }}>
+              <Select.Root
+                value={filterType}
+                onValueChange={(value) => setFilterType(value)}
+              >
+                <Select.Trigger placeholder="All Types" />
+                <Select.Content>
+                  <Select.Item value="all">All Types</Select.Item>
+                  <Select.Item value="doctor_to_doctor">Doctor to Doctor</Select.Item>
+                  <Select.Item value="patient_to_patient">Patient to Patient</Select.Item>
+                  <Select.Item value="external">External</Select.Item>
+                </Select.Content>
+              </Select.Root>
+            </Box>
             {(searchQuery || filterStatus !== 'all' || filterType !== 'all') && (
-              <button
+              <Button
                 onClick={() => {
                   setSearchQuery('');
                   setFilterStatus('all');
                   setFilterType('all');
                 }}
-                className="text-xs text-gray-600 hover:text-gray-900 font-medium inline-flex items-center gap-1 px-2 py-1"
+                variant="soft"
+                size="2"
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
                 Clear
-              </button>
+              </Button>
             )}
-          </div>
-        </div>
+          </Flex>
+        </Box>
+      </Card>
 
-        {/* Referrals Table */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-2.5 py-1.5 border-b border-gray-200 flex justify-between items-center">
-            <h2 className="text-xs font-semibold text-gray-900">Referrals</h2>
-            <span className="text-xs text-gray-500">
+      {/* Referrals Table */}
+      <Card>
+        <Box p="3">
+          <Flex justify="between" align="center" mb="3">
+            <Heading size="3">Referrals</Heading>
+            <Text size="2" color="gray">
               {filteredReferrals.length} {filteredReferrals.length === 1 ? 'referral' : 'referrals'}
-            </span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Referral Code
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Patient
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Referring Doctor
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Urgency
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-2 py-1 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredReferrals.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-2 py-6 text-center">
-                      <div className="flex flex-col items-center">
-                        <svg className="w-8 h-8 text-gray-400 mb-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                        </svg>
-                        <p className="text-xs font-medium text-gray-900 mb-0.5">
-                          {searchQuery || filterStatus !== 'all' || filterType !== 'all' ? 'No referrals match your filters' : 'No referrals found'}
-                        </p>
-                        <p className="text-xs text-gray-500 mb-2">
-                          {searchQuery || filterStatus !== 'all' || filterType !== 'all' ? 'Try adjusting your search or filters' : 'Create your first referral to get started'}
-                        </p>
-                        {!searchQuery && filterStatus === 'all' && filterType === 'all' && (
-                          <Link
-                            href="/referrals/new"
-                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                          >
-                            <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                            </svg>
-                            New Referral
-                          </Link>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredReferrals.map((referral) => (
-                    <tr key={referral._id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs font-medium text-gray-900">
-                        {referral.referralCode}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">
-                        {referral.patient?._id ? (
-                          <Link 
-                            href={`/patients/${referral.patient._id}`}
-                            className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                          >
+            </Text>
+          </Flex>
+          {filteredReferrals.length === 0 ? (
+            <Box p="8" style={{ textAlign: 'center' }}>
+              <Box mb="3">
+                <svg style={{ width: '48px', height: '48px', margin: '0 auto', color: 'var(--gray-9)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+              </Box>
+              <Heading size="3" mb="1">
+                {searchQuery || filterStatus !== 'all' || filterType !== 'all' ? 'No referrals match your filters' : 'No referrals found'}
+              </Heading>
+              <Text size="2" color="gray" mb="3" as="div">
+                {searchQuery || filterStatus !== 'all' || filterType !== 'all' ? 'Try adjusting your search or filters' : 'Create your first referral to get started'}
+              </Text>
+              {!searchQuery && filterStatus === 'all' && filterType === 'all' && (
+                <Button asChild>
+                  <Link href="/referrals/new">
+                    <svg style={{ width: '14px', height: '14px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    New Referral
+                  </Link>
+                </Button>
+              )}
+            </Box>
+          ) : (
+            <Table.Root>
+              <Table.Header>
+                <Table.Row>
+                  <Table.ColumnHeaderCell>Referral Code</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Patient</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Referring Doctor</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Urgency</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell style={{ textAlign: 'right' }}>Actions</Table.ColumnHeaderCell>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {filteredReferrals.map((referral) => (
+                  <Table.Row key={referral._id}>
+                    <Table.Cell>
+                      <Text size="2" weight="medium">{referral.referralCode}</Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      {referral.patient?._id ? (
+                        <Link href={`/patients/${referral.patient._id}`}>
+                          <Text size="2" weight="medium" style={{ color: 'var(--blue-9)', textDecoration: 'none' }}>
                             {referral.patient.firstName} {referral.patient.lastName}
-                          </Link>
-                        ) : (
-                          <span className="text-xs text-gray-900">
-                            {referral.patient?.firstName} {referral.patient?.lastName}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs text-gray-500">
-                        {referral.type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs text-gray-600">
-                        {referral.referringDoctor 
-                          ? `${referral.referringDoctor.firstName} ${referral.referringDoctor.lastName}`
-                          : <span className="text-gray-400">N/A</span>}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">
-                        <span className={`px-1 py-0.5 inline-flex text-xs font-semibold rounded-full ${getStatusColor(referral.status)}`}>
-                          {referral.status}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">
-                        <span className={`px-1 py-0.5 inline-flex text-xs font-semibold rounded-full ${getUrgencyColor(referral.urgency)}`}>
-                          {referral.urgency}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs text-gray-500">
-                        {new Date(referral.referredDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-right text-xs font-medium">
-                        <Link
-                          href={`/referrals/${referral._id}`}
-                          className="text-blue-600 hover:text-blue-800 hover:underline"
-                        >
-                          View →
+                          </Text>
                         </Link>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+                      ) : (
+                        <Text size="2">
+                          {referral.patient?.firstName} {referral.patient?.lastName}
+                        </Text>
+                      )}
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Text size="2" color="gray" style={{ textTransform: 'capitalize' }}>
+                        {referral.type.replace('_', ' ')}
+                      </Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      {referral.referringDoctor ? (
+                        <Text size="2">
+                          {referral.referringDoctor.firstName} {referral.referringDoctor.lastName}
+                        </Text>
+                      ) : (
+                        <Text size="2" color="gray">N/A</Text>
+                      )}
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Badge color={getStatusColor(referral.status)} size="1">
+                        {referral.status}
+                      </Badge>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Badge color={getUrgencyColor(referral.urgency)} size="1" variant="soft">
+                        {referral.urgency}
+                      </Badge>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Text size="2" color="gray">
+                        {new Date(referral.referredDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </Text>
+                    </Table.Cell>
+                    <Table.Cell style={{ textAlign: 'right' }}>
+                      <Button asChild size="1" variant="soft" color="blue">
+                        <Link href={`/referrals/${referral._id}`}>
+                          View
+                        </Link>
+                      </Button>
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table.Root>
+          )}
+        </Box>
+      </Card>
+    </Box>
   );
 }
-

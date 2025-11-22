@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     if (patientId) {
       patient = await Patient.findById(patientId);
     } else {
-      patient = await Patient.findOne({ email: user.email });
+      patient = await Patient.findOne({ email: (user as any).email });
     }
 
     if (!patient) {
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     if (patientId) {
       patient = await Patient.findById(patientId);
     } else {
-      patient = await Patient.findOne({ email: user.email });
+      patient = await Patient.findOne({ email: (user as any).email });
     }
 
     if (!patient) {

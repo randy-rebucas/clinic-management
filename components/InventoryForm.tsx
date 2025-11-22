@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
+// Radix UI components not used - using native HTML form elements
 
 interface InventoryFormProps {
   initialData?: {
@@ -293,19 +294,19 @@ export default function InventoryForm({
       </div>
 
       {/* Form Actions */}
-      <div className="flex justify-end gap-2 pt-4 border-t border-gray-200">
+      <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
             Cancel
           </button>
         )}
         <button
           type="submit"
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Add Item
         </button>

@@ -117,8 +117,8 @@ export async function POST(request: NextRequest) {
       userEmail: session.email,
       userRole: session.role,
       action: 'create',
-      resource: 'membership',
-      resourceId: membership._id,
+      resource: 'patient',
+      resourceId: membership.patient,
       description: `Created membership for patient ${patientId}`,
     });
 

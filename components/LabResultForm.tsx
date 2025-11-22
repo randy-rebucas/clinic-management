@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
+import { Button, TextField, Select, TextArea, Card, Flex, Box, Text, Badge, Callout, Checkbox, Separator, Popover } from '@radix-ui/themes';
 
 interface Patient {
   _id: string;
@@ -53,14 +54,23 @@ export default function LabResultForm({
   const [showPatientSearch, setShowPatientSearch] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
 
+  // Sync selected patient when formData.patient changes
   useEffect(() => {
     if (formData.patient) {
       const patient = patients.find((p) => p._id === formData.patient);
-      setSelectedPatient(patient || null);
-      if (patient) {
-        setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-      }
+      // Using setTimeout to avoid synchronous setState in effect
+      const timer = setTimeout(() => {
+        setSelectedPatient(patient || null);
+        if (patient) {
+          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+        }
+      }, 0);
+      return () => clearTimeout(timer);
+    } else {
+      setSelectedPatient(null);
+      setPatientSearch('');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.patient, patients]);
 
   useEffect(() => {
@@ -126,52 +136,60 @@ export default function LabResultForm({
       {/* Patient Selection */}
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">Patient *</label>
-        <div className="relative patient-search-container">
-          <input
-            type="text"
-            required
-            value={patientSearch}
-            onChange={(e) => {
-              setPatientSearch(e.target.value);
-              setShowPatientSearch(true);
-              if (!e.target.value) {
-                setFormData({ ...formData, patient: '' });
-                setSelectedPatient(null);
-              }
-            }}
-            onFocus={() => setShowPatientSearch(true)}
-            placeholder="Type to search patients..."
-            className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-          />
-          {showPatientSearch && filteredPatients.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-              {filteredPatients.map((patient) => {
-                const age = patient.dateOfBirth
-                  ? Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-                  : null;
-                return (
-                  <button
-                    key={patient._id}
-                    type="button"
-                    onClick={() => selectPatient(patient)}
-                    className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
-                  >
-                    <div className="font-medium">{patient.firstName} {patient.lastName}</div>
-                    <div className="text-xs text-gray-500">
-                      {patient.patientCode && `${patient.patientCode}`}
-                      {age && ` • Age: ${age} years`}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {showPatientSearch && patientSearch && filteredPatients.length === 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg">
-              <div className="px-3 py-2 text-sm text-gray-500">No patients found</div>
-            </div>
-          )}
-        </div>
+        <Popover.Root open={showPatientSearch} onOpenChange={setShowPatientSearch}>
+          <Popover.Trigger>
+            <TextField.Root size="2" style={{ width: '100%' }}>
+              <input
+                type="text"
+                required
+                value={patientSearch}
+                onChange={(e) => {
+                  setPatientSearch(e.target.value);
+                  setShowPatientSearch(true);
+                  if (!e.target.value) {
+                    setFormData({ ...formData, patient: '' });
+                    setSelectedPatient(null);
+                  }
+                }}
+                onFocus={() => setShowPatientSearch(true)}
+                placeholder="Type to search patients..."
+                style={{ all: 'unset', flex: 1 }}
+              />
+            </TextField.Root>
+          </Popover.Trigger>
+          <Popover.Content style={{ width: 'var(--radix-popover-trigger-width)', maxHeight: '200px', overflowY: 'auto' }}>
+            {filteredPatients.length > 0 ? (
+              <Flex direction="column" gap="1">
+                {filteredPatients.map((patient) => {
+                  const age = patient.dateOfBirth
+                    ? Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+                    : null;
+                  return (
+                    <Button
+                      key={patient._id}
+                      variant="ghost"
+                      onClick={() => {
+                        selectPatient(patient);
+                        setShowPatientSearch(false);
+                      }}
+                      style={{ justifyContent: 'flex-start', textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start' }}
+                    >
+                      <Text weight="medium">{patient.firstName} {patient.lastName}</Text>
+                      <Text size="1" color="gray">
+                        {patient.patientCode && `${patient.patientCode}`}
+                        {age && ` • Age: ${age} years`}
+                      </Text>
+                    </Button>
+                  );
+                })}
+              </Flex>
+            ) : patientSearch ? (
+              <Text size="2" color="gray">No patients found</Text>
+            ) : (
+              <Text size="2" color="gray">Start typing to search...</Text>
+            )}
+          </Popover.Content>
+        </Popover.Root>
         {formData.patient && !selectedPatient && (
           <p className="mt-0.5 text-xs text-red-600">Please select a valid patient from the list</p>
         )}
@@ -242,21 +260,20 @@ export default function LabResultForm({
       </div>
 
       {/* Fasting Required */}
-      <div className="flex items-center">
-        <input
-          type="checkbox"
+      <Flex align="center" gap="2">
+        <Checkbox
           id="fastingRequired"
           checked={formData.request.fastingRequired}
-          onChange={(e) => setFormData({
+          onCheckedChange={(checked) => setFormData({
             ...formData,
-            request: { ...formData.request, fastingRequired: e.target.checked }
+            request: { ...formData.request, fastingRequired: checked as boolean }
           })}
-          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+          size="1"
         />
-        <label htmlFor="fastingRequired" className="ml-2 block text-xs text-gray-700">
+        <Text as="label" htmlFor="fastingRequired" size="1">
           Fasting Required
-        </label>
-      </div>
+        </Text>
+      </Flex>
 
       {/* Special Instructions */}
       <div>
@@ -294,14 +311,14 @@ export default function LabResultForm({
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
             Cancel
           </button>
         )}
         <button
           type="submit"
-          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Create Lab Order
         </button>

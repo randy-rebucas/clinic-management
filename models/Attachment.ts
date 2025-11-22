@@ -25,9 +25,6 @@ export const AttachmentSchema: Schema = new Schema(
   { _id: true }
 );
 
-// Export schema for use in other models
-export { AttachmentSchema };
-
 // Export model (optional, if you want to use Attachment as a standalone model)
 export default mongoose.models.Attachment || mongoose.model<IAttachment>('Attachment', AttachmentSchema);
 

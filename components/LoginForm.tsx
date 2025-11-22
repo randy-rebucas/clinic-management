@@ -3,16 +3,20 @@
 import { login } from '@/app/actions/auth';
 import { useActionState } from 'react';
 import Link from 'next/link';
+import { Button, TextField, Callout } from '@radix-ui/themes';
 
 export default function LoginForm() {
   const [state, action, pending] = useActionState(login, undefined);
 
   return (
     <form action={action} className="space-y-5">
-      <div>
-        <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
-          Email Address
-        </label>
+      <TextField.Root size="3">
+        <TextField.Slot>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2.5 4C2.5 3.17157 3.17157 2.5 4 2.5H12C12.8284 2.5 13.5 3.17157 13.5 4V12C13.5 12.8284 12.8284 13.5 12 13.5H4C3.17157 13.5 2.5 12.8284 2.5 12V4Z" stroke="currentColor" strokeWidth="1.2"/>
+            <path d="M2.5 5.5L8 9.5L13.5 5.5" stroke="currentColor" strokeWidth="1.2"/>
+          </svg>
+        </TextField.Slot>
         <input
           id="email"
           name="email"
@@ -20,22 +24,22 @@ export default function LoginForm() {
           placeholder="you@example.com"
           required
           autoComplete="email"
-          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+          style={{ all: 'unset', flex: 1 }}
         />
-        {state?.errors?.email && (
-          <p className="mt-2 text-sm text-red-600 flex items-center">
-            <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            {state.errors.email[0]}
-          </p>
-        )}
-      </div>
+      </TextField.Root>
+      {state?.errors?.email && (
+        <Callout.Root color="red" size="1">
+          <Callout.Text>{state.errors.email[0]}</Callout.Text>
+        </Callout.Root>
+      )}
 
-      <div>
-        <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
-          Password
-        </label>
+      <TextField.Root size="3">
+        <TextField.Slot>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 6V4C4 2.34315 5.34315 1 7 1H9C10.6569 1 12 2.34315 12 4V6M4 6H2C1.44772 6 1 6.44772 1 7V13C1 13.5523 1.44772 14 2 14H14C14.5523 14 15 13.5523 15 13V7C15 6.44772 14.5523 6 14 6H12M4 6H12" stroke="currentColor" strokeWidth="1.2"/>
+            <rect x="7.5" y="9.5" width="1" height="1" fill="currentColor"/>
+          </svg>
+        </TextField.Slot>
         <input
           id="password"
           name="password"
@@ -43,50 +47,35 @@ export default function LoginForm() {
           placeholder="Enter your password"
           required
           autoComplete="current-password"
-          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+          style={{ all: 'unset', flex: 1 }}
         />
-        {state?.errors?.password && (
-          <p className="mt-2 text-sm text-red-600 flex items-center">
-            <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            {state.errors.password[0]}
-          </p>
-        )}
-      </div>
-
-      {state?.message && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-sm text-red-800 flex items-center">
-            <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-            </svg>
-            {state.message}
-          </p>
-        </div>
+      </TextField.Root>
+      {state?.errors?.password && (
+        <Callout.Root color="red" size="1">
+          <Callout.Text>{state.errors.password[0]}</Callout.Text>
+        </Callout.Root>
       )}
 
-      <button
+      {state?.message && (
+        <Callout.Root color="red" size="2">
+          <Callout.Text>{state.message}</Callout.Text>
+        </Callout.Root>
+      )}
+
+      <Button
         type="submit"
         disabled={pending}
-        className="w-full flex justify-center items-center py-2 px-3 border border-transparent rounded-md text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+        size="3"
+        variant="solid"
+        color="blue"
+        className="w-full"
       >
-        {pending ? (
-          <>
-            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Signing in...
-          </>
-        ) : (
-          'Sign In'
-        )}
-      </button>
+        {pending ? 'Signing in...' : 'Sign In'}
+      </Button>
 
-      <div className="text-center text-sm pt-4 border-t border-gray-200">
-        <span className="text-gray-600">Don't have an account? </span>
-        <Link href="/signup" className="font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+      <div className="text-center text-sm pt-4 border-t">
+        <span className="text-gray-11">Don&apos;t have an account? </span>
+        <Link href="/signup" className="font-semibold text-blue-9 hover:text-blue-10">
           Sign up
         </Link>
       </div>

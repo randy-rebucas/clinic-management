@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getSettings } from '@/lib/settings';
 
 export async function GET(
   request: NextRequest,
@@ -31,7 +32,7 @@ export async function GET(
     }
 
     // Generate HTML for printable receipt (EOR - Electronic Official Receipt)
-    const html = generateReceiptHTML(invoice);
+    const html = await generateReceiptHTML(invoice);
 
     return new NextResponse(html, {
       headers: {
@@ -47,16 +48,23 @@ export async function GET(
   }
 }
 
-function generateReceiptHTML(invoice: any): string {
+async function generateReceiptHTML(invoice: any): Promise<string> {
+  const settings = await getSettings();
+  const currency = settings.billingSettings?.currency || 'USD';
+  const clinicName = settings.clinicName || 'Clinic Management System';
+  const clinicAddress = settings.clinicAddress || '';
+  const clinicPhone = settings.clinicPhone || '';
+  const clinicEmail = settings.clinicEmail || '';
+  
   const patient = invoice.patient;
   const date = new Date(invoice.createdAt).toLocaleDateString();
   const time = new Date(invoice.createdAt).toLocaleTimeString();
   const totalPaid = invoice.payments?.reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', {
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'PHP',
+      currency: currency,
     }).format(amount);
   };
 
@@ -377,9 +385,12 @@ function generateReceiptHTML(invoice: any): string {
   ` : ''}
 
   <div class="footer">
-    <p><strong>This is an official receipt. Please keep this for your records.</strong></p>
-    <p>For inquiries, please contact the clinic.</p>
-    <p style="margin-top: 20px;">Generated on ${new Date().toLocaleString()}</p>
+    <p><strong>${clinicName}</strong></p>
+    ${clinicAddress ? `<p>${clinicAddress}</p>` : ''}
+    ${clinicPhone ? `<p>Phone: ${clinicPhone}</p>` : ''}
+    ${clinicEmail ? `<p>Email: ${clinicEmail}</p>` : ''}
+    <p style="margin-top: 20px;"><strong>This is an official receipt. Please keep this for your records.</strong></p>
+    <p style="margin-top: 10px;">Generated on ${new Date().toLocaleString()}</p>
   </div>
 </body>
 </html>

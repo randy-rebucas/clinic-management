@@ -66,10 +66,45 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
+    
+    // Debug: log the incoming body to see what's being sent
+    console.log('Incoming referral data:', JSON.stringify(body, null, 2));
+
+    // Generate referral code if not provided
+    let referralCode = body.referralCode;
+    if (!referralCode) {
+      const count = await Referral.countDocuments();
+      referralCode = `REF-${Date.now()}-${count + 1}`;
+    }
+
+    // Clean up referringContact - only include if it has a name
+    const cleanedBody = { ...body };
+    
+    // Remove referringContact entirely if it's empty, null, undefined, or doesn't have a name
+    if (cleanedBody.referringContact) {
+      const name = cleanedBody.referringContact.name;
+      if (!name || (typeof name === 'string' && name.trim() === '')) {
+        delete cleanedBody.referringContact;
+      } else {
+        // Clean up empty phone/email fields
+        if (!cleanedBody.referringContact.phone || cleanedBody.referringContact.phone.trim() === '') {
+          delete cleanedBody.referringContact.phone;
+        }
+        if (!cleanedBody.referringContact.email || cleanedBody.referringContact.email.trim() === '') {
+          delete cleanedBody.referringContact.email;
+        }
+      }
+    }
+    
+    // Ensure referringContact is completely removed if it's an empty object
+    if (cleanedBody.referringContact && Object.keys(cleanedBody.referringContact).length === 0) {
+      delete cleanedBody.referringContact;
+    }
 
     const referral = await Referral.create({
-      ...body,
-      referredDate: body.referredDate || new Date(),
+      ...cleanedBody,
+      referralCode,
+      referredDate: cleanedBody.referredDate || new Date(),
     });
 
     await referral.populate('referringDoctor', 'firstName lastName specialization');
@@ -82,7 +117,7 @@ export async function POST(request: NextRequest) {
       userEmail: session.email,
       userRole: session.role,
       action: 'create',
-      resource: 'referral',
+      resource: 'patient',
       resourceId: referral._id,
       description: `Created ${referral.type} referral for patient ${referral.patient}`,
     });

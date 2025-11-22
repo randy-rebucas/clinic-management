@@ -1,6 +1,7 @@
 import { verifySession } from './dal';
 import { redirect } from 'next/navigation';
 import { NextResponse } from 'next/server';
+import connectDB from '@/lib/mongodb';
 
 /**
  * Require authentication - redirects to login if not authenticated
@@ -79,9 +80,14 @@ export async function hasPermission(
   
   // Get user's custom permissions if any
   await connectDB();
+  const User = (await import('@/models/User')).default;
   const user = await User.findById(session.userId).select('permissions').lean();
   
-  return checkPermission(session.role, resource, action, user?.permissions);
+  if (!user || Array.isArray(user) || !('permissions' in user)) {
+    return checkPermission(session.role, resource, action, undefined);
+  }
+  
+  return checkPermission(session.role, resource, action, user.permissions);
 }
 
 /**

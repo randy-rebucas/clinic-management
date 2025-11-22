@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Button, Flex, Box, Text } from '@radix-ui/themes';
 
 interface NavItem {
   href: string;
@@ -21,21 +22,35 @@ export default function NavigationClient({ navItems }: NavigationClientProps) {
       {navItems.map((item) => {
         const isActive = pathname === item.href;
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
-              isActive
-                ? 'bg-blue-50 text-blue-700 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-            }`}
-          >
-            {item.icon && (
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
-              </svg>
-            )}
-            {item.label}
+          <Link key={item.href} href={item.href} style={{ textDecoration: 'none' }}>
+            <Button
+              variant={isActive ? 'solid' : 'ghost'}
+              color={isActive ? 'blue' : 'gray'}
+              size="2"
+              style={{
+                width: '100%',
+                justifyContent: 'flex-start',
+              }}
+            >
+              <Flex align="center" gap="2">
+                {item.icon && (
+                  <Box
+                    width="16px"
+                    height="16px"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
+                    </svg>
+                  </Box>
+                )}
+                <Text size="2">{item.label}</Text>
+              </Flex>
+            </Button>
           </Link>
         );
       })}

@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import SignaturePad from './SignaturePad';
 import { calculateDosage, calculateQuantity, formatDosageInstructions } from '@/lib/dosage-calculator';
+import { Button, TextField, Flex, Box, Text, Callout, AlertDialog, Popover, Tooltip } from '@radix-ui/themes';
 
 interface Medicine {
   _id: string;
@@ -83,6 +84,8 @@ export default function PrescriptionForm({
   const [showPatientSearch, setShowPatientSearch] = useState(false);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [digitalSignature, setDigitalSignature] = useState<string | null>(null);
+  const [showInteractionAlert, setShowInteractionAlert] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState(false);
   const [drugInteractions, setDrugInteractions] = useState<Array<{
     medication1: string;
     medication2: string;
@@ -151,14 +154,15 @@ export default function PrescriptionForm({
       i => i.severity === 'contraindicated' || i.severity === 'severe'
     );
     if (severeInteractions.length > 0) {
-      const proceed = confirm(
-        `Warning: ${severeInteractions.length} severe or contraindicated drug interaction(s) detected. Are you sure you want to proceed?`
-      );
-      if (!proceed) {
-        return;
-      }
+      setPendingSubmit(true);
+      setShowInteractionAlert(true);
+      return;
     }
     
+    handleSubmitConfirm();
+  };
+
+  const handleSubmitConfirm = () => {
     onSubmit({
       ...formData,
       digitalSignature: digitalSignature
@@ -343,54 +347,62 @@ export default function PrescriptionForm({
     <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto">
       {/* Patient Selection */}
       <div>
-        <label className="block text-sm font-medium text-gray-700">Patient *</label>
-        <div className="relative mt-1 patient-search-container">
-          <input
-            type="text"
-            required
-            value={patientSearch}
-            onChange={(e) => {
-              setPatientSearch(e.target.value);
-              setShowPatientSearch(true);
-              if (!e.target.value) {
-                setFormData({ ...formData, patient: '' });
-                setSelectedPatient(null);
-              }
-            }}
-            onFocus={() => setShowPatientSearch(true)}
-            placeholder="Type to search patients..."
-            className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-          />
-          {showPatientSearch && filteredPatients.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-              {filteredPatients.map((patient) => {
-                const age = patient.dateOfBirth
-                  ? Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-                  : null;
-                return (
-                  <button
-                    key={patient._id}
-                    type="button"
-                    onClick={() => selectPatient(patient)}
-                    className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
-                  >
-                    <div className="font-medium">{patient.firstName} {patient.lastName}</div>
-                    <div className="text-xs text-gray-500">
-                      {age && `Age: ${age} years`}
-                      {age && patient.weight && ' • '}
-                      {patient.weight && `${patient.weight} kg`}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {showPatientSearch && patientSearch && filteredPatients.length === 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg">
-              <div className="px-3 py-2 text-sm text-gray-500">No patients found</div>
-            </div>
-          )}
-        </div>
+        <Text size="2" weight="medium" mb="1" as="div">Patient <Text color="red">*</Text></Text>
+        <Popover.Root open={showPatientSearch} onOpenChange={setShowPatientSearch}>
+          <Popover.Trigger>
+            <TextField.Root size="2" style={{ width: '100%' }}>
+              <input
+                type="text"
+                required
+                value={patientSearch}
+                onChange={(e) => {
+                  setPatientSearch(e.target.value);
+                  setShowPatientSearch(true);
+                  if (!e.target.value) {
+                    setFormData({ ...formData, patient: '' });
+                    setSelectedPatient(null);
+                  }
+                }}
+                onFocus={() => setShowPatientSearch(true)}
+                placeholder="Type to search patients..."
+                style={{ all: 'unset', flex: 1 }}
+              />
+            </TextField.Root>
+          </Popover.Trigger>
+          <Popover.Content style={{ width: 'var(--radix-popover-trigger-width)', maxHeight: '200px', overflowY: 'auto' }}>
+            {filteredPatients.length > 0 ? (
+              <Flex direction="column" gap="1">
+                {filteredPatients.map((patient) => {
+                  const age = patient.dateOfBirth
+                    ? Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+                    : null;
+                  return (
+                    <Button
+                      key={patient._id}
+                      variant="ghost"
+                      onClick={() => {
+                        selectPatient(patient);
+                        setShowPatientSearch(false);
+                      }}
+                      style={{ justifyContent: 'flex-start', textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start' }}
+                    >
+                      <Text weight="medium" size="2">{patient.firstName} {patient.lastName}</Text>
+                      <Text size="1" color="gray">
+                        {age && `Age: ${age} years`}
+                        {age && patient.weight && ' • '}
+                        {patient.weight && `${patient.weight} kg`}
+                      </Text>
+                    </Button>
+                  );
+                })}
+              </Flex>
+            ) : patientSearch ? (
+              <Text size="2" color="gray">No patients found</Text>
+            ) : (
+              <Text size="2" color="gray">Start typing to search...</Text>
+            )}
+          </Popover.Content>
+        </Popover.Root>
         {formData.patient && !selectedPatient && (
           <p className="mt-1 text-xs text-red-600">Please select a valid patient from the list</p>
         )}
@@ -461,7 +473,7 @@ export default function PrescriptionForm({
         </div>
 
         {formData.medications.length === 0 ? (
-          <p className="text-sm text-gray-500">No medications added. Click "Add Medication" to add one.</p>
+          <p className="text-sm text-gray-500">No medications added. Click &quot;Add Medication&quot; to add one.</p>
         ) : (
           <div className="space-y-4">
             {formData.medications.map((medication, index) => (
@@ -478,45 +490,55 @@ export default function PrescriptionForm({
                 </div>
 
                 {/* Medicine Search */}
-                <div className="mb-3">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Search Medicine</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={medicineSearch}
-                      onChange={(e) => {
-                        setMedicineSearch(e.target.value);
-                        setShowMedicineSearch(true);
-                      }}
-                      onFocus={() => setShowMedicineSearch(true)}
-                      placeholder="Type to search medicines..."
-                      className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    />
-                    {showMedicineSearch && medicineResults.length > 0 && (
-                      <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                        {medicineResults.map((medicine) => (
-                          <button
-                            key={medicine._id}
-                            type="button"
-                            onClick={() => {
-                              selectMedicine(medicine, index);
-                              setShowMedicineSearch(false);
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
-                          >
-                            <div className="font-medium">{medicine.name}</div>
-                            {medicine.genericName && (
-                              <div className="text-xs text-gray-500">{medicine.genericName}</div>
-                            )}
-                            <div className="text-xs text-gray-400">
-                              {medicine.strength} • {medicine.form} • {medicine.category}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <Box mb="3">
+                  <Text size="1" weight="medium" mb="1" as="div">Search Medicine</Text>
+                  <Popover.Root open={showMedicineSearch} onOpenChange={setShowMedicineSearch}>
+                    <Popover.Trigger>
+                      <TextField.Root size="2" style={{ width: '100%' }}>
+                        <input
+                          type="text"
+                          value={medicineSearch}
+                          onChange={(e) => {
+                            setMedicineSearch(e.target.value);
+                            setShowMedicineSearch(true);
+                          }}
+                          onFocus={() => setShowMedicineSearch(true)}
+                          placeholder="Type to search medicines..."
+                          style={{ all: 'unset', flex: 1 }}
+                        />
+                      </TextField.Root>
+                    </Popover.Trigger>
+                    <Popover.Content style={{ width: 'var(--radix-popover-trigger-width)', maxHeight: '200px', overflowY: 'auto' }}>
+                      {medicineResults.length > 0 ? (
+                        <Flex direction="column" gap="1">
+                          {medicineResults.map((medicine) => (
+                            <Button
+                              key={medicine._id}
+                              variant="ghost"
+                              onClick={() => {
+                                selectMedicine(medicine, index);
+                                setShowMedicineSearch(false);
+                              }}
+                              style={{ justifyContent: 'flex-start', textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start' }}
+                            >
+                              <Text weight="medium" size="2">{medicine.name}</Text>
+                              {medicine.genericName && (
+                                <Text size="1" color="gray">{medicine.genericName}</Text>
+                              )}
+                              <Text size="1" color="gray">
+                                {medicine.strength} • {medicine.form} • {medicine.category}
+                              </Text>
+                            </Button>
+                          ))}
+                        </Flex>
+                      ) : medicineSearch ? (
+                        <Text size="2" color="gray">No medicines found</Text>
+                      ) : (
+                        <Text size="2" color="gray">Start typing to search...</Text>
+                      )}
+                    </Popover.Content>
+                  </Popover.Root>
+                </Box>
 
                 {/* Medication Details */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -573,14 +595,17 @@ export default function PrescriptionForm({
                         className="flex-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
                       />
                       {medication.medicineId && selectedPatient && (
-                        <button
-                          type="button"
-                          onClick={() => calculateDosageForMedication(index)}
-                          className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                          title="Recalculate dosage based on patient info"
-                        >
-                          ↻
-                        </button>
+                        <Tooltip content="Recalculate dosage based on patient info">
+                          <Button
+                            type="button"
+                            onClick={() => calculateDosageForMedication(index)}
+                            variant="soft"
+                            color="blue"
+                            size="1"
+                          >
+                            ↻
+                          </Button>
+                        </Tooltip>
                       )}
                     </div>
                   </div>
@@ -693,23 +718,59 @@ export default function PrescriptionForm({
       )}
 
       {/* Form Actions */}
-      <div className="flex justify-end space-x-2 pt-3 border-t border-gray-200">
+      <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
             Cancel
           </button>
         )}
         <button
           type="submit"
-          className="px-3 py-1.5 border border-transparent rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Create Prescription
         </button>
       </div>
+
+      {/* Drug Interaction Alert Dialog */}
+      <AlertDialog.Root open={showInteractionAlert} onOpenChange={setShowInteractionAlert}>
+        <AlertDialog.Content>
+          <AlertDialog.Title>Drug Interaction Warning</AlertDialog.Title>
+          <AlertDialog.Description>
+            <Text mb="3" as="div">
+              {drugInteractions.filter(i => i.severity === 'contraindicated' || i.severity === 'severe').length} severe or contraindicated drug interaction(s) detected.
+            </Text>
+            <Callout.Root color="red" size="2">
+              <Callout.Text>
+                Are you sure you want to proceed with this prescription?
+              </Callout.Text>
+            </Callout.Root>
+          </AlertDialog.Description>
+          <Flex gap="3" mt="4" justify="end">
+            <AlertDialog.Cancel>
+              <Button variant="soft" color="gray" onClick={() => {
+                setShowInteractionAlert(false);
+                setPendingSubmit(false);
+              }}>
+                Cancel
+              </Button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action>
+              <Button variant="solid" color="red" onClick={() => {
+                setShowInteractionAlert(false);
+                handleSubmitConfirm();
+                setPendingSubmit(false);
+              }}>
+                Proceed Anyway
+              </Button>
+            </AlertDialog.Action>
+          </Flex>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
     </form>
   );
 }

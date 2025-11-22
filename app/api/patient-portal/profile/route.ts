@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const User = (await import('@/models/User')).default;
     const user = await User.findById(session.userId).select('email').lean();
 
-    if (!user) {
+    if (!user || Array.isArray(user) || !('email' in user)) {
       return NextResponse.json(
         { success: false, error: 'User not found' },
         { status: 404 }

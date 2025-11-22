@@ -4,12 +4,25 @@ import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 
 const secretKey = process.env.SESSION_SECRET;
-if (!secretKey && process.env.NODE_ENV === 'production') {
-  throw new Error('SESSION_SECRET environment variable is required in production');
-}
+// Only enforce SESSION_SECRET at runtime, not during build
+// During build, Next.js sets NODE_ENV=production but we're not actually running
+// We'll validate at runtime when functions are called instead of at module load
 const encodedKey = new TextEncoder().encode(
   secretKey || 'default-secret-key-change-in-production-dev-only'
 );
+
+// Runtime validation function - call this when actually using the secret
+function validateSecret() {
+  if (!secretKey && process.env.NODE_ENV === 'production') {
+    // Only throw if we're actually in a runtime context (not build)
+    // Check if we're in a build by trying to detect build context
+    const isBuildContext = process.env.NEXT_PHASE === 'phase-production-build' || 
+                          process.env.NEXT_PHASE === 'phase-development-build';
+    if (!isBuildContext) {
+      throw new Error('SESSION_SECRET environment variable is required in production');
+    }
+  }
+}
 
 export interface SessionPayload extends JWTPayload {
   userId: string;
@@ -19,6 +32,7 @@ export interface SessionPayload extends JWTPayload {
 }
 
 export async function encrypt(payload: SessionPayload): Promise<string> {
+  validateSecret(); // Validate at runtime, not build time
   // Convert expiresAt to number if it's a Date for JWT compatibility
   const jwtPayload: JWTPayload = {
     ...payload,
@@ -33,6 +47,7 @@ export async function encrypt(payload: SessionPayload): Promise<string> {
 
 export async function decrypt(session: string | undefined = ''): Promise<SessionPayload | null> {
   try {
+    validateSecret(); // Validate at runtime, not build time
     if (!session) return null;
     const { payload } = await jwtVerify(session, encodedKey, {
       algorithms: ['HS256'],

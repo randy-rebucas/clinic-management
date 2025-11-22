@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Skeleton, Heading, Callout, IconButton } from '@radix-ui/themes';
 
 interface InventoryItem {
   _id: string;
@@ -58,31 +59,34 @@ export default function InventoryPageClient() {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): 'green' | 'yellow' | 'red' | 'gray' => {
     switch (status) {
       case 'in-stock':
-        return 'bg-green-100 text-green-800';
+        return 'green';
       case 'low-stock':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'yellow';
       case 'out-of-stock':
-        return 'bg-red-100 text-red-800';
+        return 'red';
       case 'expired':
-        return 'bg-red-200 text-red-900';
+        return 'red';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'gray';
     }
   };
 
   if (loading) {
     return (
-      <div className="w-full px-4 py-3">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600"></div>
-            <p className="mt-3 text-sm text-gray-600">Loading inventory...</p>
-          </div>
-        </div>
-      </div>
+      <Box p="4">
+        <Flex direction="column" gap="3">
+          <Skeleton height="32px" width="200px" />
+          <Flex gap="3" wrap="wrap">
+            <Skeleton height="100px" style={{ flex: '1 1 200px' }} />
+            <Skeleton height="100px" style={{ flex: '1 1 200px' }} />
+            <Skeleton height="100px" style={{ flex: '1 1 200px' }} />
+          </Flex>
+          <Skeleton height="400px" />
+        </Flex>
+      </Box>
     );
   }
 
@@ -100,213 +104,205 @@ export default function InventoryPageClient() {
   const lowStockItems = filteredItems.filter(item => item.status === 'low-stock' || item.status === 'out-of-stock');
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="w-full px-4 py-3">
+    <Box p="4">
+      <Flex direction="column" gap="3">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-0.5">Inventory Management</h1>
-            <p className="text-gray-600 text-xs">Track medicines and supplies</p>
-          </div>
-          <Link
-            href="/inventory/new"
-            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors mt-1.5 sm:mt-0"
-          >
-            <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Item
-          </Link>
-        </div>
+        <Flex direction={{ initial: 'column', sm: 'row' }} align={{ sm: 'center' }} justify="between" gap="2">
+          <Box>
+            <Heading size="7" mb="1">Inventory Management</Heading>
+            <Text size="2" color="gray">Track medicines and supplies</Text>
+          </Box>
+          <Button asChild size="2" mt={{ initial: '2', sm: '0' }}>
+            <Link href="/inventory/new">
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '4px' }}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Item
+            </Link>
+          </Button>
+        </Flex>
 
         {/* Low Stock Alert */}
         {lowStockItems.length > 0 && (
-          <div className="mb-2 bg-yellow-50 border border-yellow-200 rounded-md p-2">
-            <div className="flex items-center">
-              <svg className="w-3.5 h-3.5 text-yellow-600 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+          <Callout.Root color="yellow" mb="2">
+            <Callout.Icon>
+              <svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
-              <span className="text-yellow-800 font-medium text-xs">
-                {lowStockItems.length} item(s) need restocking
-              </span>
-            </div>
-          </div>
+            </Callout.Icon>
+            <Callout.Text size="2">
+              {lowStockItems.length} item(s) need restocking
+            </Callout.Text>
+          </Callout.Root>
         )}
 
         {/* Search and Filters */}
-        <div className="mb-2 space-y-1.5">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search by item name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="block w-full px-2.5 py-1 pl-8 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            />
-            <svg className="absolute left-2 top-1 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1 text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        <Flex direction="column" gap="2" mb="2">
+          <Box position="relative" style={{ width: '100%' }}>
+            <TextField.Root>
+              <TextField.Slot side="left">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--gray-9)' }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-              </button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-              className="block px-2 py-1 text-xs border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">All Categories</option>
-              <option value="medicine">Medicine</option>
-              <option value="supply">Supply</option>
-              <option value="equipment">Equipment</option>
-              <option value="other">Other</option>
-            </select>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="block px-2 py-1 text-xs border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">All Statuses</option>
-              <option value="in-stock">In Stock</option>
-              <option value="low-stock">Low Stock</option>
-              <option value="out-of-stock">Out of Stock</option>
-              <option value="expired">Expired</option>
-            </select>
+              </TextField.Slot>
+              <input
+                type="text"
+                placeholder="Search by item name..."
+                value={searchQuery || ''}
+                onChange={(e) => setSearchQuery(e.target.value || '')}
+                style={{ all: 'unset', flex: 1 }}
+              />
+              {searchQuery && (
+                <TextField.Slot side="right">
+                  <IconButton
+                    size="1"
+                    variant="ghost"
+                    onClick={() => setSearchQuery('')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </IconButton>
+                </TextField.Slot>
+              )}
+            </TextField.Root>
+          </Box>
+          <Flex gap="2" wrap="wrap">
+            <Select.Root value={filterCategory || 'all'} onValueChange={(value) => setFilterCategory(value || 'all')}>
+              <Select.Trigger style={{ minWidth: '150px' }} />
+              <Select.Content>
+                <Select.Item value="all">All Categories</Select.Item>
+                <Select.Item value="medicine">Medicine</Select.Item>
+                <Select.Item value="supply">Supply</Select.Item>
+                <Select.Item value="equipment">Equipment</Select.Item>
+                <Select.Item value="other">Other</Select.Item>
+              </Select.Content>
+            </Select.Root>
+            <Select.Root value={filterStatus || 'all'} onValueChange={(value) => setFilterStatus(value || 'all')}>
+              <Select.Trigger style={{ minWidth: '150px' }} />
+              <Select.Content>
+                <Select.Item value="all">All Statuses</Select.Item>
+                <Select.Item value="in-stock">In Stock</Select.Item>
+                <Select.Item value="low-stock">Low Stock</Select.Item>
+                <Select.Item value="out-of-stock">Out of Stock</Select.Item>
+                <Select.Item value="expired">Expired</Select.Item>
+              </Select.Content>
+            </Select.Root>
             {(searchQuery || filterCategory !== 'all' || filterStatus !== 'all') && (
-              <button
+              <Button
+                variant="soft"
+                size="2"
                 onClick={() => {
                   setSearchQuery('');
                   setFilterCategory('all');
                   setFilterStatus('all');
                 }}
-                className="text-xs text-gray-600 hover:text-gray-900 font-medium inline-flex items-center gap-1 px-2 py-1"
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '4px' }}>
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
                 Clear
-              </button>
+              </Button>
             )}
-          </div>
-        </div>
+          </Flex>
+        </Flex>
 
         {/* Inventory Table */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-2.5 py-1.5 border-b border-gray-200 flex justify-between items-center">
-            <h2 className="text-xs font-semibold text-gray-900">Inventory Items</h2>
-            <span className="text-xs text-gray-500">
+        <Card>
+          <Flex p="2" justify="between" align="center" style={{ borderBottom: '1px solid var(--gray-4)' }}>
+            <Heading size="3">Inventory Items</Heading>
+            <Text size="2" color="gray">
               {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}
-            </span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Item Name
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Category
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Quantity
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Unit
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Reorder Level
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Expiry Date
-                  </th>
-                  <th className="px-2 py-1 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+            </Text>
+          </Flex>
+          <Box style={{ overflowX: 'auto' }}>
+            <Table.Root>
+              <Table.Header>
+                <Table.Row>
+                  <Table.ColumnHeaderCell>Item Name</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Category</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Quantity</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Unit</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Reorder Level</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Expiry Date</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell style={{ textAlign: 'right' }}>Actions</Table.ColumnHeaderCell>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
                 {filteredItems.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-2 py-6 text-center">
-                      <div className="flex flex-col items-center">
-                        <svg className="w-8 h-8 text-gray-400 mb-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                        </svg>
-                        <p className="text-xs font-medium text-gray-900 mb-0.5">
+                  <Table.Row>
+                    <Table.Cell colSpan={8} style={{ textAlign: 'center', padding: '24px' }}>
+                      <Flex direction="column" align="center" gap="2">
+                        <Box>
+                          <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--gray-9)' }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                          </svg>
+                        </Box>
+                        <Text size="2" weight="medium">
                           {searchQuery || filterCategory !== 'all' || filterStatus !== 'all' ? 'No items match your filters' : 'No inventory items found'}
-                        </p>
-                        <p className="text-xs text-gray-500 mb-2">
+                        </Text>
+                        <Text size="2" color="gray" mb="2">
                           {searchQuery || filterCategory !== 'all' || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Add your first inventory item to get started'}
-                        </p>
+                        </Text>
                         {!searchQuery && filterCategory === 'all' && filterStatus === 'all' && (
-                          <Link
-                            href="/inventory/new"
-                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                          >
-                            <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                            </svg>
-                            Add Item
-                          </Link>
+                          <Button asChild size="2">
+                            <Link href="/inventory/new">
+                              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '4px' }}>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                              </svg>
+                              Add Item
+                            </Link>
+                          </Button>
                         )}
-                      </div>
-                    </td>
-                  </tr>
+                      </Flex>
+                    </Table.Cell>
+                  </Table.Row>
                 ) : (
                   filteredItems.map((item) => (
-                    <tr key={item._id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs font-medium text-gray-900">
-                        {item.name}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs text-gray-500 capitalize">
-                        {item.category}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs font-medium text-gray-900">
-                        {item.quantity}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs text-gray-500">
-                        {item.unit}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs text-gray-500">
-                        {item.reorderLevel}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">
-                        <span className={`px-1 py-0.5 inline-flex text-xs font-semibold rounded-full ${getStatusColor(item.status)}`}>
+                    <Table.Row key={item._id}>
+                      <Table.RowHeaderCell>
+                        <Text size="2" weight="medium">{item.name}</Text>
+                      </Table.RowHeaderCell>
+                      <Table.Cell>
+                        <Text size="2" color="gray" style={{ textTransform: 'capitalize' }}>{item.category}</Text>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Text size="2" weight="medium">{item.quantity}</Text>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Text size="2" color="gray">{item.unit}</Text>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Text size="2" color="gray">{item.reorderLevel}</Text>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Badge color={getStatusColor(item.status)} size="1">
                           {item.status.replace('-', ' ')}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs text-gray-500">
-                        {item.expiryDate ? new Date(item.expiryDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : <span className="text-gray-400">N/A</span>}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-right text-xs font-medium">
-                        <Link
-                          href={`/inventory/${item._id}`}
-                          className="text-blue-600 hover:text-blue-800 hover:underline"
-                        >
-                          View →
-                        </Link>
-                      </td>
-                    </tr>
+                        </Badge>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Text size="2" color="gray">
+                          {item.expiryDate ? new Date(item.expiryDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : <Text color="gray">N/A</Text>}
+                        </Text>
+                      </Table.Cell>
+                      <Table.Cell style={{ textAlign: 'right' }}>
+                        <Button asChild variant="ghost" size="1">
+                          <Link href={`/inventory/${item._id}`}>
+                            View →
+                          </Link>
+                        </Button>
+                      </Table.Cell>
+                    </Table.Row>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+              </Table.Body>
+            </Table.Root>
+          </Box>
+        </Card>
+      </Flex>
+    </Box>
   );
 }
 

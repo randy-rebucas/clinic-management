@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getSettings } from '@/lib/settings';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -56,20 +57,24 @@ export async function POST(request: NextRequest) {
     await connectDB();
     const body = await request.json();
 
-    // Auto-generate invoice number
+    // Auto-generate invoice number using settings prefix
+    const settings = await getSettings();
+    const invoicePrefix = settings.billingSettings?.invoicePrefix || 'INV';
+    
     const lastInvoice = await Invoice.findOne({ invoiceNumber: { $exists: true, $ne: null } })
       .sort({ invoiceNumber: -1 })
       .exec();
 
     let nextNumber = 1;
     if (lastInvoice?.invoiceNumber) {
+      // Extract number from invoice number (handles any prefix)
       const match = lastInvoice.invoiceNumber.match(/(\d+)$/);
       if (match) {
         nextNumber = parseInt(match[1], 10) + 1;
       }
     }
 
-    body.invoiceNumber = `INV-${String(nextNumber).padStart(6, '0')}`;
+    body.invoiceNumber = `${invoicePrefix}-${String(nextNumber).padStart(6, '0')}`;
 
     // Calculate totals
     const subtotal = body.items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);

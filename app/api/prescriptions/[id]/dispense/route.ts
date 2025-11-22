@@ -45,11 +45,11 @@ export async function POST(
 
     // Update status
     const totalDispensed = prescription.pharmacyDispenses.reduce(
-      (sum, d) => sum + (d.quantityDispensed || 0),
+      (sum: number, d: any) => sum + (d.quantityDispensed || 0),
       0
     );
     const totalPrescribed = prescription.medications.reduce(
-      (sum, m) => sum + (m.quantity || 0),
+      (sum: number, m: any) => sum + (m.quantity || 0),
       0
     );
 

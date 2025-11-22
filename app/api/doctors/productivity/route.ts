@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
                     ...(endDate ? { $lte: new Date(endDate + 'T23:59:59.999Z') } : {}),
                   },
                 } : {}),
-              })).reduce((sum, inv) => sum + (inv.totalPaid || 0), 0)
+              })).reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0)
             : 0;
 
           return {

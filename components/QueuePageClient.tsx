@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Tooltip, IconButton, Separator, Popover, Skeleton, Heading, AlertDialog } from '@radix-ui/themes';
 
 interface Queue {
   _id: string;
@@ -315,32 +316,32 @@ export default function QueuePageClient() {
     return `${hours}h ${mins}m`;
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): 'green' | 'blue' | 'yellow' | 'red' | 'gray' => {
     switch (status) {
       case 'completed':
-        return 'bg-green-100 text-green-800';
+        return 'green';
       case 'in-progress':
-        return 'bg-blue-100 text-blue-800';
+        return 'blue';
       case 'waiting':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'yellow';
       case 'cancelled':
       case 'no-show':
-        return 'bg-red-100 text-red-800';
+        return 'red';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'gray';
     }
   };
 
-  const getTypeColor = (type: string) => {
+  const getTypeColor = (type: string): 'blue' | 'purple' | 'green' | 'gray' => {
     switch (type) {
       case 'appointment':
-        return 'bg-blue-100 text-blue-800';
+        return 'blue';
       case 'walk-in':
-        return 'bg-purple-100 text-purple-800';
+        return 'purple';
       case 'follow-up':
-        return 'bg-green-100 text-green-800';
+        return 'green';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'gray';
     }
   };
 
@@ -351,14 +352,13 @@ export default function QueuePageClient() {
 
   if (loading) {
     return (
-      <div className="w-full px-4 py-3">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600"></div>
-            <p className="mt-3 text-sm text-gray-600">Loading queue...</p>
-          </div>
-        </div>
-      </div>
+      <Box p="4">
+        <Flex direction="column" gap="3">
+          <Skeleton height="32px" width="200px" />
+          <Skeleton height="40px" />
+          <Skeleton height="400px" />
+        </Flex>
+      </Box>
     );
   }
 
@@ -382,402 +382,398 @@ export default function QueuePageClient() {
   const activeQueue = filteredQueue.filter(q => q.status === 'waiting' || q.status === 'in-progress');
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="w-full px-4 py-3">
-        {/* Notifications */}
-        {error && (
-          <div className="mb-2 bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-lg flex items-center justify-between">
-            <span className="text-xs">{error}</span>
-            <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        )}
-        {success && (
-          <div className="mb-2 bg-green-50 border border-green-200 text-green-800 px-3 py-2 rounded-lg flex items-center justify-between">
-            <span className="text-xs">{success}</span>
-            <button onClick={() => setSuccess(null)} className="text-green-600 hover:text-green-800">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        )}
+    <Box p="4">
+      {/* Notifications */}
+      {error && (
+        <Callout.Root color="red" mb="3">
+          <Callout.Text>{error}</Callout.Text>
+        </Callout.Root>
+      )}
+      {success && (
+        <Callout.Root color="green" mb="3">
+          <Callout.Text>{success}</Callout.Text>
+        </Callout.Root>
+      )}
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">Queue Management</h1>
-            <p className="text-gray-600 text-sm">Monitor patient queue and flow</p>
-          </div>
-          <div className="flex items-center gap-2 mt-2 sm:mt-0">
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
-            >
-              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add to Queue
-            </button>
-            <button
-              onClick={() => fetchQueue(true)}
-              disabled={refreshing}
-              className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <svg 
-                className={`w-4 h-4 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
+      {/* Header */}
+      <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3" mb="3">
+        <Box>
+          <Heading size="7" mb="1">Queue Management</Heading>
+          <Text size="2" color="gray">Monitor patient queue and flow</Text>
+        </Box>
+        <Flex align="center" gap="2" wrap="wrap">
+          <Button
+            onClick={() => setShowAddForm(true)}
+            size="3"
+            color="blue"
+          >
+            <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add to Queue
+          </Button>
+          <Button
+            onClick={() => fetchQueue(true)}
+            disabled={refreshing}
+            variant="soft"
+            size="3"
+            color="gray"
+          >
+            {refreshing ? (
+              <Spinner size="1" style={{ marginRight: '6px' }} />
+            ) : (
+              <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              {refreshing ? 'Refreshing...' : 'Refresh'}
-            </button>
-            <div className="text-xs text-gray-500 hidden sm:block">
-              Auto-refreshes every 30s
-            </div>
-          </div>
-        </div>
+            )}
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </Button>
+          <Text size="1" color="gray" className="hidden sm:block">
+            Auto-refreshes every 30s
+          </Text>
+        </Flex>
+      </Flex>
 
-        {/* Search */}
-        <div className="mb-3">
-          <div className="relative">
+      {/* Search */}
+      <Card mb="3">
+        <Box p="2">
+          <TextField.Root size="2" style={{ width: '100%' }}>
+            <TextField.Slot>
+              <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </TextField.Slot>
             <input
               type="text"
               placeholder="Search by patient name or queue number..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="block w-full px-3 py-1.5 pl-9 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              style={{ all: 'unset', flex: 1 }}
             />
-            <svg className="absolute left-2.5 top-1.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
             {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1.5 text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <TextField.Slot>
+                <Button
+                  variant="ghost"
+                  size="1"
+                  onClick={() => setSearchQuery('')}
+                  style={{ cursor: 'pointer', padding: '4px' }}
+                >
+                  <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </Button>
+              </TextField.Slot>
             )}
-          </div>
-        </div>
+          </TextField.Root>
+        </Box>
+      </Card>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5">
-            <div className="text-xs text-gray-500 mb-0.5">Waiting</div>
-            <div className="text-xl font-bold text-yellow-600">
+      {/* Stats Cards */}
+      <Flex gap="2" mb="3" wrap="wrap">
+        <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
+          <Box p="2">
+            <Text size="1" color="gray" mb="1" as="div">Waiting</Text>
+            <Text size="6" weight="bold" color="yellow">
               {queue.filter(q => q.status === 'waiting').length}
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5">
-            <div className="text-xs text-gray-500 mb-0.5">In Progress</div>
-            <div className="text-xl font-bold text-blue-600">
+            </Text>
+          </Box>
+        </Card>
+        <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
+          <Box p="2">
+            <Text size="1" color="gray" mb="1" as="div">In Progress</Text>
+            <Text size="6" weight="bold" color="blue">
               {queue.filter(q => q.status === 'in-progress').length}
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5">
-            <div className="text-xs text-gray-500 mb-0.5">Not Checked In</div>
-            <div className="text-xl font-bold text-orange-600">
+            </Text>
+          </Box>
+        </Card>
+        <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
+          <Box p="2">
+            <Text size="1" color="gray" mb="1" as="div">Not Checked In</Text>
+            <Text size="6" weight="bold" color="orange">
               {queue.filter(q => !q.checkedIn && (q.status === 'waiting' || q.status === 'in-progress')).length}
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5">
-            <div className="text-xs text-gray-500 mb-0.5">Total Active</div>
-            <div className="text-xl font-bold text-gray-900">
+            </Text>
+          </Box>
+        </Card>
+        <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
+          <Box p="2">
+            <Text size="1" color="gray" mb="1" as="div">Total Active</Text>
+            <Text size="6" weight="bold">
               {activeQueue.length}
-            </div>
-          </div>
-        </div>
+            </Text>
+          </Box>
+        </Card>
+      </Flex>
 
-        {/* Filters */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Doctor
-              </label>
-              <select
-                value={filterDoctor}
-                onChange={(e) => setFilterDoctor(e.target.value)}
-                className="block w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+      {/* Filters */}
+      <Card mb="3">
+        <Box p="3">
+          <Flex direction={{ initial: 'column', sm: 'row' }} gap="3" wrap="wrap">
+            <Box style={{ flex: '1 1 200px' }}>
+              <Text size="1" weight="medium" mb="1" as="div">Doctor</Text>
+              <Select.Root
+                value={filterDoctor || undefined}
+                onValueChange={(value) => setFilterDoctor(value === 'all' ? '' : value)}
               >
-                <option value="">All Doctors</option>
-                {doctors.map((doctor) => (
-                  <option key={doctor._id} value={doctor._id}>
-                    Dr. {doctor.firstName} {doctor.lastName}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Queue Type
-              </label>
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="block w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                <Select.Trigger placeholder="All Doctors" />
+                <Select.Content>
+                  <Select.Item value="all">All Doctors</Select.Item>
+                  {doctors.map((doctor) => (
+                    <Select.Item key={doctor._id} value={doctor._id}>
+                      Dr. {doctor.firstName} {doctor.lastName}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </Box>
+            <Box style={{ flex: '1 1 200px' }}>
+              <Text size="1" weight="medium" mb="1" as="div">Queue Type</Text>
+              <Select.Root
+                value={filterType || undefined}
+                onValueChange={(value) => setFilterType(value === 'all' ? '' : value)}
               >
-                <option value="">All Types</option>
-                <option value="appointment">Appointment</option>
-                <option value="walk-in">Walk-In</option>
-                <option value="follow-up">Follow-Up</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Status
-              </label>
-              <select
+                <Select.Trigger placeholder="All Types" />
+                <Select.Content>
+                  <Select.Item value="all">All Types</Select.Item>
+                  <Select.Item value="appointment">Appointment</Select.Item>
+                  <Select.Item value="walk-in">Walk-In</Select.Item>
+                  <Select.Item value="follow-up">Follow-Up</Select.Item>
+                </Select.Content>
+              </Select.Root>
+            </Box>
+            <Box style={{ flex: '1 1 200px' }}>
+              <Text size="1" weight="medium" mb="1" as="div">Status</Text>
+              <Select.Root
                 value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="block w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                onValueChange={setFilterStatus}
               >
-                <option value="active">Active Only</option>
-                <option value="all">All Statuses</option>
-              </select>
-            </div>
-          </div>
+                <Select.Trigger />
+                <Select.Content>
+                  <Select.Item value="active">Active Only</Select.Item>
+                  <Select.Item value="all">All Statuses</Select.Item>
+                </Select.Content>
+              </Select.Root>
+            </Box>
+          </Flex>
           {(filterDoctor || filterType || filterStatus !== 'active') && (
-            <div className="mt-2 pt-2 border-t border-gray-200">
-              <button
+            <Box mt="3" pt="3" style={{ borderTop: '1px solid var(--gray-6)' }}>
+              <Button
                 onClick={() => {
                   setFilterDoctor('');
                   setFilterType('');
                   setFilterStatus('active');
                 }}
-                className="text-xs text-gray-600 hover:text-gray-900 font-medium inline-flex items-center gap-1"
+                variant="ghost"
+                size="1"
+                color="gray"
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg style={{ width: '12px', height: '12px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
                 Clear filters
-              </button>
-            </div>
+              </Button>
+            </Box>
           )}
-        </div>
+        </Box>
+      </Card>
 
-        {/* Queue Table */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center">
-            <h2 className="text-sm font-semibold text-gray-900">Current Queue</h2>
-            <span className="text-xs text-gray-500">
+      {/* Queue Table */}
+      <Card>
+        <Box p="3" style={{ borderBottom: '1px solid var(--gray-6)' }}>
+          <Flex justify="between" align="center">
+            <Heading size="3">Current Queue</Heading>
+            <Text size="1" color="gray">
               {filteredQueue.length} {filteredQueue.length === 1 ? 'patient' : 'patients'}
-            </span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-1.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Queue #
-                  </th>
-                  <th className="px-3 py-1.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-3 py-1.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Patient
-                  </th>
-                  <th className="px-3 py-1.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Doctor / Room
-                  </th>
-                  <th className="px-3 py-1.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-3 py-1.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Wait Time
-                  </th>
-                  <th className="px-3 py-1.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Checked In
-                  </th>
-                  <th className="px-3 py-1.5 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredQueue.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center">
-                      <div className="flex flex-col items-center">
-                        <svg className="w-10 h-10 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                        </svg>
-                        <p className="text-sm font-medium text-gray-900 mb-0.5">
-                          {searchQuery || filterDoctor || filterType || filterStatus !== 'active' 
-                            ? 'No patients match your filters' 
-                            : 'No patients in queue'}
-                        </p>
-                        <p className="text-xs text-gray-500 mb-3">
-                          {searchQuery || filterDoctor || filterType || filterStatus !== 'active' 
-                            ? 'Try adjusting your search or filters' 
-                            : 'Add a patient to get started'}
-                        </p>
-                        {!searchQuery && !filterDoctor && !filterType && filterStatus === 'active' && (
-                          <button
-                            onClick={() => setShowAddForm(true)}
-                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                          >
-                            <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                            </svg>
-                            Add Patient
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredQueue.map((item) => (
-                    <tr 
-                      key={item._id} 
-                      className={`hover:bg-gray-50 transition-colors ${
-                        item.status === 'in-progress' ? 'bg-blue-50' : ''
-                      }`}
-                    >
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <div className="text-sm font-bold text-gray-900">{item.queueNumber}</div>
-                        {item.priority !== undefined && item.priority < 3 && (
-                          <div className="text-xs text-orange-600">Priority</div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span className={`px-1.5 py-0.5 inline-flex text-xs font-semibold rounded-full ${getTypeColor(item.queueType)}`}>
-                          {item.queueType}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <Link 
-                          href={`/patients/${item.patient._id}`}
-                          className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                        >
-                          {item.patientName || `${item.patient?.firstName} ${item.patient?.lastName}`}
-                        </Link>
-                        <div className="text-xs text-gray-500">
-                          {new Date(item.queuedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-600">
-                        {item.doctor ? (
-                          <div className="text-xs">Dr. {item.doctor.firstName} {item.doctor.lastName}</div>
-                        ) : (
-                          <div className="text-xs text-gray-400">Not assigned</div>
-                        )}
-                        {item.room && (
-                          <div className="text-xs text-blue-600">Room: {item.room.name || item.room.roomNumber}</div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span className={`px-1.5 py-0.5 inline-flex text-xs font-semibold rounded-full ${getStatusColor(item.status)}`}>
-                          {item.status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
-                        {item.estimatedWaitTime !== undefined && (
-                          <div>Est: {item.estimatedWaitTime}m</div>
-                        )}
-                        <div className="text-gray-400">
-                          {calculateWaitTime(item.queuedAt)}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {item.checkedIn ? (
-                          <span className="text-green-600 text-xs font-medium">✓</span>
-                        ) : (
-                          <button
-                            onClick={() => handleCheckIn(item._id)}
-                            className="text-xs text-orange-600 hover:text-orange-800 hover:underline"
-                          >
-                            Check In
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-right text-xs font-medium">
-                        <div className="flex justify-end gap-1">
-                          {item.status === 'waiting' && (
-                            <>
-                              <button
-                                onClick={() => handleStatusUpdate(item._id, 'in-progress')}
-                                className="px-1.5 py-0.5 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100"
-                                title="Start"
-                              >
-                                Start
-                              </button>
-                              <button
-                                onClick={() => handleStatusUpdate(item._id, 'cancelled', item.patientName)}
-                                className="px-1.5 py-0.5 text-xs font-medium text-red-700 bg-red-50 rounded hover:bg-red-100"
-                                title="Cancel"
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          )}
-                          {item.status === 'in-progress' && (
-                            <>
-                              <button
-                                onClick={() => handleStatusUpdate(item._id, 'completed')}
-                                className="px-1.5 py-0.5 text-xs font-medium text-green-700 bg-green-50 rounded hover:bg-green-100"
-                                title="Complete"
-                              >
-                                Done
-                              </button>
-                              <button
-                                onClick={() => handleStatusUpdate(item._id, 'no-show', item.patientName)}
-                                className="px-1.5 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-50 rounded hover:bg-yellow-100"
-                                title="No-Show"
-                              >
-                                No-Show
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+            </Text>
+          </Flex>
+        </Box>
+        {filteredQueue.length === 0 ? (
+          <Box p="8" style={{ textAlign: 'center' }}>
+            <Box mb="2">
+              <svg style={{ width: '40px', height: '40px', margin: '0 auto', color: 'var(--gray-9)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </Box>
+            <Heading size="3" mb="1">
+              {searchQuery || filterDoctor || filterType || filterStatus !== 'active' 
+                ? 'No patients match your filters' 
+                : 'No patients in queue'}
+            </Heading>
+            <Text size="2" color="gray" mb="3" as="div">
+              {searchQuery || filterDoctor || filterType || filterStatus !== 'active' 
+                ? 'Try adjusting your search or filters' 
+                : 'Add a patient to get started'}
+            </Text>
+            {!searchQuery && !filterDoctor && !filterType && filterStatus === 'active' && (
+              <Button
+                onClick={() => setShowAddForm(true)}
+                size="2"
+                color="blue"
+              >
+                <svg style={{ width: '14px', height: '14px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Patient
+              </Button>
+            )}
+          </Box>
+        ) : (
+          <Table.Root>
+            <Table.Header>
+              <Table.Row>
+                <Table.ColumnHeaderCell>Queue #</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Patient</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Doctor / Room</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Wait Time</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Checked In</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell style={{ textAlign: 'right' }}>Actions</Table.ColumnHeaderCell>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {filteredQueue.map((item) => (
+                <Table.Row 
+                  key={item._id}
+                  style={item.status === 'in-progress' ? { background: 'var(--blue-2)' } : undefined}
+                >
+                  <Table.Cell>
+                    <Text size="2" weight="bold">{item.queueNumber}</Text>
+                    {item.priority !== undefined && item.priority < 3 && (
+                      <Badge size="1" color="orange" variant="soft" mt="1">Priority</Badge>
+                    )}
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Badge color={getTypeColor(item.queueType)} size="1">
+                      {item.queueType}
+                    </Badge>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Link href={`/patients/${item.patient._id}`}>
+                      <Text size="2" weight="medium" color="blue" as="div">
+                        {item.patientName || `${item.patient?.firstName} ${item.patient?.lastName}`}
+                      </Text>
+                    </Link>
+                    <Text size="1" color="gray" mt="1" as="div">
+                      {new Date(item.queuedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </Table.Cell>
+                  <Table.Cell>
+                    {item.doctor ? (
+                      <Text size="1" as="div">Dr. {item.doctor.firstName} {item.doctor.lastName}</Text>
+                    ) : (
+                      <Text size="1" color="gray" as="div">Not assigned</Text>
+                    )}
+                    {item.room && (
+                      <Text size="1" color="blue" mt="1" as="div">Room: {item.room.name || item.room.roomNumber}</Text>
+                    )}
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Badge color={getStatusColor(item.status)} size="1">
+                      {item.status}
+                    </Badge>
+                  </Table.Cell>
+                  <Table.Cell>
+                    {item.estimatedWaitTime !== undefined && (
+                      <Text size="1" as="div">Est: {item.estimatedWaitTime}m</Text>
+                    )}
+                    <Text size="1" color="gray" mt="1" as="div">
+                      {calculateWaitTime(item.queuedAt)}
+                    </Text>
+                  </Table.Cell>
+                  <Table.Cell>
+                    {item.checkedIn ? (
+                      <Badge color="green" size="1">✓</Badge>
+                    ) : (
+                      <Button
+                        onClick={() => handleCheckIn(item._id)}
+                        size="1"
+                        variant="ghost"
+                        color="orange"
+                      >
+                        Check In
+                      </Button>
+                    )}
+                  </Table.Cell>
+                  <Table.Cell style={{ textAlign: 'right' }}>
+                    <Flex gap="1" justify="end">
+                      {item.status === 'waiting' && (
+                        <>
+                          <Tooltip content="Start">
+                            <Button
+                              onClick={() => handleStatusUpdate(item._id, 'in-progress')}
+                              size="1"
+                              variant="soft"
+                              color="blue"
+                            >
+                              Start
+                            </Button>
+                          </Tooltip>
+                          <Tooltip content="Cancel">
+                            <Button
+                              onClick={() => handleStatusUpdate(item._id, 'cancelled', item.patientName)}
+                              size="1"
+                              variant="soft"
+                              color="red"
+                            >
+                              Cancel
+                            </Button>
+                          </Tooltip>
+                        </>
+                      )}
+                      {item.status === 'in-progress' && (
+                        <>
+                          <Tooltip content="Complete">
+                            <Button
+                              onClick={() => handleStatusUpdate(item._id, 'completed')}
+                              size="1"
+                              variant="soft"
+                              color="green"
+                            >
+                              Done
+                            </Button>
+                          </Tooltip>
+                          <Tooltip content="No-Show">
+                            <Button
+                              onClick={() => handleStatusUpdate(item._id, 'no-show', item.patientName)}
+                              size="1"
+                              variant="soft"
+                              color="yellow"
+                            >
+                              No-Show
+                            </Button>
+                          </Tooltip>
+                        </>
+                      )}
+                    </Flex>
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table.Root>
+        )}
+      </Card>
 
-        {/* Add to Queue Modal */}
-        {showAddForm && (
-          <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen px-4">
-              <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" onClick={() => {
-                setShowAddForm(false);
-                setPatientSearch('');
-                setSelectedPatient(null);
-                setFormData({ ...formData, patientId: '' });
-              }} />
-              <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-md w-full z-10">
-                <div className="flex justify-between items-center mb-3">
-                  <h2 className="text-base font-semibold text-gray-900">Add Patient to Queue</h2>
-                  <button
-                    onClick={() => {
-                      setShowAddForm(false);
-                      setPatientSearch('');
-                      setSelectedPatient(null);
-                      setFormData({ ...formData, patientId: '' });
-                    }}
-                    className="text-gray-400 hover:text-gray-500"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                <form onSubmit={handleAddToQueue} className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Patient *</label>
-                    <div className="relative patient-search-container">
+      {/* Add to Queue Modal */}
+      <Dialog.Root open={showAddForm} onOpenChange={(open) => {
+        setShowAddForm(open);
+        if (!open) {
+          setPatientSearch('');
+          setSelectedPatient(null);
+          setFormData({ ...formData, patientId: '' });
+        }
+      }}>
+        <Dialog.Content style={{ maxWidth: '500px' }}>
+          <Dialog.Title>Add Patient to Queue</Dialog.Title>
+          <Dialog.Description mb="4">
+            Add a new patient to the queue system
+          </Dialog.Description>
+          <form onSubmit={handleAddToQueue}>
+            <Flex direction="column" gap="3">
+              <Box>
+                <Text size="2" weight="medium" mb="1" as="div">Patient <Text color="red">*</Text></Text>
+                <Popover.Root open={showPatientSearch} onOpenChange={setShowPatientSearch}>
+                  <Popover.Anchor>
+                    <TextField.Root size="2" style={{ width: '100%' }}>
                       <input
                         type="text"
                         required
@@ -792,139 +788,148 @@ export default function QueuePageClient() {
                         }}
                         onFocus={() => setShowPatientSearch(true)}
                         placeholder="Type to search patients..."
-                        className="block w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        style={{ 
+                          all: 'unset', 
+                          flex: 1, 
+                          width: '100%',
+                          padding: '0',
+                          fontSize: 'var(--font-size-2)',
+                          lineHeight: 'var(--line-height-2)'
+                        }}
                       />
-                      {showPatientSearch && filteredPatients.length > 0 && (
-                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                          {filteredPatients.map((patient) => (
-                            <button
-                              key={patient._id}
-                              type="button"
-                              onClick={() => selectPatient(patient)}
-                              className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
-                            >
-                              <div className="font-medium">{patient.firstName} {patient.lastName}</div>
-                              {patient.patientCode && (
-                                <div className="text-xs text-gray-500">{patient.patientCode}</div>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {showPatientSearch && patientSearch && filteredPatients.length === 0 && (
-                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg">
-                          <div className="px-3 py-2 text-sm text-gray-500">No patients found</div>
-                        </div>
-                      )}
-                    </div>
-                    {formData.patientId && !selectedPatient && (
-                      <p className="mt-1 text-xs text-red-600">Please select a valid patient from the list</p>
+                    </TextField.Root>
+                  </Popover.Anchor>
+                  <Popover.Content style={{ width: 'var(--radix-popover-trigger-width)', maxHeight: '200px', overflowY: 'auto' }}>
+                    {filteredPatients.length > 0 ? (
+                      <Flex direction="column" gap="1">
+                        {filteredPatients.map((patient) => (
+                          <Button
+                            key={patient._id}
+                            variant="ghost"
+                            onClick={() => {
+                              selectPatient(patient);
+                              setShowPatientSearch(false);
+                            }}
+                            style={{ justifyContent: 'flex-start', textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start' }}
+                          >
+                            <Text weight="medium" size="2">{patient.firstName} {patient.lastName}</Text>
+                            {patient.patientCode && (
+                              <Text size="1" color="gray">{patient.patientCode}</Text>
+                            )}
+                          </Button>
+                        ))}
+                      </Flex>
+                    ) : patientSearch ? (
+                      <Text size="2" color="gray">No patients found</Text>
+                    ) : (
+                      <Text size="2" color="gray">Start typing to search...</Text>
                     )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Doctor (Optional)</label>
-                    <select
-                      value={formData.doctorId}
-                      onChange={(e) => setFormData({ ...formData, doctorId: e.target.value })}
-                      className="block w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">No doctor assigned</option>
-                      {doctors.map((doctor) => (
-                        <option key={doctor._id} value={doctor._id}>
-                          Dr. {doctor.firstName} {doctor.lastName}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Queue Type *</label>
-                    <select
-                      required
-                      value={formData.queueType}
-                      onChange={(e) => setFormData({ ...formData, queueType: e.target.value as any })}
-                      className="block w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="walk-in">Walk-In</option>
-                      <option value="appointment">Appointment</option>
-                      <option value="follow-up">Follow-Up</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Priority</label>
-                    <select
-                      value={formData.priority}
-                      onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
-                      className="block w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="0">Normal</option>
-                      <option value="1">High</option>
-                      <option value="2">Urgent</option>
-                    </select>
-                    <p className="mt-0.5 text-xs text-gray-500">Lower number = higher priority</p>
-                  </div>
-                  <div className="flex justify-end space-x-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAddForm(false);
-                        setPatientSearch('');
-                        setSelectedPatient(null);
-                        setFormData({ ...formData, patientId: '' });
-                      }}
-                      className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                    >
-                      Add to Queue
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Confirmation Dialog */}
-        {confirmAction && (
-          <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen px-4">
-              <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setConfirmAction(null)} />
-              <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-md w-full z-10">
-                <h3 className="text-base font-semibold text-gray-900 mb-2">Confirm Action</h3>
-                <p className="text-sm text-gray-600 mb-3">
-                  Are you sure you want to mark <strong>{confirmAction.patientName}</strong> as <strong>{confirmAction.action}</strong>?
-                </p>
-                <div className="flex justify-end space-x-2">
-                  <button
-                    onClick={() => setConfirmAction(null)}
-                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                  </Popover.Content>
+                </Popover.Root>
+                {formData.patientId && !selectedPatient && (
+                  <Text size="1" color="red" mt="1" as="div">Please select a valid patient from the list</Text>
+                )}
+              </Box>
+              <Box>
+                <Text size="2" weight="medium" mb="1" as="div">Doctor (Optional)</Text>
+                <Select.Root
+                  value={formData.doctorId || undefined}
+                  onValueChange={(value) => setFormData({ ...formData, doctorId: value === 'none' ? '' : value })}
+                >
+                  <Select.Trigger placeholder="No doctor assigned" />
+                  <Select.Content>
+                    <Select.Item value="none">No doctor assigned</Select.Item>
+                    {doctors.map((doctor) => (
+                      <Select.Item key={doctor._id} value={doctor._id}>
+                        Dr. {doctor.firstName} {doctor.lastName}
+                      </Select.Item>
+                    ))}
+                  </Select.Content>
+                </Select.Root>
+              </Box>
+              <Box>
+                <Text size="2" weight="medium" mb="1" as="div">Queue Type <Text color="red">*</Text></Text>
+                <Select.Root
+                  value={formData.queueType}
+                  onValueChange={(value) => setFormData({ ...formData, queueType: value as any })}
+                >
+                  <Select.Trigger />
+                  <Select.Content>
+                    <Select.Item value="walk-in">Walk-In</Select.Item>
+                    <Select.Item value="appointment">Appointment</Select.Item>
+                    <Select.Item value="follow-up">Follow-Up</Select.Item>
+                  </Select.Content>
+                </Select.Root>
+              </Box>
+              <Box>
+                <Text size="2" weight="medium" mb="1" as="div">Priority</Text>
+                <Select.Root
+                  value={formData.priority.toString()}
+                  onValueChange={(value) => setFormData({ ...formData, priority: parseInt(value) })}
+                >
+                  <Select.Trigger />
+                  <Select.Content>
+                    <Select.Item value="0">Normal</Select.Item>
+                    <Select.Item value="1">High</Select.Item>
+                    <Select.Item value="2">Urgent</Select.Item>
+                  </Select.Content>
+                </Select.Root>
+                <Text size="1" color="gray" mt="1" as="div">Lower number = higher priority</Text>
+              </Box>
+              <Flex gap="2" justify="end" pt="2">
+                <Dialog.Close>
+                  <Button
+                    type="button"
+                    variant="soft"
+                    color="gray"
+                    onClick={() => {
+                      setPatientSearch('');
+                      setSelectedPatient(null);
+                      setFormData({ ...formData, patientId: '' });
+                    }}
                   >
                     Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      performStatusUpdate(confirmAction.id, confirmAction.action);
-                      setConfirmAction(null);
-                    }}
-                    className={`px-3 py-1.5 text-sm font-medium text-white rounded-md ${
-                      confirmAction.action === 'cancelled' 
-                        ? 'bg-red-600 hover:bg-red-700' 
-                        : 'bg-yellow-600 hover:bg-yellow-700'
-                    }`}
-                  >
-                    Confirm
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+                  </Button>
+                </Dialog.Close>
+                <Button type="submit" color="blue">
+                  Add to Queue
+                </Button>
+              </Flex>
+            </Flex>
+          </form>
+        </Dialog.Content>
+      </Dialog.Root>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog.Root open={!!confirmAction} onOpenChange={(open) => {
+        if (!open) setConfirmAction(null);
+      }}>
+        <AlertDialog.Content style={{ maxWidth: '450px' }}>
+          <AlertDialog.Title>Confirm Action</AlertDialog.Title>
+          <AlertDialog.Description>
+            Are you sure you want to mark <strong>{confirmAction?.patientName}</strong> as <strong>{confirmAction?.action}</strong>?
+          </AlertDialog.Description>
+          <Flex gap="3" mt="4" justify="end">
+            <AlertDialog.Cancel>
+              <Button variant="soft" color="gray">Cancel</Button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action>
+              <Button
+                color={confirmAction?.action === 'cancelled' ? 'red' : 'yellow'}
+                onClick={() => {
+                  if (confirmAction) {
+                    performStatusUpdate(confirmAction.id, confirmAction.action);
+                    setConfirmAction(null);
+                  }
+                }}
+              >
+                Confirm
+              </Button>
+            </AlertDialog.Action>
+          </Flex>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
+    </Box>
   );
 }
 

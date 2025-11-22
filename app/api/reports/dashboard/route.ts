@@ -88,9 +88,9 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Calculate revenue metrics
-    const periodRevenue = periodInvoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
-    const periodBilled = periodInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
-    const totalOutstanding = outstandingInvoices.reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
+    const periodRevenue = periodInvoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
+    const periodBilled = periodInvoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
+    const totalOutstanding = outstandingInvoices.reduce((sum: number, inv: any) => sum + (inv.outstandingBalance || 0), 0);
 
     // Recent appointments (today)
     const recentAppointments = await Appointment.find({
@@ -115,8 +115,8 @@ export async function GET(request: NextRequest) {
 
     // Payment method breakdown for period
     const paymentMethodBreakdown: Record<string, number> = {};
-    periodInvoices.forEach((inv) => {
-      inv.payments?.forEach((payment) => {
+    periodInvoices.forEach((inv: any) => {
+      inv.payments?.forEach((payment: any) => {
         const method = payment.method || 'unknown';
         paymentMethodBreakdown[method] = (paymentMethodBreakdown[method] || 0) + (payment.amount || 0);
       });

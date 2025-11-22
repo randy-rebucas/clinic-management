@@ -71,7 +71,7 @@ const InvoiceSchema: Schema = new Schema(
   {
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
-    invoiceNumber: { type: String, index: true, required: true },
+    invoiceNumber: { type: String, required: true },
     items: [BillingItemSchema],
     subtotal: Number,
     discounts: [{

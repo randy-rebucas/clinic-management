@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     // Get patient name
     const Patient = (await import('@/models/Patient')).default;
     const patient = await Patient.findById(patientId).select('firstName lastName').lean();
-    if (!patient) {
+    if (!patient || Array.isArray(patient) || !('firstName' in patient) || !('lastName' in patient)) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
         { status: 404 }
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
       userEmail: session.email,
       userRole: session.role,
       action: 'create',
-      resource: 'queue',
+      resource: 'system',
       resourceId: queue._id,
       description: `Added patient to queue: ${queue.queueNumber}`,
     });
