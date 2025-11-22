@@ -51,7 +51,7 @@ interface Doctor {
   specialization: string;
 }
 
-export default function AppointmentsPageClient() {
+export default function AppointmentsPageClient({ patientId }: { patientId?: string } = {}) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -72,6 +72,9 @@ export default function AppointmentsPageClient() {
     status: 'scheduled' as const,
     isWalkIn: false,
   });
+  const [patientSearch, setPatientSearch] = useState('');
+  const [showPatientSearch, setShowPatientSearch] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [filterDoctor, setFilterDoctor] = useState<string>('');
   const [filterRoom, setFilterRoom] = useState<string>('');
   const router = useRouter();
@@ -79,6 +82,53 @@ export default function AppointmentsPageClient() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Handle patientId prop - open form and pre-select patient
+  useEffect(() => {
+    if (patientId && patients.length > 0 && !showForm && !showWalkInForm) {
+      // Check if patient exists in the list
+      const patientExists = patients.some(p => p._id === patientId);
+      if (patientExists) {
+        const patient = patients.find(p => p._id === patientId);
+        setFormData(prev => ({
+          ...prev,
+          patient: patientId,
+          appointmentDate: selectedDate.toISOString().split('T')[0],
+        }));
+        if (patient) {
+          setSelectedPatient(patient);
+          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+        }
+        setShowForm(true);
+        setShowWalkInForm(false);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId, patients.length]);
+
+  useEffect(() => {
+    if (formData.patient) {
+      const patient = patients.find((p) => p._id === formData.patient);
+      setSelectedPatient(patient || null);
+      if (patient) {
+        setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+      }
+    }
+  }, [formData.patient, patients]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.patient-search-container')) {
+        setShowPatientSearch(false);
+      }
+    };
+
+    if (showPatientSearch) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showPatientSearch]);
 
   useEffect(() => {
     if (selectedDate) {
@@ -146,8 +196,27 @@ export default function AppointmentsPageClient() {
     }
   }, [selectedDate, filterDoctor, filterRoom]);
 
+  const filteredPatients = patients.filter((patient) => {
+    if (!patientSearch.trim()) return true;
+    const searchLower = patientSearch.toLowerCase();
+    const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
+    return fullName.includes(searchLower);
+  });
+
+  const selectPatient = (patient: Patient) => {
+    setFormData({ ...formData, patient: patient._id });
+    setSelectedPatient(patient);
+    setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+    setShowPatientSearch(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.patient || !selectedPatient) {
+      alert('Please select a valid patient');
+      setShowPatientSearch(true);
+      return;
+    }
     try {
       const isWalkIn = formData.isWalkIn;
       
@@ -208,6 +277,8 @@ export default function AppointmentsPageClient() {
           status: 'scheduled',
           isWalkIn: false,
         });
+        setPatientSearch('');
+        setSelectedPatient(null);
         fetchAppointmentsForDate(selectedDate);
         alert(isWalkIn ? `Walk-in appointment created! Queue number: ${queueNumber}` : 'Appointment scheduled successfully!');
       } else {
@@ -359,6 +430,7 @@ export default function AppointmentsPageClient() {
                 setFormData({ ...formData, isWalkIn: true, appointmentDate: new Date().toISOString().split('T')[0] });
                 setShowForm(false);
                 setShowWalkInForm(true);
+                // Keep patient search if patient is already selected
               }}
               className="inline-flex items-center px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-orange-600 to-orange-700 rounded-md shadow-sm hover:shadow hover:from-orange-700 hover:to-orange-800 transition-all"
             >
@@ -724,6 +796,9 @@ export default function AppointmentsPageClient() {
               <div className="fixed inset-0 bg-black/30 backdrop-blur-md" onClick={() => {
                 setShowForm(false);
                 setShowWalkInForm(false);
+                setPatientSearch('');
+                setSelectedPatient(null);
+                setFormData({ ...formData, patient: '' });
               }} />
               <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-2xl w-full z-10">
                 <div className="flex justify-between items-center mb-4">
@@ -734,6 +809,9 @@ export default function AppointmentsPageClient() {
                     onClick={() => {
                       setShowForm(false);
                       setShowWalkInForm(false);
+                      setPatientSearch('');
+                      setSelectedPatient(null);
+                      setFormData({ ...formData, patient: '' });
                     }}
                     className="text-gray-400 hover:text-gray-500 transition-colors"
                   >
@@ -746,19 +824,46 @@ export default function AppointmentsPageClient() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Patient *</label>
-                      <select
-                        required
-                        value={formData.patient}
-                        onChange={(e) => setFormData({ ...formData, patient: e.target.value })}
-                        className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                      >
-                        <option value="">Select a patient</option>
-                        {patients.map((patient) => (
-                          <option key={patient._id} value={patient._id}>
-                            {patient.firstName} {patient.lastName}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="relative mt-1 patient-search-container">
+                        <input
+                          type="text"
+                          required
+                          value={patientSearch}
+                          onChange={(e) => {
+                            setPatientSearch(e.target.value);
+                            setShowPatientSearch(true);
+                            if (!e.target.value) {
+                              setFormData({ ...formData, patient: '' });
+                              setSelectedPatient(null);
+                            }
+                          }}
+                          onFocus={() => setShowPatientSearch(true)}
+                          placeholder="Type to search patients..."
+                          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        />
+                        {showPatientSearch && filteredPatients.length > 0 && (
+                          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                            {filteredPatients.map((patient) => (
+                              <button
+                                key={patient._id}
+                                type="button"
+                                onClick={() => selectPatient(patient)}
+                                className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
+                              >
+                                <div className="font-medium">{patient.firstName} {patient.lastName}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {showPatientSearch && patientSearch && filteredPatients.length === 0 && (
+                          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg">
+                            <div className="px-3 py-2 text-sm text-gray-500">No patients found</div>
+                          </div>
+                        )}
+                      </div>
+                      {formData.patient && !selectedPatient && (
+                        <p className="mt-1 text-xs text-red-600">Please select a valid patient from the list</p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Doctor/Provider *</label>
@@ -857,6 +962,9 @@ export default function AppointmentsPageClient() {
                       onClick={() => {
                         setShowForm(false);
                         setShowWalkInForm(false);
+                        setPatientSearch('');
+                        setSelectedPatient(null);
+                        setFormData({ ...formData, patient: '' });
                       }}
                       className="px-3 py-1.5 border border-gray-200 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
                     >

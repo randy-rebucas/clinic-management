@@ -55,6 +55,17 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
+    // Sanitize ObjectId fields - convert empty strings to undefined
+    if (body.visit === '' || body.visit === null) {
+      body.visit = undefined;
+    }
+    if (body.prescribedBy === '' || body.prescribedBy === null) {
+      body.prescribedBy = undefined;
+    }
+    if (body.patient === '' || body.patient === null) {
+      body.patient = undefined;
+    }
+
     const prescription = await Prescription.findByIdAndUpdate(id, body, {
       new: true,
       runValidators: true,

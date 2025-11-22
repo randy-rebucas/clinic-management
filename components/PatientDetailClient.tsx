@@ -81,18 +81,64 @@ interface Visit {
   status: string;
 }
 
+interface Appointment {
+  _id: string;
+  appointmentCode: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  status: string;
+  doctor?: {
+    firstName: string;
+    lastName: string;
+  };
+}
+
+interface Prescription {
+  _id: string;
+  prescriptionCode: string;
+  issuedAt: string;
+  status: string;
+  medications: Array<{ name: string }>;
+}
+
+interface Invoice {
+  _id: string;
+  invoiceNumber: string;
+  total: number;
+  totalPaid: number;
+  outstandingBalance: number;
+  status: string;
+  createdAt: string;
+}
+
+interface LabResult {
+  _id: string;
+  requestCode: string;
+  orderDate: string;
+  status: string;
+  testName?: string;
+}
+
 export default function PatientDetailClient({ patientId }: { patientId: string }) {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [labResults, setLabResults] = useState<LabResult[]>([]);
   const [alerts, setAlerts] = useState<PatientAlert[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'emr' | 'files'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'visits' | 'appointments' | 'prescriptions' | 'invoices' | 'lab-results' | 'files'>('overview');
   const [showQR, setShowQR] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     fetchPatient();
     fetchVisits();
+    fetchAppointments();
+    fetchPrescriptions();
+    fetchInvoices();
+    fetchLabResults();
     fetchAlerts();
   }, [patientId]);
 
@@ -125,6 +171,62 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
       }
     } catch (error) {
       console.error('Failed to fetch visits:', error);
+    }
+  };
+
+  const fetchAppointments = async () => {
+    try {
+      const res = await fetch(`/api/appointments?patientId=${patientId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setAppointments(data.data || []);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch appointments:', error);
+    }
+  };
+
+  const fetchPrescriptions = async () => {
+    try {
+      const res = await fetch(`/api/prescriptions?patientId=${patientId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setPrescriptions(data.data || []);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch prescriptions:', error);
+    }
+  };
+
+  const fetchInvoices = async () => {
+    try {
+      const res = await fetch(`/api/invoices?patientId=${patientId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setInvoices(data.data || []);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch invoices:', error);
+    }
+  };
+
+  const fetchLabResults = async () => {
+    try {
+      const res = await fetch(`/api/lab-results?patientId=${patientId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setLabResults(data.data || []);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch lab results:', error);
     }
   };
 
@@ -228,50 +330,175 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     .filter(Boolean)
     .join(' ');
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP',
+      minimumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  const calculateAge = (dateOfBirth: string) => {
+    const age = Math.floor((new Date().getTime() - new Date(dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    return age;
+  };
+
+  const totalOutstanding = invoices.reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
+  const totalPaid = invoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <div className="min-h-screen bg-gray-50">
+      <div className="w-full px-4 py-3">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">
-          <div className="mb-4 sm:mb-0">
-            <div className="flex items-center space-x-3 mb-2">
-              <Link
-                href="/patients"
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </Link>
-              <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">
+        <div className="mb-4">
+          <div className="flex items-center space-x-3 mb-3">
+            <Link
+              href="/patients"
+              className="text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </Link>
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold text-gray-900 mb-1">
                 {fullName}
               </h1>
+              <div className="flex items-center space-x-4 text-sm text-gray-600">
+                {patient.patientCode && (
+                  <span>ID: {patient.patientCode}</span>
+                )}
+                <span>•</span>
+                <span>{calculateAge(patient.dateOfBirth)} years old</span>
+                {patient.sex && patient.sex !== 'unknown' && (
+                  <>
+                    <span>•</span>
+                    <span className="capitalize">{patient.sex}</span>
+                  </>
+                )}
+              </div>
             </div>
-            {patient.patientCode && (
-              <p className="text-gray-600 text-sm sm:text-base ml-9">
-                Patient ID: {patient.patientCode}
-              </p>
-            )}
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowQR(!showQR)}
+                className="inline-flex items-center px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-md shadow-sm hover:shadow hover:from-blue-700 hover:to-blue-800 transition-all"
+              >
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                </svg>
+                QR Code
+              </button>
+              <Link
+                href={`/patients?edit=${patient._id}`}
+                className="inline-flex items-center px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-green-600 to-green-700 rounded-md shadow-sm hover:shadow hover:from-green-700 hover:to-green-800 transition-all"
+              >
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Edit
+              </Link>
+            </div>
           </div>
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={() => setShowQR(!showQR)}
-              className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-sm hover:shadow-md hover:from-blue-700 hover:to-blue-800 transition-all"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-              </svg>
-              {showQR ? 'Hide' : 'Show'} QR Code
-            </button>
-            <button
-              onClick={() => router.push(`/patients?edit=${patient._id}`)}
-              className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-green-600 to-green-700 rounded-lg shadow-sm hover:shadow-md hover:from-green-700 hover:to-green-800 transition-all"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Edit
-            </button>
+
+          {/* Quick Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mb-3">
+            <div className="bg-white rounded-lg border border-gray-200 p-2">
+              <p className="text-xs text-gray-600 mb-0.5">Visits</p>
+              <p className="text-lg font-bold text-gray-900">{visits.length}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-2">
+              <p className="text-xs text-gray-600 mb-0.5">Appointments</p>
+              <p className="text-lg font-bold text-gray-900">{appointments.length}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-2">
+              <p className="text-xs text-gray-600 mb-0.5">Prescriptions</p>
+              <p className="text-lg font-bold text-gray-900">{prescriptions.length}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-2">
+              <p className="text-xs text-gray-600 mb-0.5">Invoices</p>
+              <p className="text-lg font-bold text-gray-900">{invoices.length}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-2">
+              <p className="text-xs text-gray-600 mb-0.5">Lab Results</p>
+              <p className="text-lg font-bold text-gray-900">{labResults.length}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-2">
+              <p className="text-xs text-gray-600 mb-0.5">Outstanding</p>
+              <p className="text-lg font-bold text-red-600">{formatCurrency(totalOutstanding)}</p>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-3">
+            <h2 className="text-sm font-semibold text-gray-900 mb-2">Quick Actions</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+              <Link
+                href={`/appointments/new?patientId=${patientId}`}
+                className="flex items-center space-x-2 p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors group"
+              >
+                <div className="bg-green-50 text-green-600 rounded-md p-1.5 group-hover:scale-105 transition-transform">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <span className="text-xs font-medium text-gray-900">Schedule</span>
+              </Link>
+              <Link
+                href={`/visits/new?patientId=${patientId}`}
+                className="flex items-center space-x-2 p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors group"
+              >
+                <div className="bg-teal-50 text-teal-600 rounded-md p-1.5 group-hover:scale-105 transition-transform">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <span className="text-xs font-medium text-gray-900">New Visit</span>
+              </Link>
+              <Link
+                href={`/prescriptions/new?patientId=${patientId}`}
+                className="flex items-center space-x-2 p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors group"
+              >
+                <div className="bg-purple-50 text-purple-600 rounded-md p-1.5 group-hover:scale-105 transition-transform">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                  </svg>
+                </div>
+                <span className="text-xs font-medium text-gray-900">Prescription</span>
+              </Link>
+              <Link
+                href={`/invoices/new?patientId=${patientId}`}
+                className="flex items-center space-x-2 p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors group"
+              >
+                <div className="bg-emerald-50 text-emerald-600 rounded-md p-1.5 group-hover:scale-105 transition-transform">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <span className="text-xs font-medium text-gray-900">Invoice</span>
+              </Link>
+              <Link
+                href={`/lab-results/new?patientId=${patientId}`}
+                className="flex items-center space-x-2 p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors group"
+              >
+                <div className="bg-blue-50 text-blue-600 rounded-md p-1.5 group-hover:scale-105 transition-transform">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <span className="text-xs font-medium text-gray-900">Lab Result</span>
+              </Link>
+              <button
+                onClick={() => setShowQR(!showQR)}
+                className="flex items-center space-x-2 p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors group"
+              >
+                <div className="bg-amber-50 text-amber-600 rounded-md p-1.5 group-hover:scale-105 transition-transform">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                  </svg>
+                </div>
+                <span className="text-xs font-medium text-gray-900">QR Code</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -362,11 +589,11 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
 
         {/* Tabs */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-3">
-          <div className="border-b border-gray-200">
-            <nav className="flex -mb-px">
+          <div className="border-b border-gray-200 overflow-x-auto">
+            <nav className="flex -mb-px min-w-max">
               <button
                 onClick={() => setActiveTab('overview')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === 'overview'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -375,18 +602,58 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                 Overview
               </button>
               <button
-                onClick={() => setActiveTab('emr')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'emr'
+                onClick={() => setActiveTab('visits')}
+                className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === 'visits'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Medical Records ({visits.length})
+                Visits ({visits.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('appointments')}
+                className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === 'appointments'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Appointments ({appointments.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('prescriptions')}
+                className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === 'prescriptions'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Prescriptions ({prescriptions.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('invoices')}
+                className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === 'invoices'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Invoices ({invoices.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('lab-results')}
+                className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === 'lab-results'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Lab Results ({labResults.length})
               </button>
               <button
                 onClick={() => setActiveTab('files')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === 'files'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -400,43 +667,43 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
           <div className="p-3">
             {/* Overview Tab */}
             {activeTab === 'overview' && (
-              <div className="space-y-6">
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {/* Basic Information */}
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
-                    <dl className="space-y-3">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Basic Information</h3>
+                    <dl className="space-y-2">
                       <div>
-                        <dt className="text-sm font-medium text-gray-500">Full Name</dt>
-                        <dd className="text-sm text-gray-900">{fullName}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-sm font-medium text-gray-500">Date of Birth</dt>
-                        <dd className="text-sm text-gray-900">
-                          {new Date(patient.dateOfBirth).toLocaleDateString()}
-                        </dd>
-                      </div>
+                      <dt className="text-xs font-medium text-gray-500">Full Name</dt>
+                      <dd className="text-sm text-gray-900">{fullName}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-medium text-gray-500">Date of Birth</dt>
+                      <dd className="text-sm text-gray-900">
+                        {new Date(patient.dateOfBirth).toLocaleDateString()}
+                      </dd>
+                    </div>
                       {patient.sex && (
                         <div>
-                          <dt className="text-sm font-medium text-gray-500">Sex</dt>
+                          <dt className="text-xs font-medium text-gray-500">Sex</dt>
                           <dd className="text-sm text-gray-900 capitalize">{patient.sex}</dd>
                         </div>
                       )}
                       {patient.civilStatus && (
                         <div>
-                          <dt className="text-sm font-medium text-gray-500">Civil Status</dt>
+                          <dt className="text-xs font-medium text-gray-500">Civil Status</dt>
                           <dd className="text-sm text-gray-900">{patient.civilStatus}</dd>
                         </div>
                       )}
                       {patient.nationality && (
                         <div>
-                          <dt className="text-sm font-medium text-gray-500">Nationality</dt>
+                          <dt className="text-xs font-medium text-gray-500">Nationality</dt>
                           <dd className="text-sm text-gray-900">{patient.nationality}</dd>
                         </div>
                       )}
                       {patient.occupation && (
                         <div>
-                          <dt className="text-sm font-medium text-gray-500">Occupation</dt>
+                          <dt className="text-xs font-medium text-gray-500">Occupation</dt>
                           <dd className="text-sm text-gray-900">{patient.occupation}</dd>
                         </div>
                       )}
@@ -444,19 +711,19 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                   </div>
 
                   {/* Contact Information */}
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
-                    <dl className="space-y-3">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Contact Information</h3>
+                    <dl className="space-y-2">
                       <div>
-                        <dt className="text-sm font-medium text-gray-500">Email</dt>
+                        <dt className="text-xs font-medium text-gray-500">Email</dt>
                         <dd className="text-sm text-gray-900">{patient.email}</dd>
                       </div>
                       <div>
-                        <dt className="text-sm font-medium text-gray-500">Phone</dt>
+                        <dt className="text-xs font-medium text-gray-500">Phone</dt>
                         <dd className="text-sm text-gray-900">{patient.phone}</dd>
                       </div>
                       <div>
-                        <dt className="text-sm font-medium text-gray-500">Address</dt>
+                        <dt className="text-xs font-medium text-gray-500">Address</dt>
                         <dd className="text-sm text-gray-900">
                           {patient.address.street}, {patient.address.city}, {patient.address.state} {patient.address.zipCode}
                         </dd>
@@ -466,20 +733,20 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                 </div>
 
                 {/* Emergency Contact */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Emergency Contact</h3>
-                  <dl className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Emergency Contact</h3>
+                  <dl className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Name</dt>
+                      <dt className="text-xs font-medium text-gray-500">Name</dt>
                       <dd className="text-sm text-gray-900">{patient.emergencyContact.name}</dd>
                     </div>
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Phone</dt>
+                      <dt className="text-xs font-medium text-gray-500">Phone</dt>
                       <dd className="text-sm text-gray-900">{patient.emergencyContact.phone}</dd>
                     </div>
                     {patient.emergencyContact.relationship && (
                       <div>
-                        <dt className="text-sm font-medium text-gray-500">Relationship</dt>
+                        <dt className="text-xs font-medium text-gray-500">Relationship</dt>
                         <dd className="text-sm text-gray-900">{patient.emergencyContact.relationship}</dd>
                       </div>
                     )}
@@ -488,18 +755,18 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
 
                 {/* Identifiers */}
                 {(patient.identifiers?.philHealth || patient.identifiers?.govId) && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Identifiers</h3>
-                    <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Identifiers</h3>
+                    <dl className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {patient.identifiers.philHealth && (
                         <div>
-                          <dt className="text-sm font-medium text-gray-500">PhilHealth ID</dt>
+                          <dt className="text-xs font-medium text-gray-500">PhilHealth ID</dt>
                           <dd className="text-sm text-gray-900">{patient.identifiers.philHealth}</dd>
                         </div>
                       )}
                       {patient.identifiers.govId && (
                         <div>
-                          <dt className="text-sm font-medium text-gray-500">Government ID</dt>
+                          <dt className="text-xs font-medium text-gray-500">Government ID</dt>
                           <dd className="text-sm text-gray-900">{patient.identifiers.govId}</dd>
                         </div>
                       )}
@@ -508,18 +775,18 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                 )}
 
                 {/* Medical Information */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Medical Information</h3>
-                  <div className="space-y-4">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Medical Information</h3>
+                  <div className="space-y-3">
                     <div>
-                      <dt className="text-sm font-medium text-gray-500 mb-2">Medical History</dt>
+                      <dt className="text-xs font-medium text-gray-500 mb-1">Medical History</dt>
                       <dd className="text-sm text-gray-900 whitespace-pre-wrap">
                         {patient.medicalHistory || 'No medical history recorded'}
                       </dd>
                     </div>
                     {patient.preExistingConditions && patient.preExistingConditions.length > 0 && (
                       <div>
-                        <dt className="text-sm font-medium text-gray-500 mb-2">Pre-existing Conditions</dt>
+                        <dt className="text-xs font-medium text-gray-500 mb-1">Pre-existing Conditions</dt>
                         <dd className="text-sm text-gray-900">
                           <ul className="list-disc list-inside space-y-1">
                             {patient.preExistingConditions.map((condition, idx) => (
@@ -549,12 +816,12 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                       </div>
                     )}
                     <div>
-                      <dt className="text-sm font-medium text-gray-500 mb-2">Allergies</dt>
+                      <dt className="text-xs font-medium text-gray-500 mb-1">Allergies</dt>
                       <dd className="text-sm text-gray-900">{formatAllergies()}</dd>
                     </div>
                     {patient.familyHistory && Object.keys(patient.familyHistory).length > 0 && (
                       <div>
-                        <dt className="text-sm font-medium text-gray-500 mb-2">Family History</dt>
+                        <dt className="text-xs font-medium text-gray-500 mb-1">Family History</dt>
                         <dd className="text-sm text-gray-900">
                           <ul className="list-disc list-inside space-y-1">
                             {Object.entries(patient.familyHistory).map(([condition, relation]) => (
@@ -572,8 +839,8 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
               </div>
             )}
 
-            {/* EMR Tab */}
-            {activeTab === 'emr' && (
+            {/* Visits Tab */}
+            {activeTab === 'visits' && (
               <div>
                 {visits.length === 0 ? (
                   <div className="text-center py-12">
@@ -650,6 +917,269 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                           </div>
                         ))}
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Appointments Tab */}
+            {activeTab === 'appointments' && (
+              <div>
+                {appointments.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No appointments found</h3>
+                    <p className="text-gray-600 mb-4">Schedule an appointment for this patient.</p>
+                    <Link
+                      href={`/appointments/new?patientId=${patientId}`}
+                      className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                    >
+                      Schedule Appointment
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {appointments
+                      .sort((a, b) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime())
+                      .map((apt) => (
+                        <Link
+                          key={apt._id}
+                          href={`/appointments/${apt._id}`}
+                          className="block p-3 border border-gray-200 rounded-lg hover:bg-gray-50 hover:shadow-sm transition-all"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <span className="text-sm font-semibold text-gray-900">{apt.appointmentCode}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                  apt.status === 'scheduled' || apt.status === 'confirmed'
+                                    ? 'bg-green-100 text-green-800'
+                                    : apt.status === 'completed'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : apt.status === 'cancelled'
+                                    ? 'bg-red-100 text-red-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {apt.status}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-700">
+                                {new Date(apt.appointmentDate).toLocaleDateString('en-US', {
+                                  weekday: 'long',
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric',
+                                })}
+                              </p>
+                              <p className="text-sm text-gray-600">
+                                {new Date(`2000-01-01T${apt.appointmentTime}`).toLocaleTimeString('en-US', {
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                  hour12: true,
+                                })}
+                              </p>
+                              {apt.doctor && (
+                                <p className="text-sm text-gray-600 mt-1">
+                                  Dr. {apt.doctor.firstName} {apt.doctor.lastName}
+                                </p>
+                              )}
+                            </div>
+                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+                        </Link>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Prescriptions Tab */}
+            {activeTab === 'prescriptions' && (
+              <div>
+                {prescriptions.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                    </svg>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No prescriptions found</h3>
+                    <p className="text-gray-600 mb-4">Create a prescription for this patient.</p>
+                    <Link
+                      href={`/prescriptions/new?patientId=${patientId}`}
+                      className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                    >
+                      New Prescription
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {prescriptions
+                      .sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())
+                      .map((prescription) => (
+                        <Link
+                          key={prescription._id}
+                          href={`/prescriptions/${prescription._id}`}
+                          className="block p-3 border border-gray-200 rounded-lg hover:bg-gray-50 hover:shadow-sm transition-all"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <span className="text-sm font-semibold text-gray-900">{prescription.prescriptionCode}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                  prescription.status === 'active'
+                                    ? 'bg-green-100 text-green-800'
+                                    : prescription.status === 'completed'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : prescription.status === 'dispensed'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {prescription.status}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-700">
+                                Issued: {new Date(prescription.issuedAt).toLocaleDateString()}
+                              </p>
+                              {prescription.medications && prescription.medications.length > 0 && (
+                                <p className="text-sm text-gray-600 mt-1">
+                                  {prescription.medications.length} medication(s)
+                                </p>
+                              )}
+                            </div>
+                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+                        </Link>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Invoices Tab */}
+            {activeTab === 'invoices' && (
+              <div>
+                {invoices.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No invoices found</h3>
+                    <p className="text-gray-600 mb-4">Create an invoice for this patient.</p>
+                    <Link
+                      href={`/invoices/new?patientId=${patientId}`}
+                      className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                    >
+                      Create Invoice
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {invoices
+                      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                      .map((invoice) => (
+                        <Link
+                          key={invoice._id}
+                          href={`/invoices/${invoice._id}`}
+                          className="block p-3 border border-gray-200 rounded-lg hover:bg-gray-50 hover:shadow-sm transition-all"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <span className="text-sm font-semibold text-gray-900">{invoice.invoiceNumber}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                  invoice.status === 'paid'
+                                    ? 'bg-green-100 text-green-800'
+                                    : invoice.status === 'unpaid'
+                                    ? 'bg-red-100 text-red-800'
+                                    : invoice.status === 'partial'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {invoice.status}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-700">
+                                Total: {formatCurrency(invoice.total)}
+                              </p>
+                              {invoice.outstandingBalance > 0 && (
+                                <p className="text-sm text-red-600 font-medium mt-1">
+                                  Outstanding: {formatCurrency(invoice.outstandingBalance)}
+                                </p>
+                              )}
+                              <p className="text-xs text-gray-500 mt-1">
+                                Created: {new Date(invoice.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+                        </Link>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Lab Results Tab */}
+            {activeTab === 'lab-results' && (
+              <div>
+                {labResults.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No lab results found</h3>
+                    <p className="text-gray-600 mb-4">Add lab results for this patient.</p>
+                    <Link
+                      href={`/lab-results/new?patientId=${patientId}`}
+                      className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                    >
+                      Add Lab Result
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {labResults
+                      .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+                      .map((lab) => (
+                        <Link
+                          key={lab._id}
+                          href={`/lab-results/${lab._id}`}
+                          className="block p-3 border border-gray-200 rounded-lg hover:bg-gray-50 hover:shadow-sm transition-all"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <span className="text-sm font-semibold text-gray-900">{lab.requestCode}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                  lab.status === 'completed'
+                                    ? 'bg-green-100 text-green-800'
+                                    : lab.status === 'pending'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {lab.status}
+                                </span>
+                              </div>
+                              {lab.testName && (
+                                <p className="text-sm text-gray-700">{lab.testName}</p>
+                              )}
+                              <p className="text-xs text-gray-500 mt-1">
+                                Ordered: {new Date(lab.orderDate).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+                        </Link>
+                      ))}
                   </div>
                 )}
               </div>

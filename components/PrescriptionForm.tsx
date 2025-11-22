@@ -79,6 +79,8 @@ export default function PrescriptionForm({
   const [medicineResults, setMedicineResults] = useState<Medicine[]>([]);
   const [showMedicineSearch, setShowMedicineSearch] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [patientSearch, setPatientSearch] = useState('');
+  const [showPatientSearch, setShowPatientSearch] = useState(false);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [digitalSignature, setDigitalSignature] = useState<string | null>(null);
   const [drugInteractions, setDrugInteractions] = useState<Array<{
@@ -94,6 +96,9 @@ export default function PrescriptionForm({
     if (formData.patient) {
       const patient = patients.find((p) => p._id === formData.patient);
       setSelectedPatient(patient || null);
+      if (patient) {
+        setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+      }
     }
   }, [formData.patient, patients]);
 
@@ -115,8 +120,27 @@ export default function PrescriptionForm({
     }
   }, [medicineSearch]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.patient-search-container')) {
+        setShowPatientSearch(false);
+      }
+    };
+
+    if (showPatientSearch) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showPatientSearch]);
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (!formData.patient || !selectedPatient) {
+      alert('Please select a valid patient');
+      setShowPatientSearch(true);
+      return;
+    }
     if (formData.medications.length === 0) {
       alert('Please add at least one medication');
       return;
@@ -301,26 +325,75 @@ export default function PrescriptionForm({
       .catch(console.error);
   };
 
+  const filteredPatients = patients.filter((patient) => {
+    if (!patientSearch.trim()) return true;
+    const searchLower = patientSearch.toLowerCase();
+    const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
+    return fullName.includes(searchLower);
+  });
+
+  const selectPatient = (patient: Patient) => {
+    setFormData({ ...formData, patient: patient._id });
+    setSelectedPatient(patient);
+    setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+    setShowPatientSearch(false);
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto">
       {/* Patient Selection */}
       <div>
         <label className="block text-sm font-medium text-gray-700">Patient *</label>
-        <select
-          required
-          value={formData.patient}
-          onChange={(e) => setFormData({ ...formData, patient: e.target.value })}
-          className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-        >
-          <option value="">Select a patient</option>
-          {patients.map((patient) => (
-            <option key={patient._id} value={patient._id}>
-              {patient.firstName} {patient.lastName}
-              {patient.dateOfBirth && ` (Age: ${Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} years)`}
-              {patient.weight && ` - ${patient.weight} kg`}
-            </option>
-          ))}
-        </select>
+        <div className="relative mt-1 patient-search-container">
+          <input
+            type="text"
+            required
+            value={patientSearch}
+            onChange={(e) => {
+              setPatientSearch(e.target.value);
+              setShowPatientSearch(true);
+              if (!e.target.value) {
+                setFormData({ ...formData, patient: '' });
+                setSelectedPatient(null);
+              }
+            }}
+            onFocus={() => setShowPatientSearch(true)}
+            placeholder="Type to search patients..."
+            className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          />
+          {showPatientSearch && filteredPatients.length > 0 && (
+            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+              {filteredPatients.map((patient) => {
+                const age = patient.dateOfBirth
+                  ? Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+                  : null;
+                return (
+                  <button
+                    key={patient._id}
+                    type="button"
+                    onClick={() => selectPatient(patient)}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
+                  >
+                    <div className="font-medium">{patient.firstName} {patient.lastName}</div>
+                    <div className="text-xs text-gray-500">
+                      {age && `Age: ${age} years`}
+                      {age && patient.weight && ' • '}
+                      {patient.weight && `${patient.weight} kg`}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {showPatientSearch && patientSearch && filteredPatients.length === 0 && (
+            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg">
+              <div className="px-3 py-2 text-sm text-gray-500">No patients found</div>
+            </div>
+          )}
+        </div>
+        {formData.patient && !selectedPatient && (
+          <p className="mt-1 text-xs text-red-600">Please select a valid patient from the list</p>
+        )}
       </div>
 
       {/* Drug Interactions Warning */}

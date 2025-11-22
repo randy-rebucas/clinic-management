@@ -13,6 +13,10 @@ interface ReportData {
 export default function ReportsPageClient() {
   const [dashboardData, setDashboardData] = useState<ReportData>({});
   const [loading, setLoading] = useState(true);
+  const [selectedReport, setSelectedReport] = useState<string | null>(null);
+  const [reportData, setReportData] = useState<any>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   const router = useRouter();
 
   useEffect(() => {
@@ -39,7 +43,7 @@ export default function ReportsPageClient() {
       }
       
       if (data.success) {
-        setDashboardData(data.data || {});
+        setDashboardData(data.data?.overview || {});
       } else {
         console.error('Failed to fetch reports:', data.error);
       }
@@ -47,6 +51,173 @@ export default function ReportsPageClient() {
       console.error('Failed to fetch reports:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchReport = async (reportType: string, reportPeriod?: 'daily' | 'weekly' | 'monthly') => {
+    setReportLoading(true);
+    setSelectedReport(reportType);
+    try {
+      const url = reportPeriod 
+        ? `/api/reports/${reportType}?period=${reportPeriod}`
+        : `/api/reports/${reportType}`;
+      
+      const res = await fetch(url);
+      
+      if (res.status === 401) {
+        router.push('/login');
+        return;
+      }
+      
+      const data = await res.json();
+      if (data.success) {
+        setReportData(data.data);
+      } else {
+        alert(data.error || 'Failed to fetch report');
+        setReportData(null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch report:', error);
+      alert('Failed to fetch report. Please try again.');
+      setReportData(null);
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const renderReportDetails = (reportType: string, data: any) => {
+    switch (reportType) {
+      case 'consultations':
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="font-semibold text-gray-900 mb-2">Consultations Summary</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-2 bg-gray-50 rounded">
+                <div className="text-gray-600">Total</div>
+                <div className="font-bold text-gray-900">{data.summary?.totalConsultations || 0}</div>
+              </div>
+            </div>
+            {data.summary?.byType && (
+              <div className="mt-3">
+                <div className="font-medium text-gray-700 mb-1">By Type</div>
+                {Object.entries(data.summary.byType).map(([type, count]: [string, any]) => (
+                  <div key={type} className="flex justify-between py-1">
+                    <span className="text-gray-600 capitalize">{type}</span>
+                    <span className="font-medium">{count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {data.summary?.byProvider && (
+              <div className="mt-3">
+                <div className="font-medium text-gray-700 mb-1">By Provider</div>
+                {Object.entries(data.summary.byProvider).slice(0, 5).map(([provider, count]: [string, any]) => (
+                  <div key={provider} className="flex justify-between py-1">
+                    <span className="text-gray-600">{provider}</span>
+                    <span className="font-medium">{count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      case 'income':
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="font-semibold text-gray-900 mb-2">Income Summary</div>
+            <div className="space-y-2">
+              <div className="p-2 bg-green-50 rounded">
+                <div className="text-gray-600">Total Paid</div>
+                <div className="font-bold text-green-700">₱{(data.summary?.totalPaid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+              </div>
+              <div className="p-2 bg-gray-50 rounded">
+                <div className="text-gray-600">Total Billed</div>
+                <div className="font-bold text-gray-900">₱{(data.summary?.totalBilled || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+              </div>
+              <div className="p-2 bg-yellow-50 rounded">
+                <div className="text-gray-600">Outstanding</div>
+                <div className="font-bold text-yellow-700">₱{(data.summary?.totalOutstanding || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+              </div>
+            </div>
+            {data.breakdowns?.byPaymentMethod && (
+              <div className="mt-3">
+                <div className="font-medium text-gray-700 mb-1">By Payment Method</div>
+                {Object.entries(data.breakdowns.byPaymentMethod).map(([method, amount]: [string, any]) => (
+                  <div key={method} className="flex justify-between py-1">
+                    <span className="text-gray-600 capitalize">{method.replace('_', ' ')}</span>
+                    <span className="font-medium">₱{amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      case 'demographics':
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="font-semibold text-gray-900 mb-2">Demographics Summary</div>
+            {data.demographics?.ageGroups && (
+              <div className="mt-2">
+                <div className="font-medium text-gray-700 mb-1">Age Groups</div>
+                {Object.entries(data.demographics.ageGroups).map(([age, count]: [string, any]) => (
+                  <div key={age} className="flex justify-between py-1">
+                    <span className="text-gray-600">{age}</span>
+                    <span className="font-medium">{count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      case 'inventory':
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="font-semibold text-gray-900 mb-2">Inventory Summary</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-2 bg-gray-50 rounded">
+                <div className="text-gray-600">Total Items</div>
+                <div className="font-bold text-gray-900">{data.summary?.totalItems || 0}</div>
+              </div>
+              <div className="p-2 bg-red-50 rounded">
+                <div className="text-gray-600">Low Stock</div>
+                <div className="font-bold text-red-700">{data.summary?.lowStockCount || 0}</div>
+              </div>
+            </div>
+            {data.lowStockItems && data.lowStockItems.length > 0 && (
+              <div className="mt-3">
+                <div className="font-medium text-gray-700 mb-1">Low Stock Items</div>
+                {data.lowStockItems.slice(0, 5).map((item: any) => (
+                  <div key={item._id} className="flex justify-between py-1">
+                    <span className="text-gray-600 truncate">{item.name}</span>
+                    <span className="font-medium text-red-600">{item.quantity} {item.unit}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      case 'hmo-claims':
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="font-semibold text-gray-900 mb-2">HMO Claims Summary</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-2 bg-gray-50 rounded">
+                <div className="text-gray-600">Total Claims</div>
+                <div className="font-bold text-gray-900">{data.summary?.totalClaims || 0}</div>
+              </div>
+              <div className="p-2 bg-yellow-50 rounded">
+                <div className="text-gray-600">Pending</div>
+                <div className="font-bold text-yellow-700">{data.summary?.pendingClaims || 0}</div>
+              </div>
+            </div>
+            <div className="p-2 bg-gray-50 rounded mt-2">
+              <div className="text-gray-600">Backlog Amount</div>
+              <div className="font-bold text-gray-900">₱{(data.summary?.backlogAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+            </div>
+          </div>
+        );
+      default:
+        return <div className="text-xs text-gray-500">Report data not available</div>;
     }
   };
 
@@ -76,7 +247,7 @@ export default function ReportsPageClient() {
             <div>
               <p className="text-xs text-gray-500 mb-0.5">Total Consultations</p>
               <p className="text-xl font-bold text-gray-900">
-                {dashboardData.totalConsultations || 0}
+                {dashboardData.periodVisits || dashboardData.totalConsultations || 0}
               </p>
             </div>
             <div className="w-10 h-10 bg-blue-100 rounded-md flex items-center justify-center">
@@ -92,7 +263,7 @@ export default function ReportsPageClient() {
             <div>
               <p className="text-xs text-gray-500 mb-0.5">Total Income</p>
               <p className="text-xl font-bold text-gray-900">
-                ₱{dashboardData.totalIncome?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                ₱{(dashboardData.periodRevenue || dashboardData.totalIncome || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>
             <div className="w-10 h-10 bg-green-100 rounded-md flex items-center justify-center">
@@ -136,43 +307,82 @@ export default function ReportsPageClient() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-          <h2 className="text-base font-semibold text-gray-900 mb-2">Available Reports</h2>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-base font-semibold text-gray-900">Available Reports</h2>
+            {(selectedReport === 'consultations' || selectedReport === 'income') && (
+              <select
+                value={period}
+                onChange={(e) => {
+                  setPeriod(e.target.value as 'daily' | 'weekly' | 'monthly');
+                  if (selectedReport) {
+                    fetchReport(selectedReport, e.target.value as 'daily' | 'weekly' | 'monthly');
+                  }
+                }}
+                className="text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            )}
+          </div>
           <div className="space-y-2">
-            <a href="/api/reports/consultations" className="block p-2 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors">
+            <button
+              onClick={() => fetchReport('consultations', period)}
+              className="w-full text-left p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
+            >
               <div className="font-medium text-sm text-gray-900">Consultations Report</div>
               <div className="text-xs text-gray-500">View consultation statistics</div>
-            </a>
-            <a href="/api/reports/income" className="block p-2 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors">
+            </button>
+            <button
+              onClick={() => fetchReport('income', period)}
+              className="w-full text-left p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
+            >
               <div className="font-medium text-sm text-gray-900">Income Report</div>
               <div className="text-xs text-gray-500">Financial performance analysis</div>
-            </a>
-            <a href="/api/reports/demographics" className="block p-2 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors">
+            </button>
+            <button
+              onClick={() => fetchReport('demographics')}
+              className="w-full text-left p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
+            >
               <div className="font-medium text-sm text-gray-900">Demographics Report</div>
               <div className="text-xs text-gray-500">Patient demographics analysis</div>
-            </a>
-            <a href="/api/reports/inventory" className="block p-2 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors">
+            </button>
+            <button
+              onClick={() => fetchReport('inventory')}
+              className="w-full text-left p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
+            >
               <div className="font-medium text-sm text-gray-900">Inventory Report</div>
               <div className="text-xs text-gray-500">Inventory status and usage</div>
-            </a>
-            <a href="/api/reports/hmo-claims" className="block p-2 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors">
+            </button>
+            <button
+              onClick={() => fetchReport('hmo-claims')}
+              className="w-full text-left p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
+            >
               <div className="font-medium text-sm text-gray-900">HMO Claims Report</div>
               <div className="text-xs text-gray-500">HMO claims and reimbursements</div>
-            </a>
+            </button>
           </div>
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-          <h2 className="text-base font-semibold text-gray-900 mb-2">Quick Actions</h2>
-          <div className="space-y-2">
-            <button className="w-full text-left p-2 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors">
-              <div className="font-medium text-sm text-gray-900">Export All Reports</div>
-              <div className="text-xs text-gray-500">Download comprehensive report package</div>
-            </button>
-            <button className="w-full text-left p-2 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors">
-              <div className="font-medium text-sm text-gray-900">Schedule Report</div>
-              <div className="text-xs text-gray-500">Set up automated report generation</div>
-            </button>
-          </div>
+          <h2 className="text-base font-semibold text-gray-900 mb-2">Report Details</h2>
+          {reportLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="text-center">
+                <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-gray-200 border-t-blue-600"></div>
+                <p className="mt-2 text-xs text-gray-600">Loading report...</p>
+              </div>
+            </div>
+          ) : reportData ? (
+            <div className="space-y-3 max-h-[500px] overflow-y-auto">
+              {renderReportDetails(selectedReport!, reportData)}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500 text-xs">
+              Select a report to view details
+            </div>
+          )}
         </div>
       </div>
     </div>

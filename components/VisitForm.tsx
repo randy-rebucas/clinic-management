@@ -101,6 +101,9 @@ export default function VisitForm({
   const [icd10Search, setIcd10Search] = useState('');
   const [icd10Results, setIcd10Results] = useState<Array<{ code: string; description: string }>>([]);
   const [showIcd10Search, setShowIcd10Search] = useState(false);
+  const [patientSearch, setPatientSearch] = useState('');
+  const [showPatientSearch, setShowPatientSearch] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<{ _id: string; firstName: string; lastName: string } | null>(null);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [activeTab, setActiveTab] = useState<'soap' | 'traditional' | 'treatment'>('soap');
 
@@ -122,9 +125,52 @@ export default function VisitForm({
     }
   }, [icd10Search]);
 
+  useEffect(() => {
+    if (formData.patient) {
+      const patient = patients.find((p) => p._id === formData.patient);
+      setSelectedPatient(patient || null);
+      if (patient) {
+        setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+      }
+    }
+  }, [formData.patient, patients]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.patient-search-container')) {
+        setShowPatientSearch(false);
+      }
+    };
+
+    if (showPatientSearch) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showPatientSearch]);
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (!formData.patient || !selectedPatient) {
+      alert('Please select a valid patient');
+      setShowPatientSearch(true);
+      return;
+    }
     onSubmit(formData);
+  };
+
+  const filteredPatients = patients.filter((patient) => {
+    if (!patientSearch.trim()) return true;
+    const searchLower = patientSearch.toLowerCase();
+    const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
+    return fullName.includes(searchLower);
+  });
+
+  const selectPatient = (patient: { _id: string; firstName: string; lastName: string }) => {
+    setFormData({ ...formData, patient: patient._id });
+    setSelectedPatient(patient);
+    setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+    setShowPatientSearch(false);
   };
 
   const addDiagnosis = () => {
@@ -195,24 +241,51 @@ export default function VisitForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto">
       {/* Basic Information */}
-      <div className="border-b pb-4">
+      <div className="pb-4">
         <h3 className="text-sm font-semibold mb-3 text-gray-900">Basic Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">Patient *</label>
-            <select
-              required
-              value={formData.patient}
-              onChange={(e) => setFormData({ ...formData, patient: e.target.value })}
-              className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">Select a patient</option>
-              {patients.map((patient) => (
-                <option key={patient._id} value={patient._id}>
-                  {patient.firstName} {patient.lastName}
-                </option>
-              ))}
-            </select>
+            <div className="relative mt-1 patient-search-container">
+              <input
+                type="text"
+                required
+                value={patientSearch}
+                onChange={(e) => {
+                  setPatientSearch(e.target.value);
+                  setShowPatientSearch(true);
+                  if (!e.target.value) {
+                    setFormData({ ...formData, patient: '' });
+                    setSelectedPatient(null);
+                  }
+                }}
+                onFocus={() => setShowPatientSearch(true)}
+                placeholder="Type to search patients..."
+                className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+              {showPatientSearch && filteredPatients.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {filteredPatients.map((patient) => (
+                    <button
+                      key={patient._id}
+                      type="button"
+                      onClick={() => selectPatient(patient)}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
+                    >
+                      <div className="font-medium">{patient.firstName} {patient.lastName}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {showPatientSearch && patientSearch && filteredPatients.length === 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg">
+                  <div className="px-3 py-2 text-sm text-gray-500">No patients found</div>
+                </div>
+              )}
+            </div>
+            {formData.patient && !selectedPatient && (
+              <p className="mt-1 text-xs text-red-600">Please select a valid patient from the list</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">Visit Type *</label>
@@ -242,8 +315,8 @@ export default function VisitForm({
       </div>
 
       {/* Tabs for different note formats */}
-      <div className="border-b">
-        <nav className="flex -mb-px">
+      <div>
+        <nav className="flex">
           <button
             type="button"
             onClick={() => setActiveTab('soap')}
@@ -381,7 +454,7 @@ export default function VisitForm({
                     })
                   }
                   placeholder="120/80"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -396,7 +469,7 @@ export default function VisitForm({
                     })
                   }
                   placeholder="72"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -412,7 +485,7 @@ export default function VisitForm({
                     })
                   }
                   placeholder="37.0"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -427,7 +500,7 @@ export default function VisitForm({
                     })
                   }
                   placeholder="98"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -446,7 +519,7 @@ export default function VisitForm({
                     })
                   }
                   rows={2}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -460,7 +533,7 @@ export default function VisitForm({
                     })
                   }
                   rows={2}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -474,7 +547,7 @@ export default function VisitForm({
                     })
                   }
                   rows={2}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -488,7 +561,7 @@ export default function VisitForm({
                     })
                   }
                   rows={2}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -497,7 +570,7 @@ export default function VisitForm({
       )}
 
       {/* Diagnoses Section */}
-      <div className="border-t pt-4">
+      <div className="pt-4">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Diagnoses (ICD-10)</h3>
           <button
@@ -513,7 +586,7 @@ export default function VisitForm({
         ) : (
           <div className="space-y-3">
             {formData.diagnoses.map((diagnosis, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4">
+              <div key={index} className="border border-gray-100 rounded-lg p-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">ICD-10 Code</label>
@@ -529,7 +602,7 @@ export default function VisitForm({
                           }
                         }}
                         placeholder="E.g., E11.9"
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                       {showIcd10Search && icd10Results.length > 0 && (
                         <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
@@ -555,7 +628,7 @@ export default function VisitForm({
                       value={diagnosis.description || ''}
                       onChange={(e) => updateDiagnosis(index, 'description', e.target.value)}
                       placeholder="Diagnosis description"
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   <div className="flex items-end space-x-2">
@@ -600,7 +673,7 @@ export default function VisitForm({
             {formData.treatmentPlan?.medications && formData.treatmentPlan.medications.length > 0 ? (
               <div className="space-y-2">
                 {formData.treatmentPlan.medications.map((med, index) => (
-                  <div key={index} className="border border-gray-200 rounded-lg p-3">
+                  <div key={index} className="border border-gray-100 rounded-lg p-3">
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
                       <input
                         type="text"
@@ -614,7 +687,7 @@ export default function VisitForm({
                             treatmentPlan: { ...formData.treatmentPlan, medications },
                           });
                         }}
-                        className="text-sm rounded-md border-gray-300 shadow-sm focus:border-blue-500"
+                        className="text-sm rounded-md border border-gray-200 px-2.5 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                       <input
                         type="text"
@@ -628,7 +701,7 @@ export default function VisitForm({
                             treatmentPlan: { ...formData.treatmentPlan, medications },
                           });
                         }}
-                        className="text-sm rounded-md border-gray-300 shadow-sm focus:border-blue-500"
+                        className="text-sm rounded-md border border-gray-200 px-2.5 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                       <input
                         type="text"
@@ -642,7 +715,7 @@ export default function VisitForm({
                             treatmentPlan: { ...formData.treatmentPlan, medications },
                           });
                         }}
-                        className="text-sm rounded-md border-gray-300 shadow-sm focus:border-blue-500"
+                        className="text-sm rounded-md border border-gray-200 px-2.5 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                       <input
                         type="text"
@@ -656,7 +729,7 @@ export default function VisitForm({
                             treatmentPlan: { ...formData.treatmentPlan, medications },
                           });
                         }}
-                        className="text-sm rounded-md border-gray-300 shadow-sm focus:border-blue-500"
+                        className="text-sm rounded-md border border-gray-200 px-2.5 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       />
                       <button
                         type="button"
@@ -708,9 +781,9 @@ export default function VisitForm({
       )}
 
       {/* Digital Signature */}
-      <div className="border-t pt-4">
+      <div className="pt-4">
         {formData.digitalSignature ? (
-          <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex items-center justify-between p-4 bg-green-50 border border-green-100 rounded-lg">
             <div>
               <p className="text-sm font-medium text-green-800">Digital Signature Added</p>
               <p className="text-xs text-green-600">Signed by: {formData.digitalSignature.providerName}</p>
@@ -730,7 +803,7 @@ export default function VisitForm({
           <button
             type="button"
             onClick={() => setShowSignaturePad(true)}
-            className="w-full px-3 py-1.5 border border-dashed border-gray-200 rounded-md text-xs font-medium text-gray-700 hover:border-blue-500 hover:text-blue-600 transition-colors"
+            className="w-full px-3 py-1.5 border border-dashed border-gray-100 rounded-md text-xs font-medium text-gray-700 hover:border-blue-500 hover:text-blue-600 transition-colors"
           >
             + Add Digital Signature
           </button>
@@ -754,12 +827,12 @@ export default function VisitForm({
       )}
 
       {/* Clinical Images Upload */}
-      <div className="border-t pt-4">
+      <div className="pt-4">
         <h3 className="text-sm font-medium text-gray-700 mb-3">Clinical Images & Attachments</h3>
         <p className="text-xs text-gray-500 mb-3">
           Upload clinical images, X-rays, or other documents related to this visit
         </p>
-        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div className="border border-gray-100 rounded-lg p-4 bg-gray-50">
           <input
             type="file"
             accept="image/*,.pdf,.doc,.docx"
@@ -784,12 +857,12 @@ export default function VisitForm({
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           rows={3}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          className="mt-1 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
         />
       </div>
 
       {/* Form Actions */}
-      <div className="flex justify-end space-x-2 pt-3 border-t border-gray-200">
+      <div className="flex justify-end space-x-2 pt-3">
         {onCancel && (
           <button
             type="button"

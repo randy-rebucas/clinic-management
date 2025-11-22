@@ -94,6 +94,25 @@ export async function POST(request: NextRequest) {
 
     const patientName = `${patient.firstName} ${patient.lastName}`;
 
+    // Generate queue number before creating the queue
+    const finalQueueType = queueType || 'appointment';
+    const prefix = finalQueueType === 'appointment' ? 'A' : finalQueueType === 'walk-in' ? 'W' : 'F';
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+    
+    // Count today's queues of this type
+    const startOfDay = new Date(today);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(today);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const count = await Queue.countDocuments({
+      queueType: finalQueueType,
+      queuedAt: { $gte: startOfDay, $lte: endOfDay },
+    });
+    
+    const queueNumber = `${prefix}${dateStr}-${String(count + 1).padStart(3, '0')}`;
+
     // Generate QR code for check-in
     const qrCodeData = JSON.stringify({
       queueId: null, // Will be set after creation
@@ -103,13 +122,14 @@ export async function POST(request: NextRequest) {
     });
 
     const queue = await Queue.create({
+      queueNumber,
       patient: patientId,
       patientName,
       appointment: appointmentId || undefined,
       visit: visitId || undefined,
       doctor: doctorId || undefined,
       room: roomId || undefined,
-      queueType: queueType || 'appointment',
+      queueType: finalQueueType,
       priority: priority || 0,
       qrCode: qrCodeData,
     });

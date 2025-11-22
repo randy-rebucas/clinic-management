@@ -1,13 +1,14 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import DashboardClient from '@/components/DashboardClient';
+import InventoryFormClient from '@/components/InventoryFormClient';
 
-export default async function Dashboard() {
+export default async function NewInventoryPage() {
   const session = await verifySession();
   
   if (!session) {
     redirect('/login');
   }
 
-  return <DashboardClient />;
+  return <InventoryFormClient />;
 }
+

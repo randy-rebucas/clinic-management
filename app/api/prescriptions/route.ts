@@ -96,6 +96,14 @@ export async function POST(request: NextRequest) {
       }));
     }
 
+    // Sanitize ObjectId fields - convert empty strings to undefined
+    if (body.visit === '' || body.visit === null) {
+      body.visit = undefined;
+    }
+    if (body.prescribedBy === '' || body.prescribedBy === null) {
+      body.prescribedBy = undefined;
+    }
+
     const prescription = await Prescription.create(body);
     await prescription.populate('patient', 'firstName lastName patientCode');
     await prescription.populate('prescribedBy', 'name email');
