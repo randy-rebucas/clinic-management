@@ -4,6 +4,9 @@ import Settings from '@/models/Settings';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { clearSettingsCache } from '@/lib/settings';
+import { isSMSConfigured } from '@/lib/sms';
+import { isEmailConfigured } from '@/lib/email';
+import { isCloudinaryConfigured } from '@/lib/cloudinary';
 
 // GET settings - accessible to all authenticated users
 export async function GET() {
@@ -24,7 +27,15 @@ export async function GET() {
       settings = await Settings.create({});
     }
 
-    return NextResponse.json(settings, { status: 200 });
+    // Add integration status based on environment variables
+    const settingsObj = settings.toObject();
+    settingsObj.integrationStatus = {
+      twilio: isSMSConfigured(),
+      smtp: isEmailConfigured(),
+      cloudinary: isCloudinaryConfigured(),
+    };
+
+    return NextResponse.json(settingsObj, { status: 200 });
   } catch (error: any) {
     console.error('Error fetching settings:', error);
     return NextResponse.json(

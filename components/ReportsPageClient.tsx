@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Skeleton } from '@radix-ui/themes';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Skeleton, Container, Section, Heading } from '@radix-ui/themes';
 
 interface ReportData {
   totalConsultations?: number;
@@ -90,307 +90,411 @@ export default function ReportsPageClient() {
     switch (reportType) {
       case 'consultations':
         return (
-          <div className="space-y-2 text-xs">
-            <div className="font-semibold text-gray-900 mb-2">Consultations Summary</div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="p-2 bg-gray-50 rounded">
-                <div className="text-gray-600">Total</div>
-                <div className="font-bold text-gray-900">{data.summary?.totalConsultations || 0}</div>
-              </div>
-            </div>
+          <Flex direction="column" gap="3">
+            <Text size="3" weight="bold">Consultations Summary</Text>
+            <Flex gap="2" wrap="wrap">
+              <Card size="1" variant="surface" style={{ flex: '1 1 200px' }}>
+                <Flex direction="column" gap="1" p="2">
+                  <Text size="1" color="gray">Total</Text>
+                  <Text size="4" weight="bold">{data.summary?.totalConsultations || 0}</Text>
+                </Flex>
+              </Card>
+            </Flex>
             {data.summary?.byType && (
-              <div className="mt-3">
-                <div className="font-medium text-gray-700 mb-1">By Type</div>
-                {Object.entries(data.summary.byType).map(([type, count]: [string, any]) => (
-                  <div key={type} className="flex justify-between py-1">
-                    <span className="text-gray-600 capitalize">{type}</span>
-                    <span className="font-medium">{count}</span>
-                  </div>
-                ))}
-              </div>
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">By Type</Text>
+                <Flex direction="column" gap="1">
+                  {Object.entries(data.summary.byType).map(([type, count]: [string, any]) => (
+                    <Flex key={type} justify="between" py="1">
+                      <Text size="2" color="gray" style={{ textTransform: 'capitalize' }}>{type}</Text>
+                      <Text size="2" weight="medium">{count}</Text>
+                    </Flex>
+                  ))}
+                </Flex>
+              </Box>
             )}
             {data.summary?.byProvider && (
-              <div className="mt-3">
-                <div className="font-medium text-gray-700 mb-1">By Provider</div>
-                {Object.entries(data.summary.byProvider).slice(0, 5).map(([provider, count]: [string, any]) => (
-                  <div key={provider} className="flex justify-between py-1">
-                    <span className="text-gray-600">{provider}</span>
-                    <span className="font-medium">{count}</span>
-                  </div>
-                ))}
-              </div>
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">By Provider</Text>
+                <Flex direction="column" gap="1">
+                  {Object.entries(data.summary.byProvider).slice(0, 5).map(([provider, count]: [string, any]) => (
+                    <Flex key={provider} justify="between" py="1">
+                      <Text size="2" color="gray">{provider}</Text>
+                      <Text size="2" weight="medium">{count}</Text>
+                    </Flex>
+                  ))}
+                </Flex>
+              </Box>
             )}
-          </div>
+          </Flex>
         );
       case 'income':
         return (
-          <div className="space-y-2 text-xs">
-            <div className="font-semibold text-gray-900 mb-2">Income Summary</div>
-            <div className="space-y-2">
-              <div className="p-2 bg-green-50 rounded">
-                <div className="text-gray-600">Total Paid</div>
-                <div className="font-bold text-green-700">₱{(data.summary?.totalPaid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-              </div>
-              <div className="p-2 bg-gray-50 rounded">
-                <div className="text-gray-600">Total Billed</div>
-                <div className="font-bold text-gray-900">₱{(data.summary?.totalBilled || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-              </div>
-              <div className="p-2 bg-yellow-50 rounded">
-                <div className="text-gray-600">Outstanding</div>
-                <div className="font-bold text-yellow-700">₱{(data.summary?.totalOutstanding || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-              </div>
-            </div>
+          <Flex direction="column" gap="3">
+            <Text size="3" weight="bold">Income Summary</Text>
+            <Flex direction="column" gap="2">
+              <Card size="1" variant="surface" style={{ backgroundColor: 'var(--green-3)' }}>
+                <Flex direction="column" gap="1" p="2">
+                  <Text size="1" color="gray">Total Paid</Text>
+                  <Text size="4" weight="bold" style={{ color: 'var(--green-9)' }}>
+                    ₱{(data.summary?.totalPaid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </Text>
+                </Flex>
+              </Card>
+              <Card size="1" variant="surface">
+                <Flex direction="column" gap="1" p="2">
+                  <Text size="1" color="gray">Total Billed</Text>
+                  <Text size="4" weight="bold">₱{(data.summary?.totalBilled || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
+                </Flex>
+              </Card>
+              <Card size="1" variant="surface" style={{ backgroundColor: 'var(--yellow-3)' }}>
+                <Flex direction="column" gap="1" p="2">
+                  <Text size="1" color="gray">Outstanding</Text>
+                  <Text size="4" weight="bold" style={{ color: 'var(--yellow-9)' }}>
+                    ₱{(data.summary?.totalOutstanding || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </Text>
+                </Flex>
+              </Card>
+            </Flex>
             {data.breakdowns?.byPaymentMethod && (
-              <div className="mt-3">
-                <div className="font-medium text-gray-700 mb-1">By Payment Method</div>
-                {Object.entries(data.breakdowns.byPaymentMethod).map(([method, amount]: [string, any]) => (
-                  <div key={method} className="flex justify-between py-1">
-                    <span className="text-gray-600 capitalize">{method.replace('_', ' ')}</span>
-                    <span className="font-medium">₱{amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                  </div>
-                ))}
-              </div>
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">By Payment Method</Text>
+                <Flex direction="column" gap="1">
+                  {Object.entries(data.breakdowns.byPaymentMethod).map(([method, amount]: [string, any]) => (
+                    <Flex key={method} justify="between" py="1">
+                      <Text size="2" color="gray" style={{ textTransform: 'capitalize' }}>{method.replace('_', ' ')}</Text>
+                      <Text size="2" weight="medium">₱{amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
+                    </Flex>
+                  ))}
+                </Flex>
+              </Box>
             )}
-          </div>
+          </Flex>
         );
       case 'demographics':
         return (
-          <div className="space-y-2 text-xs">
-            <div className="font-semibold text-gray-900 mb-2">Demographics Summary</div>
+          <Flex direction="column" gap="3">
+            <Text size="3" weight="bold">Demographics Summary</Text>
             {data.demographics?.ageGroups && (
-              <div className="mt-2">
-                <div className="font-medium text-gray-700 mb-1">Age Groups</div>
-                {Object.entries(data.demographics.ageGroups).map(([age, count]: [string, any]) => (
-                  <div key={age} className="flex justify-between py-1">
-                    <span className="text-gray-600">{age}</span>
-                    <span className="font-medium">{count}</span>
-                  </div>
-                ))}
-              </div>
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">Age Groups</Text>
+                <Flex direction="column" gap="1">
+                  {Object.entries(data.demographics.ageGroups).map(([age, count]: [string, any]) => (
+                    <Flex key={age} justify="between" py="1">
+                      <Text size="2" color="gray">{age}</Text>
+                      <Text size="2" weight="medium">{count}</Text>
+                    </Flex>
+                  ))}
+                </Flex>
+              </Box>
             )}
-          </div>
+          </Flex>
         );
       case 'inventory':
         return (
-          <div className="space-y-2 text-xs">
-            <div className="font-semibold text-gray-900 mb-2">Inventory Summary</div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="p-2 bg-gray-50 rounded">
-                <div className="text-gray-600">Total Items</div>
-                <div className="font-bold text-gray-900">{data.summary?.totalItems || 0}</div>
-              </div>
-              <div className="p-2 bg-red-50 rounded">
-                <div className="text-gray-600">Low Stock</div>
-                <div className="font-bold text-red-700">{data.summary?.lowStockCount || 0}</div>
-              </div>
-            </div>
+          <Flex direction="column" gap="3">
+            <Text size="3" weight="bold">Inventory Summary</Text>
+            <Flex gap="2" wrap="wrap">
+              <Card size="1" variant="surface" style={{ flex: '1 1 200px' }}>
+                <Flex direction="column" gap="1" p="2">
+                  <Text size="1" color="gray">Total Items</Text>
+                  <Text size="4" weight="bold">{data.summary?.totalItems || 0}</Text>
+                </Flex>
+              </Card>
+              <Card size="1" variant="surface" style={{ flex: '1 1 200px', backgroundColor: 'var(--red-3)' }}>
+                <Flex direction="column" gap="1" p="2">
+                  <Text size="1" color="gray">Low Stock</Text>
+                  <Text size="4" weight="bold" style={{ color: 'var(--red-9)' }}>{data.summary?.lowStockCount || 0}</Text>
+                </Flex>
+              </Card>
+            </Flex>
             {data.lowStockItems && data.lowStockItems.length > 0 && (
-              <div className="mt-3">
-                <div className="font-medium text-gray-700 mb-1">Low Stock Items</div>
-                {data.lowStockItems.slice(0, 5).map((item: any) => (
-                  <div key={item._id} className="flex justify-between py-1">
-                    <span className="text-gray-600 truncate">{item.name}</span>
-                    <span className="font-medium text-red-600">{item.quantity} {item.unit}</span>
-                  </div>
-                ))}
-              </div>
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">Low Stock Items</Text>
+                <Flex direction="column" gap="1">
+                  {data.lowStockItems.slice(0, 5).map((item: any) => (
+                    <Flex key={item._id} justify="between" py="1">
+                      <Text size="2" color="gray" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>
+                        {item.name}
+                      </Text>
+                      <Text size="2" weight="medium" style={{ color: 'var(--red-9)' }}>
+                        {item.quantity} {item.unit}
+                      </Text>
+                    </Flex>
+                  ))}
+                </Flex>
+              </Box>
             )}
-          </div>
+          </Flex>
         );
       case 'hmo-claims':
         return (
-          <div className="space-y-2 text-xs">
-            <div className="font-semibold text-gray-900 mb-2">HMO Claims Summary</div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="p-2 bg-gray-50 rounded">
-                <div className="text-gray-600">Total Claims</div>
-                <div className="font-bold text-gray-900">{data.summary?.totalClaims || 0}</div>
-              </div>
-              <div className="p-2 bg-yellow-50 rounded">
-                <div className="text-gray-600">Pending</div>
-                <div className="font-bold text-yellow-700">{data.summary?.pendingClaims || 0}</div>
-              </div>
-            </div>
-            <div className="p-2 bg-gray-50 rounded mt-2">
-              <div className="text-gray-600">Backlog Amount</div>
-              <div className="font-bold text-gray-900">₱{(data.summary?.backlogAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-            </div>
-          </div>
+          <Flex direction="column" gap="3">
+            <Text size="3" weight="bold">HMO Claims Summary</Text>
+            <Flex gap="2" wrap="wrap">
+              <Card size="1" variant="surface" style={{ flex: '1 1 200px' }}>
+                <Flex direction="column" gap="1" p="2">
+                  <Text size="1" color="gray">Total Claims</Text>
+                  <Text size="4" weight="bold">{data.summary?.totalClaims || 0}</Text>
+                </Flex>
+              </Card>
+              <Card size="1" variant="surface" style={{ flex: '1 1 200px', backgroundColor: 'var(--yellow-3)' }}>
+                <Flex direction="column" gap="1" p="2">
+                  <Text size="1" color="gray">Pending</Text>
+                  <Text size="4" weight="bold" style={{ color: 'var(--yellow-9)' }}>{data.summary?.pendingClaims || 0}</Text>
+                </Flex>
+              </Card>
+            </Flex>
+            <Card size="1" variant="surface">
+              <Flex direction="column" gap="1" p="2">
+                <Text size="1" color="gray">Backlog Amount</Text>
+                <Text size="4" weight="bold">₱{(data.summary?.backlogAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
+              </Flex>
+            </Card>
+          </Flex>
         );
       default:
-        return <div className="text-xs text-gray-500">Report data not available</div>;
+        return <Text size="2" color="gray">Report data not available</Text>;
     }
   };
 
   if (loading) {
     return (
-      <Box p="4">
-        <Flex direction="column" gap="3">
-          <Skeleton height="32px" width="200px" />
-          <Skeleton height="40px" />
-          <Flex gap="3" wrap="wrap">
-            <Skeleton height="150px" style={{ flex: '1 1 250px' }} />
-            <Skeleton height="150px" style={{ flex: '1 1 250px' }} />
-            <Skeleton height="150px" style={{ flex: '1 1 250px' }} />
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" gap="3">
+            <Skeleton height="32px" width="200px" />
+            <Skeleton height="40px" />
+            <Flex gap="3" wrap="wrap">
+              <Skeleton height="150px" style={{ flex: '1 1 250px' }} />
+              <Skeleton height="150px" style={{ flex: '1 1 250px' }} />
+              <Skeleton height="150px" style={{ flex: '1 1 250px' }} />
+            </Flex>
+            <Skeleton height="400px" />
           </Flex>
-          <Skeleton height="400px" />
-        </Flex>
-      </Box>
+        </Container>
+      </Section>
     );
   }
 
   return (
-    <div className="w-full px-4 py-3">
-      <div className="mb-3">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Reports & Analytics</h1>
-        <p className="text-gray-600 text-sm">View clinic performance metrics and reports</p>
-      </div>
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          <Box>
+            <Heading size="8" mb="1">Reports & Analytics</Heading>
+            <Text size="2" color="gray">View clinic performance metrics and reports</Text>
+          </Box>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 mb-0.5">Total Consultations</p>
-              <p className="text-xl font-bold text-gray-900">
-                {dashboardData.periodVisits || dashboardData.totalConsultations || 0}
-              </p>
-            </div>
-            <div className="w-10 h-10 bg-blue-100 rounded-md flex items-center justify-center">
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-          </div>
-        </div>
+          <Flex gap="3" wrap="wrap">
+            <Card size="2" variant="surface" style={{ flex: '1 1 250px', minWidth: '200px' }}>
+              <Flex justify="between" align="center" gap="3">
+                <Box>
+                  <Text size="1" color="gray" mb="1" as="div">Total Consultations</Text>
+                  <Text size="6" weight="bold">
+                    {dashboardData.periodVisits || dashboardData.totalConsultations || 0}
+                  </Text>
+                </Box>
+                <Box
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    backgroundColor: 'var(--blue-3)',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <svg width="20" height="20" fill="none" stroke="var(--blue-9)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </Box>
+              </Flex>
+            </Card>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 mb-0.5">Total Income</p>
-              <p className="text-xl font-bold text-gray-900">
-                ₱{(dashboardData.periodRevenue || dashboardData.totalIncome || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
-            </div>
-            <div className="w-10 h-10 bg-green-100 rounded-md flex items-center justify-center">
-              <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-        </div>
+            <Card size="2" variant="surface" style={{ flex: '1 1 250px', minWidth: '200px' }}>
+              <Flex justify="between" align="center" gap="3">
+                <Box>
+                  <Text size="1" color="gray" mb="1" as="div">Total Income</Text>
+                  <Text size="6" weight="bold">
+                    ₱{(dashboardData.periodRevenue || dashboardData.totalIncome || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </Box>
+                <Box
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    backgroundColor: 'var(--green-3)',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <svg width="20" height="20" fill="none" stroke="var(--green-9)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </Box>
+              </Flex>
+            </Card>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 mb-0.5">Total Patients</p>
-              <p className="text-xl font-bold text-gray-900">
-                {dashboardData.totalPatients || 0}
-              </p>
-            </div>
-            <div className="w-10 h-10 bg-purple-100 rounded-md flex items-center justify-center">
-              <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            </div>
-          </div>
-        </div>
+            <Card size="2" variant="surface" style={{ flex: '1 1 250px', minWidth: '200px' }}>
+              <Flex justify="between" align="center" gap="3">
+                <Box>
+                  <Text size="1" color="gray" mb="1" as="div">Total Patients</Text>
+                  <Text size="6" weight="bold">
+                    {dashboardData.totalPatients || 0}
+                  </Text>
+                </Box>
+                <Box
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    backgroundColor: 'var(--purple-3)',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <svg width="20" height="20" fill="none" stroke="var(--purple-9)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </Box>
+              </Flex>
+            </Card>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 mb-0.5">Available Reports</p>
-              <p className="text-xl font-bold text-gray-900">6</p>
-            </div>
-            <div className="w-10 h-10 bg-orange-100 rounded-md flex items-center justify-center">
-              <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </div>
+            <Card size="2" variant="surface" style={{ flex: '1 1 250px', minWidth: '200px' }}>
+              <Flex justify="between" align="center" gap="3">
+                <Box>
+                  <Text size="1" color="gray" mb="1" as="div">Available Reports</Text>
+                  <Text size="6" weight="bold">6</Text>
+                </Box>
+                <Box
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    backgroundColor: 'var(--orange-3)',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <svg width="20" height="20" fill="none" stroke="var(--orange-9)" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </Box>
+              </Flex>
+            </Card>
+          </Flex>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-base font-semibold text-gray-900">Available Reports</h2>
-            {(selectedReport === 'consultations' || selectedReport === 'income') && (
-              <select
-                value={period}
-                onChange={(e) => {
-                  setPeriod(e.target.value as 'daily' | 'weekly' | 'monthly');
-                  if (selectedReport) {
-                    fetchReport(selectedReport, e.target.value as 'daily' | 'weekly' | 'monthly');
-                  }
-                }}
-                className="text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
-            )}
-          </div>
-          <div className="space-y-2">
-            <button
-              onClick={() => fetchReport('consultations', period)}
-              className="w-full text-left p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
-            >
-              <div className="font-medium text-sm text-gray-900">Consultations Report</div>
-              <div className="text-xs text-gray-500">View consultation statistics</div>
-            </button>
-            <button
-              onClick={() => fetchReport('income', period)}
-              className="w-full text-left p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
-            >
-              <div className="font-medium text-sm text-gray-900">Income Report</div>
-              <div className="text-xs text-gray-500">Financial performance analysis</div>
-            </button>
-            <button
-              onClick={() => fetchReport('demographics')}
-              className="w-full text-left p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
-            >
-              <div className="font-medium text-sm text-gray-900">Demographics Report</div>
-              <div className="text-xs text-gray-500">Patient demographics analysis</div>
-            </button>
-            <button
-              onClick={() => fetchReport('inventory')}
-              className="w-full text-left p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
-            >
-              <div className="font-medium text-sm text-gray-900">Inventory Report</div>
-              <div className="text-xs text-gray-500">Inventory status and usage</div>
-            </button>
-            <button
-              onClick={() => fetchReport('hmo-claims')}
-              className="w-full text-left p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
-            >
-              <div className="font-medium text-sm text-gray-900">HMO Claims Report</div>
-              <div className="text-xs text-gray-500">HMO claims and reimbursements</div>
-            </button>
-          </div>
-        </div>
+          <Flex gap="3" direction={{ initial: 'column', md: 'row' }}>
+            <Card size="2" variant="surface" style={{ flex: 1 }}>
+              <Flex direction="column" gap="3" p="3">
+                <Flex justify="between" align="center">
+                  <Heading size="4">Available Reports</Heading>
+                  {(selectedReport === 'consultations' || selectedReport === 'income') && (
+                    <Select.Root
+                      value={period}
+                      onValueChange={(value) => {
+                        setPeriod(value as 'daily' | 'weekly' | 'monthly');
+                        if (selectedReport) {
+                          fetchReport(selectedReport, value as 'daily' | 'weekly' | 'monthly');
+                        }
+                      }}
+                      size="1"
+                    >
+                      <Select.Trigger />
+                      <Select.Content>
+                        <Select.Item value="daily">Daily</Select.Item>
+                        <Select.Item value="weekly">Weekly</Select.Item>
+                        <Select.Item value="monthly">Monthly</Select.Item>
+                      </Select.Content>
+                    </Select.Root>
+                  )}
+                </Flex>
+                <Flex direction="column" gap="2">
+                  <Button
+                    variant="soft"
+                    onClick={() => fetchReport('consultations', period)}
+                    style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                  >
+                    <Flex direction="column" align="start" gap="1" style={{ width: '100%' }}>
+                      <Text size="2" weight="medium">Consultations Report</Text>
+                      <Text size="1" color="gray">View consultation statistics</Text>
+                    </Flex>
+                  </Button>
+                  <Button
+                    variant="soft"
+                    onClick={() => fetchReport('income', period)}
+                    style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                  >
+                    <Flex direction="column" align="start" gap="1" style={{ width: '100%' }}>
+                      <Text size="2" weight="medium">Income Report</Text>
+                      <Text size="1" color="gray">Financial performance analysis</Text>
+                    </Flex>
+                  </Button>
+                  <Button
+                    variant="soft"
+                    onClick={() => fetchReport('demographics')}
+                    style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                  >
+                    <Flex direction="column" align="start" gap="1" style={{ width: '100%' }}>
+                      <Text size="2" weight="medium">Demographics Report</Text>
+                      <Text size="1" color="gray">Patient demographics analysis</Text>
+                    </Flex>
+                  </Button>
+                  <Button
+                    variant="soft"
+                    onClick={() => fetchReport('inventory')}
+                    style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                  >
+                    <Flex direction="column" align="start" gap="1" style={{ width: '100%' }}>
+                      <Text size="2" weight="medium">Inventory Report</Text>
+                      <Text size="1" color="gray">Inventory status and usage</Text>
+                    </Flex>
+                  </Button>
+                  <Button
+                    variant="soft"
+                    onClick={() => fetchReport('hmo-claims')}
+                    style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                  >
+                    <Flex direction="column" align="start" gap="1" style={{ width: '100%' }}>
+                      <Text size="2" weight="medium">HMO Claims Report</Text>
+                      <Text size="1" color="gray">HMO claims and reimbursements</Text>
+                    </Flex>
+                  </Button>
+                </Flex>
+              </Flex>
+            </Card>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-          <h2 className="text-base font-semibold text-gray-900 mb-2">Report Details</h2>
-          {reportLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-center">
-                <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-gray-200 border-t-blue-600"></div>
-                <p className="mt-2 text-xs text-gray-600">Loading report...</p>
-              </div>
-            </div>
-          ) : reportData ? (
-            <div className="space-y-3 max-h-[500px] overflow-y-auto">
-              {renderReportDetails(selectedReport!, reportData)}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500 text-xs">
-              Select a report to view details
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+            <Card size="2" variant="surface" style={{ flex: 1 }}>
+              <Flex direction="column" gap="3" p="3">
+                <Heading size="4">Report Details</Heading>
+                {reportLoading ? (
+                  <Flex justify="center" align="center" style={{ minHeight: '200px' }}>
+                    <Flex direction="column" align="center" gap="2">
+                      <Spinner size="3" />
+                      <Text size="2" color="gray">Loading report...</Text>
+                    </Flex>
+                  </Flex>
+                ) : reportData ? (
+                  <Box style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                    {renderReportDetails(selectedReport!, reportData)}
+                  </Box>
+                ) : (
+                  <Flex justify="center" align="center" style={{ minHeight: '200px' }}>
+                    <Text size="2" color="gray">Select a report to view details</Text>
+                  </Flex>
+                )}
+              </Flex>
+            </Card>
+          </Flex>
+        </Flex>
+      </Container>
+    </Section>
   );
 }
 

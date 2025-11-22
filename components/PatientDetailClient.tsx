@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import QRCode from 'react-qr-code';
-import { Button, Flex, Box, AlertDialog, Skeleton } from '@radix-ui/themes';
+import { Button, Flex, Box, AlertDialog, Skeleton, Container, Section, Text, Heading, Card, Badge, Tabs, Callout, Separator, IconButton, Dialog } from '@radix-ui/themes';
 import { useSetting } from './SettingsContext';
 
 interface Patient {
@@ -317,29 +317,33 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
 
   if (loading) {
     return (
-      <Box p="4" style={{ minHeight: '100vh' }}>
-        <Flex direction="column" gap="4">
-          <Skeleton height="40px" width="300px" />
-          <Flex gap="4" wrap="wrap">
-            <Skeleton height="200px" style={{ flex: '1 1 300px' }} />
-            <Skeleton height="200px" style={{ flex: '1 1 300px' }} />
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" gap="4">
+            <Skeleton height="40px" width="300px" />
+            <Flex gap="4" wrap="wrap">
+              <Skeleton height="200px" style={{ flex: '1 1 300px' }} />
+              <Skeleton height="200px" style={{ flex: '1 1 300px' }} />
+            </Flex>
+            <Skeleton height="400px" />
           </Flex>
-          <Skeleton height="400px" />
-        </Flex>
-      </Box>
+        </Container>
+      </Section>
     );
   }
 
   if (!patient) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Patient not found</h2>
-          <Link href="/patients" className="text-blue-600 hover:text-blue-700">
-            Back to Patients
-          </Link>
-        </div>
-      </div>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="4" style={{ minHeight: '50vh' }}>
+            <Heading size="6">Patient not found</Heading>
+            <Button asChild>
+              <Link href="/patients">Back to Patients</Link>
+            </Button>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
   
@@ -365,248 +369,192 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
   const totalPaid = invoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="w-full px-4 py-3">
-        {/* Header */}
-        <div className="mb-4">
-          <div className="flex items-center space-x-3 mb-3">
-            <Link
-              href="/patients"
-              className="text-gray-500 hover:text-gray-700 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <div className="flex-1">
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">
-                {fullName}
-              </h1>
-              <div className="flex items-center space-x-4 text-sm text-gray-600">
-                {patient.patientCode && (
-                  <span>ID: {patient.patientCode}</span>
-                )}
-                <span>•</span>
-                <span>{calculateAge(patient.dateOfBirth)} years old</span>
-                {patient.sex && patient.sex !== 'unknown' && (
-                  <>
-                    <span>•</span>
-                    <span className="capitalize">{patient.sex}</span>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setShowQR(!showQR)}
-                className="inline-flex items-center px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-md shadow-sm hover:shadow hover:from-blue-700 hover:to-blue-800 transition-all"
-              >
-                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                </svg>
-                QR Code
-              </button>
-              <Link
-                href={`/patients?edit=${patient._id}`}
-                className="inline-flex items-center px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-green-600 to-green-700 rounded-md shadow-sm hover:shadow hover:from-green-700 hover:to-green-800 transition-all"
-              >
-                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Edit
-              </Link>
-            </div>
-          </div>
-
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mb-3">
-            <div className="bg-white rounded-lg border border-gray-200 p-2">
-              <p className="text-xs text-gray-600 mb-0.5">Visits</p>
-              <p className="text-lg font-bold text-gray-900">{visits.length}</p>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-2">
-              <p className="text-xs text-gray-600 mb-0.5">Appointments</p>
-              <p className="text-lg font-bold text-gray-900">{appointments.length}</p>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-2">
-              <p className="text-xs text-gray-600 mb-0.5">Prescriptions</p>
-              <p className="text-lg font-bold text-gray-900">{prescriptions.length}</p>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-2">
-              <p className="text-xs text-gray-600 mb-0.5">Invoices</p>
-              <p className="text-lg font-bold text-gray-900">{invoices.length}</p>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-2">
-              <p className="text-xs text-gray-600 mb-0.5">Lab Results</p>
-              <p className="text-lg font-bold text-gray-900">{labResults.length}</p>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-2">
-              <p className="text-xs text-gray-600 mb-0.5">Outstanding</p>
-              <p className="text-lg font-bold text-red-600">{formatCurrency(totalOutstanding)}</p>
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-3">
-            <h2 className="text-sm font-semibold text-gray-900 mb-2">Quick Actions</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-              <Link
-                href={`/appointments/new?patientId=${patientId}`}
-                className="flex items-center space-x-2 p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors group"
-              >
-                <div className="bg-green-50 text-green-600 rounded-md p-1.5 group-hover:scale-105 transition-transform">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Header */}
+          <Box>
+            <Flex align="center" gap="3" mb="3">
+              <Button asChild variant="ghost" size="2">
+                <Link href="/patients">
+                  <svg style={{ width: '20px', height: '20px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
-                </div>
-                <span className="text-xs font-medium text-gray-900">Schedule</span>
-              </Link>
-              <Link
-                href={`/visits/new?patientId=${patientId}`}
-                className="flex items-center space-x-2 p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors group"
-              >
-                <div className="bg-teal-50 text-teal-600 rounded-md p-1.5 group-hover:scale-105 transition-transform">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <span className="text-xs font-medium text-gray-900">New Visit</span>
-              </Link>
-              <Link
-                href={`/prescriptions/new?patientId=${patientId}`}
-                className="flex items-center space-x-2 p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors group"
-              >
-                <div className="bg-purple-50 text-purple-600 rounded-md p-1.5 group-hover:scale-105 transition-transform">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                  </svg>
-                </div>
-                <span className="text-xs font-medium text-gray-900">Prescription</span>
-              </Link>
-              <Link
-                href={`/invoices/new?patientId=${patientId}`}
-                className="flex items-center space-x-2 p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors group"
-              >
-                <div className="bg-emerald-50 text-emerald-600 rounded-md p-1.5 group-hover:scale-105 transition-transform">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <span className="text-xs font-medium text-gray-900">Invoice</span>
-              </Link>
-              <Link
-                href={`/lab-results/new?patientId=${patientId}`}
-                className="flex items-center space-x-2 p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors group"
-              >
-                <div className="bg-blue-50 text-blue-600 rounded-md p-1.5 group-hover:scale-105 transition-transform">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <span className="text-xs font-medium text-gray-900">Lab Result</span>
-              </Link>
-              <button
-                onClick={() => setShowQR(!showQR)}
-                className="flex items-center space-x-2 p-2 rounded-md border border-gray-200 hover:bg-gray-50 transition-colors group"
-              >
-                <div className="bg-amber-50 text-amber-600 rounded-md p-1.5 group-hover:scale-105 transition-transform">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                </Link>
+              </Button>
+              <Box style={{ flex: 1 }}>
+                <Heading size="7" mb="1">
+                  {fullName}
+                </Heading>
+                <Flex align="center" gap="2" wrap="wrap">
+                  {patient.patientCode && (
+                    <Text size="2" color="gray">ID: {patient.patientCode}</Text>
+                  )}
+                  {patient.patientCode && <Text size="2" color="gray">•</Text>}
+                  <Text size="2" color="gray">{calculateAge(patient.dateOfBirth)} years old</Text>
+                  {patient.sex && patient.sex !== 'unknown' && (
+                    <>
+                      <Text size="2" color="gray">•</Text>
+                      <Text size="2" color="gray" style={{ textTransform: 'capitalize' }}>{patient.sex}</Text>
+                    </>
+                  )}
+                </Flex>
+              </Box>
+              <Flex align="center" gap="2">
+                <Button
+                  onClick={() => setShowQR(!showQR)}
+                  size="2"
+                  color="blue"
+                >
+                  <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                   </svg>
-                </div>
-                <span className="text-xs font-medium text-gray-900">QR Code</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* QR Code Modal */}
-        {showQR && (
-          <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen px-4">
-              <div className="fixed inset-0 bg-black/30 backdrop-blur-md" onClick={() => setShowQR(false)} />
-              <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-md w-full z-10">
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-base font-semibold text-gray-900">Patient QR Code</h3>
-                  <button
-                    onClick={() => setShowQR(false)}
-                    className="text-gray-400 hover:text-gray-500"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  QR Code
+                </Button>
+                <Button asChild size="2" color="green">
+                  <Link href={`/patients?edit=${patient._id}`}>
+                    <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
-                  </button>
-                </div>
-                <div className="flex flex-col items-center">
-                  <div className="bg-white p-4 rounded-lg border-2 border-gray-200 mb-4">
-                    <QRCode value={qrValue} size={256} />
-                  </div>
-                  <p className="text-sm text-gray-600 text-center">
-                    Patient ID: <span className="font-semibold">{qrValue}</span>
-                  </p>
-                  <p className="text-xs text-gray-500 text-center mt-2">
-                    Scan this code to quickly access patient information
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+                    Edit
+                  </Link>
+                </Button>
+              </Flex>
+            </Flex>
 
-        {/* Patient Alerts */}
-        {alerts.length > 0 && (
-          <div className="mb-3 space-y-2">
-            {alerts.map((alert, idx) => (
-              <div
-                key={idx}
-                className={`rounded-lg border-l-4 p-4 ${
-                  alert.severity === 'high'
-                    ? 'bg-red-50 border-red-500'
-                    : alert.severity === 'medium'
-                    ? 'bg-yellow-50 border-yellow-500'
-                    : 'bg-blue-50 border-blue-500'
-                }`}
-              >
-                <div className="flex items-start">
-                  <div className="flex-shrink-0">
-                    {alert.type === 'allergy' && (
-                      <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                    )}
-                    {alert.type === 'unpaid_balance' && (
-                      <svg className="h-5 w-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    )}
-                    {alert.type === 'critical_condition' && (
-                      <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                    )}
-                    {alert.type === 'missing_info' && (
-                      <svg className="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    )}
-                  </div>
-                  <div className="ml-3 flex-1">
-                    <p className={`text-sm font-medium ${
-                      alert.severity === 'high' ? 'text-red-800' :
-                      alert.severity === 'medium' ? 'text-yellow-800' :
-                      'text-blue-800'
-                    }`}>
-                      {alert.message}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+            {/* Quick Stats */}
+            <Flex gap="2" wrap="wrap" mb="3">
+              <Card style={{ flex: '1 1 120px', minWidth: '100px' }}>
+                <Box p="2">
+                  <Text size="1" color="gray" mb="1" as="div">Visits</Text>
+                  <Text size="5" weight="bold">{visits.length}</Text>
+                </Box>
+              </Card>
+              <Card style={{ flex: '1 1 120px', minWidth: '100px' }}>
+                <Box p="2">
+                  <Text size="1" color="gray" mb="1" as="div">Appointments</Text>
+                  <Text size="5" weight="bold">{appointments.length}</Text>
+                </Box>
+              </Card>
+              <Card style={{ flex: '1 1 120px', minWidth: '100px' }}>
+                <Box p="2">
+                  <Text size="1" color="gray" mb="1" as="div">Prescriptions</Text>
+                  <Text size="5" weight="bold">{prescriptions.length}</Text>
+                </Box>
+              </Card>
+              <Card style={{ flex: '1 1 120px', minWidth: '100px' }}>
+                <Box p="2">
+                  <Text size="1" color="gray" mb="1" as="div">Invoices</Text>
+                  <Text size="5" weight="bold">{invoices.length}</Text>
+                </Box>
+              </Card>
+              <Card style={{ flex: '1 1 120px', minWidth: '100px' }}>
+                <Box p="2">
+                  <Text size="1" color="gray" mb="1" as="div">Lab Results</Text>
+                  <Text size="5" weight="bold">{labResults.length}</Text>
+                </Box>
+              </Card>
+              <Card style={{ flex: '1 1 120px', minWidth: '100px' }}>
+                <Box p="2">
+                  <Text size="1" color="gray" mb="1" as="div">Outstanding</Text>
+                  <Text size="5" weight="bold" color="red">{formatCurrency(totalOutstanding)}</Text>
+                </Box>
+              </Card>
+            </Flex>
 
-        {/* Tabs */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-3">
+            {/* Quick Actions */}
+            <Card mb="3">
+              <Box p="3">
+                <Heading size="3" mb="2">Quick Actions</Heading>
+                <Flex gap="2" wrap="wrap">
+                  <Button asChild variant="soft" size="2" style={{ flex: '1 1 120px', minWidth: '100px' }}>
+                    <Link href={`/appointments/new?patientId=${patientId}`}>
+                      <svg style={{ width: '16px', height: '16px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      Schedule
+                    </Link>
+                  </Button>
+                  <Button asChild variant="soft" size="2" style={{ flex: '1 1 120px', minWidth: '100px' }}>
+                    <Link href={`/visits/new?patientId=${patientId}`}>
+                      <svg style={{ width: '16px', height: '16px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      New Visit
+                    </Link>
+                  </Button>
+                  <Button asChild variant="soft" size="2" style={{ flex: '1 1 120px', minWidth: '100px' }}>
+                    <Link href={`/prescriptions/new?patientId=${patientId}`}>
+                      <svg style={{ width: '16px', height: '16px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                      </svg>
+                      Prescription
+                    </Link>
+                  </Button>
+                  <Button asChild variant="soft" size="2" style={{ flex: '1 1 120px', minWidth: '100px' }}>
+                    <Link href={`/invoices/new?patientId=${patientId}`}>
+                      <svg style={{ width: '16px', height: '16px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Invoice
+                    </Link>
+                  </Button>
+                  <Button asChild variant="soft" size="2" style={{ flex: '1 1 120px', minWidth: '100px' }}>
+                    <Link href={`/lab-results/new?patientId=${patientId}`}>
+                      <svg style={{ width: '16px', height: '16px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Lab Result
+                    </Link>
+                  </Button>
+                  <Button onClick={() => setShowQR(!showQR)} variant="soft" size="2" style={{ flex: '1 1 120px', minWidth: '100px' }}>
+                    <svg style={{ width: '16px', height: '16px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                    </svg>
+                    QR Code
+                  </Button>
+                </Flex>
+              </Box>
+            </Card>
+
+          {/* QR Code Modal */}
+          <Dialog.Root open={showQR} onOpenChange={setShowQR}>
+            <Dialog.Content style={{ maxWidth: '450px' }}>
+              <Dialog.Title>Patient QR Code</Dialog.Title>
+              <Flex direction="column" align="center" gap="3" mt="4">
+                <Box p="4" style={{ background: 'white', border: '2px solid var(--gray-6)', borderRadius: 'var(--radius-2)' }}>
+                  <QRCode value={qrValue} size={256} />
+                </Box>
+                <Text size="2" color="gray" style={{ textAlign: 'center' }}>
+                  Patient ID: <Text weight="bold">{qrValue}</Text>
+                </Text>
+                <Text size="1" color="gray" style={{ textAlign: 'center' }}>
+                  Scan this code to quickly access patient information
+                </Text>
+              </Flex>
+            </Dialog.Content>
+          </Dialog.Root>
+
+          {/* Patient Alerts */}
+          {alerts.length > 0 && (
+            <Flex direction="column" gap="2" mb="3">
+              {alerts.map((alert, idx) => (
+                <Callout.Root
+                  key={idx}
+                  color={
+                    alert.severity === 'high' ? 'red' :
+                    alert.severity === 'medium' ? 'yellow' :
+                    'blue'
+                  }
+                >
+                  <Callout.Text>{alert.message}</Callout.Text>
+                </Callout.Root>
+              ))}
+            </Flex>
+          )}
+
+          {/* Tabs */}
+          <Card mb="3">
           <div className="border-b border-gray-200 overflow-x-auto">
             <nav className="flex -mb-px min-w-max">
               <button
@@ -1263,34 +1211,36 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
               </div>
             )}
           </div>
-        </div>
-      </div>
+          </Card>
 
-      {/* Delete File Alert Dialog */}
-      <AlertDialog.Root open={deleteFileDialogOpen} onOpenChange={setDeleteFileDialogOpen}>
-        <AlertDialog.Content>
-          <AlertDialog.Title>Delete File</AlertDialog.Title>
-          <AlertDialog.Description>
-            Are you sure you want to delete this file? This action cannot be undone.
-          </AlertDialog.Description>
-          <Flex gap="3" mt="4" justify="end">
-            <AlertDialog.Cancel>
-              <Button variant="soft" color="gray" onClick={() => {
-                setDeleteFileDialogOpen(false);
-                setFileToDelete(null);
-              }}>
-                Cancel
-              </Button>
-            </AlertDialog.Cancel>
-            <AlertDialog.Action>
-              <Button variant="solid" color="red" onClick={handleDeleteFile}>
-                Delete
-              </Button>
-            </AlertDialog.Action>
-          </Flex>
-        </AlertDialog.Content>
-      </AlertDialog.Root>
-    </div>
+          {/* Delete File Alert Dialog */}
+          <AlertDialog.Root open={deleteFileDialogOpen} onOpenChange={setDeleteFileDialogOpen}>
+            <AlertDialog.Content>
+              <AlertDialog.Title>Delete File</AlertDialog.Title>
+              <AlertDialog.Description>
+                Are you sure you want to delete this file? This action cannot be undone.
+              </AlertDialog.Description>
+              <Flex gap="3" mt="4" justify="end">
+                <AlertDialog.Cancel>
+                  <Button variant="soft" color="gray" onClick={() => {
+                    setDeleteFileDialogOpen(false);
+                    setFileToDelete(null);
+                  }}>
+                    Cancel
+                  </Button>
+                </AlertDialog.Cancel>
+                <AlertDialog.Action>
+                  <Button variant="solid" color="red" onClick={handleDeleteFile}>
+                    Delete
+                  </Button>
+                </AlertDialog.Action>
+              </Flex>
+            </AlertDialog.Content>
+          </AlertDialog.Root>
+          </Box>
+        </Flex>
+      </Container>
+    </Section>
   );
 }
 

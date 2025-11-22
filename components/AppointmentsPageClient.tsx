@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppointmentCalendar from './AppointmentCalendar';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Heading, Callout, TextArea } from '@radix-ui/themes';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Heading, Callout, TextArea, Container, Section } from '@radix-ui/themes';
 import { useSetting } from './SettingsContext';
 
 interface Appointment {
@@ -408,12 +408,14 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
 
   if (loading) {
     return (
-      <Box p="4" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Flex direction="column" align="center" gap="3">
-          <Spinner size="3" />
-          <Text>Loading appointments...</Text>
-        </Flex>
-      </Box>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" gap="3" style={{ minHeight: '50vh', justifyContent: 'center' }}>
+            <Spinner size="3" />
+            <Text>Loading appointments...</Text>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
@@ -421,25 +423,27 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   const walkInQueue = getWalkInQueue();
 
   return (
-    <Box p="4">
-      {/* Error/Success Messages */}
-      {error && (
-        <Callout.Root color="red" mb="3">
-          <Callout.Text>{error}</Callout.Text>
-        </Callout.Root>
-      )}
-      {success && (
-        <Callout.Root color="green" mb="3">
-          <Callout.Text>{success}</Callout.Text>
-        </Callout.Root>
-      )}
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Error/Success Messages */}
+          {error && (
+            <Callout.Root color="red">
+              <Callout.Text>{error}</Callout.Text>
+            </Callout.Root>
+          )}
+          {success && (
+            <Callout.Root color="green">
+              <Callout.Text>{success}</Callout.Text>
+            </Callout.Root>
+          )}
 
-      {/* Header */}
-      <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3" mb="3">
-        <Box>
-          <Heading size="7" mb="1">Appointments</Heading>
-          <Text size="2" color="gray">Manage appointments and walk-in queue</Text>
-        </Box>
+          {/* Header */}
+          <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3">
+            <Box>
+              <Heading size="8" mb="1">Appointments</Heading>
+              <Text size="2" color="gray">Manage appointments and walk-in queue</Text>
+            </Box>
         <Flex gap="2" wrap="wrap">
           <Button
             onClick={() => {
@@ -472,9 +476,9 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         </Flex>
       </Flex>
 
-      {/* View Mode Tabs */}
-      <Card mb="3">
-        <Tabs.Root value={viewMode} onValueChange={(value) => setViewMode(value as typeof viewMode)}>
+          {/* View Mode Tabs */}
+          <Card>
+            <Tabs.Root value={viewMode} onValueChange={(value) => setViewMode(value as typeof viewMode)}>
           <Tabs.List>
             <Tabs.Trigger value="calendar">Calendar View</Tabs.Trigger>
             <Tabs.Trigger value="list">List View</Tabs.Trigger>
@@ -490,9 +494,9 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         </Tabs.Root>
       </Card>
 
-      {/* Calendar View */}
-      {viewMode === 'calendar' && (
-        <Flex direction={{ initial: 'column', lg: 'row' }} gap="4">
+          {/* Calendar View */}
+          {viewMode === 'calendar' && (
+            <Flex direction={{ initial: 'column', lg: 'row' }} gap="4">
           <Box style={{ flex: '0 0 350px' }}>
             <AppointmentCalendar
               appointments={appointments}
@@ -502,7 +506,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
             {/* Filters */}
             <Card mt="4">
               <Box p="3">
-                <Heading size="3" mb="3">Filters</Heading>
+                <Heading size="4" mb="3">Filters</Heading>
                 <Flex direction="column" gap="3">
                   <Box>
                     <Text size="1" weight="medium" mb="1" as="div">Doctor</Text>
@@ -560,7 +564,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
           <Box style={{ flex: 1 }}>
             <Card>
               <Box p="3">
-                <Heading size="3" mb="3">
+                <Heading size="4" mb="3">
                   Appointments for {formatDate(selectedDate.toISOString())}
                   {(filterDoctor || filterRoom) && (
                     <Text size="2" color="gray" as="span" style={{ marginLeft: '8px' }}>
@@ -673,11 +677,11 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
               </Box>
             </Card>
           </Box>
-        </Flex>
-      )}
+            </Flex>
+          )}
 
-      {/* List View */}
-      {viewMode === 'list' && (
+          {/* List View */}
+          {viewMode === 'list' && (
         <Card>
           <Table.Root>
             <Table.Header>
@@ -781,13 +785,13 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
             </Table.Body>
           </Table.Root>
         </Card>
-      )}
+          )}
 
-      {/* Walk-In Queue View */}
-      {viewMode === 'queue' && (
-        <Card>
-          <Box p="3">
-            <Heading size="3" mb="3">Today&apos;s Walk-In Queue</Heading>
+          {/* Walk-In Queue View */}
+          {viewMode === 'queue' && (
+            <Card>
+              <Box p="3">
+                <Heading size="4" mb="3">Today&apos;s Walk-In Queue</Heading>
             {walkInQueue.length === 0 ? (
               <Box style={{ textAlign: 'center', padding: '48px 0' }}>
                 <Box mb="3">
@@ -851,10 +855,10 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
             )}
           </Box>
         </Card>
-      )}
+          )}
 
-      {/* Appointment Form Modal */}
-      <Dialog.Root open={showForm || showWalkInForm} onOpenChange={(open) => {
+          {/* Appointment Form Modal */}
+          <Dialog.Root open={showForm || showWalkInForm} onOpenChange={(open) => {
         if (!open) {
           setShowForm(false);
           setShowWalkInForm(false);
@@ -1116,6 +1120,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
           </form>
         </Dialog.Content>
       </Dialog.Root>
-    </Box>
+        </Flex>
+      </Container>
+    </Section>
   );
 }

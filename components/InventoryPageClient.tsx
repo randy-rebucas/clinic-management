@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Skeleton, Heading, Callout, IconButton } from '@radix-ui/themes';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Skeleton, Heading, Callout, IconButton, Container, Section } from '@radix-ui/themes';
 
 interface InventoryItem {
   _id: string;
@@ -76,17 +76,19 @@ export default function InventoryPageClient() {
 
   if (loading) {
     return (
-      <Box p="4">
-        <Flex direction="column" gap="3">
-          <Skeleton height="32px" width="200px" />
-          <Flex gap="3" wrap="wrap">
-            <Skeleton height="100px" style={{ flex: '1 1 200px' }} />
-            <Skeleton height="100px" style={{ flex: '1 1 200px' }} />
-            <Skeleton height="100px" style={{ flex: '1 1 200px' }} />
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" gap="3">
+            <Skeleton height="32px" width="200px" />
+            <Flex gap="3" wrap="wrap">
+              <Skeleton height="100px" style={{ flex: '1 1 200px' }} />
+              <Skeleton height="100px" style={{ flex: '1 1 200px' }} />
+              <Skeleton height="100px" style={{ flex: '1 1 200px' }} />
+            </Flex>
+            <Skeleton height="400px" />
           </Flex>
-          <Skeleton height="400px" />
-        </Flex>
-      </Box>
+        </Container>
+      </Section>
     );
   }
 
@@ -104,40 +106,41 @@ export default function InventoryPageClient() {
   const lowStockItems = filteredItems.filter(item => item.status === 'low-stock' || item.status === 'out-of-stock');
 
   return (
-    <Box p="4">
-      <Flex direction="column" gap="3">
-        {/* Header */}
-        <Flex direction={{ initial: 'column', sm: 'row' }} align={{ sm: 'center' }} justify="between" gap="2">
-          <Box>
-            <Heading size="7" mb="1">Inventory Management</Heading>
-            <Text size="2" color="gray">Track medicines and supplies</Text>
-          </Box>
-          <Button asChild size="2" mt={{ initial: '2', sm: '0' }}>
-            <Link href="/inventory/new">
-              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '4px' }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Item
-            </Link>
-          </Button>
-        </Flex>
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Header */}
+          <Flex direction={{ initial: 'column', sm: 'row' }} align={{ sm: 'center' }} justify="between" gap="3">
+            <Box>
+              <Heading size="8" mb="1">Inventory Management</Heading>
+              <Text size="2" color="gray">Track medicines and supplies</Text>
+            </Box>
+            <Button asChild size="3">
+              <Link href="/inventory/new">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '4px' }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Item
+              </Link>
+            </Button>
+          </Flex>
 
-        {/* Low Stock Alert */}
-        {lowStockItems.length > 0 && (
-          <Callout.Root color="yellow" mb="2">
-            <Callout.Icon>
-              <svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-            </Callout.Icon>
-            <Callout.Text size="2">
-              {lowStockItems.length} item(s) need restocking
-            </Callout.Text>
-          </Callout.Root>
-        )}
+          {/* Low Stock Alert */}
+          {lowStockItems.length > 0 && (
+            <Callout.Root color="yellow" size="2">
+              <Callout.Icon>
+                <svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </Callout.Icon>
+              <Callout.Text size="2">
+                {lowStockItems.length} item(s) need restocking
+              </Callout.Text>
+            </Callout.Root>
+          )}
 
-        {/* Search and Filters */}
-        <Flex direction="column" gap="2" mb="2">
+          {/* Search and Filters */}
+          <Flex direction="column" gap="2">
           <Box position="relative" style={{ width: '100%' }}>
             <TextField.Root>
               <TextField.Slot side="left">
@@ -208,14 +211,14 @@ export default function InventoryPageClient() {
           </Flex>
         </Flex>
 
-        {/* Inventory Table */}
-        <Card>
-          <Flex p="2" justify="between" align="center" style={{ borderBottom: '1px solid var(--gray-4)' }}>
-            <Heading size="3">Inventory Items</Heading>
-            <Text size="2" color="gray">
-              {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}
-            </Text>
-          </Flex>
+          {/* Inventory Table */}
+          <Card>
+            <Flex p="3" justify="between" align="center" style={{ borderBottom: '1px solid var(--gray-6)' }}>
+              <Heading size="4">Inventory Items</Heading>
+              <Text size="2" color="gray">
+                {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}
+              </Text>
+            </Flex>
           <Box style={{ overflowX: 'auto' }}>
             <Table.Root>
               <Table.Header>
@@ -301,8 +304,9 @@ export default function InventoryPageClient() {
             </Table.Root>
           </Box>
         </Card>
-      </Flex>
-    </Box>
+        </Flex>
+      </Container>
+    </Section>
   );
 }
 

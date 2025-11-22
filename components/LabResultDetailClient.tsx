@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Heading, IconButton, Separator } from '@radix-ui/themes';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Heading, IconButton, Separator, Container, Section } from '@radix-ui/themes';
 
 interface LabResult {
   _id: string;
@@ -127,44 +127,50 @@ export default function LabResultDetailClient({ labResultId }: { labResultId: st
 
   if (loading) {
     return (
-      <Box p="4" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Flex direction="column" align="center" gap="3">
-          <Spinner size="3" />
-          <Text>Loading lab result...</Text>
-        </Flex>
-      </Box>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+            <Spinner size="3" />
+            <Text>Loading lab result...</Text>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
   if (!labResult) {
     return (
-      <Box p="4" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Flex direction="column" align="center" gap="3">
-          <Heading size="5">Lab result not found</Heading>
-          <Button asChild variant="soft">
-            <Link href="/lab-results">Back to Lab Results</Link>
-          </Button>
-        </Flex>
-      </Box>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+            <Heading size="5">Lab result not found</Heading>
+            <Button asChild variant="soft">
+              <Link href="/lab-results">Back to Lab Results</Link>
+            </Button>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
   return (
-    <Box p="4">
-      {/* Header */}
-      <Box mb="4">
-        <Flex align="center" gap="3" mb="2">
-          <IconButton
-            variant="ghost"
-            onClick={() => router.push('/lab-results')}
-            size="2"
-          >
-            <svg style={{ width: '20px', height: '20px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </IconButton>
-          <Heading size="7">{labResult.requestCode || 'Lab Order'}</Heading>
-        </Flex>
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Header */}
+          <Box>
+            <Flex align="center" gap="3" mb="2">
+              <IconButton
+                variant="ghost"
+                onClick={() => router.push('/lab-results')}
+                size="2"
+              >
+                <svg style={{ width: '20px', height: '20px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </IconButton>
+              <Heading size="8">{labResult.requestCode || 'Lab Order'}</Heading>
+            </Flex>
         <Flex align="center" gap="2" ml="8">
           <Link href={`/patients/${labResult.patient._id}`}>
             <Text size="2" style={{ color: 'var(--blue-9)', textDecoration: 'none' }}>
@@ -178,12 +184,12 @@ export default function LabResultDetailClient({ labResultId }: { labResultId: st
         </Flex>
       </Box>
 
-      <Flex direction="column" gap="3">
-        {/* Status Card */}
-        <Card>
-          <Box p="3">
-            <Flex justify="between" align="center" mb="3">
-              <Heading size="3">Status</Heading>
+          <Flex direction="column" gap="3">
+            {/* Status Card */}
+            <Card>
+              <Box p="3">
+                <Flex justify="between" align="center" mb="3">
+                  <Heading size="4">Status</Heading>
               <Badge color={getStatusColor(labResult.status)} size="2">
                 {labResult.status}
               </Badge>
@@ -219,10 +225,10 @@ export default function LabResultDetailClient({ labResultId }: { labResultId: st
           </Box>
         </Card>
 
-        {/* Test Request Information */}
-        <Card>
-          <Box p="3">
-            <Heading size="3" mb="3">Test Request</Heading>
+            {/* Test Request Information */}
+            <Card>
+              <Box p="3">
+                <Heading size="4" mb="3">Test Request</Heading>
             <Flex direction="column" gap="3">
               <Box>
                 <Text size="1" color="gray" mb="1" as="div">Test Type</Text>
@@ -270,11 +276,11 @@ export default function LabResultDetailClient({ labResultId }: { labResultId: st
           </Box>
         </Card>
 
-        {/* Results */}
-        {labResult.results && (
-          <Card>
-            <Box p="3">
-              <Heading size="3" mb="3">Results</Heading>
+            {/* Results */}
+            {labResult.results && (
+              <Card>
+                <Box p="3">
+                  <Heading size="4" mb="3">Results</Heading>
               <Flex direction="column" gap="2">
                 {typeof labResult.results === 'object' && labResult.results !== null ? (
                   Object.entries(labResult.results).map(([key, value]) => {
@@ -327,11 +333,11 @@ export default function LabResultDetailClient({ labResultId }: { labResultId: st
           </Card>
         )}
 
-        {/* Third Party Lab Information */}
-        {labResult.thirdPartyLab && (
-          <Card>
-            <Box p="3">
-              <Heading size="3" mb="3">Third Party Lab</Heading>
+            {/* Third Party Lab Information */}
+            {labResult.thirdPartyLab && (
+              <Card>
+                <Box p="3">
+                  <Heading size="4" mb="3">Third Party Lab</Heading>
               <Flex direction="column" gap="3">
                 <Box>
                   <Text size="1" color="gray" mb="1" as="div">Lab Name</Text>
@@ -372,11 +378,11 @@ export default function LabResultDetailClient({ labResultId }: { labResultId: st
           </Card>
         )}
 
-        {/* Attachments */}
-        {labResult.attachments && labResult.attachments.length > 0 && (
-          <Card>
-            <Box p="3">
-              <Heading size="3" mb="3">Attachments</Heading>
+            {/* Attachments */}
+            {labResult.attachments && labResult.attachments.length > 0 && (
+              <Card>
+                <Box p="3">
+                  <Heading size="4" mb="3">Attachments</Heading>
               <Flex direction="column" gap="2">
                 {labResult.attachments.map((attachment, index) => (
                   <Button
@@ -403,11 +409,11 @@ export default function LabResultDetailClient({ labResultId }: { labResultId: st
           </Card>
         )}
 
-        {/* Visit Link */}
-        {labResult.visit && (
-          <Card>
-            <Box p="3">
-              <Heading size="3" mb="2">Related Visit</Heading>
+            {/* Visit Link */}
+            {labResult.visit && (
+              <Card>
+                <Box p="3">
+                  <Heading size="4" mb="2">Related Visit</Heading>
               <Button asChild variant="soft" size="2">
                 <Link href={`/visits/${labResult.visit._id}`}>
                   {labResult.visit.visitCode} - {new Date(labResult.visit.date).toLocaleDateString()}
@@ -417,6 +423,8 @@ export default function LabResultDetailClient({ labResultId }: { labResultId: st
           </Card>
         )}
       </Flex>
-    </Box>
+        </Flex>
+      </Container>
+    </Section>
   );
 }

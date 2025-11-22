@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import PrescriptionForm from './PrescriptionForm';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tooltip, Heading, Callout, IconButton } from '@radix-ui/themes';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tooltip, Heading, Callout, IconButton, Container, Section } from '@radix-ui/themes';
 
 interface Prescription {
   _id: string;
@@ -190,35 +190,39 @@ export default function PrescriptionsPageClient() {
 
   if (loading) {
     return (
-      <Box p="4" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Flex direction="column" align="center" gap="3">
-          <Spinner size="3" />
-          <Text>Loading prescriptions...</Text>
-        </Flex>
-      </Box>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+            <Spinner size="3" />
+            <Text>Loading prescriptions...</Text>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
   return (
-    <Box p="4">
-      {/* Error/Success Messages */}
-      {error && (
-        <Callout.Root color="red" mb="3">
-          <Callout.Text>{error}</Callout.Text>
-        </Callout.Root>
-      )}
-      {success && (
-        <Callout.Root color="green" mb="3">
-          <Callout.Text>{success}</Callout.Text>
-        </Callout.Root>
-      )}
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Error/Success Messages */}
+          {error && (
+            <Callout.Root color="red">
+              <Callout.Text>{error}</Callout.Text>
+            </Callout.Root>
+          )}
+          {success && (
+            <Callout.Root color="green">
+              <Callout.Text>{success}</Callout.Text>
+            </Callout.Root>
+          )}
 
-      {/* Header */}
-      <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3" mb="3">
-        <Box>
-          <Heading size="7" mb="1">E-Prescriptions</Heading>
-          <Text size="2" color="gray">Manage prescriptions and track dispensing</Text>
-        </Box>
+          {/* Header */}
+          <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3">
+            <Box>
+              <Heading size="8" mb="1">E-Prescriptions</Heading>
+              <Text size="2" color="gray">Manage prescriptions and track dispensing</Text>
+            </Box>
         <Button
           onClick={() => setShowForm(true)}
           size="3"
@@ -230,9 +234,9 @@ export default function PrescriptionsPageClient() {
         </Button>
       </Flex>
 
-      {/* Search and Filters */}
-      <Card mb="3">
-        <Box p="3">
+          {/* Search and Filters */}
+          <Card>
+            <Box p="3">
           <Flex direction={{ initial: 'column', sm: 'row' }} gap="3">
             <Box flexGrow="1">
               <TextField.Root size="2" style={{ width: '100%' }}>
@@ -457,6 +461,8 @@ export default function PrescriptionsPageClient() {
           )}
         </Box>
       </Card>
-    </Box>
+        </Flex>
+      </Container>
+    </Section>
   );
 }

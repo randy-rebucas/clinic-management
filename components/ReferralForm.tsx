@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-// Radix UI components not used - using native HTML form elements
+import { Flex, Box, Text, TextField, Select, Button, Separator, Switch, Badge } from '@radix-ui/themes';
 
 interface Patient {
   _id: string;
@@ -178,360 +178,456 @@ export default function ReferralForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 max-h-[80vh] overflow-y-auto">
-      {/* Referral Type */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Referral Type *</label>
-        <select
-          required
-          value={formData.type}
-          onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-        >
-          <option value="doctor_to_doctor">Doctor to Doctor</option>
-          <option value="patient_to_patient">Patient to Patient</option>
-          <option value="external">External</option>
-        </select>
-      </div>
-
-      {/* Patient Selection */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Patient *</label>
-        <div className="relative patient-search-container">
-          <input
-            type="text"
-            required
-            value={patientSearch}
-            onChange={(e) => {
-              setPatientSearch(e.target.value);
-              setShowPatientSearch(true);
-              if (!e.target.value) {
-                setFormData({ ...formData, patient: '' });
-                setSelectedPatient(null);
-              }
-            }}
-            onFocus={() => setShowPatientSearch(true)}
-            placeholder="Type to search patients..."
-            className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-          />
-          {showPatientSearch && filteredPatients.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-              {filteredPatients.map((patient) => {
-                const age = patient.dateOfBirth
-                  ? Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-                  : null;
-                return (
-                  <button
-                    key={patient._id}
-                    type="button"
-                    onClick={() => selectPatient(patient)}
-                    className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
-                  >
-                    <div className="font-medium">{patient.firstName} {patient.lastName}</div>
-                    <div className="text-xs text-gray-500">
-                      {patient.patientCode && `${patient.patientCode}`}
-                      {age && ` • Age: ${age} years`}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {showPatientSearch && patientSearch && filteredPatients.length === 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg">
-              <div className="px-3 py-2 text-sm text-gray-500">No patients found</div>
-            </div>
-          )}
-        </div>
-        {formData.patient && !selectedPatient && (
-          <p className="mt-0.5 text-xs text-red-600">Please select a valid patient from the list</p>
-        )}
-      </div>
-
-      {/* Doctor to Doctor Fields */}
-      {formData.type === 'doctor_to_doctor' && (
-        <>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Referring Doctor (Optional)</label>
-            <select
-              value={formData.referringDoctor}
-              onChange={(e) => setFormData({ ...formData, referringDoctor: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+    <form onSubmit={handleSubmit}>
+      <Box style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+        <Flex direction="column" gap="3" p="4">
+          {/* Referral Type */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">
+              Referral Type <Text color="red">*</Text>
+            </Text>
+            <Select.Root
+              size="2"
+              required
+              value={formData.type}
+              onValueChange={(value) => setFormData({ ...formData, type: value as any })}
             >
-              <option value="">Select referring doctor</option>
-              {doctors.map((doctor) => (
-                <option key={doctor._id} value={doctor._id}>
-                  Dr. {doctor.firstName} {doctor.lastName}
-                  {doctor.specialization && ` - ${doctor.specialization}`}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Receiving Doctor *</label>
-            <select
-              required={formData.type === 'doctor_to_doctor'}
-              value={formData.receivingDoctor}
-              onChange={(e) => setFormData({ ...formData, receivingDoctor: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">Select receiving doctor</option>
-              {doctors.map((doctor) => (
-                <option key={doctor._id} value={doctor._id}>
-                  Dr. {doctor.firstName} {doctor.lastName}
-                  {doctor.specialization && ` - ${doctor.specialization}`}
-                </option>
-              ))}
-            </select>
-          </div>
-        </>
-      )}
+              <Select.Trigger />
+              <Select.Content>
+                <Select.Item value="doctor_to_doctor">Doctor to Doctor</Select.Item>
+                <Select.Item value="patient_to_patient">Patient to Patient</Select.Item>
+                <Select.Item value="external">External</Select.Item>
+              </Select.Content>
+            </Select.Root>
+          </Box>
 
-      {/* External Referral Fields */}
-      {formData.type === 'external' && (
-        <>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Referring Clinic (Optional)</label>
-            <input
-              type="text"
-              value={formData.referringClinic}
-              onChange={(e) => setFormData({ ...formData, referringClinic: e.target.value })}
-              placeholder="Name of referring clinic"
-              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Referring Contact Name *</label>
-            <input
-              type="text"
-              required={formData.type === 'external'}
-              value={formData.referringContact.name}
-              onChange={(e) => setFormData({
-                ...formData,
-                referringContact: { ...formData.referringContact, name: e.target.value }
-              })}
-              placeholder="Contact person name"
-              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Contact Phone (Optional)</label>
-            <input
-              type="tel"
-              value={formData.referringContact.phone}
-              onChange={(e) => setFormData({
-                ...formData,
-                referringContact: { ...formData.referringContact, phone: e.target.value }
-              })}
-              placeholder="Phone number"
-              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Contact Email (Optional)</label>
-            <input
-              type="email"
-              value={formData.referringContact.email}
-              onChange={(e) => setFormData({
-                ...formData,
-                referringContact: { ...formData.referringContact, email: e.target.value }
-              })}
-              placeholder="Email address"
-              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Receiving Clinic (Optional)</label>
-            <input
-              type="text"
-              value={formData.receivingClinic}
-              onChange={(e) => setFormData({ ...formData, receivingClinic: e.target.value })}
-              placeholder="Name of receiving clinic"
-              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-        </>
-      )}
-
-      {/* Reason for Referral */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Reason for Referral *</label>
-        <textarea
-          required
-          value={formData.reason}
-          onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-          placeholder="Describe the reason for this referral"
-          rows={3}
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-        />
-      </div>
-
-      {/* Urgency */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Urgency *</label>
-        <select
-          required
-          value={formData.urgency}
-          onChange={(e) => setFormData({ ...formData, urgency: e.target.value as any })}
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-        >
-          <option value="routine">Routine</option>
-          <option value="urgent">Urgent</option>
-          <option value="stat">STAT</option>
-        </select>
-      </div>
-
-      {/* Specialty */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Required Specialty (Optional)</label>
-        <input
-          type="text"
-          value={formData.specialty}
-          onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
-          placeholder="e.g., Cardiology, Orthopedics"
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-        />
-      </div>
-
-      {/* Chief Complaint */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Chief Complaint (Optional)</label>
-        <textarea
-          value={formData.chiefComplaint}
-          onChange={(e) => setFormData({ ...formData, chiefComplaint: e.target.value })}
-          placeholder="Patient's chief complaint"
-          rows={2}
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-        />
-      </div>
-
-      {/* Diagnosis */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Diagnosis (Optional)</label>
-        <input
-          type="text"
-          value={formData.diagnosis}
-          onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
-          placeholder="Current diagnosis"
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-        />
-      </div>
-
-      {/* Relevant History */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Relevant History (Optional)</label>
-        <textarea
-          value={formData.relevantHistory}
-          onChange={(e) => setFormData({ ...formData, relevantHistory: e.target.value })}
-          placeholder="Relevant medical history"
-          rows={3}
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-        />
-      </div>
-
-      {/* Medications */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Current Medications (Optional)</label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={medicationInput}
-            onChange={(e) => setMedicationInput(e.target.value)}
-            onKeyPress={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                addMedication();
-              }
-            }}
-            placeholder="Enter medication and press Enter"
-            className="flex-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-          />
-          <button
-            type="button"
-            onClick={addMedication}
-            className="px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-          >
-            Add
-          </button>
-        </div>
-        {formData.medications.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            {formData.medications.map((med, index) => (
-              <span
-                key={index}
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-md"
-              >
-                {med}
-                <button
-                  type="button"
-                  onClick={() => removeMedication(index)}
-                  className="text-blue-600 hover:text-blue-800"
+          {/* Patient Selection */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">
+              Patient <Text color="red">*</Text>
+            </Text>
+            <Box position="relative" className="patient-search-container">
+              <TextField.Root size="2">
+                <input
+                  type="text"
+                  required
+                  value={patientSearch}
+                  onChange={(e) => {
+                    setPatientSearch(e.target.value);
+                    setShowPatientSearch(true);
+                    if (!e.target.value) {
+                      setFormData({ ...formData, patient: '' });
+                      setSelectedPatient(null);
+                    }
+                  }}
+                  onFocus={() => setShowPatientSearch(true)}
+                  placeholder="Type to search patients..."
+                  style={{ all: 'unset', flex: 1 }}
+                />
+              </TextField.Root>
+              {showPatientSearch && filteredPatients.length > 0 && (
+                <Box
+                  position="absolute"
+                  style={{
+                    zIndex: 10,
+                    marginTop: '4px',
+                    width: '100%',
+                    backgroundColor: 'white',
+                    border: '1px solid var(--gray-6)',
+                    borderRadius: '6px',
+                    boxShadow: 'var(--shadow-4)',
+                    maxHeight: '192px',
+                    overflowY: 'auto',
+                  }}
                 >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+                  {filteredPatients.map((patient) => {
+                    const age = patient.dateOfBirth
+                      ? Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+                      : null;
+                    return (
+                      <Button
+                        key={patient._id}
+                        type="button"
+                        variant="ghost"
+                        onClick={() => selectPatient(patient)}
+                        style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left' }}
+                      >
+                        <Flex direction="column" align="start" gap="1">
+                          <Text size="2" weight="medium">{patient.firstName} {patient.lastName}</Text>
+                          <Text size="1" color="gray">
+                            {patient.patientCode && `${patient.patientCode}`}
+                            {age && ` • Age: ${age} years`}
+                          </Text>
+                        </Flex>
+                      </Button>
+                    );
+                  })}
+                </Box>
+              )}
+              {showPatientSearch && patientSearch && filteredPatients.length === 0 && (
+                <Box
+                  position="absolute"
+                  style={{
+                    zIndex: 10,
+                    marginTop: '4px',
+                    width: '100%',
+                    backgroundColor: 'white',
+                    border: '1px solid var(--gray-6)',
+                    borderRadius: '6px',
+                    boxShadow: 'var(--shadow-4)',
+                  }}
+                >
+                  <Box p="2">
+                    <Text size="2" color="gray">No patients found</Text>
+                  </Box>
+                </Box>
+              )}
+            </Box>
+            {formData.patient && !selectedPatient && (
+              <Text size="1" color="red" mt="1" as="div">Please select a valid patient from the list</Text>
+            )}
+          </Box>
 
-      {/* Notes */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Additional Notes (Optional)</label>
-        <textarea
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Any additional notes or instructions"
-          rows={3}
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-        />
-      </div>
+          {/* Doctor to Doctor Fields */}
+          {formData.type === 'doctor_to_doctor' && (
+            <>
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">Referring Doctor (Optional)</Text>
+                <Select.Root
+                  size="2"
+                  value={formData.referringDoctor || undefined}
+                  onValueChange={(value) => setFormData({ ...formData, referringDoctor: value === 'none' ? '' : value })}
+                >
+                  <Select.Trigger placeholder="Select referring doctor" />
+                  <Select.Content>
+                    <Select.Item value="none">None</Select.Item>
+                    {doctors.map((doctor) => (
+                      <Select.Item key={doctor._id} value={doctor._id}>
+                        Dr. {doctor.firstName} {doctor.lastName}
+                        {doctor.specialization && ` - ${doctor.specialization}`}
+                      </Select.Item>
+                    ))}
+                  </Select.Content>
+                </Select.Root>
+              </Box>
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">
+                  Receiving Doctor <Text color="red">*</Text>
+                </Text>
+                <Select.Root
+                  size="2"
+                  required={formData.type === 'doctor_to_doctor'}
+                  value={formData.receivingDoctor}
+                  onValueChange={(value) => setFormData({ ...formData, receivingDoctor: value })}
+                >
+                  <Select.Trigger placeholder="Select receiving doctor" />
+                  <Select.Content>
+                    {doctors.map((doctor) => (
+                      <Select.Item key={doctor._id} value={doctor._id}>
+                        Dr. {doctor.firstName} {doctor.lastName}
+                        {doctor.specialization && ` - ${doctor.specialization}`}
+                      </Select.Item>
+                    ))}
+                  </Select.Content>
+                </Select.Root>
+              </Box>
+            </>
+          )}
 
-      {/* Follow-up */}
-      <div className="space-y-2">
-        <div className="flex items-center">
-          <input
-            type="checkbox"
-            id="followUpRequired"
-            checked={formData.followUpRequired}
-            onChange={(e) => setFormData({ ...formData, followUpRequired: e.target.checked })}
-            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-          />
-          <label htmlFor="followUpRequired" className="ml-2 block text-xs text-gray-700">
-            Follow-up Required
-          </label>
-        </div>
-        {formData.followUpRequired && (
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Follow-up Date (Optional)</label>
-            <input
-              type="date"
-              value={formData.followUpDate}
-              onChange={(e) => setFormData({ ...formData, followUpDate: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-        )}
-      </div>
+          {/* External Referral Fields */}
+          {formData.type === 'external' && (
+            <>
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">Referring Clinic (Optional)</Text>
+                <TextField.Root size="2">
+                  <input
+                    type="text"
+                    value={formData.referringClinic}
+                    onChange={(e) => setFormData({ ...formData, referringClinic: e.target.value })}
+                    placeholder="Name of referring clinic"
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">
+                  Referring Contact Name <Text color="red">*</Text>
+                </Text>
+                <TextField.Root size="2">
+                  <input
+                    type="text"
+                    required={formData.type === 'external'}
+                    value={formData.referringContact.name}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      referringContact: { ...formData.referringContact, name: e.target.value }
+                    })}
+                    placeholder="Contact person name"
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">Contact Phone (Optional)</Text>
+                <TextField.Root size="2" type="tel">
+                  <input
+                    type="tel"
+                    value={formData.referringContact.phone}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      referringContact: { ...formData.referringContact, phone: e.target.value }
+                    })}
+                    placeholder="Phone number"
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">Contact Email (Optional)</Text>
+                <TextField.Root size="2" type="email">
+                  <input
+                    type="email"
+                    value={formData.referringContact.email}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      referringContact: { ...formData.referringContact, email: e.target.value }
+                    })}
+                    placeholder="Email address"
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">Receiving Clinic (Optional)</Text>
+                <TextField.Root size="2">
+                  <input
+                    type="text"
+                    value={formData.receivingClinic}
+                    onChange={(e) => setFormData({ ...formData, receivingClinic: e.target.value })}
+                    placeholder="Name of receiving clinic"
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+            </>
+          )}
 
-      {/* Form Actions */}
-      <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
-        {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Cancel
-          </button>
-        )}
-        <button
-          type="submit"
-          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          Create Referral
-        </button>
-      </div>
+          {/* Reason for Referral */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">
+              Reason for Referral <Text color="red">*</Text>
+            </Text>
+            <TextField.Root size="2">
+              <textarea
+                required
+                value={formData.reason}
+                onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                placeholder="Describe the reason for this referral"
+                rows={3}
+                style={{
+                  all: 'unset',
+                  flex: 1,
+                  width: '100%',
+                  minHeight: '60px',
+                  resize: 'vertical',
+                }}
+              />
+            </TextField.Root>
+          </Box>
+
+          {/* Urgency */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">
+              Urgency <Text color="red">*</Text>
+            </Text>
+            <Select.Root
+              size="2"
+              required
+              value={formData.urgency}
+              onValueChange={(value) => setFormData({ ...formData, urgency: value as any })}
+            >
+              <Select.Trigger />
+              <Select.Content>
+                <Select.Item value="routine">Routine</Select.Item>
+                <Select.Item value="urgent">Urgent</Select.Item>
+                <Select.Item value="stat">STAT</Select.Item>
+              </Select.Content>
+            </Select.Root>
+          </Box>
+
+          {/* Specialty */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">Required Specialty (Optional)</Text>
+            <TextField.Root size="2">
+              <input
+                type="text"
+                value={formData.specialty}
+                onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
+                placeholder="e.g., Cardiology, Orthopedics"
+                style={{ all: 'unset', flex: 1 }}
+              />
+            </TextField.Root>
+          </Box>
+
+          {/* Chief Complaint */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">Chief Complaint (Optional)</Text>
+            <TextField.Root size="2">
+              <textarea
+                value={formData.chiefComplaint}
+                onChange={(e) => setFormData({ ...formData, chiefComplaint: e.target.value })}
+                placeholder="Patient's chief complaint"
+                rows={2}
+                style={{
+                  all: 'unset',
+                  flex: 1,
+                  width: '100%',
+                  minHeight: '40px',
+                  resize: 'vertical',
+                }}
+              />
+            </TextField.Root>
+          </Box>
+
+          {/* Diagnosis */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">Diagnosis (Optional)</Text>
+            <TextField.Root size="2">
+              <input
+                type="text"
+                value={formData.diagnosis}
+                onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
+                placeholder="Current diagnosis"
+                style={{ all: 'unset', flex: 1 }}
+              />
+            </TextField.Root>
+          </Box>
+
+          {/* Relevant History */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">Relevant History (Optional)</Text>
+            <TextField.Root size="2">
+              <textarea
+                value={formData.relevantHistory}
+                onChange={(e) => setFormData({ ...formData, relevantHistory: e.target.value })}
+                placeholder="Relevant medical history"
+                rows={3}
+                style={{
+                  all: 'unset',
+                  flex: 1,
+                  width: '100%',
+                  minHeight: '60px',
+                  resize: 'vertical',
+                }}
+              />
+            </TextField.Root>
+          </Box>
+
+          {/* Medications */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">Current Medications (Optional)</Text>
+            <Flex gap="2">
+              <TextField.Root size="2" style={{ flex: 1 }}>
+                <input
+                  type="text"
+                  value={medicationInput}
+                  onChange={(e) => setMedicationInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addMedication();
+                    }
+                  }}
+                  placeholder="Enter medication and press Enter"
+                  style={{ all: 'unset', flex: 1 }}
+                />
+              </TextField.Root>
+              <Button type="button" onClick={addMedication} size="2">
+                Add
+              </Button>
+            </Flex>
+            {formData.medications.length > 0 && (
+              <Flex gap="2" wrap="wrap" mt="2">
+                {formData.medications.map((med, index) => (
+                  <Badge key={index} color="blue" size="2">
+                    {med}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="1"
+                      onClick={() => removeMedication(index)}
+                      style={{ marginLeft: '4px', padding: '0', minWidth: 'auto' }}
+                    >
+                      ×
+                    </Button>
+                  </Badge>
+                ))}
+              </Flex>
+            )}
+          </Box>
+
+          {/* Notes */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">Additional Notes (Optional)</Text>
+            <TextField.Root size="2">
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Any additional notes or instructions"
+                rows={3}
+                style={{
+                  all: 'unset',
+                  flex: 1,
+                  width: '100%',
+                  minHeight: '60px',
+                  resize: 'vertical',
+                }}
+              />
+            </TextField.Root>
+          </Box>
+
+          {/* Follow-up */}
+          <Flex direction="column" gap="2">
+            <Flex align="center" gap="2">
+              <Switch
+                size="2"
+                id="followUpRequired"
+                checked={formData.followUpRequired}
+                onCheckedChange={(checked) => setFormData({ ...formData, followUpRequired: checked })}
+              />
+              <Text size="2" as="label" htmlFor="followUpRequired">
+                Follow-up Required
+              </Text>
+            </Flex>
+            {formData.followUpRequired && (
+              <Box>
+                <Text size="2" weight="medium" mb="2" as="div">Follow-up Date (Optional)</Text>
+                <TextField.Root size="2" type="date">
+                  <input
+                    type="date"
+                    value={formData.followUpDate}
+                    onChange={(e) => setFormData({ ...formData, followUpDate: e.target.value })}
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+              </Box>
+            )}
+          </Flex>
+
+          {/* Form Actions */}
+          <Separator />
+          <Flex justify="end" gap="2">
+            {onCancel && (
+              <Button type="button" variant="soft" onClick={onCancel} size="2">
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" size="2">
+              Create Referral
+            </Button>
+          </Flex>
+        </Flex>
+      </Box>
     </form>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
-import { Button, TextField, Select, Card, Flex, Box, Text, Badge, Callout, Checkbox, Separator, Popover } from '@radix-ui/themes';
+import { Button, TextField, Select, Card, Flex, Box, Text, Badge, Callout, Checkbox, Separator, Popover, Heading } from '@radix-ui/themes';
 
 interface Patient {
   _id: string;
@@ -216,68 +216,101 @@ export default function DocumentUploadForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2 max-h-[80vh] overflow-y-auto">
-      {/* File Upload */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">File *</label>
-        <input
-          type="file"
-          onChange={handleFileChange}
-          className="block w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 file:cursor-pointer cursor-pointer"
-          required
-        />
-        {filePreview && (
-          <div className="mt-2">
-            <img src={filePreview} alt="Preview" className="max-w-full h-32 object-contain border border-gray-200 rounded-md" />
-          </div>
-        )}
-        {formData.file && !filePreview && (
-          <div className="mt-2 text-xs text-gray-600">
-            Selected: {formData.file.name} ({(formData.file.size / 1024).toFixed(2)} KB)
-          </div>
-        )}
-      </div>
+    <form onSubmit={handleSubmit}>
+      <Box style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+        <Flex direction="column" gap="3" p="4">
+          {/* File Upload */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">
+              File <Text color="red">*</Text>
+            </Text>
+            <input
+              type="file"
+              onChange={handleFileChange}
+              required
+              style={{
+                width: '100%',
+                fontSize: 'var(--font-size-1)',
+                color: 'var(--gray-9)',
+              }}
+            />
+            {filePreview && (
+              <Box mt="2">
+                <img
+                  src={filePreview}
+                  alt="Preview"
+                  style={{
+                    maxWidth: '100%',
+                    height: '128px',
+                    objectFit: 'contain',
+                    border: '1px solid var(--gray-6)',
+                    borderRadius: '6px',
+                  }}
+                />
+              </Box>
+            )}
+            {formData.file && !filePreview && (
+              <Text size="1" color="gray" mt="2" as="div">
+                Selected: {formData.file.name} ({(formData.file.size / 1024).toFixed(2)} KB)
+              </Text>
+            )}
+          </Box>
 
-      {/* Title */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">Title *</label>
-        <input
-          type="text"
-          value={formData.title}
-          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-          required
-        />
-      </div>
+          {/* Title */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">
+              Title <Text color="red">*</Text>
+            </Text>
+            <TextField.Root size="2">
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                required
+                style={{ all: 'unset', flex: 1 }}
+              />
+            </TextField.Root>
+          </Box>
 
-      {/* Description */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">Description</label>
-        <textarea
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          rows={2}
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-        />
-      </div>
+          {/* Description */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">Description</Text>
+            <TextField.Root size="2">
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                rows={2}
+                style={{
+                  all: 'unset',
+                  flex: 1,
+                  width: '100%',
+                  minHeight: '40px',
+                  resize: 'vertical',
+                }}
+              />
+            </TextField.Root>
+          </Box>
 
-      {/* Category */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">Category *</label>
-        <select
-          value={formData.category}
-          onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-          required
-        >
-          <option value="">Select category...</option>
-          {DOCUMENT_CATEGORIES.map((cat) => (
-            <option key={cat.value} value={cat.value}>
-              {cat.label}
-            </option>
-          ))}
-        </select>
-      </div>
+          {/* Category */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">
+              Category <Text color="red">*</Text>
+            </Text>
+            <Select.Root
+              size="2"
+              value={formData.category}
+              onValueChange={(value) => setFormData({ ...formData, category: value })}
+            >
+              <Select.Trigger placeholder="Select category..." />
+              <Select.Content>
+                {DOCUMENT_CATEGORIES.map((cat) => (
+                  <Select.Item key={cat.value} value={cat.value}>
+                    {cat.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+          </Box>
 
       {/* Patient Selection */}
       <Box>
@@ -331,47 +364,59 @@ export default function DocumentUploadForm({
         </Popover.Root>
       </Box>
 
-      {/* Visit Selection */}
-      {formData.patient && visits.length > 0 && (
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-0.5">Visit (Optional)</label>
-          <select
-            value={formData.visit}
-            onChange={(e) => setFormData({ ...formData, visit: e.target.value })}
-            className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-          >
-            <option value="">Select a visit...</option>
-            {visits.map((visit) => (
-              <option key={visit._id} value={visit._id}>
-                {visit.visitCode} - {new Date(visit.date).toLocaleDateString()}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+          {/* Visit Selection */}
+          {formData.patient && visits.length > 0 && (
+            <Box>
+              <Text size="2" weight="medium" mb="2" as="div">Visit (Optional)</Text>
+              <Select.Root
+                size="2"
+                value={formData.visit}
+                onValueChange={(value) => setFormData({ ...formData, visit: value })}
+              >
+                <Select.Trigger placeholder="Select a visit..." />
+                <Select.Content>
+                  {visits.map((visit) => (
+                    <Select.Item key={visit._id} value={visit._id}>
+                      {visit.visitCode} - {new Date(visit.date).toLocaleDateString()}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </Box>
+          )}
 
-      {/* Tags */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">Tags (comma-separated)</label>
-        <input
-          type="text"
-          value={formData.tags}
-          onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-          placeholder="e.g., urgent, follow-up, important"
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-        />
-      </div>
+          {/* Tags */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">Tags (comma-separated)</Text>
+            <TextField.Root size="2">
+              <input
+                type="text"
+                value={formData.tags}
+                onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                placeholder="e.g., urgent, follow-up, important"
+                style={{ all: 'unset', flex: 1 }}
+              />
+            </TextField.Root>
+          </Box>
 
-      {/* Notes */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">Notes</label>
-        <textarea
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          rows={2}
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-        />
-      </div>
+          {/* Notes */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">Notes</Text>
+            <TextField.Root size="2">
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows={2}
+                style={{
+                  all: 'unset',
+                  flex: 1,
+                  width: '100%',
+                  minHeight: '40px',
+                  resize: 'vertical',
+                }}
+              />
+            </TextField.Root>
+          </Box>
 
       {/* Scanned */}
       <Flex align="center" gap="2">
@@ -386,186 +431,236 @@ export default function DocumentUploadForm({
         </Text>
       </Flex>
 
-      {/* Category-specific fields */}
-      {formData.category === 'referral' && (
-        <div className="border-t border-gray-100 pt-2 space-y-2">
-          <h3 className="text-xs font-medium text-gray-700">Referral Information</h3>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Referring Doctor</label>
-            <input
-              type="text"
-              value={formData.referringDoctor}
-              onChange={(e) => setFormData({ ...formData, referringDoctor: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Referring Clinic</label>
-            <input
-              type="text"
-              value={formData.referringClinic}
-              onChange={(e) => setFormData({ ...formData, referringClinic: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Referral Date</label>
-            <input
-              type="date"
-              value={formData.referralDate}
-              onChange={(e) => setFormData({ ...formData, referralDate: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Reason</label>
-            <textarea
-              value={formData.referralReason}
-              onChange={(e) => setFormData({ ...formData, referralReason: e.target.value })}
-              rows={2}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-        </div>
-      )}
+          {/* Category-specific fields */}
+          {formData.category === 'referral' && (
+            <Box>
+              <Separator />
+              <Flex direction="column" gap="3" pt="3">
+                <Heading size="3">Referral Information</Heading>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Referring Doctor</Text>
+                  <TextField.Root size="1">
+                    <input
+                      type="text"
+                      value={formData.referringDoctor}
+                      onChange={(e) => setFormData({ ...formData, referringDoctor: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Referring Clinic</Text>
+                  <TextField.Root size="1">
+                    <input
+                      type="text"
+                      value={formData.referringClinic}
+                      onChange={(e) => setFormData({ ...formData, referringClinic: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Referral Date</Text>
+                  <TextField.Root size="1" type="date">
+                    <input
+                      type="date"
+                      value={formData.referralDate}
+                      onChange={(e) => setFormData({ ...formData, referralDate: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Reason</Text>
+                  <TextField.Root size="1">
+                    <textarea
+                      value={formData.referralReason}
+                      onChange={(e) => setFormData({ ...formData, referralReason: e.target.value })}
+                      rows={2}
+                      style={{
+                        all: 'unset',
+                        flex: 1,
+                        width: '100%',
+                        minHeight: '40px',
+                        resize: 'vertical',
+                      }}
+                    />
+                  </TextField.Root>
+                </Box>
+              </Flex>
+            </Box>
+          )}
 
-      {formData.category === 'imaging' && (
-        <div className="border-t border-gray-100 pt-2 space-y-2">
-          <h3 className="text-xs font-medium text-gray-700">Imaging Information</h3>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Modality</label>
-            <input
-              type="text"
-              value={formData.modality}
-              onChange={(e) => setFormData({ ...formData, modality: e.target.value })}
-              placeholder="X-ray, CT, MRI, Ultrasound, etc."
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Body Part</label>
-            <input
-              type="text"
-              value={formData.bodyPart}
-              onChange={(e) => setFormData({ ...formData, bodyPart: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Study Date</label>
-            <input
-              type="date"
-              value={formData.studyDate}
-              onChange={(e) => setFormData({ ...formData, studyDate: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Radiologist</label>
-            <input
-              type="text"
-              value={formData.radiologist}
-              onChange={(e) => setFormData({ ...formData, radiologist: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-        </div>
-      )}
+          {formData.category === 'imaging' && (
+            <Box>
+              <Separator />
+              <Flex direction="column" gap="3" pt="3">
+                <Heading size="3">Imaging Information</Heading>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Modality</Text>
+                  <TextField.Root size="1">
+                    <input
+                      type="text"
+                      value={formData.modality}
+                      onChange={(e) => setFormData({ ...formData, modality: e.target.value })}
+                      placeholder="X-ray, CT, MRI, Ultrasound, etc."
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Body Part</Text>
+                  <TextField.Root size="1">
+                    <input
+                      type="text"
+                      value={formData.bodyPart}
+                      onChange={(e) => setFormData({ ...formData, bodyPart: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Study Date</Text>
+                  <TextField.Root size="1" type="date">
+                    <input
+                      type="date"
+                      value={formData.studyDate}
+                      onChange={(e) => setFormData({ ...formData, studyDate: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Radiologist</Text>
+                  <TextField.Root size="1">
+                    <input
+                      type="text"
+                      value={formData.radiologist}
+                      onChange={(e) => setFormData({ ...formData, radiologist: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+              </Flex>
+            </Box>
+          )}
 
-      {formData.category === 'medical_certificate' && (
-        <div className="border-t border-gray-100 pt-2 space-y-2">
-          <h3 className="text-xs font-medium text-gray-700">Medical Certificate Information</h3>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Issue Date</label>
-            <input
-              type="date"
-              value={formData.issueDate}
-              onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Valid Until</label>
-            <input
-              type="date"
-              value={formData.validUntil}
-              onChange={(e) => setFormData({ ...formData, validUntil: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Purpose</label>
-            <input
-              type="text"
-              value={formData.purpose}
-              onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-              placeholder="Work, School, Travel, etc."
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Restrictions</label>
-            <textarea
-              value={formData.restrictions}
-              onChange={(e) => setFormData({ ...formData, restrictions: e.target.value })}
-              rows={2}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-        </div>
-      )}
+          {formData.category === 'medical_certificate' && (
+            <Box>
+              <Separator />
+              <Flex direction="column" gap="3" pt="3">
+                <Heading size="3">Medical Certificate Information</Heading>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Issue Date</Text>
+                  <TextField.Root size="1" type="date">
+                    <input
+                      type="date"
+                      value={formData.issueDate}
+                      onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Valid Until</Text>
+                  <TextField.Root size="1" type="date">
+                    <input
+                      type="date"
+                      value={formData.validUntil}
+                      onChange={(e) => setFormData({ ...formData, validUntil: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Purpose</Text>
+                  <TextField.Root size="1">
+                    <input
+                      type="text"
+                      value={formData.purpose}
+                      onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                      placeholder="Work, School, Travel, etc."
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Restrictions</Text>
+                  <TextField.Root size="1">
+                    <textarea
+                      value={formData.restrictions}
+                      onChange={(e) => setFormData({ ...formData, restrictions: e.target.value })}
+                      rows={2}
+                      style={{
+                        all: 'unset',
+                        flex: 1,
+                        width: '100%',
+                        minHeight: '40px',
+                        resize: 'vertical',
+                      }}
+                    />
+                  </TextField.Root>
+                </Box>
+              </Flex>
+            </Box>
+          )}
 
-      {formData.category === 'laboratory_result' && (
-        <div className="border-t border-gray-100 pt-2 space-y-2">
-          <h3 className="text-xs font-medium text-gray-700">Laboratory Result Information</h3>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Test Type</label>
-            <input
-              type="text"
-              value={formData.testType}
-              onChange={(e) => setFormData({ ...formData, testType: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Test Date</label>
-            <input
-              type="date"
-              value={formData.testDate}
-              onChange={(e) => setFormData({ ...formData, testDate: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Lab Name</label>
-            <input
-              type="text"
-              value={formData.labName}
-              onChange={(e) => setFormData({ ...formData, labName: e.target.value })}
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-        </div>
-      )}
+          {formData.category === 'laboratory_result' && (
+            <Box>
+              <Separator />
+              <Flex direction="column" gap="3" pt="3">
+                <Heading size="3">Laboratory Result Information</Heading>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Test Type</Text>
+                  <TextField.Root size="1">
+                    <input
+                      type="text"
+                      value={formData.testType}
+                      onChange={(e) => setFormData({ ...formData, testType: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Test Date</Text>
+                  <TextField.Root size="1" type="date">
+                    <input
+                      type="date"
+                      value={formData.testDate}
+                      onChange={(e) => setFormData({ ...formData, testDate: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Lab Name</Text>
+                  <TextField.Root size="1">
+                    <input
+                      type="text"
+                      value={formData.labName}
+                      onChange={(e) => setFormData({ ...formData, labName: e.target.value })}
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+              </Flex>
+            </Box>
+          )}
 
-      {/* Form Actions */}
-      <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
-        {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Cancel
-          </button>
-        )}
-        <button
-          type="submit"
-          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          Upload Document
-        </button>
-      </div>
+          {/* Form Actions */}
+          <Separator />
+          <Flex justify="end" gap="2">
+            {onCancel && (
+              <Button type="button" variant="soft" onClick={onCancel} size="2">
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" size="2">
+              Upload Document
+            </Button>
+          </Flex>
+        </Flex>
+      </Box>
     </form>
   );
 }

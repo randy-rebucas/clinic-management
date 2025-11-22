@@ -10,8 +10,8 @@ interface SidebarContextType {
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 
 export function SidebarProvider({ children }: { children: ReactNode }) {
-  // Always start with true (collapsed) to match server render
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  // Always start with false (expanded) to match server render
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
   // After hydration, load from localStorage or settings

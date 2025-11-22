@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, AlertDialog, Flex } from '@radix-ui/themes';
+import { Button, AlertDialog, Flex, Container, Section, Box, Text, Heading, Card, Tabs, Callout, Dialog, TextField, Select, Switch, Spinner, Badge, Separator } from '@radix-ui/themes';
+import { Cross2Icon } from '@radix-ui/react-icons';
 
 interface Doctor {
   _id: string;
@@ -210,29 +211,29 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
 
   if (loading) {
     return (
-      <div className="w-full px-4 py-3">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600"></div>
-            <p className="mt-3 text-sm text-gray-600">Loading doctor...</p>
-          </div>
-        </div>
-      </div>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+            <Spinner size="3" />
+            <Text>Loading doctor...</Text>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
   if (!doctor) {
     return (
-      <div className="w-full px-4 py-3">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Doctor not found</h2>
-            <Link href="/doctors" className="text-blue-600 hover:text-blue-800 hover:underline text-sm">
-              Back to Doctors
-            </Link>
-          </div>
-        </div>
-      </div>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+            <Heading size="5" mb="2">Doctor not found</Heading>
+            <Button asChild variant="soft" color="blue">
+              <Link href="/doctors">Back to Doctors</Link>
+            </Button>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
@@ -245,476 +246,424 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
   const completionRate = total > 0 ? (completed / total) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="w-full px-4 py-3">
-        {/* Notifications */}
-        {error && (
-          <div className="mb-2 bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-lg flex items-center justify-between">
-            <span className="text-xs">{error}</span>
-            <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        )}
-        {success && (
-          <div className="mb-2 bg-green-50 border border-green-200 text-green-800 px-3 py-2 rounded-lg flex items-center justify-between">
-            <span className="text-xs">{success}</span>
-            <button onClick={() => setSuccess(null)} className="text-green-600 hover:text-green-800">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        )}
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Notifications */}
+          {error && (
+            <Callout.Root color="red" size="2">
+              <Callout.Icon>
+                <Cross2Icon />
+              </Callout.Icon>
+              <Callout.Text>{error}</Callout.Text>
+            </Callout.Root>
+          )}
+          {success && (
+            <Callout.Root color="green" size="2">
+              <Callout.Text>{success}</Callout.Text>
+            </Callout.Root>
+          )}
 
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2">
-          <div>
-            <div className="flex items-center space-x-2 mb-0.5">
-              <Link href="/doctors" className="text-gray-500 hover:text-gray-700">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </Link>
-              <h1 className="text-2xl font-bold text-gray-900">{fullName}</h1>
-            </div>
-            <p className="text-gray-600 text-xs ml-7">{doctor.specialization}</p>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-2">
-          <div className="border-b border-gray-200">
-            <nav className="flex -mb-px">
-              <button
-                onClick={() => setActiveTab('profile')}
-                className={`py-1.5 px-2.5 text-xs font-medium border-b-2 transition-colors ${
-                  activeTab === 'profile'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Profile
-              </button>
-              <button
-                onClick={() => setActiveTab('schedule')}
-                className={`py-1.5 px-2.5 text-xs font-medium border-b-2 transition-colors ${
-                  activeTab === 'schedule'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Schedule & Availability
-              </button>
-              <button
-                onClick={() => setActiveTab('notes')}
-                className={`py-1.5 px-2.5 text-xs font-medium border-b-2 transition-colors ${
-                  activeTab === 'notes'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Internal Notes ({doctor.internalNotes?.length || 0})
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab('performance');
-                  handleRefreshPerformance();
-                }}
-                className={`py-1.5 px-2.5 text-xs font-medium border-b-2 transition-colors ${
-                  activeTab === 'performance'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Performance
-              </button>
-            </nav>
-          </div>
-
-          <div className="p-3">
-            {/* Profile Tab */}
-            {activeTab === 'profile' && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Basic Information</h3>
-                    <dl className="space-y-2">
-                      <div>
-                        <dt className="text-xs font-medium text-gray-500">Full Name</dt>
-                        <dd className="text-sm text-gray-900">{fullName}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs font-medium text-gray-500">Specialization</dt>
-                        <dd className="text-sm text-gray-900">{doctor.specialization}</dd>
-                      </div>
-                      {doctor.department && (
-                        <div>
-                          <dt className="text-xs font-medium text-gray-500">Department</dt>
-                          <dd className="text-sm text-gray-900">{doctor.department}</dd>
-                        </div>
-                      )}
-                      <div>
-                        <dt className="text-xs font-medium text-gray-500">License Number</dt>
-                        <dd className="text-sm text-gray-900">{doctor.licenseNumber}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs font-medium text-gray-500">Status</dt>
-                        <dd className="text-sm text-gray-900 capitalize">{doctor.status || 'active'}</dd>
-                      </div>
-                    </dl>
-                  </div>
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Contact Information</h3>
-                    <dl className="space-y-2">
-                      <div>
-                        <dt className="text-xs font-medium text-gray-500">Email</dt>
-                        <dd className="text-sm text-gray-900">{doctor.email}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs font-medium text-gray-500">Phone</dt>
-                        <dd className="text-sm text-gray-900">{doctor.phone}</dd>
-                      </div>
-                    </dl>
-                  </div>
-                </div>
-                {doctor.qualifications && doctor.qualifications.length > 0 && (
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Qualifications</h3>
-                    <ul className="list-disc list-inside space-y-0.5">
-                      {doctor.qualifications.map((qual, idx) => (
-                        <li key={idx} className="text-sm text-gray-900">{qual}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {doctor.bio && (
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Bio</h3>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{doctor.bio}</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Schedule Tab */}
-            {activeTab === 'schedule' && (
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-sm font-semibold text-gray-900">Weekly Schedule</h3>
-                  <button
-                    onClick={() => setShowScheduleForm(true)}
-                    className="px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                  >
-                    + Add/Edit Schedule
-                  </button>
-                </div>
-                {doctor.schedule && doctor.schedule.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {[0, 1, 2, 3, 4, 5, 6].map((day) => {
-                      const schedule = doctor.schedule?.find((s) => s.dayOfWeek === day);
-                      return (
-                        <div key={day} className="flex items-center justify-between p-2 border border-gray-200 rounded-lg">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-20 text-xs font-medium text-gray-900">{getDayName(day)}</div>
-                            {schedule && schedule.isAvailable ? (
-                              <div className="text-xs text-gray-600">
-                                {formatTime(schedule.startTime)} - {formatTime(schedule.endTime)}
-                              </div>
-                            ) : (
-                              <div className="text-xs text-gray-400">Not available</div>
-                            )}
-                          </div>
-                          {schedule && schedule.isAvailable && (
-                            <span className="px-1 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                              Available
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-6">
-                    <p className="text-xs text-gray-600">No schedule set. Click &quot;Add/Edit Schedule&quot; to set availability.</p>
-                  </div>
-                )}
-
-                {/* Schedule Form Modal */}
-                {showScheduleForm && (
-                  <div className="fixed inset-0 z-50 overflow-y-auto">
-                    <div className="flex items-center justify-center min-h-screen px-4">
-                      <div className="fixed inset-0 bg-black/30 backdrop-blur-md transition-opacity" onClick={() => setShowScheduleForm(false)} />
-                      <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-md w-full z-10">
-                        <div className="flex justify-between items-center mb-4">
-                          <h3 className="text-base font-semibold text-gray-900">Edit Schedule</h3>
-                          <button
-                            onClick={() => setShowScheduleForm(false)}
-                            className="text-gray-400 hover:text-gray-500 transition-colors"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
-                        <div className="space-y-2">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Day of Week</label>
-                            <select
-                              value={scheduleForm.dayOfWeek}
-                              onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfWeek: parseInt(e.target.value) })}
-                              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                              {[0, 1, 2, 3, 4, 5, 6].map((day) => (
-                                <option key={day} value={day}>
-                                  {getDayName(day)}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">Start Time</label>
-                              <input
-                                type="time"
-                                value={scheduleForm.startTime}
-                                onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
-                                className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">End Time</label>
-                              <input
-                                type="time"
-                                value={scheduleForm.endTime}
-                                onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })}
-                                className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                              />
-                            </div>
-                          </div>
-                          <div className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={scheduleForm.isAvailable}
-                              onChange={(e) => setScheduleForm({ ...scheduleForm, isAvailable: e.target.checked })}
-                              className="rounded border-gray-200 text-blue-600 focus:ring-1 focus:ring-blue-500"
-                            />
-                            <label className="ml-2 text-xs text-gray-700">Available on this day</label>
-                          </div>
-                          <div className="flex justify-end space-x-2 pt-2 border-t border-gray-200">
-                            <button
-                              onClick={() => setShowScheduleForm(false)}
-                              className="px-2.5 py-1 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={handleUpdateSchedule}
-                              className="px-2.5 py-1 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700"
-                            >
-                              Save
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Notes Tab */}
-            {activeTab === 'notes' && (
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-sm font-semibold text-gray-900">Internal Notes</h3>
-                  <button
-                    onClick={() => setShowNoteForm(true)}
-                    className="px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                  >
-                    + Add Note
-                  </button>
-                </div>
-                {doctor.internalNotes && doctor.internalNotes.length > 0 ? (
-                  <div className="space-y-2">
-                    {doctor.internalNotes.map((note, index) => (
-                      <div
-                        key={index}
-                        className={`p-2.5 border rounded-lg ${
-                          note.isImportant ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start mb-1.5">
-                          <div className="flex items-center space-x-2">
-                            {note.isImportant && (
-                              <span className="px-1 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                                Important
-                              </span>
-                            )}
-                            <span className="text-xs text-gray-500">
-                              {new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => handleDeleteNoteClick(index)}
-                            className="text-red-600 hover:text-red-800 text-xs"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                        <p className="text-xs text-gray-900 whitespace-pre-wrap">{note.note}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-6">
-                    <p className="text-xs text-gray-600">No internal notes. Click &quot;Add Note&quot; to add one.</p>
-                  </div>
-                )}
-
-                {/* Note Form Modal */}
-                {showNoteForm && (
-                  <div className="fixed inset-0 z-50 overflow-y-auto">
-                    <div className="flex items-center justify-center min-h-screen px-4">
-                      <div className="fixed inset-0 bg-black/30 backdrop-blur-md transition-opacity" onClick={() => setShowNoteForm(false)} />
-                      <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-md w-full z-10">
-                        <div className="flex justify-between items-center mb-4">
-                          <h3 className="text-base font-semibold text-gray-900">Add Internal Note</h3>
-                          <button
-                            onClick={() => setShowNoteForm(false)}
-                            className="text-gray-400 hover:text-gray-500 transition-colors"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
-                        <form onSubmit={handleAddNote} className="space-y-2">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Note</label>
-                            <textarea
-                              required
-                              value={newNote.note}
-                              onChange={(e) => setNewNote({ ...newNote, note: e.target.value })}
-                              rows={4}
-                              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                          </div>
-                          <div className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={newNote.isImportant}
-                              onChange={(e) => setNewNote({ ...newNote, isImportant: e.target.checked })}
-                              className="rounded border-gray-200 text-blue-600 focus:ring-1 focus:ring-blue-500"
-                            />
-                            <label className="ml-2 text-xs text-gray-700">Mark as important</label>
-                          </div>
-                          <div className="flex justify-end space-x-2 pt-2 border-t border-gray-200">
-                            <button
-                              type="button"
-                              onClick={() => setShowNoteForm(false)}
-                              className="px-2.5 py-1 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="submit"
-                              className="px-2.5 py-1 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700"
-                            >
-                              Add Note
-                            </button>
-                          </div>
-                        </form>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Performance Tab */}
-            {activeTab === 'performance' && (
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-sm font-semibold text-gray-900">Performance Metrics</h3>
-                  <button
-                    onClick={handleRefreshPerformance}
-                    className="px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                  >
-                    Refresh Data
-                  </button>
-                </div>
-                {metrics ? (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                      <div className="bg-blue-50 rounded-lg p-2.5">
-                        <div className="text-lg font-bold text-blue-600">{total}</div>
-                        <div className="text-xs text-gray-600">Total Appointments</div>
-                      </div>
-                      <div className="bg-green-50 rounded-lg p-2.5">
-                        <div className="text-lg font-bold text-green-600">{completed}</div>
-                        <div className="text-xs text-gray-600">Completed</div>
-                        <div className="text-xs text-gray-500 mt-0.5">{Math.round(completionRate)}% completion rate</div>
-                      </div>
-                      <div className="bg-red-50 rounded-lg p-2.5">
-                        <div className="text-lg font-bold text-red-600">{cancelled}</div>
-                        <div className="text-xs text-gray-600">Cancelled</div>
-                        <div className="text-xs text-gray-500 mt-0.5">
-                          {total > 0 ? Math.round((cancelled / total) * 100) : 0}% cancellation rate
-                        </div>
-                      </div>
-                      <div className="bg-yellow-50 rounded-lg p-2.5">
-                        <div className="text-lg font-bold text-yellow-600">{noShow}</div>
-                        <div className="text-xs text-gray-600">No-Show</div>
-                        <div className="text-xs text-gray-500 mt-0.5">
-                          {total > 0 ? Math.round((noShow / total) * 100) : 0}% no-show rate
-                        </div>
-                      </div>
-                    </div>
-                    {metrics.lastUpdated && (
-                      <p className="text-xs text-gray-500">
-                        Last updated: {new Date(metrics.lastUpdated).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-center py-6">
-                    <p className="text-xs text-gray-600">No performance data available. Click &quot;Refresh Data&quot; to calculate metrics.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Delete Note Alert Dialog */}
-        <AlertDialog.Root open={deleteNoteDialogOpen} onOpenChange={setDeleteNoteDialogOpen}>
-          <AlertDialog.Content>
-            <AlertDialog.Title>Delete Note</AlertDialog.Title>
-            <AlertDialog.Description>
-              Are you sure you want to delete this note? This action cannot be undone.
-            </AlertDialog.Description>
-            <Flex gap="3" mt="4" justify="end">
-              <AlertDialog.Cancel>
-                <Button variant="soft" color="gray" onClick={() => {
-                  setDeleteNoteDialogOpen(false);
-                  setNoteToDelete(null);
-                }}>
-                  Cancel
-                </Button>
-              </AlertDialog.Cancel>
-              <AlertDialog.Action>
-                <Button variant="solid" color="red" onClick={handleDeleteNote}>
-                  Delete
-                </Button>
-              </AlertDialog.Action>
+          {/* Header */}
+          <Flex direction="column" gap="1">
+            <Flex align="center" gap="2">
+              <Button asChild variant="ghost" size="2">
+                <Link href="/doctors">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </Link>
+              </Button>
+              <Heading size="8">{fullName}</Heading>
             </Flex>
-          </AlertDialog.Content>
-        </AlertDialog.Root>
-      </div>
-    </div>
+            <Text size="2" color="gray" ml="7">{doctor.specialization}</Text>
+          </Flex>
+
+          {/* Tabs */}
+          <Card size="2" variant="surface">
+            <Tabs.Root value={activeTab} onValueChange={(value) => {
+              if (value === 'performance') {
+                handleRefreshPerformance();
+              }
+              setActiveTab(value as any);
+            }}>
+              <Tabs.List>
+                <Tabs.Trigger value="profile">Profile</Tabs.Trigger>
+                <Tabs.Trigger value="schedule">Schedule & Availability</Tabs.Trigger>
+                <Tabs.Trigger value="notes">Internal Notes ({doctor.internalNotes?.length || 0})</Tabs.Trigger>
+                <Tabs.Trigger value="performance">Performance</Tabs.Trigger>
+              </Tabs.List>
+
+              <Box pt="3">
+                <Tabs.Content value="profile">
+                  <Flex direction="column" gap="3">
+                    <Flex gap="3" wrap="wrap">
+                      <Card size="2" variant="surface" style={{ flex: '1 1 300px' }}>
+                        <Flex direction="column" gap="3" p="3">
+                          <Heading size="4">Basic Information</Heading>
+                          <Flex direction="column" gap="2">
+                            <Box>
+                              <Text size="1" weight="medium" color="gray" mb="1" as="div">Full Name</Text>
+                              <Text size="2">{fullName}</Text>
+                            </Box>
+                            <Box>
+                              <Text size="1" weight="medium" color="gray" mb="1" as="div">Specialization</Text>
+                              <Text size="2">{doctor.specialization}</Text>
+                            </Box>
+                            {doctor.department && (
+                              <Box>
+                                <Text size="1" weight="medium" color="gray" mb="1" as="div">Department</Text>
+                                <Text size="2">{doctor.department}</Text>
+                              </Box>
+                            )}
+                            <Box>
+                              <Text size="1" weight="medium" color="gray" mb="1" as="div">License Number</Text>
+                              <Text size="2">{doctor.licenseNumber}</Text>
+                            </Box>
+                            <Box>
+                              <Text size="1" weight="medium" color="gray" mb="1" as="div">Status</Text>
+                              <Badge color={doctor.status === 'active' ? 'green' : doctor.status === 'inactive' ? 'gray' : 'yellow'} size="1">
+                                {doctor.status || 'active'}
+                              </Badge>
+                            </Box>
+                          </Flex>
+                        </Flex>
+                      </Card>
+                      <Card size="2" variant="surface" style={{ flex: '1 1 300px' }}>
+                        <Flex direction="column" gap="3" p="3">
+                          <Heading size="4">Contact Information</Heading>
+                          <Flex direction="column" gap="2">
+                            <Box>
+                              <Text size="1" weight="medium" color="gray" mb="1" as="div">Email</Text>
+                              <Text size="2">{doctor.email}</Text>
+                            </Box>
+                            <Box>
+                              <Text size="1" weight="medium" color="gray" mb="1" as="div">Phone</Text>
+                              <Text size="2">{doctor.phone}</Text>
+                            </Box>
+                          </Flex>
+                        </Flex>
+                      </Card>
+                    </Flex>
+                    {doctor.qualifications && doctor.qualifications.length > 0 && (
+                      <Card size="2" variant="surface">
+                        <Flex direction="column" gap="3" p="3">
+                          <Heading size="4">Qualifications</Heading>
+                          <Flex direction="column" gap="1" style={{ paddingLeft: '1.5rem' }}>
+                            {doctor.qualifications.map((qual, idx) => (
+                              <Text key={idx} size="2" style={{ position: 'relative', paddingLeft: '0.5rem' }}>
+                                <span style={{ position: 'absolute', left: '-0.75rem' }}>•</span>
+                                {qual}
+                              </Text>
+                            ))}
+                          </Flex>
+                        </Flex>
+                      </Card>
+                    )}
+                    {doctor.bio && (
+                      <Card size="2" variant="surface">
+                        <Flex direction="column" gap="3" p="3">
+                          <Heading size="4">Bio</Heading>
+                          <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{doctor.bio}</Text>
+                        </Flex>
+                      </Card>
+                    )}
+                  </Flex>
+                </Tabs.Content>
+
+                <Tabs.Content value="schedule">
+                  <Flex direction="column" gap="3">
+                    <Flex justify="between" align="center">
+                      <Heading size="4">Weekly Schedule</Heading>
+                      <Button onClick={() => setShowScheduleForm(true)} size="2">
+                        + Add/Edit Schedule
+                      </Button>
+                    </Flex>
+                    {doctor.schedule && doctor.schedule.length > 0 ? (
+                      <Flex direction="column" gap="2">
+                        {[0, 1, 2, 3, 4, 5, 6].map((day) => {
+                          const schedule = doctor.schedule?.find((s) => s.dayOfWeek === day);
+                          return (
+                            <Card key={day} size="1" variant="surface">
+                              <Flex justify="between" align="center" p="2">
+                                <Flex align="center" gap="3">
+                                  <Text size="2" weight="medium" style={{ width: '80px' }}>{getDayName(day)}</Text>
+                                  {schedule && schedule.isAvailable ? (
+                                    <Text size="2" color="gray">
+                                      {formatTime(schedule.startTime)} - {formatTime(schedule.endTime)}
+                                    </Text>
+                                  ) : (
+                                    <Text size="2" color="gray">Not available</Text>
+                                  )}
+                                </Flex>
+                                {schedule && schedule.isAvailable && (
+                                  <Badge color="green" size="1">Available</Badge>
+                                )}
+                              </Flex>
+                            </Card>
+                          );
+                        })}
+                      </Flex>
+                    ) : (
+                      <Flex justify="center" align="center" style={{ minHeight: '150px' }}>
+                        <Text size="2" color="gray">No schedule set. Click &quot;Add/Edit Schedule&quot; to set availability.</Text>
+                      </Flex>
+                    )}
+
+                    {/* Schedule Form Modal */}
+                    <Dialog.Root open={showScheduleForm} onOpenChange={setShowScheduleForm}>
+                      <Dialog.Content style={{ maxWidth: '500px' }}>
+                        <Dialog.Title>Edit Schedule</Dialog.Title>
+                        <Flex direction="column" gap="3" py="4">
+                          <Box>
+                            <Text size="2" weight="medium" mb="2" as="div">Day of Week</Text>
+                            <Select.Root
+                              value={scheduleForm.dayOfWeek.toString()}
+                              onValueChange={(value) => setScheduleForm({ ...scheduleForm, dayOfWeek: parseInt(value) })}
+                              size="2"
+                            >
+                              <Select.Trigger />
+                              <Select.Content>
+                                {[0, 1, 2, 3, 4, 5, 6].map((day) => (
+                                  <Select.Item key={day} value={day.toString()}>
+                                    {getDayName(day)}
+                                  </Select.Item>
+                                ))}
+                              </Select.Content>
+                            </Select.Root>
+                          </Box>
+                          <Flex gap="2">
+                            <Box flexGrow="1">
+                              <Text size="2" weight="medium" mb="2" as="div">Start Time</Text>
+                              <TextField.Root size="2" type="time">
+                                <input
+                                  type="time"
+                                  value={scheduleForm.startTime}
+                                  onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
+                                  style={{ all: 'unset', flex: 1 }}
+                                />
+                              </TextField.Root>
+                            </Box>
+                            <Box flexGrow="1">
+                              <Text size="2" weight="medium" mb="2" as="div">End Time</Text>
+                              <TextField.Root size="2" type="time">
+                                <input
+                                  type="time"
+                                  value={scheduleForm.endTime}
+                                  onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })}
+                                  style={{ all: 'unset', flex: 1 }}
+                                />
+                              </TextField.Root>
+                            </Box>
+                          </Flex>
+                          <Flex align="center" gap="2">
+                            <Switch
+                              size="2"
+                              checked={scheduleForm.isAvailable}
+                              onCheckedChange={(checked) => setScheduleForm({ ...scheduleForm, isAvailable: checked })}
+                            />
+                            <Text size="2">Available on this day</Text>
+                          </Flex>
+                          <Separator />
+                          <Flex justify="end" gap="2">
+                            <Button variant="soft" onClick={() => setShowScheduleForm(false)} size="2">
+                              Cancel
+                            </Button>
+                            <Button onClick={handleUpdateSchedule} size="2">
+                              Save
+                            </Button>
+                          </Flex>
+                        </Flex>
+                      </Dialog.Content>
+                    </Dialog.Root>
+                  </Flex>
+                </Tabs.Content>
+
+                <Tabs.Content value="notes">
+                  <Flex direction="column" gap="3">
+                    <Flex justify="between" align="center">
+                      <Heading size="4">Internal Notes</Heading>
+                      <Button onClick={() => setShowNoteForm(true)} size="2">
+                        + Add Note
+                      </Button>
+                    </Flex>
+                    {doctor.internalNotes && doctor.internalNotes.length > 0 ? (
+                      <Flex direction="column" gap="2">
+                        {doctor.internalNotes.map((note, index) => (
+                          <Card
+                            key={index}
+                            size="2"
+                            variant="surface"
+                            style={{
+                              borderColor: note.isImportant ? 'var(--red-6)' : undefined,
+                              backgroundColor: note.isImportant ? 'var(--red-2)' : undefined,
+                            }}
+                          >
+                            <Flex direction="column" gap="2" p="3">
+                              <Flex justify="between" align="start">
+                                <Flex align="center" gap="2">
+                                  {note.isImportant && (
+                                    <Badge color="red" size="1">Important</Badge>
+                                  )}
+                                  <Text size="1" color="gray">
+                                    {new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </Text>
+                                </Flex>
+                                <Button
+                                  variant="ghost"
+                                  color="red"
+                                  size="1"
+                                  onClick={() => handleDeleteNoteClick(index)}
+                                >
+                                  Delete
+                                </Button>
+                              </Flex>
+                              <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{note.note}</Text>
+                            </Flex>
+                          </Card>
+                        ))}
+                      </Flex>
+                    ) : (
+                      <Flex justify="center" align="center" style={{ minHeight: '150px' }}>
+                        <Text size="2" color="gray">No internal notes. Click &quot;Add Note&quot; to add one.</Text>
+                      </Flex>
+                    )}
+
+                    {/* Note Form Modal */}
+                    <Dialog.Root open={showNoteForm} onOpenChange={setShowNoteForm}>
+                      <Dialog.Content style={{ maxWidth: '500px' }}>
+                        <Dialog.Title>Add Internal Note</Dialog.Title>
+                        <form onSubmit={handleAddNote}>
+                          <Flex direction="column" gap="3" py="4">
+                            <Box>
+                              <Text size="2" weight="medium" mb="2" as="div">Note</Text>
+                              <TextField.Root size="2">
+                                <textarea
+                                  required
+                                  value={newNote.note}
+                                  onChange={(e) => setNewNote({ ...newNote, note: e.target.value })}
+                                  rows={4}
+                                  style={{
+                                    all: 'unset',
+                                    flex: 1,
+                                    width: '100%',
+                                    minHeight: '80px',
+                                    resize: 'vertical',
+                                  }}
+                                />
+                              </TextField.Root>
+                            </Box>
+                            <Flex align="center" gap="2">
+                              <Switch
+                                size="2"
+                                checked={newNote.isImportant}
+                                onCheckedChange={(checked) => setNewNote({ ...newNote, isImportant: checked })}
+                              />
+                              <Text size="2">Mark as important</Text>
+                            </Flex>
+                            <Separator />
+                            <Flex justify="end" gap="2">
+                              <Button type="button" variant="soft" onClick={() => setShowNoteForm(false)} size="2">
+                                Cancel
+                              </Button>
+                              <Button type="submit" size="2">
+                                Add Note
+                              </Button>
+                            </Flex>
+                          </Flex>
+                        </form>
+                      </Dialog.Content>
+                    </Dialog.Root>
+                  </Flex>
+                </Tabs.Content>
+
+                <Tabs.Content value="performance">
+                  <Flex direction="column" gap="3">
+                    <Flex justify="between" align="center">
+                      <Heading size="4">Performance Metrics</Heading>
+                      <Button onClick={handleRefreshPerformance} size="2">
+                        Refresh Data
+                      </Button>
+                    </Flex>
+                    {metrics ? (
+                      <Flex direction="column" gap="3">
+                        <Flex gap="2" wrap="wrap">
+                          <Card size="2" variant="surface" style={{ flex: '1 1 200px', backgroundColor: 'var(--blue-3)' }}>
+                            <Flex direction="column" gap="1" p="3">
+                              <Text size="6" weight="bold" style={{ color: 'var(--blue-9)' }}>{total}</Text>
+                              <Text size="1" color="gray">Total Appointments</Text>
+                            </Flex>
+                          </Card>
+                          <Card size="2" variant="surface" style={{ flex: '1 1 200px', backgroundColor: 'var(--green-3)' }}>
+                            <Flex direction="column" gap="1" p="3">
+                              <Text size="6" weight="bold" style={{ color: 'var(--green-9)' }}>{completed}</Text>
+                              <Text size="1" color="gray">Completed</Text>
+                              <Text size="1" color="gray">{Math.round(completionRate)}% completion rate</Text>
+                            </Flex>
+                          </Card>
+                          <Card size="2" variant="surface" style={{ flex: '1 1 200px', backgroundColor: 'var(--red-3)' }}>
+                            <Flex direction="column" gap="1" p="3">
+                              <Text size="6" weight="bold" style={{ color: 'var(--red-9)' }}>{cancelled}</Text>
+                              <Text size="1" color="gray">Cancelled</Text>
+                              <Text size="1" color="gray">
+                                {total > 0 ? Math.round((cancelled / total) * 100) : 0}% cancellation rate
+                              </Text>
+                            </Flex>
+                          </Card>
+                          <Card size="2" variant="surface" style={{ flex: '1 1 200px', backgroundColor: 'var(--yellow-3)' }}>
+                            <Flex direction="column" gap="1" p="3">
+                              <Text size="6" weight="bold" style={{ color: 'var(--yellow-9)' }}>{noShow}</Text>
+                              <Text size="1" color="gray">No-Show</Text>
+                              <Text size="1" color="gray">
+                                {total > 0 ? Math.round((noShow / total) * 100) : 0}% no-show rate
+                              </Text>
+                            </Flex>
+                          </Card>
+                        </Flex>
+                        {metrics.lastUpdated && (
+                          <Text size="1" color="gray">
+                            Last updated: {new Date(metrics.lastUpdated).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          </Text>
+                        )}
+                      </Flex>
+                    ) : (
+                      <Flex justify="center" align="center" style={{ minHeight: '150px' }}>
+                        <Text size="2" color="gray">No performance data available. Click &quot;Refresh Data&quot; to calculate metrics.</Text>
+                      </Flex>
+                    )}
+                  </Flex>
+                </Tabs.Content>
+              </Box>
+            </Tabs.Root>
+          </Card>
+
+          {/* Delete Note Alert Dialog */}
+          <AlertDialog.Root open={deleteNoteDialogOpen} onOpenChange={setDeleteNoteDialogOpen}>
+            <AlertDialog.Content>
+              <AlertDialog.Title>Delete Note</AlertDialog.Title>
+              <AlertDialog.Description>
+                Are you sure you want to delete this note? This action cannot be undone.
+              </AlertDialog.Description>
+              <Flex gap="3" mt="4" justify="end">
+                <AlertDialog.Cancel>
+                  <Button variant="soft" color="gray" onClick={() => {
+                    setDeleteNoteDialogOpen(false);
+                    setNoteToDelete(null);
+                  }}>
+                    Cancel
+                  </Button>
+                </AlertDialog.Cancel>
+                <AlertDialog.Action>
+                  <Button variant="solid" color="red" onClick={handleDeleteNote}>
+                    Delete
+                  </Button>
+                </AlertDialog.Action>
+              </Flex>
+            </AlertDialog.Content>
+          </AlertDialog.Root>
+        </Flex>
+      </Container>
+    </Section>
   );
 }
 

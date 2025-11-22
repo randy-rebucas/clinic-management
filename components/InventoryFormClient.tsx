@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Container, Section, Box, Flex, Heading, Text, Button, Card, Spinner } from '@radix-ui/themes';
 import InventoryForm from './InventoryForm';
-// Radix UI components not used - using native HTML elements
 
 export default function InventoryFormClient() {
   const [submitting, setSubmitting] = useState(false);
@@ -44,40 +44,39 @@ export default function InventoryFormClient() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="w-full px-4 py-3">
-        <div className="mb-3">
-          <div className="flex items-center gap-2 mb-0.5">
-            <button
-              onClick={handleCancel}
-              className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Header */}
+          <Flex align="center" gap="2">
+            <Button variant="ghost" size="2" onClick={handleCancel}>
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-            </button>
-            <h1 className="text-xl font-bold text-gray-900">New Inventory Item</h1>
-          </div>
-          <p className="text-gray-600 text-xs ml-7">Add a new item to inventory</p>
-        </div>
+            </Button>
+            <Box>
+              <Heading size="8" mb="1">New Inventory Item</Heading>
+              <Text size="2" color="gray">Add a new item to inventory</Text>
+            </Box>
+          </Flex>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-3">
-          {submitting ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-center">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600"></div>
-                <p className="mt-3 text-sm text-gray-600">Creating inventory item...</p>
-              </div>
-            </div>
-          ) : (
-            <InventoryForm
-              onSubmit={handleSubmit}
-              onCancel={handleCancel}
-            />
-          )}
-        </div>
-      </div>
-    </div>
+          {/* Form Card */}
+          <Card size="2" variant="surface">
+            {submitting ? (
+              <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '200px' }}>
+                <Spinner size="3" />
+                <Text size="2" color="gray">Creating inventory item...</Text>
+              </Flex>
+            ) : (
+              <InventoryForm
+                onSubmit={handleSubmit}
+                onCancel={handleCancel}
+              />
+            )}
+          </Card>
+        </Flex>
+      </Container>
+    </Section>
   );
 }
 

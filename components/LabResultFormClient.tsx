@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import LabResultForm from './LabResultForm';
-import { Button, Flex, Box, Text } from '@radix-ui/themes';
+import { Button, Flex, Box, Text, Container, Section, Card, Spinner, Heading } from '@radix-ui/themes';
 
 interface Patient {
   _id: string;
@@ -92,81 +92,53 @@ export default function LabResultFormClient({ patientId }: { patientId?: string 
 
   if (loading) {
     return (
-      <Box p="4" style={{ width: '100%' }}>
-        <Flex align="center" justify="center" style={{ height: '256px' }}>
-          <Flex direction="column" align="center" gap="3">
-            <Box
-              style={{
-                width: '32px',
-                height: '32px',
-                border: '4px solid var(--gray-6)',
-                borderTop: '4px solid var(--blue-9)',
-                borderRadius: '50%',
-                animation: 'spin 1s linear infinite',
-              }}
-            />
-            <Text size="2" color="gray">Loading...</Text>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+            <Spinner size="3" />
+            <Text>Loading...</Text>
           </Flex>
-        </Flex>
-      </Box>
+        </Container>
+      </Section>
     );
   }
 
   return (
-    <Box style={{ minHeight: '100vh', backgroundColor: 'var(--gray-2)' }}>
-      <Box p="4" style={{ width: '100%' }}>
-        <Box mb="4">
-          <Flex align="center" gap="3" mb="1">
-            <Button
-              variant="ghost"
-              size="1"
-              onClick={handleCancel}
-              style={{ color: 'var(--gray-11)' }}
-            >
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Header */}
+          <Flex align="center" gap="2">
+            <Button variant="ghost" size="2" onClick={handleCancel}>
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </Button>
-            <Text size="6" weight="bold">New Lab Order</Text>
+            <Box>
+              <Heading size="8" mb="1">New Lab Order</Heading>
+              <Text size="2" color="gray">Create a new laboratory test order</Text>
+            </Box>
           </Flex>
-          <Text size="2" color="gray" ml="8">Create a new laboratory test order</Text>
-        </Box>
 
-        <Box
-          style={{
-            backgroundColor: 'white',
-            borderRadius: 'var(--radius-2)',
-            border: '1px solid var(--gray-6)',
-            padding: '16px',
-          }}
-        >
-          {submitting ? (
-            <Flex align="center" justify="center" py="8">
-              <Flex direction="column" align="center" gap="3">
-                <Box
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    border: '4px solid var(--gray-6)',
-                    borderTop: '4px solid var(--blue-9)',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite',
-                  }}
-                />
+          {/* Form Card */}
+          <Card size="2" variant="surface">
+            {submitting ? (
+              <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '200px' }}>
+                <Spinner size="3" />
                 <Text size="2" color="gray">Creating lab order...</Text>
               </Flex>
-            </Flex>
-          ) : (
-            <LabResultForm
-              initialData={patientId ? { patient: patientId } : undefined}
-              patients={patients}
-              onSubmit={handleSubmit}
-              onCancel={handleCancel}
-            />
-          )}
-        </Box>
-      </Box>
-    </Box>
+            ) : (
+              <LabResultForm
+                initialData={patientId ? { patient: patientId } : undefined}
+                patients={patients}
+                onSubmit={handleSubmit}
+                onCancel={handleCancel}
+              />
+            )}
+          </Card>
+        </Flex>
+      </Container>
+    </Section>
   );
 }
 

@@ -170,7 +170,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
+    <Box style={{ maxHeight: '80vh', overflowY: 'auto', paddingRight: '4px' }}>
+      <form onSubmit={handleSubmit}>
+        <Flex direction="column" gap="4">
       {/* Personal Information */}
       <Card>
         <Box p="3">
@@ -778,17 +780,19 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
         </Box>
       </Card>
 
-      {/* Form Actions */}
-      <Flex justify="end" gap="2" pt="3" style={{ borderTop: '1px solid var(--gray-6)' }}>
-        {onCancel && (
-          <Button type="button" onClick={onCancel} variant="soft" size="2">
-            Cancel
-          </Button>
-        )}
-        <Button type="submit" size="2">
-          Save Patient
-        </Button>
-      </Flex>
-    </form>
+          {/* Form Actions */}
+          <Flex justify="end" gap="2" pt="3" style={{ borderTop: '1px solid var(--gray-6)' }}>
+            {onCancel && (
+              <Button type="button" onClick={onCancel} variant="soft" size="2">
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" size="2">
+              Save Patient
+            </Button>
+          </Flex>
+        </Flex>
+      </form>
+    </Box>
   );
 }

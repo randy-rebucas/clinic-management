@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Skeleton, Heading, IconButton } from '@radix-ui/themes';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Skeleton, Heading, IconButton, Container, Section } from '@radix-ui/themes';
 
 interface LabResult {
   _id: string;
@@ -95,24 +95,28 @@ export default function LabResultsPageClient() {
 
   if (loading) {
     return (
-      <Box p="4">
-        <Flex direction="column" gap="3">
-          <Skeleton height="32px" width="200px" />
-          <Skeleton height="40px" />
-          <Skeleton height="300px" />
-        </Flex>
-      </Box>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" gap="3">
+            <Skeleton height="32px" width="200px" />
+            <Skeleton height="40px" />
+            <Skeleton height="300px" />
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
   return (
-    <Box p="4">
-      {/* Header */}
-      <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3" mb="3">
-        <Box>
-          <Heading size="7" mb="1">Lab Results</Heading>
-          <Text size="2" color="gray">Manage laboratory test results</Text>
-        </Box>
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Header */}
+          <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3">
+            <Box>
+              <Heading size="8" mb="1">Lab Results</Heading>
+              <Text size="2" color="gray">Manage laboratory test results</Text>
+            </Box>
         <Button asChild size="3">
           <Link href="/lab-results/new">
             <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,9 +127,9 @@ export default function LabResultsPageClient() {
         </Button>
       </Flex>
 
-      {/* Search and Filters */}
-      <Card mb="3">
-        <Box p="3">
+          {/* Search and Filters */}
+          <Card>
+            <Box p="3">
           <Flex direction={{ initial: 'column', sm: 'row' }} gap="3">
             <Box flexGrow="1">
               <TextField.Root size="2" style={{ width: '100%' }}>
@@ -196,11 +200,11 @@ export default function LabResultsPageClient() {
         </Box>
       </Card>
 
-      {/* Lab Results Table */}
-      <Card>
-        <Box p="3">
-          <Flex justify="between" align="center" mb="3">
-            <Heading size="3">Lab Results</Heading>
+          {/* Lab Results Table */}
+          <Card>
+            <Box p="3">
+              <Flex justify="between" align="center" mb="3">
+                <Heading size="4">Lab Results</Heading>
             <Text size="2" color="gray">
               {filteredLabResults.length} {filteredLabResults.length === 1 ? 'result' : 'results'}
             </Text>
@@ -301,6 +305,8 @@ export default function LabResultsPageClient() {
           )}
         </Box>
       </Card>
-    </Box>
+        </Flex>
+      </Container>
+    </Section>
   );
 }

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VisitForm from './VisitForm';
-import { Button, Tooltip } from '@radix-ui/themes';
+import { Button, Tooltip, Container, Section, Flex, Box, Text, Heading, Card, Spinner, Badge, Select, IconButton, Separator, TextField } from '@radix-ui/themes';
 
 interface Visit {
   _id: string;
@@ -225,100 +225,110 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-blue-600"></div>
-          <p className="mt-4 text-gray-600">Loading visit...</p>
-        </div>
-      </div>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+            <Spinner size="3" />
+            <Text>Loading visit...</Text>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
   if (!visit) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Visit not found</h2>
-          <Link href="/visits" className="text-blue-600 hover:text-blue-700">
-            Back to Visits
-          </Link>
-        </div>
-      </div>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+            <Heading size="5">Visit not found</Heading>
+            <Button asChild variant="soft">
+              <Link href="/visits">Back to Visits</Link>
+            </Button>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">
-          <div className="mb-4 sm:mb-0">
-            <div className="flex items-center space-x-3 mb-2">
-              <Link href="/visits" className="text-gray-500 hover:text-gray-700">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </Link>
-              <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Visit {visit.visitCode}</h1>
-            </div>
-            <p className="text-gray-600 text-sm sm:text-base ml-9">
-              {visit.patient.firstName} {visit.patient.lastName} • {new Date(visit.date).toLocaleDateString()}
-            </p>
-          </div>
-          <div className="flex items-center space-x-3 flex-wrap gap-2">
-            <select
-              value={visit.status}
-              onChange={(e) => handleStatusChange(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="open">Open</option>
-              <option value="closed">Closed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-            {!editing && (
-              <>
-                <Tooltip content="Print Medical Certificate">
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Header */}
+          <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3">
+            <Box>
+              <Flex align="center" gap="3" mb="2">
+                <IconButton variant="ghost" size="2" asChild>
+                  <Link href="/visits">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </Link>
+                </IconButton>
+                <Heading size="8">Visit {visit.visitCode}</Heading>
+              </Flex>
+              <Text size="2" color="gray" ml="8">
+                {visit.patient.firstName} {visit.patient.lastName} • {new Date(visit.date).toLocaleDateString()}
+              </Text>
+            </Box>
+            <Flex gap="2" wrap="wrap">
+              <Select.Root
+                value={visit.status}
+                onValueChange={(value) => handleStatusChange(value)}
+              >
+                <Select.Trigger />
+                <Select.Content>
+                  <Select.Item value="open">Open</Select.Item>
+                  <Select.Item value="closed">Closed</Select.Item>
+                  <Select.Item value="cancelled">Cancelled</Select.Item>
+                </Select.Content>
+              </Select.Root>
+              {!editing && (
+                <>
+                  <Tooltip content="Print Medical Certificate">
+                    <Button
+                      onClick={() => handlePrint('medical-certificate')}
+                      color="green"
+                      size="2"
+                    >
+                      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '6px' }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Medical Certificate
+                    </Button>
+                  </Tooltip>
+                  <Tooltip content="Print Lab Request">
+                    <Button
+                      onClick={() => handlePrint('lab-request')}
+                      color="purple"
+                      size="2"
+                    >
+                      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '6px' }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Lab Request
+                    </Button>
+                  </Tooltip>
                   <Button
-                    onClick={() => handlePrint('medical-certificate')}
-                    color="green"
+                    onClick={() => setEditing(true)}
                     size="2"
                   >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '6px' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
-                    Medical Certificate
+                    Edit
                   </Button>
-                </Tooltip>
-                <Tooltip content="Print Lab Request">
-                  <Button
-                    onClick={() => handlePrint('lab-request')}
-                    color="purple"
-                    size="2"
-                  >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Lab Request
-                  </Button>
-                </Tooltip>
-                <button
-                  onClick={() => setEditing(true)}
-                  className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-sm hover:shadow-md"
-                >
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  Edit
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+                </>
+              )}
+            </Flex>
+          </Flex>
 
-        {/* Edit Mode */}
-        {editing ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-            <VisitForm
+          {/* Edit Mode */}
+          {editing ? (
+            <Card>
+              <Box p="3">
+                <VisitForm
               initialData={{
                 patient: visit.patient._id,
                 visitType: visit.visitType as any,
@@ -341,236 +351,265 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
               onCancel={() => setEditing(false)}
               providerName={providerName}
             />
-          </div>
-        ) : (
-          /* View Mode */
-          <div className="space-y-6">
-            {/* Patient Info */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Patient Information</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Name</p>
-                  <p className="text-sm text-gray-900">
-                    {visit.patient.firstName} {visit.patient.lastName}
-                  </p>
-                </div>
-                {visit.patient.patientCode && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Patient ID</p>
-                    <p className="text-sm text-gray-900">{visit.patient.patientCode}</p>
-                  </div>
-                )}
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Email</p>
-                  <p className="text-sm text-gray-900">{visit.patient.email}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Phone</p>
-                  <p className="text-sm text-gray-900">{visit.patient.phone}</p>
-                </div>
-              </div>
-            </div>
+              </Box>
+            </Card>
+          ) : (
+            /* View Mode */
+            <Flex direction="column" gap="3">
+              {/* Patient Info */}
+              <Card>
+                <Box p="3">
+                  <Heading size="4" mb="3">Patient Information</Heading>
+                  <Flex direction={{ initial: 'column', md: 'row' }} gap="4" wrap="wrap">
+                    <Box>
+                      <Text size="1" color="gray" mb="1" as="div">Name</Text>
+                      <Text size="2">
+                        {visit.patient.firstName} {visit.patient.lastName}
+                      </Text>
+                    </Box>
+                    {visit.patient.patientCode && (
+                      <Box>
+                        <Text size="1" color="gray" mb="1" as="div">Patient ID</Text>
+                        <Text size="2">{visit.patient.patientCode}</Text>
+                      </Box>
+                    )}
+                    <Box>
+                      <Text size="1" color="gray" mb="1" as="div">Email</Text>
+                      <Text size="2">{visit.patient.email}</Text>
+                    </Box>
+                    <Box>
+                      <Text size="1" color="gray" mb="1" as="div">Phone</Text>
+                      <Text size="2">{visit.patient.phone}</Text>
+                    </Box>
+                  </Flex>
+                </Box>
+              </Card>
 
-            {/* SOAP Notes */}
-            {visit.soapNotes && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">SOAP Notes</h3>
-                <div className="space-y-4">
-                  {visit.soapNotes.subjective && (
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-700 mb-2">S - Subjective</h4>
-                      <p className="text-sm text-gray-900 whitespace-pre-wrap">{visit.soapNotes.subjective}</p>
-                    </div>
-                  )}
-                  {visit.soapNotes.objective && (
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-700 mb-2">O - Objective</h4>
-                      <p className="text-sm text-gray-900 whitespace-pre-wrap">{visit.soapNotes.objective}</p>
-                    </div>
-                  )}
-                  {visit.soapNotes.assessment && (
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-700 mb-2">A - Assessment</h4>
-                      <p className="text-sm text-gray-900 whitespace-pre-wrap">{visit.soapNotes.assessment}</p>
-                    </div>
-                  )}
-                  {visit.soapNotes.plan && (
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-700 mb-2">P - Plan</h4>
-                      <p className="text-sm text-gray-900 whitespace-pre-wrap">{visit.soapNotes.plan}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Diagnoses */}
-            {visit.diagnoses && visit.diagnoses.length > 0 && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Diagnoses</h3>
-                <div className="space-y-2">
-                  {visit.diagnoses.map((diag, idx) => (
-                    <div key={idx} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                      <div className="flex-1">
-                        {diag.code && (
-                          <span className="font-mono text-sm font-medium text-blue-600">{diag.code}</span>
-                        )}
-                        {diag.description && (
-                          <p className="text-sm text-gray-900 mt-1">{diag.description}</p>
-                        )}
-                      </div>
-                      {diag.primary && (
-                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                          Primary
-                        </span>
+              {/* SOAP Notes */}
+              {visit.soapNotes && (
+                <Card>
+                  <Box p="3">
+                    <Heading size="4" mb="3">SOAP Notes</Heading>
+                    <Flex direction="column" gap="3">
+                      {visit.soapNotes.subjective && (
+                        <Box>
+                          <Text size="2" weight="bold" mb="2" as="div">S - Subjective</Text>
+                          <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{visit.soapNotes.subjective}</Text>
+                        </Box>
                       )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Treatment Plan */}
-            {visit.treatmentPlan && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Treatment Plan</h3>
-                {visit.treatmentPlan.medications && visit.treatmentPlan.medications.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Medications</h4>
-                    <div className="space-y-2">
-                      {visit.treatmentPlan.medications.map((med, idx) => (
-                        <div key={idx} className="p-3 bg-gray-50 rounded-lg">
-                          <p className="text-sm font-medium text-gray-900">{med.name}</p>
-                          <p className="text-xs text-gray-600">
-                            {med.dosage} • {med.frequency} • {med.duration}
-                          </p>
-                          {med.instructions && (
-                            <p className="text-xs text-gray-600 mt-1">{med.instructions}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {visit.treatmentPlan.followUp && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Follow-up</h4>
-                    {visit.treatmentPlan.followUp.date && (
-                      <p className="text-sm text-gray-900">
-                        Date: {new Date(visit.treatmentPlan.followUp.date).toLocaleDateString()}
-                      </p>
-                    )}
-                    {visit.treatmentPlan.followUp.instructions && (
-                      <p className="text-sm text-gray-900 mt-1 whitespace-pre-wrap">
-                        {visit.treatmentPlan.followUp.instructions}
-                      </p>
-                    )}
-                    {visit.followUpReminderSent && (
-                      <p className="text-xs text-green-600 mt-2">✓ Reminder sent</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Digital Signature */}
-            {visit.digitalSignature && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Digital Signature</h3>
-                <div className="flex items-center space-x-4">
-                  <div className="border-2 border-gray-200 rounded-lg p-2 bg-white">
-                    <img
-                      src={visit.digitalSignature.signatureData}
-                      alt="Signature"
-                      className="h-20"
-                    />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      Signed by: {visit.digitalSignature.providerName}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(visit.digitalSignature.signedAt).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Additional Notes */}
-            {visit.notes && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Notes</h3>
-                <p className="text-sm text-gray-900 whitespace-pre-wrap">{visit.notes}</p>
-              </div>
-            )}
-
-            {/* Clinical Images/Attachments */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Clinical Images & Attachments</h3>
-              </div>
-              
-              {/* File Upload Section */}
-              <FileUploadSection onUpload={handleFileUpload} />
-
-              {/* Display Attachments */}
-              {visit.attachments && visit.attachments.length > 0 && (
-                <div className="mt-6">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Uploaded Files</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {visit.attachments.map((attachment, idx) => (
-                      <div key={attachment._id || idx} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                        {attachment.url && attachment.contentType?.startsWith('image/') ? (
-                          <div className="mb-2">
-                            <img
-                              src={attachment.url}
-                              alt={attachment.filename}
-                              className="w-full h-32 object-cover rounded-lg"
-                              onClick={() => window.open(attachment.url, '_blank')}
-                              style={{ cursor: 'pointer' }}
-                            />
-                          </div>
-                        ) : (
-                          <div className="mb-2 flex items-center justify-center h-32 bg-gray-100 rounded-lg">
-                            <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                          </div>
-                        )}
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 truncate" title={attachment.filename}>
-                            {attachment.filename}
-                          </p>
-                          {attachment.notes && (
-                            <p className="text-xs text-gray-500 mt-1">{attachment.notes}</p>
-                          )}
-                          <p className="text-xs text-gray-400 mt-1">
-                            {new Date(attachment.uploadDate).toLocaleDateString()}
-                            {attachment.size && ` • ${(attachment.size / 1024).toFixed(1)} KB`}
-                          </p>
-                          {attachment.url && (
-                            <a
-                              href={attachment.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-blue-600 hover:text-blue-700 mt-1 inline-block"
-                            >
-                              View/Download
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                      {visit.soapNotes.objective && (
+                        <Box>
+                          <Text size="2" weight="bold" mb="2" as="div">O - Objective</Text>
+                          <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{visit.soapNotes.objective}</Text>
+                        </Box>
+                      )}
+                      {visit.soapNotes.assessment && (
+                        <Box>
+                          <Text size="2" weight="bold" mb="2" as="div">A - Assessment</Text>
+                          <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{visit.soapNotes.assessment}</Text>
+                        </Box>
+                      )}
+                      {visit.soapNotes.plan && (
+                        <Box>
+                          <Text size="2" weight="bold" mb="2" as="div">P - Plan</Text>
+                          <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{visit.soapNotes.plan}</Text>
+                        </Box>
+                      )}
+                    </Flex>
+                  </Box>
+                </Card>
               )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+
+              {/* Diagnoses */}
+              {visit.diagnoses && visit.diagnoses.length > 0 && (
+                <Card>
+                  <Box p="3">
+                    <Heading size="4" mb="3">Diagnoses</Heading>
+                    <Flex direction="column" gap="2">
+                      {visit.diagnoses.map((diag, idx) => (
+                        <Card key={idx} variant="surface">
+                          <Flex justify="between" align="start" gap="3" p="2">
+                            <Box flexGrow="1">
+                              {diag.code && (
+                                <Text size="2" weight="medium" style={{ fontFamily: 'monospace', color: 'var(--blue-9)' }} as="div">
+                                  {diag.code}
+                                </Text>
+                              )}
+                              {diag.description && (
+                                <Text size="2" mt="1" as="div">{diag.description}</Text>
+                              )}
+                            </Box>
+                            {diag.primary && (
+                              <Badge color="blue" size="1">Primary</Badge>
+                            )}
+                          </Flex>
+                        </Card>
+                      ))}
+                    </Flex>
+                  </Box>
+                </Card>
+              )}
+
+              {/* Treatment Plan */}
+              {visit.treatmentPlan && (
+                <Card>
+                  <Box p="3">
+                    <Heading size="4" mb="3">Treatment Plan</Heading>
+                    {visit.treatmentPlan.medications && visit.treatmentPlan.medications.length > 0 && (
+                      <Box mb="3">
+                        <Text size="2" weight="bold" mb="2" as="div">Medications</Text>
+                        <Flex direction="column" gap="2">
+                          {visit.treatmentPlan.medications.map((med, idx) => (
+                            <Card key={idx} variant="surface">
+                              <Box p="2">
+                                <Text size="2" weight="medium" as="div">{med.name}</Text>
+                                <Text size="1" color="gray" as="div">
+                                  {med.dosage} • {med.frequency} • {med.duration}
+                                </Text>
+                                {med.instructions && (
+                                  <Text size="1" color="gray" mt="1" as="div">{med.instructions}</Text>
+                                )}
+                              </Box>
+                            </Card>
+                          ))}
+                        </Flex>
+                      </Box>
+                    )}
+                    {visit.treatmentPlan.followUp && (
+                      <Box>
+                        <Text size="2" weight="bold" mb="2" as="div">Follow-up</Text>
+                        {visit.treatmentPlan.followUp.date && (
+                          <Text size="2" as="div">
+                            Date: {new Date(visit.treatmentPlan.followUp.date).toLocaleDateString()}
+                          </Text>
+                        )}
+                        {visit.treatmentPlan.followUp.instructions && (
+                          <Text size="2" mt="1" style={{ whiteSpace: 'pre-wrap' }} as="div">
+                            {visit.treatmentPlan.followUp.instructions}
+                          </Text>
+                        )}
+                        {visit.followUpReminderSent && (
+                          <Text size="1" color="green" mt="2" as="div">✓ Reminder sent</Text>
+                        )}
+                      </Box>
+                    )}
+                  </Box>
+                </Card>
+              )}
+
+              {/* Digital Signature */}
+              {visit.digitalSignature && (
+                <Card>
+                  <Box p="3">
+                    <Heading size="4" mb="3">Digital Signature</Heading>
+                    <Flex align="center" gap="3">
+                      <Box
+                        style={{
+                          border: '2px solid var(--gray-6)',
+                          borderRadius: 'var(--radius-2)',
+                          padding: '6px',
+                          background: 'white',
+                        }}
+                      >
+                        <img
+                          src={visit.digitalSignature.signatureData}
+                          alt="Signature"
+                          style={{ height: '80px', display: 'block' }}
+                        />
+                      </Box>
+                      <Box>
+                        <Text size="2" weight="medium" as="div">
+                          Signed by: {visit.digitalSignature.providerName}
+                        </Text>
+                        <Text size="1" color="gray" as="div">
+                          {new Date(visit.digitalSignature.signedAt).toLocaleString()}
+                        </Text>
+                      </Box>
+                    </Flex>
+                  </Box>
+                </Card>
+              )}
+
+              {/* Additional Notes */}
+              {visit.notes && (
+                <Card>
+                  <Box p="3">
+                    <Heading size="4" mb="3">Additional Notes</Heading>
+                    <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{visit.notes}</Text>
+                  </Box>
+                </Card>
+              )}
+
+              {/* Clinical Images/Attachments */}
+              <Card>
+                <Box p="3">
+                  <Flex justify="between" align="center" mb="3">
+                    <Heading size="4">Clinical Images & Attachments</Heading>
+                  </Flex>
+                  
+                  {/* File Upload Section */}
+                  <FileUploadSection onUpload={handleFileUpload} />
+
+                  {/* Display Attachments */}
+                  {visit.attachments && visit.attachments.length > 0 && (
+                    <Box mt="4">
+                      <Text size="2" weight="bold" mb="3" as="div">Uploaded Files</Text>
+                      <Flex gap="3" wrap="wrap">
+                        {visit.attachments.map((attachment, idx) => (
+                          <Card key={attachment._id || idx} variant="surface" style={{ minWidth: '200px', flex: '1 1 200px' }}>
+                            <Box p="3">
+                              {attachment.url && attachment.contentType?.startsWith('image/') ? (
+                                <Box mb="2">
+                                  <img
+                                    src={attachment.url}
+                                    alt={attachment.filename}
+                                    style={{ width: '100%', height: '128px', objectFit: 'cover', borderRadius: '6px', cursor: 'pointer' }}
+                                    onClick={() => window.open(attachment.url, '_blank')}
+                                  />
+                                </Box>
+                              ) : (
+                                <Flex align="center" justify="center" mb="2" style={{ height: '128px', background: 'var(--gray-2)', borderRadius: '6px' }}>
+                                  <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--gray-9)' }}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </Flex>
+                              )}
+                              <Box>
+                                <Text size="2" weight="medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={attachment.filename} as="div">
+                                  {attachment.filename}
+                                </Text>
+                                {attachment.notes && (
+                                  <Text size="1" color="gray" mt="1" as="div">{attachment.notes}</Text>
+                                )}
+                                <Text size="1" color="gray" mt="1" as="div">
+                                  {new Date(attachment.uploadDate).toLocaleDateString()}
+                                  {attachment.size && ` • ${(attachment.size / 1024).toFixed(1)} KB`}
+                                </Text>
+                                {attachment.url && (
+                                  <Button asChild variant="ghost" size="1" mt="1">
+                                    <a
+                                      href={attachment.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      View/Download
+                                    </a>
+                                  </Button>
+                                )}
+                              </Box>
+                            </Box>
+                          </Card>
+                        ))}
+                      </Flex>
+                    </Box>
+                  )}
+                </Box>
+              </Card>
+            </Flex>
+          )}
+        </Flex>
+      </Container>
+    </Section>
   );
 }
 
@@ -578,6 +617,7 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
   const [file, setFile] = useState<File | null>(null);
   const [notes, setNotes] = useState('');
   const [uploading, setUploading] = useState(false);
+  const { TextField, Button } = require('@radix-ui/themes');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -597,40 +637,50 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
   };
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Upload Clinical Image or Document
-          </label>
-          <input
-            id="visit-file-input"
-            type="file"
-            accept="image/*,.pdf,.doc,.docx"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
-          <input
-            type="text"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g., X-ray image, wound photo, etc."
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={!file || uploading}
-          className="w-full px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {uploading ? 'Uploading...' : 'Upload File'}
-        </button>
-      </form>
-    </div>
+    <Card variant="surface">
+      <Box p="3">
+        <form onSubmit={handleSubmit}>
+          <Flex direction="column" gap="3">
+            <Box>
+              <Text size="2" weight="medium" mb="2" as="div">
+                Upload Clinical Image or Document
+              </Text>
+              <input
+                id="visit-file-input"
+                type="file"
+                accept="image/*,.pdf,.doc,.docx"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                required
+                style={{
+                  width: '100%',
+                  fontSize: 'var(--font-size-2)',
+                }}
+              />
+            </Box>
+            <Box>
+              <Text size="2" weight="medium" mb="2" as="div">Notes (Optional)</Text>
+              <TextField.Root size="2">
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="e.g., X-ray image, wound photo, etc."
+                  style={{ all: 'unset', flex: 1 }}
+                />
+              </TextField.Root>
+            </Box>
+            <Button
+              type="submit"
+              disabled={!file || uploading}
+              size="2"
+              style={{ width: '100%' }}
+            >
+              {uploading ? 'Uploading...' : 'Upload File'}
+            </Button>
+          </Flex>
+        </form>
+      </Box>
+    </Card>
   );
 }
 

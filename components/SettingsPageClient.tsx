@@ -61,6 +61,11 @@ interface Settings {
     twilioEnabled: boolean;
     smtpEnabled: boolean;
   };
+  integrationStatus?: {
+    twilio: boolean;
+    smtp: boolean;
+    cloudinary: boolean;
+  };
   displaySettings: {
     theme: 'light' | 'dark' | 'auto';
     sidebarCollapsed: boolean;
@@ -483,6 +488,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             <Tabs.Trigger value="queue">Queue</Tabs.Trigger>
             <Tabs.Trigger value="general">General</Tabs.Trigger>
             <Tabs.Trigger value="display">Display</Tabs.Trigger>
+            <Tabs.Trigger value="integrations">Integrations</Tabs.Trigger>
           </Tabs.List>
 
           <Box pt="3">
@@ -972,6 +978,184 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                   </Text>
                 </Flex>
               </Card>
+            </Tabs.Content>
+
+            <Tabs.Content value="integrations">
+              <Flex direction="column" gap="4">
+                {/* Twilio Integration */}
+                <Card size="2" variant="surface">
+                  <Flex direction="column" gap="4" p="4">
+                    <Flex justify="between" align="center">
+                      <Box>
+                        <Heading size="5" mb="1">Twilio (SMS)</Heading>
+                        <Text size="2" color="gray">Configure SMS notifications via Twilio</Text>
+                      </Box>
+                      <Flex gap="2" align="center">
+                        {settings.integrationStatus?.twilio ? (
+                          <Callout.Root color="green" size="1">
+                            <Callout.Icon><CheckIcon /></Callout.Icon>
+                            <Callout.Text size="1">Configured</Callout.Text>
+                          </Callout.Root>
+                        ) : (
+                          <Callout.Root color="amber" size="1">
+                            <Callout.Icon><Cross2Icon /></Callout.Icon>
+                            <Callout.Text size="1">Not Configured</Callout.Text>
+                          </Callout.Root>
+                        )}
+                      </Flex>
+                    </Flex>
+                    <Separator />
+                    <Box>
+                      <Text size="2" weight="medium" mb="2" as="div">Required Environment Variables</Text>
+                      <Flex direction="column" gap="2">
+                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                          TWILIO_ACCOUNT_SID
+                        </Text>
+                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                          TWILIO_AUTH_TOKEN
+                        </Text>
+                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                          TWILIO_PHONE_NUMBER
+                        </Text>
+                      </Flex>
+                    </Box>
+                    <Callout.Root color="blue" size="1">
+                      <Callout.Text size="1">
+                        Add these variables to your <code style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>.env.local</code> file and restart the server.
+                      </Callout.Text>
+                    </Callout.Root>
+                    <Text as="label" size="2">
+                      <Flex gap="2">
+                        <Switch
+                          size="2"
+                          checked={settings.integrationSettings.twilioEnabled}
+                          onCheckedChange={(checked) => updateSettings('integrationSettings.twilioEnabled', checked)}
+                          disabled={!isAdmin}
+                        />
+                        Enable Twilio Integration
+                      </Flex>
+                    </Text>
+                  </Flex>
+                </Card>
+
+                {/* SMTP Integration */}
+                <Card size="2" variant="surface">
+                  <Flex direction="column" gap="4" p="4">
+                    <Flex justify="between" align="center">
+                      <Box>
+                        <Heading size="5" mb="1">SMTP (Email)</Heading>
+                        <Text size="2" color="gray">Configure email notifications via SMTP</Text>
+                      </Box>
+                      <Flex gap="2" align="center">
+                        {settings.integrationStatus?.smtp ? (
+                          <Callout.Root color="green" size="1">
+                            <Callout.Icon><CheckIcon /></Callout.Icon>
+                            <Callout.Text size="1">Configured</Callout.Text>
+                          </Callout.Root>
+                        ) : (
+                          <Callout.Root color="amber" size="1">
+                            <Callout.Icon><Cross2Icon /></Callout.Icon>
+                            <Callout.Text size="1">Not Configured</Callout.Text>
+                          </Callout.Root>
+                        )}
+                      </Flex>
+                    </Flex>
+                    <Separator />
+                    <Box>
+                      <Text size="2" weight="medium" mb="2" as="div">Required Environment Variables</Text>
+                      <Flex direction="column" gap="2">
+                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                          SMTP_HOST
+                        </Text>
+                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                          SMTP_PORT
+                        </Text>
+                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                          SMTP_USER
+                        </Text>
+                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                          SMTP_PASS
+                        </Text>
+                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                          SMTP_FROM (optional)
+                        </Text>
+                      </Flex>
+                    </Box>
+                    <Callout.Root color="blue" size="1">
+                      <Callout.Text size="1">
+                        Add these variables to your <code style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>.env.local</code> file and restart the server.
+                      </Callout.Text>
+                    </Callout.Root>
+                    <Text as="label" size="2">
+                      <Flex gap="2">
+                        <Switch
+                          size="2"
+                          checked={settings.integrationSettings.smtpEnabled}
+                          onCheckedChange={(checked) => updateSettings('integrationSettings.smtpEnabled', checked)}
+                          disabled={!isAdmin}
+                        />
+                        Enable SMTP Integration
+                      </Flex>
+                    </Text>
+                  </Flex>
+                </Card>
+
+                {/* Cloudinary Integration */}
+                <Card size="2" variant="surface">
+                  <Flex direction="column" gap="4" p="4">
+                    <Flex justify="between" align="center">
+                      <Box>
+                        <Heading size="5" mb="1">Cloudinary (File Storage)</Heading>
+                        <Text size="2" color="gray">Configure document and image storage via Cloudinary</Text>
+                      </Box>
+                      <Flex gap="2" align="center">
+                        {settings.integrationStatus?.cloudinary ? (
+                          <Callout.Root color="green" size="1">
+                            <Callout.Icon><CheckIcon /></Callout.Icon>
+                            <Callout.Text size="1">Configured</Callout.Text>
+                          </Callout.Root>
+                        ) : (
+                          <Callout.Root color="amber" size="1">
+                            <Callout.Icon><Cross2Icon /></Callout.Icon>
+                            <Callout.Text size="1">Not Configured</Callout.Text>
+                          </Callout.Root>
+                        )}
+                      </Flex>
+                    </Flex>
+                    <Separator />
+                    <Box>
+                      <Text size="2" weight="medium" mb="2" as="div">Required Environment Variables</Text>
+                      <Flex direction="column" gap="2">
+                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                          CLOUDINARY_CLOUD_NAME
+                        </Text>
+                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                          CLOUDINARY_API_KEY
+                        </Text>
+                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                          CLOUDINARY_API_SECRET
+                        </Text>
+                      </Flex>
+                    </Box>
+                    <Callout.Root color="blue" size="1">
+                      <Callout.Text size="1">
+                        Add these variables to your <code style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>.env.local</code> file and restart the server.
+                      </Callout.Text>
+                    </Callout.Root>
+                    <Text as="label" size="2">
+                      <Flex gap="2">
+                        <Switch
+                          size="2"
+                          checked={settings.integrationSettings.cloudinaryEnabled}
+                          onCheckedChange={(checked) => updateSettings('integrationSettings.cloudinaryEnabled', checked)}
+                          disabled={!isAdmin}
+                        />
+                        Enable Cloudinary Integration
+                      </Flex>
+                    </Text>
+                  </Flex>
+                </Card>
+              </Flex>
             </Tabs.Content>
           </Box>
         </Tabs.Root>

@@ -46,7 +46,7 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
       left="0"
       top="0"
       height="100vh"
-      width={isCollapsed ? '56px' : '224px'}
+      width={isCollapsed ? '56px' : '280px'}
       style={{
         backgroundColor: 'white',
         borderRight: '1px solid var(--gray-6)',
@@ -62,8 +62,8 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
         <Flex
           align="center"
           justify="between"
-          height="48px"
-          px="2"
+          height="56px"
+          px="3"
           style={{
             borderBottom: '1px solid var(--gray-6)',
           }}
@@ -149,15 +149,15 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
         <Box
           flexGrow="1"
           style={{ overflowY: 'auto' }}
-          py="2"
-          px="1"
+          py="3"
+          px="2"
         >
           <Flex direction="column" gap="0">
           {Object.entries(groupedItems).map(([category, items]) => (
             <Box key={category}>
               {!isCollapsed && items.length > 0 && (
-                <Box px="2.5" py="1.5">
-                  <Text size="1" weight="bold" color="gray" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <Box px="3" py="2">
+                  <Text size="2" weight="bold" color="gray" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     {category}
                   </Text>
                 </Box>
@@ -165,15 +165,15 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
               {items.map((item) => {
                 const isActive = pathname === item.href;
                 return (
-                  <Box key={item.href} px="1">
+                  <Box key={item.href} px="2">
                     <Link
                       href={item.href}
                       title={isCollapsed ? item.label : undefined}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 'var(--space-2)',
-                        padding: 'var(--space-1) var(--space-2)',
+                        gap: 'var(--space-3)',
+                        padding: 'var(--space-2) var(--space-3)',
                         borderRadius: 'var(--radius-2)',
                         textDecoration: 'none',
                         backgroundColor: isActive ? 'var(--blue-3)' : 'transparent',
@@ -193,14 +193,14 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
                       }}
                     >
                       <Box
-                        width="16px"
-                        height="16px"
+                        width="18px"
+                        height="18px"
                         flexShrink="0"
                         style={{
                           color: isActive ? 'var(--blue-9)' : 'var(--gray-9)',
                         }}
                       >
-                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -213,7 +213,7 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
                         <>
                           <Box flexGrow="1" style={{ minWidth: 0 }}>
                             <Text
-                              size="2"
+                              size="3"
                               style={{
                                 display: 'block',
                                 overflow: 'hidden',
@@ -254,12 +254,12 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
           }}
         >
           {!isCollapsed ? (
-            <Box p="2">
-              <Card size="1" mb="2">
-                <Flex align="center" gap="2">
+            <Box p="3">
+              <Card size="2" mb="2">
+                <Flex align="center" gap="3">
                   <Box
-                    width="32px"
-                    height="32px"
+                    width="40px"
+                    height="40px"
                     style={{
                       borderRadius: '50%',
                       background: 'var(--blue-9)',
@@ -267,7 +267,7 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
                       alignItems: 'center',
                       justifyContent: 'center',
                       color: 'white',
-                      fontSize: '12px',
+                      fontSize: '14px',
                       fontWeight: 'bold',
                       flexShrink: 0,
                     }}
@@ -276,7 +276,7 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
                   </Box>
                   <Box flexGrow="1" style={{ minWidth: 0 }}>
                     <Text
-                      size="1"
+                      size="2"
                       weight="medium"
                       style={{
                         display: 'block',
@@ -288,7 +288,7 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
                       {user.name}
                     </Text>
                     <Text
-                      size="1"
+                      size="2"
                       color="gray"
                       style={{
                         display: 'block',

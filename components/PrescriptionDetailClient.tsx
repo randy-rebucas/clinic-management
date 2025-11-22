@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Heading, IconButton, TextArea, Separator } from '@radix-ui/themes';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Heading, IconButton, TextArea, Separator, Container, Section } from '@radix-ui/themes';
 
 interface Prescription {
   _id: string;
@@ -182,25 +182,29 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
 
   if (loading) {
     return (
-      <Box p="4" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Flex direction="column" align="center" gap="3">
-          <Spinner size="3" />
-          <Text>Loading prescription...</Text>
-        </Flex>
-      </Box>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+            <Spinner size="3" />
+            <Text>Loading prescription...</Text>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
   if (!prescription) {
     return (
-      <Box p="4" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Flex direction="column" align="center" gap="3">
-          <Heading size="5">{error || 'Prescription not found'}</Heading>
-          <Button asChild variant="soft">
-            <Link href="/prescriptions">Back to Prescriptions</Link>
-          </Button>
-        </Flex>
-      </Box>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+            <Heading size="5">{error || 'Prescription not found'}</Heading>
+            <Button asChild variant="soft">
+              <Link href="/prescriptions">Back to Prescriptions</Link>
+            </Button>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
@@ -214,34 +218,36 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
   );
 
   return (
-    <Box p="4">
-      {/* Notifications */}
-      {error && (
-        <Callout.Root color="red" mb="3">
-          <Callout.Text>{error}</Callout.Text>
-        </Callout.Root>
-      )}
-      {success && (
-        <Callout.Root color="green" mb="3">
-          <Callout.Text>{success}</Callout.Text>
-        </Callout.Root>
-      )}
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Notifications */}
+          {error && (
+            <Callout.Root color="red">
+              <Callout.Text>{error}</Callout.Text>
+            </Callout.Root>
+          )}
+          {success && (
+            <Callout.Root color="green">
+              <Callout.Text>{success}</Callout.Text>
+            </Callout.Root>
+          )}
 
-      {/* Header */}
-      <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3" mb="3">
-        <Box>
-          <Flex align="center" gap="2" mb="2">
-            <IconButton
-              variant="ghost"
-              onClick={() => router.push('/prescriptions')}
-              size="2"
-            >
-              <svg style={{ width: '20px', height: '20px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </IconButton>
-            <Heading size="7">Prescription {prescription.prescriptionCode}</Heading>
-          </Flex>
+          {/* Header */}
+          <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3">
+            <Box>
+              <Flex align="center" gap="2" mb="2">
+                <IconButton
+                  variant="ghost"
+                  onClick={() => router.push('/prescriptions')}
+                  size="2"
+                >
+                  <svg style={{ width: '20px', height: '20px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </IconButton>
+                <Heading size="8">Prescription {prescription.prescriptionCode}</Heading>
+              </Flex>
           <Flex align="center" gap="2" ml="8">
             {prescription.patient && (
               <>
@@ -281,11 +287,11 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
         </Flex>
       </Flex>
 
-      <Flex direction="column" gap="3">
-        {/* Patient Info */}
-        <Card>
-          <Box p="3">
-            <Heading size="3" mb="3">Patient Information</Heading>
+          <Flex direction="column" gap="3">
+            {/* Patient Info */}
+            <Card>
+              <Box p="3">
+                <Heading size="4" mb="3">Patient Information</Heading>
             <Flex direction={{ initial: 'column', md: 'row' }} gap="4" wrap="wrap">
               {prescription.patient && (
                 <Box>
@@ -343,10 +349,10 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
           </Box>
         </Card>
 
-        {/* Medications */}
-        <Card>
-          <Box p="3">
-            <Heading size="3" mb="3">Medications</Heading>
+            {/* Medications */}
+            <Card>
+              <Box p="3">
+                <Heading size="4" mb="3">Medications</Heading>
             <Flex direction="column" gap="2">
               {(prescription.medications || []).map((medication, index) => (
                 <Card key={index} variant="surface">
@@ -409,11 +415,11 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
           </Box>
         </Card>
 
-        {/* Drug Interactions */}
-        {prescription.drugInteractions && prescription.drugInteractions.length > 0 && (
-          <Card>
-            <Box p="3">
-              <Heading size="3" mb="3">Drug Interactions</Heading>
+            {/* Drug Interactions */}
+            {prescription.drugInteractions && prescription.drugInteractions.length > 0 && (
+              <Card>
+                <Box p="3">
+                  <Heading size="4" mb="3">Drug Interactions</Heading>
               <Flex direction="column" gap="2">
                 {prescription.drugInteractions.map((interaction, idx) => (
                   <Callout.Root key={idx} color={getInteractionColor(interaction.severity)}>
@@ -443,11 +449,11 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
           </Card>
         )}
 
-        {/* Archive Status */}
-        {prescription.copies && (
-          <Card>
-            <Box p="3">
-              <Heading size="3" mb="3">Archive Status</Heading>
+            {/* Archive Status */}
+            {prescription.copies && (
+              <Card>
+                <Box p="3">
+                  <Heading size="4" mb="3">Archive Status</Heading>
               <Flex direction={{ initial: 'column', md: 'row' }} gap="4">
                 {prescription.copies.patientCopy && (
                   <Box>
@@ -486,10 +492,10 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
           </Card>
         )}
 
-        {/* Dispensing Status */}
-        <Card>
-          <Box p="3">
-            <Heading size="3" mb="3">Dispensing Status</Heading>
+            {/* Dispensing Status */}
+            <Card>
+              <Box p="3">
+                <Heading size="4" mb="3">Dispensing Status</Heading>
             <Flex direction="column" gap="2" mb="3">
               <Flex justify="between" align="center">
                 <Text size="1" color="gray">Prescribed</Text>
@@ -547,21 +553,21 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
           </Box>
         </Card>
 
-        {/* Notes */}
-        {prescription.notes && (
-          <Card>
-            <Box p="3">
-              <Heading size="3" mb="3">Notes</Heading>
+            {/* Notes */}
+            {prescription.notes && (
+              <Card>
+                <Box p="3">
+                  <Heading size="4" mb="3">Notes</Heading>
               <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{prescription.notes}</Text>
             </Box>
           </Card>
         )}
 
-        {/* Digital Signature */}
-        {prescription.digitalSignature && (
-          <Card>
-            <Box p="3">
-              <Heading size="3" mb="3">Digital Signature</Heading>
+            {/* Digital Signature */}
+            {prescription.digitalSignature && (
+              <Card>
+                <Box p="3">
+                  <Heading size="4" mb="3">Digital Signature</Heading>
               <Flex align="center" gap="3">
                 <Box
                   style={{
@@ -591,7 +597,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
         )}
       </Flex>
 
-      {/* Dispense Form Modal */}
+          {/* Dispense Form Modal */}
       <Dialog.Root open={showDispenseForm} onOpenChange={(open) => {
         if (!open) {
           setShowDispenseForm(false);
@@ -686,6 +692,8 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
           </Box>
         </Dialog.Content>
       </Dialog.Root>
-    </Box>
+        </Flex>
+      </Container>
+    </Section>
   );
 }

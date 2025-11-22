@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Tooltip, IconButton, Separator, Popover, Skeleton, Heading, AlertDialog } from '@radix-ui/themes';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Tooltip, IconButton, Separator, Popover, Skeleton, Heading, AlertDialog, Container, Section } from '@radix-ui/themes';
 
 interface Queue {
   _id: string;
@@ -352,13 +352,15 @@ export default function QueuePageClient() {
 
   if (loading) {
     return (
-      <Box p="4">
-        <Flex direction="column" gap="3">
-          <Skeleton height="32px" width="200px" />
-          <Skeleton height="40px" />
-          <Skeleton height="400px" />
-        </Flex>
-      </Box>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" gap="3">
+            <Skeleton height="32px" width="200px" />
+            <Skeleton height="40px" />
+            <Skeleton height="400px" />
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
@@ -382,25 +384,27 @@ export default function QueuePageClient() {
   const activeQueue = filteredQueue.filter(q => q.status === 'waiting' || q.status === 'in-progress');
 
   return (
-    <Box p="4">
-      {/* Notifications */}
-      {error && (
-        <Callout.Root color="red" mb="3">
-          <Callout.Text>{error}</Callout.Text>
-        </Callout.Root>
-      )}
-      {success && (
-        <Callout.Root color="green" mb="3">
-          <Callout.Text>{success}</Callout.Text>
-        </Callout.Root>
-      )}
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Notifications */}
+          {error && (
+            <Callout.Root color="red">
+              <Callout.Text>{error}</Callout.Text>
+            </Callout.Root>
+          )}
+          {success && (
+            <Callout.Root color="green">
+              <Callout.Text>{success}</Callout.Text>
+            </Callout.Root>
+          )}
 
-      {/* Header */}
-      <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3" mb="3">
-        <Box>
-          <Heading size="7" mb="1">Queue Management</Heading>
-          <Text size="2" color="gray">Monitor patient queue and flow</Text>
-        </Box>
+          {/* Header */}
+          <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3">
+            <Box>
+              <Heading size="8" mb="1">Queue Management</Heading>
+              <Text size="2" color="gray">Monitor patient queue and flow</Text>
+            </Box>
         <Flex align="center" gap="2" wrap="wrap">
           <Button
             onClick={() => setShowAddForm(true)}
@@ -434,9 +438,9 @@ export default function QueuePageClient() {
         </Flex>
       </Flex>
 
-      {/* Search */}
-      <Card mb="3">
-        <Box p="2">
+          {/* Search */}
+          <Card>
+            <Box p="2">
           <TextField.Root size="2" style={{ width: '100%' }}>
             <TextField.Slot>
               <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -468,8 +472,8 @@ export default function QueuePageClient() {
         </Box>
       </Card>
 
-      {/* Stats Cards */}
-      <Flex gap="2" mb="3" wrap="wrap">
+          {/* Stats Cards */}
+          <Flex gap="2" wrap="wrap">
         <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
           <Box p="2">
             <Text size="1" color="gray" mb="1" as="div">Waiting</Text>
@@ -504,9 +508,9 @@ export default function QueuePageClient() {
         </Card>
       </Flex>
 
-      {/* Filters */}
-      <Card mb="3">
-        <Box p="3">
+          {/* Filters */}
+          <Card>
+            <Box p="3">
           <Flex direction={{ initial: 'column', sm: 'row' }} gap="3" wrap="wrap">
             <Box style={{ flex: '1 1 200px' }}>
               <Text size="1" weight="medium" mb="1" as="div">Doctor</Text>
@@ -576,11 +580,11 @@ export default function QueuePageClient() {
         </Box>
       </Card>
 
-      {/* Queue Table */}
-      <Card>
-        <Box p="3" style={{ borderBottom: '1px solid var(--gray-6)' }}>
-          <Flex justify="between" align="center">
-            <Heading size="3">Current Queue</Heading>
+          {/* Queue Table */}
+          <Card>
+            <Box p="3" style={{ borderBottom: '1px solid var(--gray-6)' }}>
+              <Flex justify="between" align="center">
+                <Heading size="4">Current Queue</Heading>
             <Text size="1" color="gray">
               {filteredQueue.length} {filteredQueue.length === 1 ? 'patient' : 'patients'}
             </Text>
@@ -593,7 +597,7 @@ export default function QueuePageClient() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
             </Box>
-            <Heading size="3" mb="1">
+            <Heading size="4" mb="1">
               {searchQuery || filterDoctor || filterType || filterStatus !== 'active' 
                 ? 'No patients match your filters' 
                 : 'No patients in queue'}
@@ -753,8 +757,8 @@ export default function QueuePageClient() {
         )}
       </Card>
 
-      {/* Add to Queue Modal */}
-      <Dialog.Root open={showAddForm} onOpenChange={(open) => {
+          {/* Add to Queue Modal */}
+          <Dialog.Root open={showAddForm} onOpenChange={(open) => {
         setShowAddForm(open);
         if (!open) {
           setPatientSearch('');
@@ -900,8 +904,8 @@ export default function QueuePageClient() {
         </Dialog.Content>
       </Dialog.Root>
 
-      {/* Confirmation Dialog */}
-      <AlertDialog.Root open={!!confirmAction} onOpenChange={(open) => {
+          {/* Confirmation Dialog */}
+          <AlertDialog.Root open={!!confirmAction} onOpenChange={(open) => {
         if (!open) setConfirmAction(null);
       }}>
         <AlertDialog.Content style={{ maxWidth: '450px' }}>
@@ -929,7 +933,9 @@ export default function QueuePageClient() {
           </Flex>
         </AlertDialog.Content>
       </AlertDialog.Root>
-    </Box>
+        </Flex>
+      </Container>
+    </Section>
   );
 }
 

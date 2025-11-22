@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-// Radix UI components not used - using native HTML form elements
+import { Flex, Box, Text, TextField, Select, Button, Separator, Heading, Badge, IconButton, Card } from '@radix-ui/themes';
 import { useSetting } from './SettingsContext';
 
 interface Patient {
@@ -307,410 +307,490 @@ export default function InvoiceForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2 max-h-[80vh] overflow-y-auto">
-      {/* Patient Selection */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">Patient *</label>
-        <div className="relative patient-search-container">
-          <input
-            type="text"
-            required
-            value={patientSearch}
-            onChange={(e) => {
-              setPatientSearch(e.target.value);
-              setShowPatientSearch(true);
-              if (!e.target.value) {
-                setFormData({ ...formData, patient: '' });
-                setSelectedPatient(null);
-              }
-            }}
-            onFocus={() => setShowPatientSearch(true)}
-            placeholder="Type to search patients..."
-            className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-          />
-          {showPatientSearch && filteredPatients.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-              {filteredPatients.map((patient) => (
-                <button
-                  key={patient._id}
-                  type="button"
-                  onClick={() => selectPatient(patient)}
-                  className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-xs transition-colors"
+    <form onSubmit={handleSubmit}>
+      <Box style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+        <Flex direction="column" gap="3" p="4">
+          {/* Patient Selection */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">
+              Patient <Text color="red">*</Text>
+            </Text>
+            <Box position="relative" className="patient-search-container">
+              <TextField.Root size="2">
+                <input
+                  type="text"
+                  required
+                  value={patientSearch}
+                  onChange={(e) => {
+                    setPatientSearch(e.target.value);
+                    setShowPatientSearch(true);
+                    if (!e.target.value) {
+                      setFormData({ ...formData, patient: '' });
+                      setSelectedPatient(null);
+                    }
+                  }}
+                  onFocus={() => setShowPatientSearch(true)}
+                  placeholder="Type to search patients..."
+                  style={{ all: 'unset', flex: 1 }}
+                />
+              </TextField.Root>
+              {showPatientSearch && filteredPatients.length > 0 && (
+                <Box
+                  position="absolute"
+                  style={{
+                    zIndex: 10,
+                    marginTop: '4px',
+                    width: '100%',
+                    backgroundColor: 'white',
+                    border: '1px solid var(--gray-6)',
+                    borderRadius: '6px',
+                    boxShadow: 'var(--shadow-4)',
+                    maxHeight: '192px',
+                    overflowY: 'auto',
+                  }}
                 >
-                  <div className="font-medium">{patient.firstName} {patient.lastName}</div>
-                  {patient.patientCode && (
-                    <div className="text-xs text-gray-500">{patient.patientCode}</div>
-                  )}
-                </button>
-              ))}
-            </div>
+                  {filteredPatients.map((patient) => (
+                    <Button
+                      key={patient._id}
+                      type="button"
+                      variant="ghost"
+                      onClick={() => selectPatient(patient)}
+                      style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left' }}
+                    >
+                      <Flex direction="column" align="start" gap="1">
+                        <Text size="2" weight="medium">{patient.firstName} {patient.lastName}</Text>
+                        {patient.patientCode && (
+                          <Text size="1" color="gray">{patient.patientCode}</Text>
+                        )}
+                      </Flex>
+                    </Button>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          </Box>
+
+          {/* Visit Selection (Optional) */}
+          {formData.patient && visits.length > 0 && (
+            <Box>
+              <Text size="2" weight="medium" mb="2" as="div">Visit (Optional)</Text>
+              <Select.Root
+                size="2"
+                value={formData.visit}
+                onValueChange={(value) => setFormData({ ...formData, visit: value })}
+              >
+                <Select.Trigger placeholder="Select a visit..." />
+                <Select.Content>
+                  {visits.map((visit) => (
+                    <Select.Item key={visit._id} value={visit._id}>
+                      {visit.visitCode} - {new Date(visit.date).toLocaleDateString()}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </Box>
           )}
-        </div>
-      </div>
 
-      {/* Visit Selection (Optional) */}
-      {formData.patient && visits.length > 0 && (
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-0.5">Visit (Optional)</label>
-          <select
-            value={formData.visit}
-            onChange={(e) => setFormData({ ...formData, visit: e.target.value })}
-            className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-          >
-            <option value="">Select a visit...</option>
-            {visits.map((visit) => (
-              <option key={visit._id} value={visit._id}>
-                {visit.visitCode} - {new Date(visit.date).toLocaleDateString()}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {/* Invoice Items */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="block text-xs font-medium text-gray-700">Invoice Items *</label>
-          <div className="relative service-search-container">
-            <input
-              type="text"
-              value={serviceSearch}
-              onChange={(e) => {
-                setServiceSearch(e.target.value);
-                setShowServiceSearch(true);
-              }}
-              onFocus={() => setShowServiceSearch(true)}
-              placeholder="Search services..."
-              className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-            {showServiceSearch && filteredServices.length > 0 && (
-              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                {filteredServices.map((service) => (
-                  <button
-                    key={service._id}
-                    type="button"
-                    onClick={() => addItem(service)}
-                    className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-xs transition-colors"
+          {/* Invoice Items */}
+          <Box>
+            <Flex justify="between" align="center" mb="2">
+              <Text size="2" weight="medium" as="div">
+                Invoice Items <Text color="red">*</Text>
+              </Text>
+              <Box position="relative" className="service-search-container" style={{ width: '200px' }}>
+                <TextField.Root size="1">
+                  <input
+                    type="text"
+                    value={serviceSearch}
+                    onChange={(e) => {
+                      setServiceSearch(e.target.value);
+                      setShowServiceSearch(true);
+                    }}
+                    onFocus={() => setShowServiceSearch(true)}
+                    placeholder="Search services..."
+                    style={{ all: 'unset', flex: 1 }}
+                  />
+                </TextField.Root>
+                {showServiceSearch && filteredServices.length > 0 && (
+                  <Box
+                    position="absolute"
+                    style={{
+                      zIndex: 10,
+                      marginTop: '4px',
+                      width: '100%',
+                      backgroundColor: 'white',
+                      border: '1px solid var(--gray-6)',
+                      borderRadius: '6px',
+                      boxShadow: 'var(--shadow-4)',
+                      maxHeight: '192px',
+                      overflowY: 'auto',
+                    }}
                   >
-                    <div className="font-medium">{service.name}</div>
-                    <div className="text-xs text-gray-500">
-                      {service.code && `${service.code} • `}{formatCurrency(service.unitPrice)}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+                    {filteredServices.map((service) => (
+                      <Button
+                        key={service._id}
+                        type="button"
+                        variant="ghost"
+                        onClick={() => addItem(service)}
+                        style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left' }}
+                      >
+                        <Flex direction="column" align="start" gap="1">
+                          <Text size="2" weight="medium">{service.name}</Text>
+                          <Text size="1" color="gray">
+                            {service.code && `${service.code} • `}{formatCurrency(service.unitPrice)}
+                          </Text>
+                        </Flex>
+                      </Button>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            </Flex>
 
-        {formData.items.length === 0 ? (
-          <div className="text-center py-2 text-xs text-gray-500 border border-gray-200 rounded-md bg-gray-50">
-            No items added. Search and select services above.
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {formData.items.map((item, index) => (
-              <div key={index} className="border border-gray-200 rounded-md p-1.5 bg-gray-50">
-                <div className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-5">
-                    <label className="block text-xs text-gray-600 mb-0.5">Description</label>
-                    <input
-                      type="text"
-                      value={item.description}
-                      onChange={(e) => updateItem(index, 'description', e.target.value)}
-                      className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                      required
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs text-gray-600 mb-0.5">Qty</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={item.quantity}
-                      onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
-                      className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                      required
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs text-gray-600 mb-0.5">Unit Price</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={item.unitPrice}
-                      onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                      className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                      required
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs text-gray-600 mb-0.5">Total</label>
-                    <div className="px-1.5 py-0.5 text-xs font-medium text-gray-900">
-                      {formatCurrency(item.total)}
-                    </div>
-                  </div>
-                  <div className="col-span-1">
-                    <button
-                      type="button"
-                      onClick={() => removeItem(index)}
-                      className="text-red-600 hover:text-red-800 text-xs"
-                    >
+            {formData.items.length === 0 ? (
+              <Box p="2" style={{ textAlign: 'center', border: '1px solid var(--gray-6)', borderRadius: '6px', backgroundColor: 'var(--gray-2)' }}>
+                <Text size="1" color="gray">No items added. Search and select services above.</Text>
+              </Box>
+            ) : (
+              <Flex direction="column" gap="2">
+                {formData.items.map((item, index) => (
+                  <Card key={index} size="1" variant="surface">
+                    <Flex gap="2" align="end" wrap="wrap">
+                      <Box flexGrow="1" style={{ minWidth: '200px' }}>
+                        <Text size="1" weight="medium" color="gray" mb="1" as="div">Description</Text>
+                        <TextField.Root size="1">
+                          <input
+                            type="text"
+                            value={item.description}
+                            onChange={(e) => updateItem(index, 'description', e.target.value)}
+                            required
+                            style={{ all: 'unset', flex: 1 }}
+                          />
+                        </TextField.Root>
+                      </Box>
+                      <Box style={{ width: '80px' }}>
+                        <Text size="1" weight="medium" color="gray" mb="1" as="div">Qty</Text>
+                        <TextField.Root size="1" type="number">
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                            required
+                            style={{ all: 'unset', flex: 1 }}
+                          />
+                        </TextField.Root>
+                      </Box>
+                      <Box style={{ width: '100px' }}>
+                        <Text size="1" weight="medium" color="gray" mb="1" as="div">Unit Price</Text>
+                        <TextField.Root size="1" type="number">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unitPrice}
+                            onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                            required
+                            style={{ all: 'unset', flex: 1 }}
+                          />
+                        </TextField.Root>
+                      </Box>
+                      <Box style={{ width: '100px' }}>
+                        <Text size="1" weight="medium" color="gray" mb="1" as="div">Total</Text>
+                        <Box p="1">
+                          <Text size="2" weight="medium">
+                            {formatCurrency(item.total)}
+                          </Text>
+                        </Box>
+                      </Box>
+                      <IconButton
+                        type="button"
+                        variant="ghost"
+                        color="red"
+                        size="1"
+                        onClick={() => removeItem(index)}
+                      >
                         ×
-                      </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                      </IconButton>
+                    </Flex>
+                  </Card>
+                ))}
+              </Flex>
+            )}
+          </Box>
 
-      {/* Discounts */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="block text-xs font-medium text-gray-700">Discounts</label>
-          <div className="flex gap-1">
-            {selectedPatient?.discountEligibility?.pwd?.eligible && (
-              <button
-                type="button"
-                onClick={() => addDiscount('pwd')}
-                className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-              >
-                PWD
-              </button>
-            )}
-            {selectedPatient?.discountEligibility?.senior?.eligible && (
-              <button
-                type="button"
-                onClick={() => addDiscount('senior')}
-                className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-              >
-                Senior
-              </button>
-            )}
-            {selectedPatient?.discountEligibility?.membership?.eligible && (
-              <button
-                type="button"
-                onClick={() => addDiscount('membership')}
-                className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-              >
-                Membership
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => addDiscount('promotional')}
-              className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-            >
-              Promo
-            </button>
-            <button
-              type="button"
-              onClick={() => addDiscount('other')}
-              className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-            >
-              Other
-            </button>
-          </div>
-        </div>
+          {/* Discounts */}
+          <Box>
+            <Flex justify="between" align="center" mb="2">
+              <Text size="2" weight="medium" as="div">Discounts</Text>
+              <Flex gap="1">
+                {selectedPatient?.discountEligibility?.pwd?.eligible && (
+                  <Button
+                    type="button"
+                    variant="soft"
+                    color="blue"
+                    size="1"
+                    onClick={() => addDiscount('pwd')}
+                  >
+                    PWD
+                  </Button>
+                )}
+                {selectedPatient?.discountEligibility?.senior?.eligible && (
+                  <Button
+                    type="button"
+                    variant="soft"
+                    color="blue"
+                    size="1"
+                    onClick={() => addDiscount('senior')}
+                  >
+                    Senior
+                  </Button>
+                )}
+                {selectedPatient?.discountEligibility?.membership?.eligible && (
+                  <Button
+                    type="button"
+                    variant="soft"
+                    color="blue"
+                    size="1"
+                    onClick={() => addDiscount('membership')}
+                  >
+                    Membership
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="soft"
+                  size="1"
+                  onClick={() => addDiscount('promotional')}
+                >
+                  Promo
+                </Button>
+                <Button
+                  type="button"
+                  variant="soft"
+                  size="1"
+                  onClick={() => addDiscount('other')}
+                >
+                  Other
+                </Button>
+              </Flex>
+            </Flex>
 
-        {formData.discounts.length > 0 && (
-          <div className="space-y-1.5">
-            {formData.discounts.map((discount, index) => (
-              <div key={index} className="border border-gray-200 rounded-md p-1.5 bg-gray-50">
-                <div className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-3">
-                    <label className="block text-xs text-gray-600 mb-0.5">Type</label>
-                    <select
-                      value={discount.type}
-                      onChange={(e) => updateDiscount(index, 'type', e.target.value)}
-                      className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                    >
-                      <option value="pwd">PWD</option>
-                      <option value="senior">Senior</option>
-                      <option value="membership">Membership</option>
-                      <option value="promotional">Promotional</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs text-gray-600 mb-0.5">%</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={discount.percentage || ''}
-                      onChange={(e) => updateDiscount(index, 'percentage', parseFloat(e.target.value) || 0)}
-                      className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                    />
-                  </div>
-                  <div className="col-span-3">
-                    <label className="block text-xs text-gray-600 mb-0.5">Amount</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={discount.amount}
-                      onChange={(e) => updateDiscount(index, 'amount', parseFloat(e.target.value) || 0)}
-                      className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                      required
-                    />
-                  </div>
-                  <div className="col-span-3">
-                    <label className="block text-xs text-gray-600 mb-0.5">Reason</label>
+            {formData.discounts.length > 0 && (
+              <Flex direction="column" gap="2">
+                {formData.discounts.map((discount, index) => (
+                  <Card key={index} size="1" variant="surface">
+                    <Flex gap="2" align="end" wrap="wrap">
+                      <Box style={{ width: '120px' }}>
+                        <Text size="1" weight="medium" color="gray" mb="1" as="div">Type</Text>
+                        <Select.Root
+                          size="1"
+                          value={discount.type}
+                          onValueChange={(value) => updateDiscount(index, 'type', value)}
+                        >
+                          <Select.Trigger />
+                          <Select.Content>
+                            <Select.Item value="pwd">PWD</Select.Item>
+                            <Select.Item value="senior">Senior</Select.Item>
+                            <Select.Item value="membership">Membership</Select.Item>
+                            <Select.Item value="promotional">Promotional</Select.Item>
+                            <Select.Item value="other">Other</Select.Item>
+                          </Select.Content>
+                        </Select.Root>
+                      </Box>
+                      <Box style={{ width: '80px' }}>
+                        <Text size="1" weight="medium" color="gray" mb="1" as="div">%</Text>
+                        <TextField.Root size="1" type="number">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={discount.percentage || ''}
+                            onChange={(e) => updateDiscount(index, 'percentage', parseFloat(e.target.value) || 0)}
+                            style={{ all: 'unset', flex: 1 }}
+                          />
+                        </TextField.Root>
+                      </Box>
+                      <Box style={{ width: '100px' }}>
+                        <Text size="1" weight="medium" color="gray" mb="1" as="div">Amount</Text>
+                        <TextField.Root size="1" type="number">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={discount.amount}
+                            onChange={(e) => updateDiscount(index, 'amount', parseFloat(e.target.value) || 0)}
+                            required
+                            style={{ all: 'unset', flex: 1 }}
+                          />
+                        </TextField.Root>
+                      </Box>
+                      <Box flexGrow="1" style={{ minWidth: '150px' }}>
+                        <Text size="1" weight="medium" color="gray" mb="1" as="div">Reason</Text>
+                        <TextField.Root size="1">
+                          <input
+                            type="text"
+                            value={discount.reason || ''}
+                            onChange={(e) => updateDiscount(index, 'reason', e.target.value)}
+                            style={{ all: 'unset', flex: 1 }}
+                          />
+                        </TextField.Root>
+                      </Box>
+                      <IconButton
+                        type="button"
+                        variant="ghost"
+                        color="red"
+                        size="1"
+                        onClick={() => removeDiscount(index)}
+                      >
+                        ×
+                      </IconButton>
+                    </Flex>
+                  </Card>
+                ))}
+              </Flex>
+            )}
+          </Box>
+
+          {/* Tax */}
+          <Box>
+            <Text size="2" weight="medium" mb="2" as="div">
+              Tax {defaultTaxRate > 0 ? `(${defaultTaxRate}% applied automatically)` : '(Manual)'}
+            </Text>
+            <TextField.Root size="2" type="number" disabled={defaultTaxRate > 0}>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={defaultTaxRate > 0 ? '' : (formData.tax || 0)}
+                onChange={(e) => setFormData({ ...formData, tax: parseFloat(e.target.value) || 0 })}
+                disabled={defaultTaxRate > 0}
+                placeholder={defaultTaxRate > 0 ? 'Calculated automatically' : 'Enter tax amount'}
+                style={{ all: 'unset', flex: 1 }}
+              />
+            </TextField.Root>
+          </Box>
+
+          {/* Insurance/HMO (Optional) */}
+          <Box>
+            <Separator />
+            <Flex direction="column" gap="3" pt="3">
+              <Text size="2" weight="medium" as="div">Insurance/HMO (Optional)</Text>
+              <Flex gap="2" wrap="wrap">
+                <Box flexGrow="1" style={{ minWidth: '200px' }}>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Provider</Text>
+                  <TextField.Root size="1">
                     <input
                       type="text"
-                      value={discount.reason || ''}
-                      onChange={(e) => updateDiscount(index, 'reason', e.target.value)}
-                      className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                      value={formData.insurance.provider}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          insurance: { ...formData.insurance, provider: e.target.value },
+                        })
+                      }
+                      style={{ all: 'unset', flex: 1 }}
                     />
-                  </div>
-                  <div className="col-span-1">
-                    <button
-                      type="button"
-                      onClick={() => removeDiscount(index)}
-                      className="text-red-600 hover:text-red-800 text-xs"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1" style={{ minWidth: '200px' }}>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Policy Number</Text>
+                  <TextField.Root size="1">
+                    <input
+                      type="text"
+                      value={formData.insurance.policyNumber}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          insurance: { ...formData.insurance, policyNumber: e.target.value },
+                        })
+                      }
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1" style={{ minWidth: '200px' }}>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Member ID</Text>
+                  <TextField.Root size="1">
+                    <input
+                      type="text"
+                      value={formData.insurance.memberId}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          insurance: { ...formData.insurance, memberId: e.target.value },
+                        })
+                      }
+                      style={{ all: 'unset', flex: 1 }}
+                    />
+                  </TextField.Root>
+                </Box>
+                <Box flexGrow="1" style={{ minWidth: '200px' }}>
+                  <Text size="1" weight="medium" color="gray" mb="2" as="div">Coverage Type</Text>
+                  <Select.Root
+                    size="1"
+                    value={formData.insurance.coverageType}
+                    onValueChange={(value) =>
+                      setFormData({
+                        ...formData,
+                        insurance: { ...formData.insurance, coverageType: value as any },
+                      })
+                    }
+                  >
+                    <Select.Trigger placeholder="Select..." />
+                    <Select.Content>
+                      <Select.Item value="full">Full</Select.Item>
+                      <Select.Item value="partial">Partial</Select.Item>
+                      <Select.Item value="co-pay">Co-pay</Select.Item>
+                    </Select.Content>
+                  </Select.Root>
+                </Box>
+              </Flex>
+            </Flex>
+          </Box>
 
-      {/* Tax */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">
-          Tax {defaultTaxRate > 0 ? `(${defaultTaxRate}% applied automatically)` : '(Manual)'}
-        </label>
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          value={defaultTaxRate > 0 ? '' : (formData.tax || 0)}
-          onChange={(e) => setFormData({ ...formData, tax: parseFloat(e.target.value) || 0 })}
-          disabled={defaultTaxRate > 0}
-          placeholder={defaultTaxRate > 0 ? 'Calculated automatically' : 'Enter tax amount'}
-          className="block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-gray-50 disabled:cursor-not-allowed"
-        />
-      </div>
+          {/* Totals Summary */}
+          <Box>
+            <Separator />
+            <Flex direction="column" gap="1" pt="3">
+              <Flex justify="between">
+                <Text size="2" color="gray">Subtotal:</Text>
+                <Text size="2" weight="medium">{formatCurrency(subtotal)}</Text>
+              </Flex>
+              {discountTotal > 0 && (
+                <Flex justify="between">
+                  <Text size="2" color="red">Discounts:</Text>
+                  <Text size="2" weight="medium" color="red">-{formatCurrency(discountTotal)}</Text>
+                </Flex>
+              )}
+              {tax > 0 && (
+                <Flex justify="between">
+                  <Text size="2" color="gray">Tax:</Text>
+                  <Text size="2" weight="medium">{formatCurrency(tax)}</Text>
+                </Flex>
+              )}
+              <Separator />
+              <Flex justify="between">
+                <Text size="4" weight="bold">Total:</Text>
+                <Text size="4" weight="bold">{formatCurrency(total)}</Text>
+              </Flex>
+            </Flex>
+          </Box>
 
-      {/* Insurance/HMO (Optional) */}
-      <div className="border-t border-gray-100 pt-2">
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">Insurance/HMO (Optional)</label>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Provider</label>
-            <input
-              type="text"
-              value={formData.insurance.provider}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  insurance: { ...formData.insurance, provider: e.target.value },
-                })
-              }
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Policy Number</label>
-            <input
-              type="text"
-              value={formData.insurance.policyNumber}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  insurance: { ...formData.insurance, policyNumber: e.target.value },
-                })
-              }
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Member ID</label>
-            <input
-              type="text"
-              value={formData.insurance.memberId}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  insurance: { ...formData.insurance, memberId: e.target.value },
-                })
-              }
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Coverage Type</label>
-            <select
-              value={formData.insurance.coverageType}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  insurance: { ...formData.insurance, coverageType: e.target.value as any },
-                })
-              }
-              className="block w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            >
-              <option value="">Select...</option>
-              <option value="full">Full</option>
-              <option value="partial">Partial</option>
-              <option value="co-pay">Co-pay</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Totals Summary */}
-      <div className="border-t border-gray-100 pt-2">
-        <div className="space-y-0.5 text-xs">
-          <div className="flex justify-between">
-            <span className="text-gray-600">Subtotal:</span>
-            <span className="font-medium">{formatCurrency(subtotal)}</span>
-          </div>
-          {discountTotal > 0 && (
-            <div className="flex justify-between text-red-600">
-              <span>Discounts:</span>
-              <span>-{formatCurrency(discountTotal)}</span>
-            </div>
-          )}
-          {tax > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Tax:</span>
-              <span className="font-medium">{formatCurrency(tax)}</span>
-            </div>
-          )}
-          <div className="flex justify-between text-base font-bold border-t border-gray-100 pt-1">
-            <span>Total:</span>
-            <span>{formatCurrency(total)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Form Actions */}
-      <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
-        {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Cancel
-          </button>
-        )}
-        <button
-          type="submit"
-          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          Create Invoice
-        </button>
-      </div>
+          {/* Form Actions */}
+          <Separator />
+          <Flex justify="end" gap="2">
+            {onCancel && (
+              <Button type="button" variant="soft" onClick={onCancel} size="2">
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" size="2">
+              Create Invoice
+            </Button>
+          </Flex>
+        </Flex>
+      </Box>
     </form>
   );
 }

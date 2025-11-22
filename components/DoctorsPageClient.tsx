@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Heading, IconButton } from '@radix-ui/themes';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Heading, IconButton, Container, Section } from '@radix-ui/themes';
 
 interface Doctor {
   _id: string;
@@ -157,12 +157,14 @@ export default function DoctorsPageClient() {
 
   if (loading) {
     return (
-      <Box p="4" style={{ minHeight: '256px' }}>
-        <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
-          <Spinner size="3" />
-          <Text>Loading doctors...</Text>
-        </Flex>
-      </Box>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+            <Spinner size="3" />
+            <Text>Loading doctors...</Text>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
@@ -179,40 +181,42 @@ export default function DoctorsPageClient() {
   });
 
   return (
-    <Box p="4">
-      {/* Notifications */}
-      {error && (
-        <Callout.Root color="red" size="2" mb="2">
-          <Callout.Text>{error}</Callout.Text>
-        </Callout.Root>
-      )}
-      {success && (
-        <Callout.Root color="green" size="2" mb="2">
-          <Callout.Text>{success}</Callout.Text>
-        </Callout.Root>
-      )}
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Notifications */}
+          {error && (
+            <Callout.Root color="red" size="2">
+              <Callout.Text>{error}</Callout.Text>
+            </Callout.Root>
+          )}
+          {success && (
+            <Callout.Root color="green" size="2">
+              <Callout.Text>{success}</Callout.Text>
+            </Callout.Root>
+          )}
 
-      {/* Header */}
-      <Flex justify="between" align={{ sm: 'center' }} mb="2" direction={{ initial: 'column', sm: 'row' }} gap="2">
-        <Box>
-          <Heading size="7" mb="1">Doctors & Staff</Heading>
-          <Text size="2" color="gray">Manage doctor profiles, schedules, and performance</Text>
-        </Box>
-        <Button onClick={() => setShowForm(true)} size="2">
-          Add Doctor
-        </Button>
-      </Flex>
+          {/* Header */}
+          <Flex justify="between" align={{ sm: 'center' }} direction={{ initial: 'column', sm: 'row' }} gap="3">
+            <Box>
+              <Heading size="8" mb="1">Doctors & Staff</Heading>
+              <Text size="2" color="gray">Manage doctor profiles, schedules, and performance</Text>
+            </Box>
+            <Button onClick={() => setShowForm(true)} size="3">
+              Add Doctor
+            </Button>
+          </Flex>
 
-      {/* View Mode Tabs */}
-      <Card size="2" variant="surface" mb="2">
-        <Tabs.Root value={viewMode} onValueChange={(value) => setViewMode(value as any)}>
-          <Tabs.List>
-            <Tabs.Trigger value="list">Doctor Profiles</Tabs.Trigger>
-            <Tabs.Trigger value="roster">Duty Roster</Tabs.Trigger>
-            <Tabs.Trigger value="performance">Performance Reports</Tabs.Trigger>
-          </Tabs.List>
-        </Tabs.Root>
-      </Card>
+          {/* View Mode Tabs */}
+          <Card size="2" variant="surface">
+            <Tabs.Root value={viewMode} onValueChange={(value) => setViewMode(value as any)}>
+              <Tabs.List>
+                <Tabs.Trigger value="list">Doctor Profiles</Tabs.Trigger>
+                <Tabs.Trigger value="roster">Duty Roster</Tabs.Trigger>
+                <Tabs.Trigger value="performance">Performance Reports</Tabs.Trigger>
+              </Tabs.List>
+            </Tabs.Root>
+          </Card>
 
       {/* Form Modal */}
       <Dialog.Root open={showForm} onOpenChange={(open) => {
@@ -349,8 +353,8 @@ export default function DoctorsPageClient() {
       {viewMode === 'list' && (
         <>
           {/* Search and Filters */}
-          <Card mb="2">
-            <Flex direction="column" gap="2" p="2">
+          <Card>
+            <Flex direction="column" gap="2" p="3">
               <TextField.Root size="2">
                 <TextField.Slot side="left">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -606,6 +610,8 @@ export default function DoctorsPageClient() {
           })}
         </Flex>
       )}
-    </Box>
+        </Flex>
+      </Container>
+    </Section>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Flex, Box, Text, Card, Badge } from '@radix-ui/themes';
+import { Button, Flex, Box, Text, Card, Badge, Heading } from '@radix-ui/themes';
 
 interface Appointment {
   _id: string;
@@ -123,9 +123,9 @@ export default function AppointmentCalendar({
     <Card>
       <Flex direction="column" gap="4" p="4">
         <Flex align="center" justify="between">
-          <Text size="4" weight="bold">
+          <Heading size="4">
             {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-          </Text>
+          </Heading>
           <Flex align="center" gap="2">
             <Button
               variant="ghost"

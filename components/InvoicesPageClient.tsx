@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Heading, IconButton } from '@radix-ui/themes';
+import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Heading, IconButton, Container, Section } from '@radix-ui/themes';
 
 interface Invoice {
   _id: string;
@@ -88,36 +88,40 @@ export default function InvoicesPageClient() {
 
   if (loading) {
     return (
-      <Box p="4" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Flex direction="column" align="center" gap="3">
-          <Spinner size="3" />
-          <Text>Loading invoices...</Text>
-        </Flex>
-      </Box>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
+            <Spinner size="3" />
+            <Text>Loading invoices...</Text>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
   return (
-    <Box p="4">
-      {/* Header */}
-      <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3" mb="3">
-        <Box>
-          <Heading size="7" mb="1">Billing & Invoices</Heading>
-          <Text size="2" color="gray">Manage invoices and payments</Text>
-        </Box>
-        <Button asChild size="3">
-          <Link href="/invoices/new">
-            <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Create Invoice
-          </Link>
-        </Button>
-      </Flex>
+    <Section size="3">
+      <Container size="4">
+        <Flex direction="column" gap="4">
+          {/* Header */}
+          <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3">
+            <Box>
+              <Heading size="8" mb="1">Billing & Invoices</Heading>
+              <Text size="2" color="gray">Manage invoices and payments</Text>
+            </Box>
+            <Button asChild size="3">
+              <Link href="/invoices/new">
+                <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Create Invoice
+              </Link>
+            </Button>
+          </Flex>
 
-      {/* Search and Filters */}
-      <Card mb="3">
-        <Box p="3">
+          {/* Search and Filters */}
+          <Card>
+            <Box p="3">
           <Flex direction={{ initial: 'column', sm: 'row' }} gap="3">
             <Box flexGrow="1">
               <TextField.Root size="2" style={{ width: '100%' }}>
@@ -187,11 +191,11 @@ export default function InvoicesPageClient() {
         </Box>
       </Card>
 
-      {/* Invoices Table */}
-      <Card>
-        <Box p="3">
-          <Flex justify="between" align="center" mb="3">
-            <Heading size="3">Invoices</Heading>
+          {/* Invoices Table */}
+          <Card>
+            <Box p="3">
+              <Flex justify="between" align="center" mb="3">
+                <Heading size="4">Invoices</Heading>
             <Text size="2" color="gray">
               {filteredInvoices.length} {filteredInvoices.length === 1 ? 'invoice' : 'invoices'}
             </Text>
@@ -280,6 +284,8 @@ export default function InvoicesPageClient() {
           )}
         </Box>
       </Card>
-    </Box>
+        </Flex>
+      </Container>
+    </Section>
   );
 }

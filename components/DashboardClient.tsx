@@ -84,12 +84,14 @@ export default function DashboardClient() {
 
   if (loading || !dashboardData) {
     return (
-      <Box style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Flex direction="column" align="center" gap="3">
-          <Spinner size="3" />
-          <Text>Loading dashboard...</Text>
-        </Flex>
-      </Box>
+      <Section size="3">
+        <Container size="4">
+          <Flex direction="column" align="center" gap="3" style={{ minHeight: '50vh', justifyContent: 'center' }}>
+            <Spinner size="3" />
+            <Text>Loading dashboard...</Text>
+          </Flex>
+        </Container>
+      </Section>
     );
   }
 
@@ -239,12 +241,13 @@ export default function DashboardClient() {
   return (
     <Section size="3">
       <Container size="4">
-        {/* Header */}
-        <Flex justify="between" align="center" mb="4" direction={{ initial: 'column', sm: 'row' }} gap="3">
-        <Box>
-          <Heading size="7" mb="1">Dashboard</Heading>
-          <Text size="2" color="gray">Welcome back! Here's an overview of your clinic.</Text>
-        </Box>
+        <Flex direction="column" gap="4">
+          {/* Header */}
+          <Flex justify="between" align="center" direction={{ initial: 'column', sm: 'row' }} gap="3">
+            <Box>
+              <Heading size="8" mb="1">Dashboard</Heading>
+              <Text size="2" color="gray">Welcome back! Here's an overview of your clinic.</Text>
+            </Box>
         <Flex gap="2">
           <Button
             onClick={() => setPeriod('today')}
@@ -270,8 +273,8 @@ export default function DashboardClient() {
         </Flex>
       </Flex>
 
-      {/* Stats Grid */}
-      <Flex gap="3" mb="4" wrap="wrap">
+          {/* Stats Grid */}
+          <Flex gap="3" wrap="wrap">
         {statCards.map((card) => (
           <Link key={card.title} href={card.href} style={{ flex: '1 1 250px', minWidth: '200px' }}>
             <Card size="2" variant="surface" style={{ position: 'relative', overflow: 'hidden' }}>
@@ -310,12 +313,12 @@ export default function DashboardClient() {
         ))}
       </Flex>
 
-      {/* Recent and Upcoming Appointments */}
-      <Flex gap="3" mb="4" direction={{ initial: 'column', lg: 'row' }}>
-        {/* Recent Appointments */}
-        <Card size="2" variant="surface" style={{ flex: 1 }}>
-          <Flex justify="between" align="center" mb="3">
-            <Heading size="3">Today's Appointments</Heading>
+          {/* Recent and Upcoming Appointments */}
+          <Flex gap="3" direction={{ initial: 'column', lg: 'row' }}>
+            {/* Recent Appointments */}
+            <Card size="2" variant="surface" style={{ flex: 1 }}>
+              <Flex justify="between" align="center" mb="3">
+                <Heading size="4">Today's Appointments</Heading>
             <Link href="/appointments">
               <Button variant="ghost" size="1" color="blue">View all</Button>
             </Link>
@@ -359,10 +362,10 @@ export default function DashboardClient() {
           </Flex>
         </Card>
 
-        {/* Upcoming Appointments */}
-        <Card size="2" variant="surface" style={{ flex: 1 }}>
-          <Flex justify="between" align="center" mb="3">
-            <Heading size="3">Upcoming Appointments</Heading>
+            {/* Upcoming Appointments */}
+            <Card size="2" variant="surface" style={{ flex: 1 }}>
+              <Flex justify="between" align="center" mb="3">
+                <Heading size="4">Upcoming Appointments</Heading>
             <Link href="/appointments">
               <Button variant="ghost" size="1" color="blue">View all</Button>
             </Link>
@@ -396,9 +399,9 @@ export default function DashboardClient() {
         </Card>
       </Flex>
 
-      {/* Quick Actions */}
-      <Card size="2" variant="surface">
-        <Heading size="3" mb="2">Quick Actions</Heading>
+          {/* Quick Actions */}
+          <Card size="2" variant="surface">
+            <Heading size="4" mb="2">Quick Actions</Heading>
         <Flex gap="3" wrap="wrap">
           {quickActions.map((action) => (
             <Link key={action.title} href={action.href} style={{ flex: '1 1 200px', minWidth: '150px' }}>
@@ -427,6 +430,7 @@ export default function DashboardClient() {
           ))}
         </Flex>
       </Card>
+        </Flex>
       </Container>
     </Section>
   );
