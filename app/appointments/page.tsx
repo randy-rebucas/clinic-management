@@ -1,13 +1,9 @@
-import { redirect } from 'next/navigation';
-import { verifySession } from '@/app/lib/dal';
+import { requirePagePermission } from '@/app/lib/auth-helpers';
 import AppointmentsPageClient from '@/components/AppointmentsPageClient';
 
 export default async function AppointmentsPage() {
-  const session = await verifySession();
-  
-  if (!session) {
-    redirect('/login');
-  }
+  // Require permission to read appointments
+  await requirePagePermission('appointments', 'read');
 
   return <AppointmentsPageClient />;
 }

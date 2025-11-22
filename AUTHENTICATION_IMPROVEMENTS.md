@@ -72,7 +72,7 @@
 - `app/lib/dal.ts` - Session expiration validation, better error handling
 - `app/actions/auth.ts` - Rate limiting, email sanitization, better errors
 - `app/api/**/route.ts` - Consistent auth checks with helpers
-- `middleware.ts` - Improved route handling documentation
+- `proxy.ts` - Improved route handling documentation
 
 ## Usage Examples
 

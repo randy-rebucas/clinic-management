@@ -49,6 +49,7 @@ export default function DashboardClient() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<'today' | 'week' | 'month'>('today');
   const router = useRouter();
+  const currency = useSetting('billingSettings.currency', 'USD');
 
   useEffect(() => {
     async function fetchDashboardData() {
@@ -94,8 +95,6 @@ export default function DashboardClient() {
       </Section>
     );
   }
-
-  const currency = useSetting('billingSettings.currency', 'USD');
   
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {

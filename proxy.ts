@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/signup'];
+  const publicRoutes = ['/login', '/signup', '/setup'];
   const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + '/'));
 
   // Static files and API routes are handled separately
@@ -20,7 +20,7 @@ export function middleware(request: NextRequest) {
   // For protected routes, authentication is checked in:
   // 1. Page server components (redirect to /login if not authenticated)
   // 2. API route handlers (return 401 if not authenticated)
-  // This middleware allows the request to proceed
+  // This proxy allows the request to proceed
   return NextResponse.next();
 }
 

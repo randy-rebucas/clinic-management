@@ -1,13 +1,9 @@
-import { redirect } from 'next/navigation';
-import { verifySession } from '@/app/lib/dal';
+import { requirePagePermission } from '@/app/lib/auth-helpers';
 import ReportsPageClient from '@/components/ReportsPageClient';
 
 export default async function ReportsPage() {
-  const session = await verifySession();
-  
-  if (!session) {
-    redirect('/login');
-  }
+  // Require permission to read reports
+  await requirePagePermission('reports', 'read');
 
   return <ReportsPageClient />;
 }

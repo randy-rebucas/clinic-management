@@ -3,7 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
 import Appointment from '@/models/Appointment';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 
 export async function GET(request: NextRequest) {
@@ -11,6 +11,12 @@ export async function GET(request: NextRequest) {
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to read queue
+  const permissionCheck = await requirePermission(session, 'queue', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {

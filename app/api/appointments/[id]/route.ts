@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 
 // Email reminder function (placeholder - implement with your email service)
 async function sendAppointmentReminder(appointment: any) {
@@ -29,6 +29,12 @@ export async function GET(
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to read appointments
+  const permissionCheck = await requirePermission(session, 'appointments', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {
@@ -61,6 +67,12 @@ export async function PUT(
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to update appointments
+  const permissionCheck = await requirePermission(session, 'appointments', 'update');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {
@@ -109,6 +121,12 @@ export async function DELETE(
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to delete appointments
+  const permissionCheck = await requirePermission(session, 'appointments', 'delete');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {

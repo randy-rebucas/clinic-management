@@ -1,13 +1,9 @@
-import { redirect } from 'next/navigation';
-import { verifySession } from '@/app/lib/dal';
+import { requirePagePermission } from '@/app/lib/auth-helpers';
 import QueuePageClient from '@/components/QueuePageClient';
 
 export default async function QueuePage() {
-  const session = await verifySession();
-  
-  if (!session) {
-    redirect('/login');
-  }
+  // Require permission to read queue
+  await requirePagePermission('queue', 'read');
 
   return <QueuePageClient />;
 }

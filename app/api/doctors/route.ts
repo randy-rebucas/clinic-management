@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 
 export async function GET() {
   // User authentication check
@@ -10,6 +10,12 @@ export async function GET() {
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to read doctors
+  const permissionCheck = await requirePermission(session, 'doctors', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {
@@ -31,6 +37,12 @@ export async function POST(request: NextRequest) {
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to write/create doctors (typically admin only)
+  const permissionCheck = await requirePermission(session, 'doctors', 'write');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {

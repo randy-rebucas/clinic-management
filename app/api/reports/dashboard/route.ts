@@ -6,13 +6,19 @@ import Visit from '@/models/Visit';
 import Invoice from '@/models/Invoice';
 import Doctor from '@/models/Doctor';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to read reports
+  const permissionCheck = await requirePermission(session, 'reports', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {

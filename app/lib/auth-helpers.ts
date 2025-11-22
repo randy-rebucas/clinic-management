@@ -39,6 +39,23 @@ export async function requireAdmin() {
 }
 
 /**
+ * Require permission for a page - redirects if not authorized
+ * @param resource - Resource name (e.g., 'patients', 'appointments')
+ * @param action - Action name (e.g., 'read', 'write', 'delete')
+ * @returns SessionPayload if authenticated and authorized
+ */
+export async function requirePagePermission(resource: string, action: string = 'read') {
+  const session = await requireAuth();
+  
+  const hasPerm = await hasPermission(session, resource, action);
+  if (!hasPerm) {
+    redirect('/'); // Redirect to home if no permission
+  }
+  
+  return session;
+}
+
+/**
  * Check if user has required role (for API routes)
  * @param session - Current session
  * @param allowedRoles - Array of roles that are allowed
@@ -69,25 +86,22 @@ export function isAdmin(session: { role: 'admin' | 'doctor' | 'nurse' | 'recepti
  * @returns true if user has permission
  */
 export async function hasPermission(
-  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant'; userId: string } | null,
+  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant'; userId: string; roleId?: string } | null,
   resource: string,
   action: string
 ): Promise<boolean> {
   if (!session) return false;
   
   // Import permissions utility
-  const { hasPermission: checkPermission } = await import('@/lib/permissions');
+  const { hasPermission: checkPermission, hasPermissionByRole } = await import('@/lib/permissions');
   
-  // Get user's custom permissions if any
-  await connectDB();
-  const User = (await import('@/models/User')).default;
-  const user = await User.findById(session.userId).select('permissions').lean();
-  
-  if (!user || Array.isArray(user) || !('permissions' in user)) {
-    return checkPermission(session.role, resource, action, undefined);
+  // Use faster role-based check first (uses defaults)
+  if (hasPermissionByRole(session.role, resource, action)) {
+    return true;
   }
   
-  return checkPermission(session.role, resource, action, user.permissions);
+  // If role-based check fails, do full database check (for custom permissions)
+  return await checkPermission(session.userId, resource, action);
 }
 
 /**
@@ -108,5 +122,29 @@ export function forbiddenResponse(message = 'Forbidden') {
     { success: false, error: message },
     { status: 403 }
   );
+}
+
+/**
+ * Require permission for API routes - returns forbidden response if not authorized
+ * @param session - Current session
+ * @param resource - Resource name (e.g., 'patients', 'appointments')
+ * @param action - Action name (e.g., 'read', 'write', 'update', 'delete')
+ * @returns null if authorized, forbidden response if not
+ */
+export async function requirePermission(
+  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant'; userId: string; roleId?: string } | null,
+  resource: string,
+  action: string
+): Promise<NextResponse | null> {
+  if (!session) {
+    return unauthorizedResponse();
+  }
+  
+  const hasPerm = await hasPermission(session, resource, action);
+  if (!hasPerm) {
+    return forbiddenResponse(`You don't have permission to ${action} ${resource}`);
+  }
+  
+  return null;
 }
 

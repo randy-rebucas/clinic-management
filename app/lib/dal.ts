@@ -27,7 +27,8 @@ function validateSecret() {
 export interface SessionPayload extends JWTPayload {
   userId: string;
   email: string;
-  role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant';
+  role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant'; // Role name for backward compatibility
+  roleId?: string; // Role ObjectId from database
   expiresAt: number | Date;
 }
 
@@ -82,10 +83,15 @@ export async function decrypt(session: string | undefined = ''): Promise<Session
   }
 }
 
-export async function createSession(userId: string, email: string, role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant') {
+export async function createSession(
+  userId: string, 
+  email: string, 
+  role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant',
+  roleId?: string
+) {
   try {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    const session = await encrypt({ userId, email, role, expiresAt });
+    const session = await encrypt({ userId, email, role, roleId, expiresAt });
 
     const cookieStore = await cookies();
     cookieStore.set('session', session, {
@@ -189,14 +195,73 @@ export async function getUser() {
     if (!session) return null;
 
     await connectDB();
-    const user = await User.findById(session.userId).select('-password').lean();
+    
+    // First get user without populating to check role type
+    const user = await User.findById(session.userId)
+      .select('-password')
+      .lean();
     if (!user || Array.isArray(user)) return null;
     
     // Type assertion for lean() result
-    const userObj = user as { _id: { toString(): string }; [key: string]: any };
+    const userObj = user as { _id: { toString(): string }; role: any; [key: string]: any };
+    
+    // Handle role - could be ObjectId, string, or already populated object
+    let roleData: { name: string; displayName?: string } | null = null;
+    
+    if (userObj.role) {
+      // If role is already an object (populated), use it directly
+      if (typeof userObj.role === 'object' && userObj.role !== null && 'name' in userObj.role) {
+        roleData = {
+          name: (userObj.role as any).name,
+          displayName: (userObj.role as any).displayName,
+        };
+      } 
+      // If role is a string (legacy data or invalid ObjectId), look up by name
+      else if (typeof userObj.role === 'string') {
+        const Role = (await import('@/models/Role')).default;
+        const roleDoc = await Role.findOne({ name: userObj.role }).lean();
+        if (roleDoc) {
+          roleData = {
+            name: roleDoc.name,
+            displayName: roleDoc.displayName,
+          };
+        }
+      }
+      // If role is an ObjectId, populate it
+      else {
+        try {
+          const Role = (await import('@/models/Role')).default;
+          const roleDoc = await Role.findById(userObj.role).lean();
+          if (roleDoc) {
+            roleData = {
+              name: roleDoc.name,
+              displayName: roleDoc.displayName,
+            };
+          }
+        } catch (populateError) {
+          // If populate fails (invalid ObjectId), try to find by name from session
+          if (session.role) {
+            const Role = (await import('@/models/Role')).default;
+            const roleDoc = await Role.findOne({ name: session.role }).lean();
+            if (roleDoc) {
+              roleData = {
+                name: roleDoc.name,
+                displayName: roleDoc.displayName,
+              };
+            }
+          }
+        }
+      }
+    }
+    
+    // Use role name from populated data or fallback to session role
+    const roleName = roleData?.name || session.role || 'receptionist';
+    
     return {
       ...userObj,
       _id: userObj._id.toString(),
+      role: roleName, // Return role as string for compatibility
+      roleData: roleData, // Include full role data if available
     };
   } catch (error) {
     console.error('Failed to get user:', error);

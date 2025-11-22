@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
 
 export async function GET(request: NextRequest) {
@@ -10,6 +10,12 @@ export async function GET(request: NextRequest) {
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to read invoices
+  const permissionCheck = await requirePermission(session, 'invoices', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {
@@ -51,6 +57,12 @@ export async function POST(request: NextRequest) {
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to write/create invoices
+  const permissionCheck = await requirePermission(session, 'invoices', 'write');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {

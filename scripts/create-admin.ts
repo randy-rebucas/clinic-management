@@ -2,6 +2,7 @@ import { config } from 'dotenv';
 import { resolve } from 'path';
 import mongoose from 'mongoose';
 import User from '../models/User';
+import Role from '../models/Role';
 import bcrypt from 'bcryptjs';
 import readline from 'readline';
 
@@ -39,8 +40,25 @@ async function createAdmin() {
     });
     console.log('✅ Connected to database\n');
 
+    // Find or create admin role
+    let adminRole = await Role.findOne({ name: 'admin' });
+    if (!adminRole) {
+      console.log('📋 Creating admin role...');
+      adminRole = await Role.create({
+        name: 'admin',
+        displayName: 'Administrator',
+        description: 'Full system access with all permissions',
+        level: 100,
+        isActive: true,
+        defaultPermissions: [
+          { resource: '*', actions: ['*'] },
+        ],
+      });
+      console.log('✅ Admin role created\n');
+    }
+
     // Check if admin already exists
-    const existingAdmin = await User.findOne({ role: 'admin' });
+    const existingAdmin = await User.findOne({ role: adminRole._id });
     if (existingAdmin) {
       console.log('⚠️  An admin user already exists.');
       console.log(`   Email: ${existingAdmin.email}`);
@@ -117,14 +135,14 @@ async function createAdmin() {
       name: name.trim(),
       email: email.toLowerCase().trim(),
       password: hashedPassword,
-      role: 'admin',
+      role: adminRole._id,
     });
 
     console.log('\n✅ Admin user created successfully!');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log(`   Name: ${admin.name}`);
     console.log(`   Email: ${admin.email}`);
-    console.log(`   Role: ${admin.role}`);
+    console.log(`   Role: ${adminRole.name} (${adminRole.displayName})`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('\n🎉 You can now log in with these credentials.');
     console.log('   Navigate to http://localhost:3000/login\n');

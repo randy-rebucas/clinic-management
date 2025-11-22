@@ -1,33 +1,14 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
-export type UserRole = 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant';
-
-export interface IPermission {
-  resource: string; // e.g., 'patients', 'appointments', 'billing'
-  actions: string[]; // e.g., ['read', 'write', 'delete']
-}
-
 export interface IUser extends Document {
   name: string;
   email: string;
   password: string;
-  role: UserRole;
-  // Staff information
-  staffInfo?: {
-    employeeId?: string;
-    department?: string;
-    position?: string;
-    hireDate?: Date;
-    phone?: string;
-    address?: string;
-    emergencyContact?: {
-      name: string;
-      phone: string;
-      relationship: string;
-    };
-  };
-  // Permissions (optional, for fine-grained control)
-  permissions?: IPermission[];
+  role: Types.ObjectId; // Reference to Role
+  // Staff information reference (one-to-one relationship)
+  staffInfo?: Types.ObjectId;
+  // Permissions reference (one-to-many relationship)
+  permissions?: Types.ObjectId[];
   // Link to Doctor profile if role is doctor
   doctorProfile?: Types.ObjectId;
   status: 'active' | 'inactive' | 'suspended';
@@ -58,27 +39,19 @@ const UserSchema = new Schema<IUser>(
       minlength: [8, 'Password must be at least 8 characters long'],
     },
     role: {
-      type: String,
-      enum: ['admin', 'doctor', 'nurse', 'receptionist', 'accountant'],
-      required: true,
+      type: Schema.Types.ObjectId,
+      ref: 'Role',
+      required: [true, 'Role is required'],
       index: true,
     },
     staffInfo: {
-      employeeId: { type: String, trim: true, index: true },
-      department: { type: String, trim: true },
-      position: { type: String, trim: true },
-      hireDate: { type: Date },
-      phone: { type: String, trim: true },
-      address: { type: String, trim: true },
-      emergencyContact: {
-        name: { type: String, trim: true },
-        phone: { type: String, trim: true },
-        relationship: { type: String, trim: true },
-      },
+      type: Schema.Types.ObjectId,
+      ref: 'Staff',
+      index: true,
     },
     permissions: [{
-      resource: { type: String, required: true },
-      actions: [{ type: String }],
+      type: Schema.Types.ObjectId,
+      ref: 'Permission',
     }],
     doctorProfile: { type: Schema.Types.ObjectId, ref: 'Doctor' },
     status: {

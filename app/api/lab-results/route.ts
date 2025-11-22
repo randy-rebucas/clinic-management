@@ -2,13 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to read lab-results
+  const permissionCheck = await requirePermission(session, 'lab-results', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {
@@ -51,6 +57,12 @@ export async function POST(request: NextRequest) {
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to write/create lab-results
+  const permissionCheck = await requirePermission(session, 'lab-results', 'write');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {

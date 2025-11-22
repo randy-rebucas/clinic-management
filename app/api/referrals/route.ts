@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Referral from '@/models/Referral';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 
 export async function GET(request: NextRequest) {
@@ -10,6 +10,12 @@ export async function GET(request: NextRequest) {
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to read referrals
+  const permissionCheck = await requirePermission(session, 'referrals', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {
@@ -61,6 +67,12 @@ export async function POST(request: NextRequest) {
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to write/create referrals
+  const permissionCheck = await requirePermission(session, 'referrals', 'write');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {

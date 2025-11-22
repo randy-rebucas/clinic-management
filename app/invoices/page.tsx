@@ -1,13 +1,9 @@
-import { redirect } from 'next/navigation';
-import { verifySession } from '@/app/lib/dal';
+import { requirePagePermission } from '@/app/lib/auth-helpers';
 import InvoicesPageClient from '@/components/InvoicesPageClient';
 
 export default async function InvoicesPage() {
-  const session = await verifySession();
-  
-  if (!session) {
-    redirect('/login');
-  }
+  // Require permission to read invoices
+  await requirePagePermission('invoices', 'read');
 
   return <InvoicesPageClient />;
 }

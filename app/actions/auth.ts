@@ -47,16 +47,47 @@ export async function signup(
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Get or create default role if role is provided as string
+    const Role = (await import('@/models/Role')).default;
+    let roleDoc;
+    
+    if (role && typeof role === 'string') {
+      roleDoc = await Role.findOne({ name: role });
+      if (!roleDoc) {
+        // Create default role if it doesn't exist
+        roleDoc = await Role.create({
+          name: role,
+          displayName: role.charAt(0).toUpperCase() + role.slice(1),
+          isActive: true,
+        });
+      }
+    } else {
+      // Default to receptionist role if not specified
+      roleDoc = await Role.findOne({ name: 'receptionist' });
+      if (!roleDoc) {
+        roleDoc = await Role.create({
+          name: 'receptionist',
+          displayName: 'Receptionist',
+          isActive: true,
+        });
+      }
+    }
+
     // Create user (normalize email to lowercase)
     const user = await User.create({
       name,
       email: sanitizedEmail,
       password: hashedPassword,
-      role: role || 'user',
+      role: roleDoc._id,
     });
 
-    // Create session
-    await createSession(user._id.toString(), user.email, user.role);
+    // Create session with role name and roleId
+    await createSession(
+      user._id.toString(), 
+      user.email, 
+      roleDoc.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant',
+      roleDoc._id.toString()
+    );
 
     revalidatePath('/');
     redirect('/');
@@ -103,8 +134,9 @@ export async function login(
 
     await connectDB();
 
-    // Find user by email (case-insensitive)
-    const user = await User.findOne({ email: sanitizedEmail });
+    // Find user by email (case-insensitive) with role populated
+    const user = await User.findOne({ email: sanitizedEmail })
+      .populate('role', 'name displayName');
     if (!user) {
       // Use generic error message to prevent user enumeration
       return {
@@ -128,8 +160,27 @@ export async function login(
     // Reset rate limit on successful login
     resetRateLimit(sanitizedEmail);
 
-    // Create session
-    await createSession(user._id.toString(), user.email, user.role);
+    // Get role name from populated role or fallback
+    const Role = (await import('@/models/Role')).default;
+    let roleName: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' = 'receptionist';
+    let roleId: string | undefined;
+    
+    if (user.role) {
+      if (typeof user.role === 'object' && 'name' in user.role) {
+        roleName = (user.role as any).name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant';
+        roleId = (user.role as any)._id?.toString();
+      } else {
+        // Role is ObjectId, fetch it
+        const roleDoc = await Role.findById(user.role);
+        if (roleDoc) {
+          roleName = roleDoc.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant';
+          roleId = roleDoc._id.toString();
+        }
+      }
+    }
+
+    // Create session with role name and roleId
+    await createSession(user._id.toString(), user.email, roleName, roleId);
 
     // Log login for audit trail
     try {

@@ -11,6 +11,7 @@ interface NavItem {
   label: string;
   icon: string;
   category?: string;
+  adminOnly?: boolean;
 }
 
 interface SidebarProps {
@@ -25,8 +26,16 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
   const { isCollapsed, setIsCollapsed } = useSidebar();
   const pathname = usePathname();
 
+  // Filter items based on user role (admin-only items)
+  const filteredItems = navItems.filter(item => {
+    if (item.adminOnly && user?.role !== 'admin') {
+      return false;
+    }
+    return true;
+  });
+
   // Group items by category
-  const groupedItems = navItems.reduce((acc, item) => {
+  const groupedItems = filteredItems.reduce((acc, item) => {
     const category = item.category || 'Other';
     if (!acc[category]) {
       acc[category] = [];
