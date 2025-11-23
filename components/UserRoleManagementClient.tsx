@@ -142,11 +142,11 @@ export default function UserRoleManagementClient() {
 
   if (loading) {
     return (
-      <section className="py-6">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col items-center gap-3" style={{ minHeight: '50vh', justifyContent: 'center' }}>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center gap-3 min-h-[50vh] justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="text-gray-700">Loading users...</p>
+            <p className="text-gray-500">Loading users...</p>
           </div>
         </div>
       </section>
@@ -154,8 +154,8 @@ export default function UserRoleManagementClient() {
   }
 
   return (
-    <section className="py-6">
-      <div className="container mx-auto px-4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-4">
           {/* Error/Success Messages */}
           {error && (
@@ -174,7 +174,7 @@ export default function UserRoleManagementClient() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
               <div>
                 <h1 className="text-3xl font-bold mb-1">User Role Management</h1>
-                <p className="text-sm text-gray-600">Assign and manage roles for system users</p>
+                <p className="text-sm text-gray-500">Assign and manage roles for system users</p>
               </div>
             </div>
           </div>
@@ -243,7 +243,7 @@ export default function UserRoleManagementClient() {
 
         {/* Edit Role Dialog */}
         <Modal open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
-          <div className="p-6" style={{ maxWidth: 400 }}>
+          <div className="p-6 max-w-[400px]">
             <h2 className="text-xl font-semibold mb-4">Change User Role</h2>
             <hr className="border-gray-200 my-3" />
             

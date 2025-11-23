@@ -190,11 +190,11 @@ export default function PrescriptionsPageClient() {
 
   if (loading) {
     return (
-      <section className="py-6">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-3 min-h-[256px]">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p>Loading prescriptions...</p>
+            <p className="text-gray-500">Loading prescriptions...</p>
           </div>
         </div>
       </section>
@@ -202,8 +202,8 @@ export default function PrescriptionsPageClient() {
   }
 
   return (
-    <section className="py-6">
-      <div className="container mx-auto px-4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-4">
           {/* Error/Success Messages */}
           {error && (
@@ -221,7 +221,7 @@ export default function PrescriptionsPageClient() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
               <h1 className="text-3xl font-bold mb-1">E-Prescriptions</h1>
-              <p className="text-sm text-gray-600">Manage prescriptions and track dispensing</p>
+              <p className="text-sm text-gray-500">Manage prescriptions and track dispensing</p>
             </div>
         <button
           onClick={() => setShowForm(true)}
@@ -263,7 +263,7 @@ export default function PrescriptionsPageClient() {
                 )}
               </div>
             </div>
-            <div style={{ minWidth: '180px' }}>
+            <div className="min-w-[180px]">
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
@@ -316,21 +316,21 @@ export default function PrescriptionsPageClient() {
         <div className="p-3">
           <div className="flex justify-between items-center mb-3">
             <h3 className="text-lg font-semibold">Prescriptions</h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-500">
               {filteredPrescriptions.length} {filteredPrescriptions.length === 1 ? 'prescription' : 'prescriptions'}
             </p>
           </div>
           {filteredPrescriptions.length === 0 ? (
             <div className="p-8 text-center">
               <div className="mb-3">
-                <svg className="w-12 h-12 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-12 h-12 mx-auto text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
               <h3 className="text-lg font-semibold mb-1">
                 {searchQuery || filterStatus !== 'all' ? 'No prescriptions match your filters' : 'No prescriptions found'}
               </h3>
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm text-gray-500 mb-3">
                 {searchQuery || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Create your first prescription to get started'}
               </p>
               {!searchQuery && filterStatus === 'all' && (
@@ -379,7 +379,7 @@ export default function PrescriptionsPageClient() {
                             </div>
                           </Link>
                           {prescription.patient.patientCode && (
-                            <div className="text-xs text-gray-600">{prescription.patient.patientCode}</div>
+                            <div className="text-xs text-gray-500">{prescription.patient.patientCode}</div>
                           )}
                         </td>
                         <td className="px-4 py-3">
@@ -390,7 +390,7 @@ export default function PrescriptionsPageClient() {
                               </div>
                             ))}
                             {prescription.medications.length > 2 && (
-                              <div className="text-xs text-gray-600">+{prescription.medications.length - 2} more</div>
+                              <div className="text-xs text-gray-500">+{prescription.medications.length - 2} more</div>
                             )}
                           </div>
                         </td>
@@ -415,13 +415,13 @@ export default function PrescriptionsPageClient() {
                             <div className="flex flex-col gap-1">
                               <div className="text-xs">{totalDispensed} / {totalPrescribed}</div>
                               {prescription.pharmacyDispenses && prescription.pharmacyDispenses.length > 0 && (
-                                <div className="text-xs text-gray-600">
+                                <div className="text-xs text-gray-500">
                                   {prescription.pharmacyDispenses[0].pharmacyName}
                                 </div>
                               )}
                             </div>
                           ) : (
-                            <div className="text-sm text-gray-600">—</div>
+                            <div className="text-sm text-gray-500">—</div>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">

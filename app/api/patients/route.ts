@@ -4,6 +4,7 @@ import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
+import logger from '@/lib/logger';
 
 export async function GET(request: NextRequest) {
   // User authentication check
@@ -174,10 +175,8 @@ export async function POST(request: NextRequest) {
     const patient = await Patient.create(body);
     return NextResponse.json({ success: true, data: patient }, { status: 201 });
   } catch (error: any) {
-    console.error('Error creating patient:', error);
-    console.error('Error details:', {
+    logger.error('Error creating patient', error as Error, {
       name: error.name,
-      message: error.message,
       code: error.code,
       errors: error.errors,
     });

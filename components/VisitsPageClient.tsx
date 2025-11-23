@@ -179,9 +179,9 @@ export default function VisitsPageClient() {
 
   if (loading) {
     return (
-      <section className="py-6">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-3 min-h-[256px]">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             <p>Loading visits...</p>
           </div>
@@ -191,8 +191,8 @@ export default function VisitsPageClient() {
   }
 
   return (
-    <section className="py-6">
-      <div className="container mx-auto px-4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-4">
           {/* Error/Success Messages */}
           {error && (
@@ -210,7 +210,7 @@ export default function VisitsPageClient() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
               <h1 className="text-3xl font-bold mb-1">Clinical Visits</h1>
-              <p className="text-sm text-gray-600">Manage consultations and clinical notes</p>
+              <p className="text-sm text-gray-500">Manage consultations and clinical notes</p>
             </div>
         <button
           onClick={() => setShowForm(true)}
@@ -252,7 +252,7 @@ export default function VisitsPageClient() {
                 )}
               </div>
             </div>
-            <div style={{ minWidth: '180px' }}>
+            <div className="min-w-[180px]">
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
@@ -303,21 +303,21 @@ export default function VisitsPageClient() {
         <div className="p-3">
           <div className="flex justify-between items-center mb-3">
             <h3 className="text-lg font-semibold">Visits</h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-500">
               {filteredVisits.length} {filteredVisits.length === 1 ? 'visit' : 'visits'}
             </p>
           </div>
           {filteredVisits.length === 0 ? (
             <div className="p-8 text-center">
               <div className="mb-3">
-                <svg className="w-12 h-12 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-12 h-12 mx-auto text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
               <h3 className="text-lg font-semibold mb-1">
                 {searchQuery || filterStatus !== 'all' ? 'No visits match your filters' : 'No visits found'}
               </h3>
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm text-gray-500 mb-3">
                 {searchQuery || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Create your first clinical visit to get started'}
               </p>
               {!searchQuery && filterStatus === 'all' && (
@@ -356,7 +356,7 @@ export default function VisitsPageClient() {
                           </div>
                         </Link>
                         {visit.patient.patientCode && (
-                          <div className="text-xs text-gray-600">{visit.patient.patientCode}</div>
+                          <div className="text-xs text-gray-500">{visit.patient.patientCode}</div>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -377,11 +377,11 @@ export default function VisitsPageClient() {
                               </div>
                             ))}
                             {visit.diagnoses.length > 2 && (
-                              <div className="text-xs text-gray-600">+{visit.diagnoses.length - 2} more</div>
+                              <div className="text-xs text-gray-500">+{visit.diagnoses.length - 2} more</div>
                             )}
                           </div>
                         ) : (
-                          <div className="text-sm text-gray-600">—</div>
+                          <div className="text-sm text-gray-500">—</div>
                         )}
                       </td>
                       <td className="px-4 py-3">

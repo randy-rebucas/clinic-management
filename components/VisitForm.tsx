@@ -258,7 +258,7 @@ export default function VisitForm({
           <div>
             <h2 className="text-lg font-semibold mb-3">Basic Information</h2>
             <div className="flex flex-col md:flex-row gap-3 flex-wrap">
-              <div className="flex-1" style={{ minWidth: '200px' }}>
+              <div className="flex-1 min-w-[200px]">
                 <label className="block text-sm font-medium mb-2">
                   Patient <span className="text-red-500">*</span>
                 </label>
@@ -298,9 +298,9 @@ export default function VisitForm({
                     ))}
                   </div>
                 ) : patientSearch ? (
-                  <span className="text-sm text-gray-600 p-2">No patients found</span>
+                  <span className="text-sm text-gray-500 p-2">No patients found</span>
                 ) : (
-                  <span className="text-sm text-gray-600 p-2">Start typing to search...</span>
+                  <span className="text-sm text-gray-500 p-2">Start typing to search...</span>
                 )}
               </div>
               )}
@@ -346,7 +346,7 @@ export default function VisitForm({
                 className={`px-4 py-2 border-b-2 transition-colors ${
                   activeTab === 'soap'
                     ? 'border-blue-600 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                    : 'border-transparent text-gray-500 hover:text-gray-900'
                 }`}
               >
                 SOAP Notes
@@ -357,7 +357,7 @@ export default function VisitForm({
                 className={`px-4 py-2 border-b-2 transition-colors ${
                   activeTab === 'traditional'
                     ? 'border-blue-600 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                    : 'border-transparent text-gray-500 hover:text-gray-900'
                 }`}
               >
                 Traditional Format
@@ -368,7 +368,7 @@ export default function VisitForm({
                 className={`px-4 py-2 border-b-2 transition-colors ${
                   activeTab === 'treatment'
                     ? 'border-blue-600 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                    : 'border-transparent text-gray-500 hover:text-gray-900'
                 }`}
               >
                 Treatment Plan
@@ -460,8 +460,8 @@ export default function VisitForm({
               <div>
                 <label className="block text-sm font-medium mb-2">Vitals</label>
                 <div className="flex gap-3 flex-wrap">
-                  <div style={{ minWidth: '120px' }}>
-                    <label className="block text-xs text-gray-600 mb-2">BP</label>
+                  <div className="min-w-[120px]">
+                    <label className="block text-xs text-gray-500 mb-2">BP</label>
                     <input
                         type="text"
                         value={formData.vitals?.bp || ''}
@@ -475,8 +475,8 @@ export default function VisitForm({
                         className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                       />
                   </div>
-                  <div style={{ minWidth: '120px' }}>
-                    <label className="block text-xs text-gray-600 mb-2">HR</label>
+                  <div className="min-w-[120px]">
+                    <label className="block text-xs text-gray-500 mb-2">HR</label>
                     <input
                         type="number"
                         value={formData.vitals?.hr || ''}
@@ -490,8 +490,8 @@ export default function VisitForm({
                         className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                       />
                   </div>
-                  <div style={{ minWidth: '120px' }}>
-                    <label className="block text-xs text-gray-600 mb-2">Temp (°C)</label>
+                  <div className="min-w-[120px]">
+                    <label className="block text-xs text-gray-500 mb-2">Temp (°C)</label>
                     <input
                         type="number"
                         step="0.1"
@@ -506,8 +506,8 @@ export default function VisitForm({
                         className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                       />
                   </div>
-                  <div style={{ minWidth: '120px' }}>
-                    <label className="block text-xs text-gray-600 mb-2">SpO2 (%)</label>
+                  <div className="min-w-[120px]">
+                    <label className="block text-xs text-gray-500 mb-2">SpO2 (%)</label>
                     <input
                         type="number"
                         value={formData.vitals?.spo2 || ''}
@@ -526,8 +526,8 @@ export default function VisitForm({
               <div>
                 <label className="block text-sm font-medium mb-2">Physical Examination</label>
                 <div className="flex gap-3 flex-wrap">
-                  <div className="flex-1" style={{ minWidth: '200px' }}>
-                    <label className="block text-xs text-gray-600 mb-2">General</label>
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs text-gray-500 mb-2">General</label>
                     <textarea
                       value={formData.physicalExam?.general || ''}
                       onChange={(e) =>
@@ -539,8 +539,8 @@ export default function VisitForm({
                       rows={2}
                     />
                   </div>
-                  <div className="flex-1" style={{ minWidth: '200px' }}>
-                    <label className="block text-xs text-gray-600 mb-2">HEENT</label>
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs text-gray-500 mb-2">HEENT</label>
                     <textarea
                       value={formData.physicalExam?.heent || ''}
                       onChange={(e) =>
@@ -552,8 +552,8 @@ export default function VisitForm({
                       rows={2}
                     />
                   </div>
-                  <div className="flex-1" style={{ minWidth: '200px' }}>
-                    <label className="block text-xs text-gray-600 mb-2">Cardiovascular</label>
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs text-gray-500 mb-2">Cardiovascular</label>
                     <textarea
                       value={formData.physicalExam?.cardiovascular || ''}
                       onChange={(e) =>
@@ -565,8 +565,8 @@ export default function VisitForm({
                       rows={2}
                     />
                   </div>
-                  <div className="flex-1" style={{ minWidth: '200px' }}>
-                    <label className="block text-xs text-gray-600 mb-2">Abdomen</label>
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs text-gray-500 mb-2">Abdomen</label>
                     <textarea
                       value={formData.physicalExam?.abdomen || ''}
                       onChange={(e) =>
@@ -596,7 +596,7 @@ export default function VisitForm({
               </button>
             </div>
             {formData.diagnoses.length === 0 ? (
-              <p className="text-sm text-gray-600">No diagnoses added. Click "Add Diagnosis" to add one.</p>
+              <p className="text-sm text-gray-500">No diagnoses added. Click "Add Diagnosis" to add one.</p>
             ) : (
               <div className="flex flex-col gap-2">
                 {formData.diagnoses.map((diagnosis, index) => (
@@ -604,7 +604,7 @@ export default function VisitForm({
                     <div className="p-3">
                       <div className="flex flex-col md:flex-row gap-3 flex-wrap">
                         <div className="flex-1 relative" style={{ minWidth: '200px' }}>
-                          <label className="block text-xs font-medium text-gray-600 mb-2">ICD-10 Code</label>
+                          <label className="block text-xs font-medium text-gray-500 mb-2">ICD-10 Code</label>
                           <input
                               type="text"
                               value={diagnosis.code || ''}
@@ -642,15 +642,15 @@ export default function VisitForm({
                                 >
                                   <div className="flex flex-col items-start gap-1">
                                     <span className="text-sm font-medium">{result.code}</span>
-                                    <span className="text-xs text-gray-600">{result.description}</span>
+                                    <span className="text-xs text-gray-500">{result.description}</span>
                                   </div>
                                 </button>
                               ))}
                             </div>
                           )}
                         </div>
-                        <div className="flex-1" style={{ minWidth: '200px' }}>
-                          <label className="block text-xs font-medium text-gray-600 mb-2">Description</label>
+                        <div className="flex-1 min-w-[200px]">
+                          <label className="block text-xs font-medium text-gray-500 mb-2">Description</label>
                           <input
                               type="text"
                               value={diagnosis.description || ''}
@@ -703,7 +703,7 @@ export default function VisitForm({
                       <div key={index} className="bg-white border border-gray-200 rounded-lg">
                         <div className="p-2">
                           <div className="flex gap-2 flex-wrap">
-                            <div className="flex-1" style={{ minWidth: '150px' }}>
+                            <div className="flex-1 min-w-[150px]">
                               <input
                                   type="text"
                                   placeholder="Medication name"
@@ -719,7 +719,7 @@ export default function VisitForm({
                                   style={{ all: 'unset', flex: 1 }}
                                 />
                             </div>
-                            <div style={{ minWidth: '100px' }}>
+                            <div className="min-w-[100px]">
                               <input
                                   type="text"
                                   placeholder="Dosage"
@@ -735,7 +735,7 @@ export default function VisitForm({
                                   style={{ all: 'unset', flex: 1 }}
                                 />
                             </div>
-                            <div style={{ minWidth: '100px' }}>
+                            <div className="min-w-[100px]">
                               <input
                                   type="text"
                                   placeholder="Frequency"
@@ -751,7 +751,7 @@ export default function VisitForm({
                                   style={{ all: 'unset', flex: 1 }}
                                 />
                             </div>
-                            <div style={{ minWidth: '100px' }}>
+                            <div className="min-w-[100px]">
                               <input
                                   type="text"
                                   placeholder="Duration"
@@ -780,7 +780,7 @@ export default function VisitForm({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-600">No medications added</p>
+                  <p className="text-sm text-gray-500">No medications added</p>
                 )}
               </div>
               <div>
@@ -894,7 +894,7 @@ export default function VisitForm({
           {/* Clinical Images Upload */}
           <div>
             <label className="block text-sm font-medium mb-2">Clinical Images & Attachments</label>
-            <p className="text-xs text-gray-600 mb-3">
+            <p className="text-xs text-gray-500 mb-3">
               Upload clinical images, X-rays, or other documents related to this visit
             </p>
             <div className="bg-white border border-gray-200 rounded-lg">
@@ -913,7 +913,7 @@ export default function VisitForm({
                     fontSize: 'var(--font-size-2)',
                   }}
                 />
-                <p className="text-xs text-gray-600 mt-2">
+                <p className="text-xs text-gray-500 mt-2">
                   Note: Files can be uploaded after saving the visit from the visit detail page.
                 </p>
               </div>

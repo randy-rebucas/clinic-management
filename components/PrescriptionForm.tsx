@@ -388,7 +388,7 @@ export default function PrescriptionForm({
                       className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded transition-colors flex flex-col items-start"
                     >
                       <span className="font-medium text-sm">{patient.firstName} {patient.lastName}</span>
-                      <span className="text-xs text-gray-600">
+                      <span className="text-xs text-gray-500">
                         {age && `Age: ${age} years`}
                         {age && patient.weight && ' • '}
                         {patient.weight && `${patient.weight} kg`}
@@ -398,9 +398,9 @@ export default function PrescriptionForm({
                 })}
               </div>
             ) : patientSearch ? (
-              <span className="text-sm text-gray-600 p-2">No patients found</span>
+              <span className="text-sm text-gray-500 p-2">No patients found</span>
             ) : (
-              <span className="text-sm text-gray-600 p-2">Start typing to search...</span>
+              <span className="text-sm text-gray-500 p-2">Start typing to search...</span>
             )}
           </div>
           )}
@@ -464,7 +464,7 @@ export default function PrescriptionForm({
               <h2 className="text-lg font-semibold">Medications</h2>
               <div className="flex items-center gap-3">
                 {checkingInteractions && (
-                  <span className="text-xs text-gray-600">Checking interactions...</span>
+                  <span className="text-xs text-gray-500">Checking interactions...</span>
                 )}
                 <button
                   type="button"
@@ -485,7 +485,7 @@ export default function PrescriptionForm({
             </div>
 
             {formData.medications.length === 0 ? (
-              <p className="text-sm text-gray-600">No medications added. Click &quot;Add Medication&quot; to add one.</p>
+              <p className="text-sm text-gray-500">No medications added. Click &quot;Add Medication&quot; to add one.</p>
             ) : (
               <div className="flex flex-col gap-3">
                 {formData.medications.map((medication, index) => (
@@ -533,18 +533,18 @@ export default function PrescriptionForm({
                                     >
                                       <span className="font-medium text-sm">{medicine.name}</span>
                                       {medicine.genericName && (
-                                        <span className="text-xs text-gray-600">{medicine.genericName}</span>
+                                        <span className="text-xs text-gray-500">{medicine.genericName}</span>
                                       )}
-                                      <span className="text-xs text-gray-600">
+                                      <span className="text-xs text-gray-500">
                                         {medicine.strength} • {medicine.form} • {medicine.category}
                                       </span>
                                     </button>
                                   ))}
                                 </div>
                               ) : medicineSearch ? (
-                                <p className="text-sm text-gray-600 p-2">No medicines found</p>
+                                <p className="text-sm text-gray-500 p-2">No medicines found</p>
                               ) : (
-                                <p className="text-sm text-gray-600 p-2">Start typing to search...</p>
+                                <p className="text-sm text-gray-500 p-2">Start typing to search...</p>
                               )}
                             </div>
                           )}

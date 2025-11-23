@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { validateEnv } from './env-validation';
 
 interface MongooseCache {
   conn: typeof mongoose | null;
@@ -14,6 +15,16 @@ let cached: MongooseCache = global.mongoose || { conn: null, promise: null };
 
 if (!global.mongoose) {
   global.mongoose = cached;
+}
+
+// Validate environment variables on first import (only in production)
+if (process.env.NODE_ENV === 'production' && typeof window === 'undefined') {
+  try {
+    validateEnv();
+  } catch (error) {
+    console.error('Environment validation failed:', error);
+    // Don't throw here to allow graceful degradation
+  }
 }
 
 async function connectDB(): Promise<typeof mongoose> {

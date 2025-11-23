@@ -312,8 +312,8 @@ export default function PatientsPageClient() {
 
   if (loading) {
     return (
-      <section className="py-6">
-        <div className="container mx-auto px-4">
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-3" style={{ minHeight: '50vh', justifyContent: 'center' }}>
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             <p className="text-gray-700">Loading patients...</p>
@@ -324,8 +324,8 @@ export default function PatientsPageClient() {
   }
 
   return (
-    <section className="py-6">
-      <div className="container mx-auto px-4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-4">
           {/* Error/Success Messages */}
           {error && (
@@ -344,7 +344,7 @@ export default function PatientsPageClient() {
             <div className="flex flex-col sm:flex-row justify-between items-center sm:items-center gap-3 mb-3">
               <div>
                 <h1 className="text-3xl font-bold mb-1">Patients</h1>
-                <p className="text-sm text-gray-600">Manage patient records and information</p>
+                <p className="text-sm text-gray-500">Manage patient records and information</p>
               </div>
           <button
             onClick={() => {
@@ -359,21 +359,21 @@ export default function PatientsPageClient() {
 
         {/* Quick Stats */}
         <div className="flex gap-2 mb-3 flex-wrap">
-          <div className="bg-white border border-gray-200 rounded-lg p-2" style={{ flex: '1 1 150px', minWidth: '120px' }}>
+          <div className="bg-white border border-gray-200 rounded-lg p-2 flex-1 min-w-[150px]">
             <div className="p-2">
-              <div className="text-xs text-gray-600 mb-1">Total Patients</div>
+              <div className="text-xs text-gray-500 mb-1">Total Patients</div>
               <div className="text-2xl font-bold">{patients.length}</div>
             </div>
           </div>
-          <div className="bg-white border border-gray-200 rounded-lg p-2" style={{ flex: '1 1 150px', minWidth: '120px' }}>
+          <div className="bg-white border border-gray-200 rounded-lg p-2 flex-1 min-w-[150px]">
             <div className="p-2">
-              <div className="text-xs text-gray-600 mb-1">Showing</div>
+              <div className="text-xs text-gray-500 mb-1">Showing</div>
               <div className="text-2xl font-bold">{filteredPatients.length}</div>
             </div>
           </div>
-          <div className="bg-white border border-gray-200 rounded-lg p-2" style={{ flex: '1 1 150px', minWidth: '120px' }}>
+          <div className="bg-white border border-gray-200 rounded-lg p-2 flex-1 min-w-[150px]">
             <div className="p-2">
-              <div className="text-xs text-gray-600 mb-1">This Month</div>
+              <div className="text-xs text-gray-500 mb-1">This Month</div>
               <div className="text-2xl font-bold">
                 {patients.filter((p) => {
                   const created = new Date((p as any).createdAt || 0);
@@ -383,9 +383,9 @@ export default function PatientsPageClient() {
               </div>
             </div>
           </div>
-          <div className="bg-white border border-gray-200 rounded-lg p-2" style={{ flex: '1 1 150px', minWidth: '120px' }}>
+          <div className="bg-white border border-gray-200 rounded-lg p-2 flex-1 min-w-[150px]">
             <div className="p-2">
-              <div className="text-xs text-gray-600 mb-1">Active</div>
+              <div className="text-xs text-gray-500 mb-1">Active</div>
               <div className="text-2xl font-bold">
                 {patients.filter((p) => (p as any).active !== false).length}
               </div>
@@ -561,7 +561,7 @@ export default function PatientsPageClient() {
             {/* Results Count */}
             {(debouncedSearchQuery || activeFilterCount > 0) && (
               <div className="pt-2 border-t border-gray-200">
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-500">
                   Found {filteredPatients.length} {filteredPatients.length === 1 ? 'patient' : 'patients'}
                 </p>
               </div>
@@ -623,7 +623,7 @@ export default function PatientsPageClient() {
               </svg>
             </div>
             <h2 className="text-xl font-semibold mb-1">No patients found</h2>
-            <p className="text-sm text-gray-600 mb-3">Try adjusting your search or filter criteria.</p>
+            <p className="text-sm text-gray-500 mb-3">Try adjusting your search or filter criteria.</p>
             <button onClick={() => setSearchQuery('')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors">
               Clear Search
             </button>
@@ -638,7 +638,7 @@ export default function PatientsPageClient() {
               </svg>
             </div>
             <h2 className="text-xl font-semibold mb-1">No patients found</h2>
-            <p className="text-sm text-gray-600 mb-3">Get started by adding your first patient.</p>
+            <p className="text-sm text-gray-500 mb-3">Get started by adding your first patient.</p>
             <button
               onClick={() => {
                 setEditingPatient(null);
@@ -682,33 +682,33 @@ export default function PatientsPageClient() {
                               </span>
                             )}
                             {age > 0 && (
-                              <span className="text-sm text-gray-600">
+                              <span className="text-sm text-gray-500">
                                 {age} years
                               </span>
                             )}
                           </div>
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm text-gray-600 flex items-center gap-1">
+                              <span className="text-sm text-gray-500 flex items-center gap-1">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                 </svg>
                                 {patient.email}
                               </span>
-                              <span className="text-sm text-gray-600 flex items-center gap-1">
+                              <span className="text-sm text-gray-500 flex items-center gap-1">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                                 </svg>
                                 {patient.phone}
                               </span>
-                              <span className="text-sm text-gray-600 flex items-center gap-1">
+                              <span className="text-sm text-gray-500 flex items-center gap-1">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                 </svg>
                                 {new Date(patient.dateOfBirth).toLocaleDateString()}
                               </span>
                               {patient.address && (patient.address.city || patient.address.state) && (
-                                <span className="text-sm text-gray-600 flex items-center gap-1">
+                                <span className="text-sm text-gray-500 flex items-center gap-1">
                                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />

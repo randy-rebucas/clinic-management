@@ -352,8 +352,8 @@ export default function QueuePageClient() {
 
   if (loading) {
     return (
-      <section className="py-6">
-        <div className="container mx-auto px-4">
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
           <div className="flex flex-col gap-3">
             <div className="h-8 w-48 bg-gray-200 rounded animate-pulse" />
             <div className="h-10 bg-gray-200 rounded animate-pulse" />
@@ -384,8 +384,8 @@ export default function QueuePageClient() {
   const activeQueue = filteredQueue.filter(q => q.status === 'waiting' || q.status === 'in-progress');
 
   return (
-    <section className="py-6">
-      <div className="container mx-auto px-4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-4">
           {/* Notifications */}
           {error && (
@@ -403,7 +403,7 @@ export default function QueuePageClient() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
               <h1 className="text-3xl font-bold mb-1">Queue Management</h1>
-              <p className="text-sm text-gray-600">Monitor patient queue and flow</p>
+              <p className="text-sm text-gray-500">Monitor patient queue and flow</p>
             </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
@@ -429,7 +429,7 @@ export default function QueuePageClient() {
             )}
             {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
-          <p className="text-xs text-gray-600 hidden sm:block">
+          <p className="text-xs text-gray-500 hidden sm:block">
             Auto-refreshes every 30s
           </p>
         </div>
@@ -466,33 +466,33 @@ export default function QueuePageClient() {
 
           {/* Stats Cards */}
           <div className="flex gap-2 flex-wrap">
-        <div className="bg-white border border-gray-200 rounded-lg flex-1 min-w-[120px]" style={{ flex: '1 1 150px' }}>
+        <div className="bg-white border border-gray-200 rounded-lg flex-1 min-w-[150px]">
           <div className="p-2">
-            <div className="text-xs text-gray-600 mb-1">Waiting</div>
+            <div className="text-xs text-gray-500 mb-1">Waiting</div>
             <div className="text-2xl font-bold text-yellow-600">
               {queue.filter(q => q.status === 'waiting').length}
             </div>
           </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg flex-1 min-w-[120px]" style={{ flex: '1 1 150px' }}>
+        <div className="bg-white border border-gray-200 rounded-lg flex-1 min-w-[150px]">
           <div className="p-2">
-            <div className="text-xs text-gray-600 mb-1">In Progress</div>
+            <div className="text-xs text-gray-500 mb-1">In Progress</div>
             <div className="text-2xl font-bold text-blue-600">
               {queue.filter(q => q.status === 'in-progress').length}
             </div>
           </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg flex-1 min-w-[120px]" style={{ flex: '1 1 150px' }}>
+        <div className="bg-white border border-gray-200 rounded-lg flex-1 min-w-[150px]">
           <div className="p-2">
-            <div className="text-xs text-gray-600 mb-1">Not Checked In</div>
+            <div className="text-xs text-gray-500 mb-1">Not Checked In</div>
             <div className="text-2xl font-bold text-orange-600">
               {queue.filter(q => !q.checkedIn && (q.status === 'waiting' || q.status === 'in-progress')).length}
             </div>
           </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg flex-1 min-w-[120px]" style={{ flex: '1 1 150px' }}>
+        <div className="bg-white border border-gray-200 rounded-lg flex-1 min-w-[150px]">
           <div className="p-2">
-            <div className="text-xs text-gray-600 mb-1">Total Active</div>
+            <div className="text-xs text-gray-500 mb-1">Total Active</div>
             <div className="text-2xl font-bold">
               {activeQueue.length}
             </div>
@@ -569,7 +569,7 @@ export default function QueuePageClient() {
             <div className="p-3 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Current Queue</h3>
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-gray-500">
               {filteredQueue.length} {filteredQueue.length === 1 ? 'patient' : 'patients'}
             </p>
           </div>
@@ -577,7 +577,7 @@ export default function QueuePageClient() {
         {filteredQueue.length === 0 ? (
           <div className="p-8 text-center">
             <div className="mb-2">
-              <svg className="w-10 h-10 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-10 h-10 mx-auto text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
             </div>
@@ -586,7 +586,7 @@ export default function QueuePageClient() {
                 ? 'No patients match your filters' 
                 : 'No patients in queue'}
             </h3>
-            <p className="text-sm text-gray-600 mb-3">
+            <p className="text-sm text-gray-500 mb-3">
               {searchQuery || filterDoctor || filterType || filterStatus !== 'active' 
                 ? 'Try adjusting your search or filters' 
                 : 'Add a patient to get started'}
@@ -646,7 +646,7 @@ export default function QueuePageClient() {
                           {item.patientName || `${item.patient?.firstName} ${item.patient?.lastName}`}
                         </div>
                       </Link>
-                      <div className="text-xs text-gray-600 mt-1">
+                      <div className="text-xs text-gray-500 mt-1">
                         {new Date(item.queuedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </td>
@@ -654,7 +654,7 @@ export default function QueuePageClient() {
                       {item.doctor ? (
                         <div className="text-xs">Dr. {item.doctor.firstName} {item.doctor.lastName}</div>
                       ) : (
-                        <div className="text-xs text-gray-600">Not assigned</div>
+                        <div className="text-xs text-gray-500">Not assigned</div>
                       )}
                       {item.room && (
                         <div className="text-xs text-blue-600 mt-1">Room: {item.room.name || item.room.roomNumber}</div>
@@ -675,7 +675,7 @@ export default function QueuePageClient() {
                       {item.estimatedWaitTime !== undefined && (
                         <div className="text-xs">Est: {item.estimatedWaitTime}m</div>
                       )}
-                      <div className="text-xs text-gray-600 mt-1">
+                      <div className="text-xs text-gray-500 mt-1">
                         {calculateWaitTime(item.queuedAt)}
                       </div>
                     </td>
@@ -750,7 +750,7 @@ export default function QueuePageClient() {
       }} className="max-w-lg">
         <div className="p-6">
           <h2 className="text-xl font-semibold mb-4">Add Patient to Queue</h2>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-gray-500 mb-4">
             Add a new patient to the queue system
           </p>
           <form onSubmit={handleAddToQueue}>
@@ -790,15 +790,15 @@ export default function QueuePageClient() {
                             >
                               <span className="font-medium text-sm">{patient.firstName} {patient.lastName}</span>
                               {patient.patientCode && (
-                                <span className="text-xs text-gray-600">{patient.patientCode}</span>
+                                <span className="text-xs text-gray-500">{patient.patientCode}</span>
                               )}
                             </button>
                           ))}
                         </div>
                       ) : patientSearch ? (
-                        <p className="text-sm text-gray-600 p-2">No patients found</p>
+                        <p className="text-sm text-gray-500 p-2">No patients found</p>
                       ) : (
-                        <p className="text-sm text-gray-600 p-2">Start typing to search...</p>
+                        <p className="text-sm text-gray-500 p-2">Start typing to search...</p>
                       )}
                     </div>
                   )}
@@ -845,7 +845,7 @@ export default function QueuePageClient() {
                   <option value="1">High</option>
                   <option value="2">Urgent</option>
                 </select>
-                <p className="text-xs text-gray-600 mt-1">Lower number = higher priority</p>
+                <p className="text-xs text-gray-500 mt-1">Lower number = higher priority</p>
               </div>
               <div className="flex gap-2 justify-end pt-2">
                 <button
@@ -874,7 +874,7 @@ export default function QueuePageClient() {
       }} className="max-w-md">
         <div className="p-6">
           <h3 className="text-lg font-semibold mb-2">Confirm Action</h3>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-gray-500 mb-4">
             Are you sure you want to mark <strong>{confirmAction?.patientName}</strong> as <strong>{confirmAction?.action}</strong>?
           </p>
           <div className="flex gap-3 justify-end mt-4">

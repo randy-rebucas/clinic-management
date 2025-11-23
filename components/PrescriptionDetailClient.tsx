@@ -184,9 +184,9 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
     return (
       <section className="py-12 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+          <div className="flex flex-col items-center justify-center gap-3 min-h-[256px]">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p>Loading prescription...</p>
+            <p className="text-gray-500">Loading prescription...</p>
           </div>
         </div>
       </section>
@@ -197,7 +197,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
     return (
       <section className="py-12 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+          <div className="flex flex-col items-center justify-center gap-3 min-h-[256px]">
             <h2 className="text-xl font-semibold">{error || 'Prescription not found'}</h2>
             <Link 
               href="/prescriptions"
@@ -242,9 +242,9 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
               <div className="flex items-center gap-2 mb-2">
                 <button
                   onClick={() => router.push('/prescriptions')}
-                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <svg style={{ width: '20px', height: '20px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
@@ -258,11 +258,11 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                         {prescription.patient.firstName} {prescription.patient.lastName}
                       </p>
                     </Link>
-                    <p className="text-sm text-gray-600">•</p>
+                    <p className="text-sm text-gray-500">•</p>
                   </>
                 )}
                 {prescription.issuedAt && (
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-500">
                     {new Date(prescription.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </p>
                 )}
@@ -273,7 +273,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                 onClick={() => handlePrint('patient')}
                 className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-1.5"
               >
-                <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                 </svg>
                 Patient Copy
@@ -282,7 +282,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                 onClick={() => handlePrint('clinic')}
                 className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium flex items-center gap-1.5"
               >
-                <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                 </svg>
                 Clinic Copy
@@ -306,7 +306,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                 <div className="flex flex-col md:flex-row gap-4 flex-wrap">
                   {prescription.patient && (
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Name</p>
+                      <p className="text-xs text-gray-500 mb-1">Name</p>
                       <Link href={`/patients/${prescription.patient._id}`}>
                         <p className="text-sm text-blue-700 hover:underline">
                           {prescription.patient.firstName} {prescription.patient.lastName}
@@ -316,25 +316,25 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                   )}
                   {prescription.patient?.patientCode && (
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Patient ID</p>
+                      <p className="text-xs text-gray-500 mb-1">Patient ID</p>
                       <p className="text-sm">{prescription.patient.patientCode}</p>
                     </div>
                   )}
                   {prescription.patient?.dateOfBirth && (
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Date of Birth</p>
+                      <p className="text-xs text-gray-500 mb-1">Date of Birth</p>
                       <p className="text-sm">{new Date(prescription.patient.dateOfBirth).toLocaleDateString()}</p>
                     </div>
                   )}
                   {prescription.patient?.phone && (
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Phone</p>
+                      <p className="text-xs text-gray-500 mb-1">Phone</p>
                       <p className="text-sm">{prescription.patient.phone}</p>
                     </div>
                   )}
                   {prescription.issuedAt && (
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Date Issued</p>
+                      <p className="text-xs text-gray-500 mb-1">Date Issued</p>
                       <p className="text-sm">
                         {new Date(prescription.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </p>
@@ -342,13 +342,13 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                   )}
                   {prescription.prescribedBy && (
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Prescribed By</p>
+                      <p className="text-xs text-gray-500 mb-1">Prescribed By</p>
                       <p className="text-sm">{prescription.prescribedBy.name}</p>
                     </div>
                   )}
                   {prescription.visit && (
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Visit</p>
+                      <p className="text-xs text-gray-500 mb-1">Visit</p>
                       <Link 
                         href={`/visits/${prescription.visit._id}`}
                         className="text-sm text-blue-700 hover:underline"
@@ -372,7 +372,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                         <p className="text-sm font-bold mb-2">
                           {index + 1}. {medication.name}
                           {medication.genericName && (
-                            <span className="text-xs text-gray-600 ml-2">
+                            <span className="text-xs text-gray-500 ml-2">
                               ({medication.genericName})
                             </span>
                           )}
@@ -459,7 +459,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                           <p className="text-xs italic">{interaction.recommendation}</p>
                         )}
                         {interaction.checkedAt && (
-                          <p className="text-xs text-gray-600 mt-2">
+                          <p className="text-xs text-gray-500 mt-2">
                             Checked: {new Date(interaction.checkedAt).toLocaleString()}
                           </p>
                         )}
@@ -519,11 +519,11 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                 <h3 className="text-lg font-semibold mb-3">Dispensing Status</h3>
                 <div className="flex flex-col gap-2 mb-3">
                   <div className="flex justify-between items-center">
-                    <p className="text-xs text-gray-600">Prescribed</p>
+                    <p className="text-xs text-gray-500">Prescribed</p>
                     <p className="text-sm font-medium">{totalPrescribed}</p>
                   </div>
                   <div className="flex justify-between items-center">
-                    <p className="text-xs text-gray-600">Dispensed</p>
+                    <p className="text-xs text-gray-500">Dispensed</p>
                     <p className="text-sm font-medium">{totalDispensed}</p>
                   </div>
                   <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -545,18 +545,18 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                                 {dispense.pharmacyName || 'Pharmacy'}
                               </p>
                               {dispense.dispensedAt && (
-                                <p className="text-xs text-gray-600">
+                                <p className="text-xs text-gray-500">
                                   {new Date(dispense.dispensedAt).toLocaleDateString()}
                                 </p>
                               )}
                               {dispense.quantityDispensed && (
-                                <p className="text-xs text-gray-600 mt-1">
+                                <p className="text-xs text-gray-500 mt-1">
                                   Quantity: {dispense.quantityDispensed}
                                 </p>
                               )}
                             </div>
                             {dispense.trackingNumber && (
-                              <p className="text-xs text-gray-600">#{dispense.trackingNumber}</p>
+                              <p className="text-xs text-gray-500">#{dispense.trackingNumber}</p>
                             )}
                           </div>
                           {dispense.notes && (
@@ -597,7 +597,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                       <p className="text-sm font-medium">
                         {prescription.digitalSignature.providerName}
                       </p>
-                      <p className="text-xs text-gray-600">
+                      <p className="text-xs text-gray-500">
                         {new Date(prescription.digitalSignature.signedAt).toLocaleString()}
                       </p>
                     </div>
@@ -646,7 +646,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                       onChange={(e) => setDispenseForm({ ...dispenseForm, quantityDispensed: parseInt(e.target.value) || 0 })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                     />
-                    <p className="text-xs text-gray-600 mt-1">
+                    <p className="text-xs text-gray-500 mt-1">
                       Remaining: {totalPrescribed - totalDispensed}
                     </p>
                   </div>

@@ -67,8 +67,8 @@ export default function NurseDashboard() {
 
   if (loading || !dashboardData) {
     return (
-      <section className="py-6">
-        <div className="container mx-auto px-4">
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-3 min-h-[50vh] justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             <p className="text-gray-600">Loading dashboard...</p>
@@ -198,8 +198,8 @@ export default function NurseDashboard() {
   };
 
   return (
-    <section className="py-6">
-      <div className="container mx-auto px-4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-4">
           {/* Header */}
           <div className="flex justify-between items-center flex-col sm:flex-row gap-3">
@@ -244,7 +244,7 @@ export default function NurseDashboard() {
           {/* Stats Grid */}
           <div className="flex gap-3 flex-wrap">
             {statCards.map((card: any) => (
-              <Link key={card.title} href={card.href} className="flex-1 min-w-[200px]">
+              <Link key={card.title} href={card.href} className="flex-1 min-w-[250px]">
                 <div className="bg-white border border-gray-200 rounded-lg p-4 relative overflow-hidden hover:shadow-md transition-shadow">
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-grow">
@@ -305,7 +305,7 @@ export default function NurseDashboard() {
             <h2 className="text-lg font-semibold mb-2">Quick Actions</h2>
             <div className="flex gap-3 flex-wrap">
               {quickActions.map((action: any) => (
-                <Link key={action.title} href={action.href} className="flex-1 min-w-[150px]">
+                <Link key={action.title} href={action.href} className="flex-1 min-w-[200px]">
                   <div className="bg-gray-50 border border-gray-200 rounded-md p-3 cursor-pointer transition-all hover:shadow-md">
                     <div className="flex items-start gap-3">
                       <div className={`rounded-md p-2 flex items-center justify-center ${getIconBgLight(action.iconColor)}`}>

@@ -280,11 +280,11 @@ export default function RolesManagementClient() {
 
   if (loading) {
     return (
-      <section className="py-6">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col items-center gap-3" style={{ minHeight: '50vh', justifyContent: 'center' }}>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center gap-3 min-h-[50vh] justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="text-gray-700">Loading roles...</p>
+            <p className="text-gray-500">Loading roles...</p>
           </div>
         </div>
       </section>
@@ -292,8 +292,8 @@ export default function RolesManagementClient() {
   }
 
   return (
-    <section className="py-6">
-      <div className="container mx-auto px-4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-4">
           {/* Error/Success Messages */}
           {error && (
@@ -312,7 +312,7 @@ export default function RolesManagementClient() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
               <div>
                 <h1 className="text-3xl font-bold mb-1">Roles Management</h1>
-                <p className="text-sm text-gray-600">Manage user roles and permissions</p>
+                <p className="text-sm text-gray-500">Manage user roles and permissions</p>
               </div>
               <button
                 onClick={handleCreate}
@@ -378,7 +378,7 @@ export default function RolesManagementClient() {
                           </span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-xs text-gray-600">
+                          <span className="text-xs text-gray-500">
                             {(role.defaultPermissions?.length || 0) + (role.permissions?.length || 0)} permissions
                           </span>
                         </td>
@@ -425,7 +425,7 @@ export default function RolesManagementClient() {
 
         {/* Create/Edit Role Dialog */}
         <Modal open={showForm} onOpenChange={setShowForm}>
-          <div className="p-6" style={{ maxWidth: 500 }}>
+          <div className="p-6 max-w-[500px]">
             <h2 className="text-xl font-semibold mb-4">
               {editingRole ? 'Edit Role' : 'Create Role'}
             </h2>
@@ -512,14 +512,14 @@ export default function RolesManagementClient() {
 
         {/* Permissions Dialog */}
         <Modal open={showPermissionsDialog} onOpenChange={setShowPermissionsDialog}>
-          <div className="p-6" style={{ maxWidth: 800, maxHeight: '80vh', overflow: 'auto' }}>
+          <div className="p-6 max-w-[800px] max-h-[80vh] overflow-auto">
             <h2 className="text-xl font-semibold mb-4">
               Manage Permissions - {selectedRole?.displayName}
             </h2>
             <hr className="border-gray-200 my-3" />
             
             <div>
-              <p className="text-sm text-gray-600 mb-4">
+              <p className="text-sm text-gray-500 mb-4">
                 Select permissions for this role. Permissions can be resource-specific or use wildcards (*).
               </p>
 

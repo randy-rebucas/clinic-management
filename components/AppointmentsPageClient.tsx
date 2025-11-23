@@ -408,11 +408,11 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
 
   if (loading) {
     return (
-      <section className="py-6">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col items-center gap-3" style={{ minHeight: '50vh', justifyContent: 'center' }}>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center gap-3 min-h-[50vh] justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p>Loading appointments...</p>
+            <p className="text-gray-600">Loading appointments...</p>
           </div>
         </div>
       </section>
@@ -423,8 +423,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   const walkInQueue = getWalkInQueue();
 
   return (
-    <section className="py-6">
-      <div className="container mx-auto px-4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-4">
           {/* Error/Success Messages */}
           {error && (
@@ -442,7 +442,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
               <h1 className="text-3xl font-bold mb-1">Appointments</h1>
-              <p className="text-sm text-gray-600">Manage appointments and walk-in queue</p>
+              <p className="text-sm text-gray-500">Manage appointments and walk-in queue</p>
             </div>
         <div className="flex gap-2 flex-wrap">
           <button
@@ -483,7 +483,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                   className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                     viewMode === 'calendar'
                       ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-600 hover:text-gray-900'
+                      : 'border-transparent text-gray-500 hover:text-gray-900'
                   }`}
                 >
                   Calendar View
@@ -493,7 +493,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                   className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                     viewMode === 'list'
                       ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-600 hover:text-gray-900'
+                      : 'border-transparent text-gray-500 hover:text-gray-900'
                   }`}
                 >
                   List View
@@ -503,7 +503,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                   className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center ${
                     viewMode === 'queue'
                       ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-600 hover:text-gray-900'
+                      : 'border-transparent text-gray-500 hover:text-gray-900'
                   }`}
                 >
                   Walk-In Queue
@@ -520,7 +520,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
           {/* Calendar View */}
           {viewMode === 'calendar' && (
             <div className="flex flex-col lg:flex-row gap-4">
-          <div className="flex-none" style={{ width: '350px' }}>
+          <div className="flex-none w-[350px]">
             <AppointmentCalendar
               appointments={appointments}
               selectedDate={selectedDate}
@@ -577,7 +577,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                 <h3 className="text-lg font-semibold mb-3">
                   Appointments for {formatDate(selectedDate.toISOString())}
                   {(filterDoctor || filterRoom) && (
-                    <span className="text-sm text-gray-600 ml-2">
+                    <span className="text-sm text-gray-500 ml-2">
                       (Filtered{filterDoctor ? ' by doctor' : ''}{filterRoom ? ' by room' : ''})
                     </span>
                   )}
@@ -589,7 +589,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
                     </div>
-                    <p className="text-gray-600">No appointments scheduled for this date</p>
+                    <p className="text-gray-500">No appointments scheduled for this date</p>
                   </div>
                 ) : (
                   <div className="flex flex-col gap-3">
@@ -615,20 +615,20 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                 </span>
                               )}
                               {appointment.appointmentCode && (
-                                <span className="text-xs text-gray-600">#{appointment.appointmentCode}</span>
+                                <span className="text-xs text-gray-500">#{appointment.appointmentCode}</span>
                               )}
                             </div>
                             <div className="text-sm font-bold mb-1">
                               {appointment.patient.firstName} {appointment.patient.lastName}
                             </div>
-                            <div className="text-sm text-gray-600 mb-1">
+                            <div className="text-sm text-gray-500 mb-1">
                               {appointment.doctor
                                 ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName} - ${appointment.doctor.specialization}`
                                 : appointment.provider
                                 ? appointment.provider.name
                                 : 'No provider assigned'}
                             </div>
-                            <div className="text-sm text-gray-600 mb-1">
+                            <div className="text-sm text-gray-500 mb-1">
                               {formatTime(appointment.appointmentTime)} ({appointment.duration} min)
                               {appointment.room && (
                                 <span className="text-blue-600 ml-2">
@@ -637,7 +637,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                               )}
                             </div>
                             {appointment.reason && (
-                              <div className="text-sm text-gray-600 mt-1">Reason: {appointment.reason}</div>
+                              <div className="text-sm text-gray-500 mt-1">Reason: {appointment.reason}</div>
                             )}
                             {appointment.estimatedWaitTime && (
                               <div className="text-xs text-orange-600 mt-1">
@@ -708,7 +708,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                 {appointments.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-12 text-center">
-                      <p className="text-gray-600">No appointments found</p>
+                      <p className="text-gray-500">No appointments found</p>
                     </td>
                   </tr>
                 ) : (
@@ -725,7 +725,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-sm text-gray-600">
+                        <div className="text-sm text-gray-500">
                           {appointment.doctor
                             ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`
                             : appointment.provider
@@ -734,7 +734,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-sm text-gray-600">
+                        <div className="text-sm text-gray-500">
                           {formatDate(appointment.appointmentDate)} at {formatTime(appointment.appointmentTime)}
                         </div>
                         {appointment.room && (
@@ -811,7 +811,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <p className="text-gray-600">No walk-in patients in queue</p>
+                <p className="text-gray-500">No walk-in patients in queue</p>
               </div>
             ) : (
               <div className="flex flex-col gap-3">
@@ -828,7 +828,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                           <div className="text-sm font-bold">
                             {appointment.patient.firstName} {appointment.patient.lastName}
                           </div>
-                          <div className="text-xs text-gray-600">{appointment.patient.phone}</div>
+                          <div className="text-xs text-gray-500">{appointment.patient.phone}</div>
                           {appointment.estimatedWaitTime && (
                             <div className="text-xs text-orange-600 mt-1">
                               Est. wait: {appointment.estimatedWaitTime} minutes
@@ -919,11 +919,11 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                         </div>
                       ) : patientSearch ? (
                         <div className="p-2">
-                          <p className="text-sm text-gray-600">No patients found</p>
+                          <p className="text-sm text-gray-500">No patients found</p>
                         </div>
                       ) : (
                         <div className="p-2">
-                          <p className="text-sm text-gray-600">Start typing to search...</p>
+                          <p className="text-sm text-gray-500">Start typing to search...</p>
                         </div>
                       )}
                       </div>

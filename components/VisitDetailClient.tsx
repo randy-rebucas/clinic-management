@@ -226,9 +226,9 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
     return (
       <section className="py-12 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+          <div className="flex flex-col items-center justify-center gap-3 min-h-[256px]">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p>Loading visit...</p>
+            <p className="text-gray-500">Loading visit...</p>
           </div>
         </div>
       </section>
@@ -239,7 +239,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
     return (
       <section className="py-12 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+          <div className="flex flex-col items-center justify-center gap-3 min-h-[256px]">
             <h2 className="text-xl font-semibold">Visit not found</h2>
             <Link 
               href="/visits"
@@ -263,7 +263,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
               <div className="flex items-center gap-3 mb-2">
                 <Link 
                   href="/visits"
-                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -271,7 +271,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                 </Link>
                 <h1 className="text-3xl font-bold">Visit {visit.visitCode}</h1>
               </div>
-              <p className="text-sm text-gray-600 ml-11">
+              <p className="text-sm text-gray-500 ml-11">
                 {visit.patient.firstName} {visit.patient.lastName} • {new Date(visit.date).toLocaleDateString()}
               </p>
             </div>
@@ -359,23 +359,23 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                   <h3 className="text-lg font-semibold mb-3">Patient Information</h3>
                   <div className="flex flex-col md:flex-row gap-4 flex-wrap">
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Name</p>
+                      <p className="text-xs text-gray-500 mb-1">Name</p>
                       <p className="text-sm">
                         {visit.patient.firstName} {visit.patient.lastName}
                       </p>
                     </div>
                     {visit.patient.patientCode && (
                       <div>
-                        <p className="text-xs text-gray-600 mb-1">Patient ID</p>
+                        <p className="text-xs text-gray-500 mb-1">Patient ID</p>
                         <p className="text-sm">{visit.patient.patientCode}</p>
                       </div>
                     )}
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Email</p>
+                      <p className="text-xs text-gray-500 mb-1">Email</p>
                       <p className="text-sm">{visit.patient.email}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Phone</p>
+                      <p className="text-xs text-gray-500 mb-1">Phone</p>
                       <p className="text-sm">{visit.patient.phone}</p>
                     </div>
                   </div>
@@ -462,11 +462,11 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                             <div key={idx} className="bg-gray-50 rounded-lg border border-gray-200">
                               <div className="p-2">
                                 <p className="text-sm font-medium">{med.name}</p>
-                                <p className="text-xs text-gray-600">
+                                <p className="text-xs text-gray-500">
                                   {med.dosage} • {med.frequency} • {med.duration}
                                 </p>
                                 {med.instructions && (
-                                  <p className="text-xs text-gray-600 mt-1">{med.instructions}</p>
+                                  <p className="text-xs text-gray-500 mt-1">{med.instructions}</p>
                                 )}
                               </div>
                             </div>
@@ -513,7 +513,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                         <p className="text-sm font-medium">
                           Signed by: {visit.digitalSignature.providerName}
                         </p>
-                        <p className="text-xs text-gray-600">
+                        <p className="text-xs text-gray-500">
                           {new Date(visit.digitalSignature.signedAt).toLocaleString()}
                         </p>
                       </div>
@@ -548,7 +548,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                       <p className="text-sm font-bold mb-3">Uploaded Files</p>
                       <div className="flex gap-3 flex-wrap">
                         {visit.attachments.map((attachment, idx) => (
-                          <div key={attachment._id || idx} className="bg-gray-50 rounded-lg border border-gray-200 min-w-[200px] flex-1" style={{ flex: '1 1 200px' }}>
+                          <div key={attachment._id || idx} className="bg-gray-50 rounded-lg border border-gray-200 flex-1 min-w-[200px]">
                             <div className="p-3">
                               {attachment.url && attachment.contentType?.startsWith('image/') ? (
                                 <div className="mb-2">
@@ -561,7 +561,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                                 </div>
                               ) : (
                                 <div className="flex items-center justify-center mb-2 h-32 bg-gray-100 rounded-lg">
-                                  <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24" className="text-gray-600">
+                                  <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24" className="text-gray-500">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                   </svg>
                                 </div>
@@ -571,9 +571,9 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                                   {attachment.filename}
                                 </p>
                                 {attachment.notes && (
-                                  <p className="text-xs text-gray-600 mt-1">{attachment.notes}</p>
+                                  <p className="text-xs text-gray-500 mt-1">{attachment.notes}</p>
                                 )}
-                                <p className="text-xs text-gray-600 mt-1">
+                                <p className="text-xs text-gray-500 mt-1">
                                   {new Date(attachment.uploadDate).toLocaleDateString()}
                                   {attachment.size && ` • ${(attachment.size / 1024).toFixed(1)} KB`}
                                 </p>
