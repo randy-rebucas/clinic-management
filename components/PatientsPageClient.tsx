@@ -346,15 +346,12 @@ export default function PatientsPageClient() {
                 <h1 className="text-3xl font-bold mb-1">Patients</h1>
                 <p className="text-sm text-gray-500">Manage patient records and information</p>
               </div>
-          <button
-            onClick={() => {
-              setEditingPatient(null);
-              setShowForm(true);
-            }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          <Link
+            href="/patients/new"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors inline-block text-center"
           >
             Add New Patient
-          </button>
+          </Link>
         </div>
 
         {/* Quick Stats */}
@@ -570,48 +567,50 @@ export default function PatientsPageClient() {
         </div>
       </div>
 
-      {/* Form Modal/Overlay */}
-      <Modal open={showForm} onOpenChange={(open) => {
-        if (!open) {
-          setShowForm(false);
-          setEditingPatient(null);
-        }
-      }} className="max-w-3xl">
-        <div className="p-6">
-          <h2 className="text-xl font-semibold mb-4">
-            {editingPatient ? 'Edit Patient' : 'New Patient'}
-          </h2>
-          <div className="py-4">
-            <PatientForm
-              initialData={editingPatient ? {
-                ...editingPatient,
-                sex: editingPatient.sex as 'male' | 'female' | 'other' | 'unknown' | undefined,
-                address: editingPatient.address ? {
-                  street: (editingPatient.address as any).street || '',
-                  city: editingPatient.address.city || '',
-                  state: editingPatient.address.state || '',
-                  zipCode: (editingPatient.address as any).zipCode || '',
-                } : {
-                  street: '',
-                  city: '',
-                  state: '',
-                  zipCode: '',
-                },
-                emergencyContact: (editingPatient as any).emergencyContact || {
-                  name: '',
-                  phone: '',
-                  relationship: '',
-                },
-              } : undefined}
-              onSubmit={handleSubmit}
-              onCancel={() => {
-                setShowForm(false);
-                setEditingPatient(null);
-              }}
-            />
+      {/* Edit Patient Modal/Overlay - Only for editing, not creating */}
+      {editingPatient && (
+        <Modal open={showForm} onOpenChange={(open) => {
+          if (!open) {
+            setShowForm(false);
+            setEditingPatient(null);
+          }
+        }} className="max-w-3xl">
+          <div className="p-6">
+            <h2 className="text-xl font-semibold mb-4">
+              Edit Patient
+            </h2>
+            <div className="py-4">
+              <PatientForm
+                initialData={{
+                  ...editingPatient,
+                  sex: editingPatient.sex as 'male' | 'female' | 'other' | 'unknown' | undefined,
+                  address: editingPatient.address ? {
+                    street: (editingPatient.address as any).street || '',
+                    city: editingPatient.address.city || '',
+                    state: editingPatient.address.state || '',
+                    zipCode: (editingPatient.address as any).zipCode || '',
+                  } : {
+                    street: '',
+                    city: '',
+                    state: '',
+                    zipCode: '',
+                  },
+                  emergencyContact: (editingPatient as any).emergencyContact || {
+                    name: '',
+                    phone: '',
+                    relationship: '',
+                  },
+                }}
+                onSubmit={handleSubmit}
+                onCancel={() => {
+                  setShowForm(false);
+                  setEditingPatient(null);
+                }}
+              />
+            </div>
           </div>
-        </div>
-      </Modal>
+        </Modal>
+      )}
 
       {/* Patients List */}
       {filteredPatients.length === 0 && patients.length > 0 ? (
@@ -639,15 +638,12 @@ export default function PatientsPageClient() {
             </div>
             <h2 className="text-xl font-semibold mb-1">No patients found</h2>
             <p className="text-sm text-gray-500 mb-3">Get started by adding your first patient.</p>
-            <button
-              onClick={() => {
-                setEditingPatient(null);
-                setShowForm(true);
-              }}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            <Link
+              href="/patients/new"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors inline-block"
             >
               Add First Patient
-            </button>
+            </Link>
           </div>
         </div>
       ) : (

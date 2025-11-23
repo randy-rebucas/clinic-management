@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import mongoose from 'mongoose';
 import InventoryItem from '@/models/Inventory';
+import Medicine from '@/models/Medicine';
+import User from '@/models/User';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 
@@ -16,10 +19,21 @@ export async function GET(
 
   try {
     await connectDB();
+    
+    // Ensure models are registered before populate
+    if (!mongoose.models.Medicine) {
+      const _ = Medicine;
+    }
+    if (!mongoose.models.User) {
+      const _ = User;
+    }
+    
     const { id } = await params;
     const item = await InventoryItem.findById(id)
       .populate('medicineId', 'name genericName')
-      .populate('lastRestockedBy', 'name');
+      .populate('lastRestockedBy', 'name')
+      .lean()
+      .exec();
 
     if (!item) {
       return NextResponse.json(
@@ -31,8 +45,14 @@ export async function GET(
     return NextResponse.json({ success: true, data: item });
   } catch (error: any) {
     console.error('Error fetching inventory item:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    const errorMessage = error?.message || 'Failed to fetch inventory item';
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch inventory item' },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }
@@ -58,6 +78,15 @@ export async function PUT(
 
   try {
     await connectDB();
+    
+    // Ensure models are registered before populate
+    if (!mongoose.models.Medicine) {
+      const _ = Medicine;
+    }
+    if (!mongoose.models.User) {
+      const _ = User;
+    }
+    
     const { id } = await params;
     const body = await request.json();
 
@@ -87,6 +116,11 @@ export async function PUT(
     return NextResponse.json({ success: true, data: item });
   } catch (error: any) {
     console.error('Error updating inventory item:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     if (error.name === 'ValidationError') {
       return NextResponse.json(
         { success: false, error: error.message },
@@ -94,7 +128,7 @@ export async function PUT(
       );
     }
     return NextResponse.json(
-      { success: false, error: 'Failed to update inventory item' },
+      { success: false, error: error.message || 'Failed to update inventory item' },
       { status: 500 }
     );
   }

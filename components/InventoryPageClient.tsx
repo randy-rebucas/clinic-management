@@ -39,21 +39,40 @@ export default function InventoryPageClient() {
       
       const contentType = res.headers.get('content-type');
       let data;
+      
+      // Try to parse JSON response regardless of status
       if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
+        try {
+          data = await res.json();
+        } catch (parseError) {
+          console.error('Failed to parse JSON response:', parseError);
+          const text = await res.text();
+          console.error('Response text:', text.substring(0, 500));
+          throw new Error(`API returned invalid JSON: ${res.status} ${res.statusText}`);
+        }
       } else {
         const text = await res.text();
         console.error('API returned non-JSON response:', text.substring(0, 500));
-        data = { success: false, error: `API error: ${res.status} ${res.statusText}` };
+        throw new Error(`API error: ${res.status} ${res.statusText}`);
+      }
+      
+      if (!res.ok) {
+        const errorMsg = data?.error || `Failed to fetch inventory: ${res.status} ${res.statusText}`;
+        console.error('API error response:', res.status, res.statusText, errorMsg);
+        throw new Error(errorMsg);
       }
       
       if (data.success) {
-        setItems(data.data);
+        setItems(data.data || []);
       } else {
-        console.error('Failed to fetch inventory:', data.error);
+        const errorMsg = data.error || 'Failed to fetch inventory';
+        console.error('Failed to fetch inventory:', errorMsg);
+        throw new Error(errorMsg);
       }
     } catch (error) {
       console.error('Failed to fetch inventory:', error);
+      // Set empty array on error to prevent UI issues
+      setItems([]);
     } finally {
       setLoading(false);
     }

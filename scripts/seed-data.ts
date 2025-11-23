@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import User from '../models/User';
 import Role from '../models/Role';
 import Permission from '../models/Permission';
+import { DEFAULT_ROLE_PERMISSIONS } from '../lib/permissions';
 import Staff from '../models/Staff';
 import Doctor from '../models/Doctor';
 import Patient from '../models/Patient';
@@ -119,27 +120,206 @@ async function seedDataScript() {
     ]);
     console.log('✅ Existing data cleared\n');
 
-    // 1. Create Roles
+    // 1. Create Roles (matching setup route pattern)
     console.log('📋 Creating roles...');
-    const roles = [
-      { name: 'admin', displayName: 'Administrator', description: 'Full system access', level: 100 },
-      { name: 'doctor', displayName: 'Doctor', description: 'Medical practitioner', level: 80 },
-      { name: 'nurse', displayName: 'Nurse', description: 'Nursing staff', level: 60 },
-      { name: 'receptionist', displayName: 'Receptionist', description: 'Front desk staff', level: 40 },
-      { name: 'accountant', displayName: 'Accountant', description: 'Billing and finance', level: 50 },
-    ];
-
-    for (const roleData of roles) {
-      const role = await Role.create({
-        ...roleData,
+    
+    // Admin role
+    const adminRole = await Role.findOneAndUpdate(
+      { name: 'admin' },
+      {
+        name: 'admin',
+        displayName: 'Administrator',
+        description: 'Full system access with all permissions',
+        level: 100,
         isActive: true,
         defaultPermissions: [
-          { resource: roleData.name, actions: ['read', 'write', 'delete'] },
+          { resource: '*', actions: ['*'] },
         ],
-      });
-      seedData.roles.push(role);
-      console.log(`   ✓ Created role: ${role.displayName}`);
+      },
+      { upsert: true, new: true }
+    );
+    
+    // Create Permission documents for admin role
+    // First, clear any existing permissions for this role to avoid duplicates
+    await Permission.deleteMany({ role: adminRole._id });
+    
+    const adminPermissions = [];
+    try {
+      for (const perm of adminRole.defaultPermissions || []) {
+        const permission = await Permission.create({
+          role: adminRole._id, // Reference to Role model
+          resource: perm.resource,
+          actions: perm.actions,
+        });
+        adminPermissions.push(permission._id);
+      }
+      // Update role with Permission document references
+      adminRole.permissions = adminPermissions;
+      await adminRole.save();
+      console.log(`   ✓ Created role: ${adminRole.displayName} with ${adminPermissions.length} permission(s)`);
+    } catch (error: any) {
+      console.error('   ⚠️  Error creating permissions for admin role:', error.message);
+      // Continue even if permission creation fails - defaultPermissions will still work
+      console.log(`   ✓ Created role: ${adminRole.displayName} (permissions creation failed, using defaultPermissions)`);
     }
+    seedData.roles.push(adminRole);
+
+    // Doctor role
+    const doctorRole = await Role.findOneAndUpdate(
+      { name: 'doctor' },
+      {
+        name: 'doctor',
+        displayName: 'Doctor',
+        description: 'Clinical staff with access to patient care, visits, and prescriptions',
+        level: 80,
+        isActive: true,
+        defaultPermissions: DEFAULT_ROLE_PERMISSIONS.doctor,
+      },
+      { upsert: true, new: true }
+    );
+    
+    // Create Permission documents for doctor role
+    // First, clear any existing permissions for this role to avoid duplicates
+    await Permission.deleteMany({ role: doctorRole._id });
+    
+    const doctorPermissions = [];
+    try {
+      for (const perm of doctorRole.defaultPermissions || []) {
+        const permission = await Permission.create({
+          role: doctorRole._id, // Reference to Role model
+          resource: perm.resource,
+          actions: perm.actions,
+        });
+        doctorPermissions.push(permission._id);
+      }
+      // Update role with Permission document references
+      doctorRole.permissions = doctorPermissions;
+      await doctorRole.save();
+      console.log(`   ✓ Created role: ${doctorRole.displayName} with ${doctorPermissions.length} permission(s)`);
+    } catch (error: any) {
+      console.error('   ⚠️  Error creating permissions for doctor role:', error.message);
+      // Continue even if permission creation fails
+      console.log(`   ✓ Created role: ${doctorRole.displayName} (permissions creation failed, using defaultPermissions)`);
+    }
+    seedData.roles.push(doctorRole);
+
+    // Nurse role
+    const nurseRole = await Role.findOneAndUpdate(
+      { name: 'nurse' },
+      {
+        name: 'nurse',
+        displayName: 'Nurse',
+        description: 'Clinical staff with access to patient care and lab results',
+        level: 60,
+        isActive: true,
+        defaultPermissions: DEFAULT_ROLE_PERMISSIONS.nurse,
+      },
+      { upsert: true, new: true }
+    );
+    
+    // Create Permission documents for nurse role
+    // First, clear any existing permissions for this role to avoid duplicates
+    await Permission.deleteMany({ role: nurseRole._id });
+    
+    const nursePermissions = [];
+    try {
+      for (const perm of nurseRole.defaultPermissions || []) {
+        const permission = await Permission.create({
+          role: nurseRole._id, // Reference to Role model
+          resource: perm.resource,
+          actions: perm.actions,
+        });
+        nursePermissions.push(permission._id);
+      }
+      // Update role with Permission document references
+      nurseRole.permissions = nursePermissions;
+      await nurseRole.save();
+      console.log(`   ✓ Created role: ${nurseRole.displayName} with ${nursePermissions.length} permission(s)`);
+    } catch (error: any) {
+      console.error('   ⚠️  Error creating permissions for nurse role:', error.message);
+      // Continue even if permission creation fails
+      console.log(`   ✓ Created role: ${nurseRole.displayName} (permissions creation failed, using defaultPermissions)`);
+    }
+    seedData.roles.push(nurseRole);
+
+    // Receptionist role
+    const receptionistRole = await Role.findOneAndUpdate(
+      { name: 'receptionist' },
+      {
+        name: 'receptionist',
+        displayName: 'Receptionist',
+        description: 'Front desk staff with access to appointments and patient management',
+        level: 40,
+        isActive: true,
+        defaultPermissions: DEFAULT_ROLE_PERMISSIONS.receptionist,
+      },
+      { upsert: true, new: true }
+    );
+    
+    // Create Permission documents for receptionist role
+    // First, clear any existing permissions for this role to avoid duplicates
+    await Permission.deleteMany({ role: receptionistRole._id });
+    
+    const receptionistPermissions = [];
+    try {
+      for (const perm of receptionistRole.defaultPermissions || []) {
+        const permission = await Permission.create({
+          role: receptionistRole._id, // Reference to Role model
+          resource: perm.resource,
+          actions: perm.actions,
+        });
+        receptionistPermissions.push(permission._id);
+      }
+      // Update role with Permission document references
+      receptionistRole.permissions = receptionistPermissions;
+      await receptionistRole.save();
+      console.log(`   ✓ Created role: ${receptionistRole.displayName} with ${receptionistPermissions.length} permission(s)`);
+    } catch (error: any) {
+      console.error('   ⚠️  Error creating permissions for receptionist role:', error.message);
+      // Continue even if permission creation fails
+      console.log(`   ✓ Created role: ${receptionistRole.displayName} (permissions creation failed, using defaultPermissions)`);
+    }
+    seedData.roles.push(receptionistRole);
+
+    // Accountant role
+    const accountantRole = await Role.findOneAndUpdate(
+      { name: 'accountant' },
+      {
+        name: 'accountant',
+        displayName: 'Accountant',
+        description: 'Financial staff with access to billing and invoices',
+        level: 30,
+        isActive: true,
+        defaultPermissions: DEFAULT_ROLE_PERMISSIONS.accountant,
+      },
+      { upsert: true, new: true }
+    );
+    
+    // Create Permission documents for accountant role
+    // First, clear any existing permissions for this role to avoid duplicates
+    await Permission.deleteMany({ role: accountantRole._id });
+    
+    const accountantPermissions = [];
+    try {
+      for (const perm of accountantRole.defaultPermissions || []) {
+        const permission = await Permission.create({
+          role: accountantRole._id, // Reference to Role model
+          resource: perm.resource,
+          actions: perm.actions,
+        });
+        accountantPermissions.push(permission._id);
+      }
+      // Update role with Permission document references
+      accountantRole.permissions = accountantPermissions;
+      await accountantRole.save();
+      console.log(`   ✓ Created role: ${accountantRole.displayName} with ${accountantPermissions.length} permission(s)`);
+    } catch (error: any) {
+      console.error('   ⚠️  Error creating permissions for accountant role:', error.message);
+      // Continue even if permission creation fails
+      console.log(`   ✓ Created role: ${accountantRole.displayName} (permissions creation failed, using defaultPermissions)`);
+    }
+    seedData.roles.push(accountantRole);
+
     console.log('✅ Roles created\n');
 
     // 2. Create Users
@@ -446,12 +626,12 @@ async function seedDataScript() {
       const visitDate = new Date();
       visitDate.setDate(visitDate.getDate() - (i + 1));
 
-      // Build visit data object
+      // Build visit data object - ensure provider is set (required for proper reference)
       const visitData: any = {
         patient: patient._id,
         visitCode: `VISIT-${String(i + 1).padStart(6, '0')}`,
         date: visitDate,
-        provider: doctorUser?._id,
+        provider: doctorUser._id, // Visit.provider is optional but should be set for proper reference
         visitType: i === 0 ? 'consultation' : i === 1 ? 'follow-up' : 'checkup',
         chiefComplaint: 'Routine checkup',
         historyOfPresentIllness: 'Patient presents for routine examination',
@@ -486,13 +666,6 @@ async function seedDataScript() {
         status: 'closed',
       };
 
-      // Remove undefined properties to prevent Mongoose from initializing them as empty objects
-      Object.keys(visitData).forEach(key => {
-        if (visitData[key] === undefined) {
-          delete visitData[key];
-        }
-      });
-
       const visit = await Visit.create(visitData);
       seedData.visits.push(visit);
       console.log(`   ✓ Created visit: ${visit.visitCode}`);
@@ -511,11 +684,11 @@ async function seedDataScript() {
         prescriptionCode: `RX-${String(i + 1).padStart(6, '0')}`,
         visit: visit._id,
         patient: patient._id,
-        prescribedBy: doctorUser?._id,
+        prescribedBy: doctorUser._id, // Prescription.prescribedBy is optional but should be set
         issuedAt: visit.date,
         medications: [
           {
-            medicineId: medicine._id,
+            medicineId: medicine._id, // Reference to Medicine model
             name: medicine.name,
             genericName: medicine.genericName,
             form: medicine.form,
@@ -532,10 +705,11 @@ async function seedDataScript() {
         printable: true,
       });
 
-      // Update visit with prescription
+      // Update visit with prescription reference
       await Visit.findByIdAndUpdate(visit._id, {
         $push: { prescriptions: prescription._id },
       });
+      seedData.prescriptions.push(prescription);
       console.log(`   ✓ Created prescription: ${prescription.prescriptionCode}`);
     }
     console.log('✅ Prescriptions created\n');
@@ -550,7 +724,7 @@ async function seedDataScript() {
       const labResult = await LabResult.create({
         visit: visit._id,
         patient: patient._id,
-        orderedBy: doctorUser?._id,
+        orderedBy: doctorUser._id, // LabResult.orderedBy is optional but should be set
         orderDate: visit.date,
         requestCode: `LAB-${String(i + 1).padStart(6, '0')}`,
         request: {
@@ -570,10 +744,11 @@ async function seedDataScript() {
         attachments: [],
       });
 
-      // Update visit with lab result
+      // Update visit with lab result reference
       await Visit.findByIdAndUpdate(visit._id, {
         $push: { labsOrdered: labResult._id },
       });
+      seedData.labResults.push(labResult);
       console.log(`   ✓ Created lab result: ${labResult.requestCode}`);
     }
     console.log('✅ Lab results created\n');
@@ -588,7 +763,7 @@ async function seedDataScript() {
       const imaging = await Imaging.create({
         visit: visit._id,
         patient: patient._id,
-        orderedBy: doctorUser?._id,
+        orderedBy: doctorUser._id, // Imaging.orderedBy is optional but should be set
         modality: i === 0 ? 'X-Ray' : i === 1 ? 'Ultrasound' : 'CT',
         bodyPart: i === 0 ? 'Chest' : i === 1 ? 'Abdomen' : 'Head',
         orderDate: visit.date,
@@ -596,14 +771,15 @@ async function seedDataScript() {
         impression: 'Normal study',
         images: [],
         status: 'completed',
-        reportedBy: doctorUser?._id,
+        reportedBy: doctorUser._id, // Imaging.reportedBy is optional but should be set
         reportedAt: new Date(visit.date.getTime() + 2 * 24 * 60 * 60 * 1000),
       });
 
-      // Update visit with imaging
+      // Update visit with imaging reference
       await Visit.findByIdAndUpdate(visit._id, {
         $push: { imagingOrdered: imaging._id },
       });
+      seedData.imaging.push(imaging);
       console.log(`   ✓ Created imaging: ${imaging.modality} - ${imaging.bodyPart}`);
     }
     console.log('✅ Imaging records created\n');
@@ -619,30 +795,36 @@ async function seedDataScript() {
         visit: visit._id,
         patient: patient._id,
         type: i === 0 ? 'minor-surgery' : 'wound-care',
-        performedBy: doctorUser?._id,
+        performedBy: doctorUser._id, // Procedure.performedBy is optional but should be set
         date: visit.date,
         details: 'Procedure performed successfully',
         outcome: 'Successful',
         attachments: [],
       });
 
-      // Update visit with procedure
+      // Update visit with procedure reference
       await Visit.findByIdAndUpdate(visit._id, {
         $push: { proceduresPerformed: procedure._id },
       });
+      seedData.procedures.push(procedure);
       console.log(`   ✓ Created procedure: ${procedure.type}`);
     }
     console.log('✅ Procedures created\n');
 
     // 16. Create Invoices
     console.log('💰 Creating invoices...');
+    // Get admin user (first user is admin based on seed data)
+    const adminUser = seedData.users.find(u => 
+      seedData.roles.find(r => r._id.toString() === u.role.toString())?.name === 'admin'
+    );
+    if (!adminUser) {
+      throw new Error('Admin user not found. Cannot create invoices.');
+    }
+
     for (let i = 0; i < seedData.visits.length; i++) {
       const visit = seedData.visits[i];
       const patient = seedData.patients[i];
       const service = seedData.services[i % seedData.services.length];
-      const adminUser = seedData.users.find(u => 
-        seedData.roles.find(r => r._id.toString() === u.role.toString())?.name === 'admin'
-      );
 
       const subtotal = service.unitPrice;
       const discounts: any[] = [];
@@ -651,7 +833,7 @@ async function seedDataScript() {
           type: 'senior',
           percentage: 20,
           amount: subtotal * 0.2,
-          appliedBy: adminUser?._id,
+          appliedBy: adminUser._id, // Invoice.discounts[].appliedBy is optional but set for proper reference
         });
       }
       const discountAmount = discounts.reduce((sum, d) => sum + d.amount, 0);
@@ -663,7 +845,7 @@ async function seedDataScript() {
         invoiceNumber: `INV-${String(i + 1).padStart(6, '0')}`,
         items: [
           {
-            serviceId: service._id,
+            serviceId: service._id, // Reference to Service model
             code: service.code,
             description: service.name,
             category: service.category,
@@ -678,13 +860,13 @@ async function seedDataScript() {
         totalPaid: i < 2 ? total : total * 0.5,
         outstandingBalance: i < 2 ? 0 : total * 0.5,
         status: i < 2 ? 'paid' : 'partial',
-        createdBy: adminUser?._id,
+        createdBy: adminUser._id, // Invoice.createdBy is optional but set for proper reference
         payments: i < 2 ? [
           {
             method: 'cash',
             amount: total,
             date: visit.date,
-            processedBy: adminUser?._id,
+            processedBy: adminUser._id, // Invoice.payments[].processedBy is optional but set for proper reference
           },
         ] : [],
       });
@@ -752,6 +934,7 @@ async function seedDataScript() {
       const appointment = seedData.appointments[i];
       const patient = seedData.patients[i];
       const doctor = seedData.doctors[i % seedData.doctors.length];
+      const room = seedData.rooms[i % seedData.rooms.length];
 
       const queue = await Queue.create({
         queueType: 'appointment',
@@ -759,6 +942,7 @@ async function seedDataScript() {
         patientName: `${patient.firstName} ${patient.lastName}`,
         appointment: appointment._id,
         doctor: doctor._id,
+        room: room._id, // Queue.room is ObjectId reference to Room
         status: i === 0 ? 'waiting' : i === 1 ? 'in-progress' : 'completed',
         priority: i,
         estimatedWaitTime: 15 + (i * 5),
@@ -775,6 +959,8 @@ async function seedDataScript() {
     console.log('🎟️ Creating memberships...');
     for (let i = 0; i < Math.min(3, seedData.patients.length); i++) {
       const patient = seedData.patients[i];
+      // Note: Membership model has a pre-save hook that automatically sets discountPercentage
+      // based on tier, so we don't need to set it explicitly
       const membership = await Membership.create({
         patient: patient._id,
         membershipNumber: `MEM-${String(i + 1).padStart(6, '0')}`,
@@ -789,16 +975,17 @@ async function seedDataScript() {
       seedData.memberships.push(membership);
 
       // Update patient with membership eligibility
+      // discountPercentage is set by the Membership model's pre-save hook
       await Patient.findByIdAndUpdate(patient._id, {
         'discountEligibility.membership': {
           eligible: true,
           membershipType: membership.tier,
           membershipNumber: membership.membershipNumber,
           expiryDate: membership.expiryDate,
-          discountPercentage: membership.discountPercentage,
+          discountPercentage: membership.discountPercentage, // Retrieved after save (set by pre-save hook)
         },
       });
-      console.log(`   ✓ Created membership: ${membership.membershipNumber}`);
+      console.log(`   ✓ Created membership: ${membership.membershipNumber} (${membership.tier} tier, ${membership.discountPercentage}% discount)`);
     }
     console.log('✅ Memberships created\n');
 
@@ -851,10 +1038,10 @@ async function seedDataScript() {
     console.log(`   Rooms: ${seedData.rooms.length}`);
     console.log(`   Appointments: ${seedData.appointments.length}`);
     console.log(`   Visits: ${seedData.visits.length}`);
-    console.log(`   Prescriptions: ${seedData.visits.length}`);
-    console.log(`   Lab Results: ${seedData.visits.length}`);
-    console.log(`   Imaging: ${Math.min(3, seedData.visits.length)}`);
-    console.log(`   Procedures: ${Math.min(2, seedData.visits.length)}`);
+    console.log(`   Prescriptions: ${seedData.prescriptions.length}`);
+    console.log(`   Lab Results: ${seedData.labResults.length}`);
+    console.log(`   Imaging: ${seedData.imaging.length}`);
+    console.log(`   Procedures: ${seedData.procedures.length}`);
     console.log(`   Invoices: ${seedData.invoices.length}`);
     console.log(`   Documents: ${seedData.documents.length}`);
     console.log(`   Referrals: ${Math.min(2, seedData.patients.length)}`);

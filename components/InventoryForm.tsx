@@ -19,12 +19,14 @@ interface InventoryFormProps {
   };
   onSubmit: (data: any) => void;
   onCancel?: () => void;
+  isEdit?: boolean;
 }
 
 export default function InventoryForm({
   initialData,
   onSubmit,
   onCancel,
+  isEdit = false,
 }: InventoryFormProps) {
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
@@ -282,7 +284,7 @@ export default function InventoryForm({
             type="submit"
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors"
           >
-            Add Item
+            {isEdit ? 'Update Item' : 'Add Item'}
           </button>
         </div>
       </div>
