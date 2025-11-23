@@ -2,9 +2,8 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import PatientForm from '@/components/PatientForm';
 import { useRouter } from 'next/navigation';
-import { Modal, AlertDialog } from './ui/Modal';
+import { AlertDialog } from './ui/Modal';
 
 interface Patient {
   _id: string;
@@ -26,10 +25,8 @@ type SortOption = 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc' | 'code-as
 export default function PatientsPageClient() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState<string | null>(null);
-  const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
@@ -156,113 +153,6 @@ export default function PatientsPageClient() {
       city: '',
       state: '',
     });
-  };
-
-  const handleSubmit = async (formData: any) => {
-    try {
-      const url = editingPatient
-        ? `/api/patients/${editingPatient._id}`
-        : '/api/patients';
-      const method = editingPatient ? 'PUT' : 'POST';
-
-      // Handle allergies - already in structured format from form
-      const allergiesArray = Array.isArray(formData.allergies)
-        ? formData.allergies
-        : formData.allergies
-            ?.split(',')
-            .map((a: string) => a.trim())
-            .filter((a: string) => a.length > 0)
-            .map((substance: string) => ({ substance, reaction: '', severity: 'unknown' })) || [];
-
-      // Clean up identifiers - only include if they have values
-      const identifiers = formData.identifiers
-        ? {
-            ...(formData.identifiers.philHealth?.trim() && { philHealth: formData.identifiers.philHealth.trim() }),
-            ...(formData.identifiers.govId?.trim() && { govId: formData.identifiers.govId.trim() }),
-          }
-        : undefined;
-
-      // Only include identifiers if it has at least one property
-      const cleanedIdentifiers = identifiers && Object.keys(identifiers).length > 0 ? identifiers : undefined;
-
-      // Prepare the payload
-      const payload: any = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        phone: formData.phone,
-        dateOfBirth: new Date(formData.dateOfBirth),
-        address: {
-          street: formData.address.street,
-          city: formData.address.city,
-          state: formData.address.state,
-          zipCode: formData.address.zipCode,
-        },
-        emergencyContact: {
-          name: formData.emergencyContact.name,
-          phone: formData.emergencyContact.phone,
-          relationship: formData.emergencyContact.relationship,
-        },
-        allergies: allergiesArray,
-      };
-
-      // Add optional fields only if they have values
-      if (formData.middleName?.trim()) payload.middleName = formData.middleName.trim();
-      if (formData.suffix?.trim()) payload.suffix = formData.suffix.trim();
-      if (formData.sex && formData.sex !== 'unknown') payload.sex = formData.sex;
-      if (formData.civilStatus?.trim()) payload.civilStatus = formData.civilStatus.trim();
-      if (formData.nationality?.trim()) payload.nationality = formData.nationality.trim();
-      if (formData.occupation?.trim()) payload.occupation = formData.occupation.trim();
-      if (formData.medicalHistory?.trim()) payload.medicalHistory = formData.medicalHistory.trim();
-      if (cleanedIdentifiers) payload.identifiers = cleanedIdentifiers;
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      // Check for authentication errors
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const contentType = res.headers.get('content-type');
-      let data;
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        console.error('API returned non-JSON response:', text.substring(0, 500));
-        console.error('Response status:', res.status);
-        console.error('Response headers:', Object.fromEntries(res.headers.entries()));
-        setError(`Failed to save patient: API error (Status: ${res.status})`);
-        setTimeout(() => setError(null), 5000);
-        return;
-      }
-      
-      if (data.success) {
-        setShowForm(false);
-        setEditingPatient(null);
-        setSuccess(editingPatient ? 'Patient updated successfully!' : 'Patient created successfully!');
-        setTimeout(() => setSuccess(null), 3000);
-        fetchPatients();
-      } else {
-        console.error('API error response:', data);
-        setError('Error: ' + (data.error || 'Unknown error occurred'));
-        setTimeout(() => setError(null), 5000);
-      }
-    } catch (error: any) {
-      console.error('Failed to save patient:', error);
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-      });
-      setError(`Failed to save patient: ${error.message || 'Unknown error'}`);
-      setTimeout(() => setError(null), 5000);
-    }
   };
 
   const handleDeleteClick = (id: string) => {
@@ -567,50 +457,6 @@ export default function PatientsPageClient() {
         </div>
       </div>
 
-      {/* Edit Patient Modal/Overlay - Only for editing, not creating */}
-      {editingPatient && (
-        <Modal open={showForm} onOpenChange={(open) => {
-          if (!open) {
-            setShowForm(false);
-            setEditingPatient(null);
-          }
-        }} className="max-w-3xl">
-          <div className="p-6">
-            <h2 className="text-xl font-semibold mb-4">
-              Edit Patient
-            </h2>
-            <div className="py-4">
-              <PatientForm
-                initialData={{
-                  ...editingPatient,
-                  sex: editingPatient.sex as 'male' | 'female' | 'other' | 'unknown' | undefined,
-                  address: editingPatient.address ? {
-                    street: (editingPatient.address as any).street || '',
-                    city: editingPatient.address.city || '',
-                    state: editingPatient.address.state || '',
-                    zipCode: (editingPatient.address as any).zipCode || '',
-                  } : {
-                    street: '',
-                    city: '',
-                    state: '',
-                    zipCode: '',
-                  },
-                  emergencyContact: (editingPatient as any).emergencyContact || {
-                    name: '',
-                    phone: '',
-                    relationship: '',
-                  },
-                }}
-                onSubmit={handleSubmit}
-                onCancel={() => {
-                  setShowForm(false);
-                  setEditingPatient(null);
-                }}
-              />
-            </div>
-          </div>
-        </Modal>
-      )}
 
       {/* Patients List */}
       {filteredPatients.length === 0 && patients.length > 0 ? (
@@ -730,17 +576,14 @@ export default function PatientsPageClient() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                         </Link>
-                        <button
-                          onClick={() => {
-                            setEditingPatient(patient);
-                            setShowForm(true);
-                          }}
+                        <Link
+                          href={`/patients/${patient._id}/edit`}
                           className="p-2 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
-                        </button>
+                        </Link>
                         <button
                           onClick={() => handleDeleteClick(patient._id)}
                           className="p-2 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors"

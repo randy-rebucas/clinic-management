@@ -14,7 +14,7 @@ interface Visit {
     firstName: string;
     lastName: string;
     patientCode?: string;
-  };
+  } | null;
   provider?: {
     _id: string;
     name: string;
@@ -156,9 +156,14 @@ export default function VisitsPageClient() {
   const filteredVisits = visits.filter(visit => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      const patientName = `${visit.patient.firstName} ${visit.patient.lastName}`.toLowerCase();
+      const patientName = visit.patient 
+        ? `${visit.patient.firstName} ${visit.patient.lastName}`.toLowerCase()
+        : '';
       const visitCode = visit.visitCode.toLowerCase();
-      if (!patientName.includes(query) && !visitCode.includes(query)) return false;
+      // If patient is null and query doesn't match visit code, exclude from results
+      if (!visit.patient && !visitCode.includes(query)) return false;
+      // If patient exists, check both patient name and visit code
+      if (visit.patient && !patientName.includes(query) && !visitCode.includes(query)) return false;
     }
     if (filterStatus !== 'all' && visit.status !== filterStatus) return false;
     return true;
@@ -350,13 +355,19 @@ export default function VisitsPageClient() {
                         <div className="text-sm font-medium">{visit.visitCode}</div>
                       </td>
                       <td className="px-4 py-3">
-                        <Link href={`/patients/${visit.patient._id}`}>
-                          <div className="text-sm font-medium text-blue-600 hover:underline">
-                            {visit.patient.firstName} {visit.patient.lastName}
-                          </div>
-                        </Link>
-                        {visit.patient.patientCode && (
-                          <div className="text-xs text-gray-500">{visit.patient.patientCode}</div>
+                        {visit.patient ? (
+                          <>
+                            <Link href={`/patients/${visit.patient._id}`}>
+                              <div className="text-sm font-medium text-blue-600 hover:underline">
+                                {visit.patient.firstName} {visit.patient.lastName}
+                              </div>
+                            </Link>
+                            {visit.patient.patientCode && (
+                              <div className="text-xs text-gray-500">{visit.patient.patientCode}</div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="text-sm text-gray-400 italic">No patient assigned</div>
                         )}
                       </td>
                       <td className="px-4 py-3">

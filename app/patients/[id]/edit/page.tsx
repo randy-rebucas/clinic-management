@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
 import { requirePagePermission } from '@/app/lib/auth-helpers';
-import VisitDetailClient from '@/components/VisitDetailClient';
+import PatientEditClient from '@/components/PatientEditClient';
 
-export default async function VisitDetailPage({
+export default async function PatientEditPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -14,10 +14,10 @@ export default async function VisitDetailPage({
     redirect('/login');
   }
 
-  // Require permission to read visits
-  await requirePagePermission('visits', 'read');
+  // Require permission to update patients
+  await requirePagePermission('patients', 'update');
 
   const { id } = await params;
-  return <VisitDetailClient visitId={id} />;
+  return <PatientEditClient patientId={id} />;
 }
 

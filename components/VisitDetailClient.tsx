@@ -15,7 +15,7 @@ interface Visit {
     patientCode?: string;
     email: string;
     phone: string;
-  };
+  } | null;
   provider?: {
     _id: string;
     name: string;
@@ -272,7 +272,10 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                 <h1 className="text-3xl font-bold">Visit {visit.visitCode}</h1>
               </div>
               <p className="text-sm text-gray-500 ml-11">
-                {visit.patient.firstName} {visit.patient.lastName} • {new Date(visit.date).toLocaleDateString()}
+                {visit.patient 
+                  ? `${visit.patient.firstName} ${visit.patient.lastName} • ${new Date(visit.date).toLocaleDateString()}`
+                  : `No patient assigned • ${new Date(visit.date).toLocaleDateString()}`
+                }
               </p>
             </div>
             <div className="flex gap-2 flex-wrap">
@@ -327,7 +330,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
               <div className="p-3">
                 <VisitForm
               initialData={{
-                patient: visit.patient._id,
+                patient: visit.patient?._id || '',
                 visitType: visit.visitType as any,
                 chiefComplaint: visit.chiefComplaint,
                 historyOfPresentIllness: visit.historyOfPresentIllness,
@@ -343,7 +346,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                   signatureData: visit.digitalSignature.signatureData,
                 } : undefined,
               }}
-              patients={[{ _id: visit.patient._id, firstName: visit.patient.firstName, lastName: visit.patient.lastName }]}
+              patients={visit.patient ? [{ _id: visit.patient._id, firstName: visit.patient.firstName, lastName: visit.patient.lastName }] : []}
               onSubmit={handleUpdate}
               onCancel={() => setEditing(false)}
               providerName={providerName}
@@ -357,28 +360,32 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
               <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="p-3">
                   <h3 className="text-lg font-semibold mb-3">Patient Information</h3>
-                  <div className="flex flex-col md:flex-row gap-4 flex-wrap">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Name</p>
-                      <p className="text-sm">
-                        {visit.patient.firstName} {visit.patient.lastName}
-                      </p>
-                    </div>
-                    {visit.patient.patientCode && (
+                  {visit.patient ? (
+                    <div className="flex flex-col md:flex-row gap-4 flex-wrap">
                       <div>
-                        <p className="text-xs text-gray-500 mb-1">Patient ID</p>
-                        <p className="text-sm">{visit.patient.patientCode}</p>
+                        <p className="text-xs text-gray-500 mb-1">Name</p>
+                        <Link href={`/patients/${visit.patient._id}`} className="text-sm text-blue-600 hover:underline">
+                          {visit.patient.firstName} {visit.patient.lastName}
+                        </Link>
                       </div>
-                    )}
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Email</p>
-                      <p className="text-sm">{visit.patient.email}</p>
+                      {visit.patient.patientCode && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Patient ID</p>
+                          <p className="text-sm">{visit.patient.patientCode}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Email</p>
+                        <p className="text-sm">{visit.patient.email}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Phone</p>
+                        <p className="text-sm">{visit.patient.phone}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Phone</p>
-                      <p className="text-sm">{visit.patient.phone}</p>
-                    </div>
-                  </div>
+                  ) : (
+                    <p className="text-sm text-gray-400 italic">No patient assigned to this visit</p>
+                  )}
                 </div>
               </div>
 

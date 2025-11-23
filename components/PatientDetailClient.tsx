@@ -415,7 +415,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                   QR Code
                 </button>
                 <Link 
-                  href={`/patients?edit=${patient._id}`}
+                  href={`/patients/${patient._id}/edit`}
                   className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium flex items-center gap-1.5"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
