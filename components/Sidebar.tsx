@@ -3,8 +3,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import LogoutButton from './LogoutButton';
-import { useSidebar } from './SidebarContext';
-import { Box, Button, Text, Flex, Card } from '@radix-ui/themes';
 
 interface NavItem {
   href: string;
@@ -23,7 +21,6 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ navItems, user }: SidebarProps) {
-  const { isCollapsed, setIsCollapsed } = useSidebar();
   const pathname = usePathname();
 
   // Filter items based on user role (admin-only items)
@@ -50,165 +47,56 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
   }
 
   return (
-    <Box
-      position="fixed"
-      left="0"
-      top="0"
-      height="100vh"
-      width={isCollapsed ? '56px' : '280px'}
+    <div
+      className="fixed left-0 top-0 h-screen bg-white border-r border-gray-300 z-40"
       style={{
-        backgroundColor: 'white',
-        borderRight: '1px solid var(--gray-6)',
-        transition: 'width 300ms ease',
-        zIndex: 40,
+        width: '280px',
       }}
     >
-      <Flex
-        direction="column"
-        height="100%"
-      >
-        {/* Logo and Toggle */}
-        <Flex
-          align="center"
-          justify="between"
-          height="56px"
-          px="3"
-          style={{
-            borderBottom: '1px solid var(--gray-6)',
-          }}
-        >
-          {!isCollapsed && (
-            <Link href="/" style={{ flex: 1, minWidth: 0 }}>
-              <Flex align="center" gap="2" style={{ minWidth: 0 }}>
-                <Box
-                  width="28px"
-                  height="28px"
-                  style={{
-                    borderRadius: 'var(--radius-2)',
-                    background: 'linear-gradient(to bottom right, var(--blue-9), var(--blue-10))',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <svg width="16" height="16" fill="none" stroke="white" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                  </svg>
-                </Box>
-                <Text
-                  size="3"
-                  weight="bold"
-                  style={{
-                    background: 'linear-gradient(to right, var(--blue-10), var(--blue-11))',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  ClinicHub
-                </Text>
-              </Flex>
-            </Link>
-          )}
-          {isCollapsed && (
-            <Box
-              width="28px"
-              height="28px"
-              mx="auto"
-              style={{
-                borderRadius: 'var(--radius-2)',
-                background: 'linear-gradient(to bottom right, var(--blue-9), var(--blue-10))',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <svg width="16" height="16" fill="none" stroke="white" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-              </svg>
-            </Box>
-          )}
-          <Button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            variant="ghost"
-            size="1"
-            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            <svg
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d={isCollapsed ? 'M9 5l7 7-7 7' : 'M15 19l-7-7 7-7'}
-              />
-            </svg>
-          </Button>
-        </Flex>
+      <div className="flex flex-col h-full">
+        {/* Logo */}
+        <div className="flex items-center h-14 px-3 border-b border-gray-300">
+          <Link href="/" className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0">
+                <svg width="16" height="16" fill="none" stroke="white" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+              </div>
+              <span className="text-base font-bold bg-gradient-to-r from-blue-700 to-blue-800 bg-clip-text text-transparent overflow-hidden text-ellipsis whitespace-nowrap">
+                ClinicHub
+              </span>
+            </div>
+          </Link>
+        </div>
 
         {/* Navigation Items */}
-        <Box
-          flexGrow="1"
-          style={{ overflowY: 'auto' }}
-          py="3"
-          px="2"
-        >
-          <Flex direction="column" gap="0">
+        <div className="flex-1 overflow-y-auto py-3 px-2">
+          <div className="flex flex-col gap-0">
           {Object.entries(groupedItems).map(([category, items]) => (
-            <Box key={category}>
-              {!isCollapsed && items.length > 0 && (
-                <Box px="3" py="2">
-                  <Text size="2" weight="bold" color="gray" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div key={category}>
+              {items.length > 0 && (
+                <div className="px-3 py-2">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                     {category}
-                  </Text>
-                </Box>
+                  </span>
+                </div>
               )}
               {items.map((item) => {
                 const isActive = pathname === item.href;
                 return (
-                  <Box key={item.href} px="2">
+                  <div key={item.href} className="px-2">
                     <Link
                       href={item.href}
-                      title={isCollapsed ? item.label : undefined}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--space-3)',
-                        padding: 'var(--space-2) var(--space-3)',
-                        borderRadius: 'var(--radius-2)',
-                        textDecoration: 'none',
-                        backgroundColor: isActive ? 'var(--blue-3)' : 'transparent',
-                        color: isActive ? 'var(--blue-11)' : 'var(--gray-11)',
-                        fontWeight: isActive ? '500' : 'normal',
-                        transition: 'background-color 150ms, color 150ms',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isActive) {
-                          e.currentTarget.style.backgroundColor = 'var(--gray-3)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isActive) {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }
-                      }}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-md no-underline transition-colors ${
+                        isActive
+                          ? 'bg-blue-100 text-blue-900 font-medium'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
                     >
-                      <Box
-                        width="18px"
-                        height="18px"
-                        flexShrink="0"
-                        style={{
-                          color: isActive ? 'var(--blue-9)' : 'var(--gray-9)',
-                        }}
-                      >
+                      <div className={`w-[18px] h-[18px] flex-shrink-0 ${
+                        isActive ? 'text-blue-700' : 'text-gray-600'
+                      }`}>
                         <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path
                             strokeLinecap="round"
@@ -217,126 +105,46 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
                             d={item.icon}
                           />
                         </svg>
-                      </Box>
-                      {!isCollapsed && (
-                        <>
-                          <Box flexGrow="1" style={{ minWidth: 0 }}>
-                            <Text
-                              size="3"
-                              style={{
-                                display: 'block',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {item.label}
-                            </Text>
-                          </Box>
-                          {isActive && (
-                            <Box
-                              width="6px"
-                              height="6px"
-                              style={{
-                                borderRadius: '50%',
-                                background: 'var(--blue-9)',
-                                flexShrink: 0,
-                              }}
-                            />
-                          )}
-                        </>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="block text-sm overflow-hidden text-ellipsis whitespace-nowrap">
+                          {item.label}
+                        </span>
+                      </div>
+                      {isActive && (
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-700 flex-shrink-0" />
                       )}
                     </Link>
-                  </Box>
+                  </div>
                 );
               })}
-            </Box>
+            </div>
           ))}
-          </Flex>
-        </Box>
+          </div>
+        </div>
 
         {/* User Info and Logout - Footer */}
-        <Box
-          style={{
-            borderTop: '1px solid var(--gray-6)',
-            backgroundColor: 'var(--gray-2)',
-          }}
-        >
-          {!isCollapsed ? (
-            <Box p="3">
-              <Card size="2" mb="2">
-                <Flex align="center" gap="3">
-                  <Box
-                    width="40px"
-                    height="40px"
-                    style={{
-                      borderRadius: '50%',
-                      background: 'var(--blue-9)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontSize: '14px',
-                      fontWeight: 'bold',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {user.name.charAt(0).toUpperCase()}
-                  </Box>
-                  <Box flexGrow="1" style={{ minWidth: 0 }}>
-                    <Text
-                      size="2"
-                      weight="medium"
-                      style={{
-                        display: 'block',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {user.name}
-                    </Text>
-                    <Text
-                      size="2"
-                      color="gray"
-                      style={{
-                        display: 'block',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {user.role}
-                    </Text>
-                  </Box>
-                </Flex>
-              </Card>
-              <LogoutButton collapsed={false} />
-            </Box>
-          ) : (
-            <Flex direction="column" align="center" gap="2" py="2">
-              <Box
-                width="32px"
-                height="32px"
-                style={{
-                  borderRadius: '50%',
-                  background: 'linear-gradient(to bottom right, var(--blue-9), var(--blue-10))',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'white',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                }}
-              >
-                {user.name.charAt(0).toUpperCase()}
-              </Box>
-              <LogoutButton collapsed={true} />
-            </Flex>
-          )}
-        </Box>
-      </Flex>
-    </Box>
+        <div className="border-t border-gray-300 bg-gray-50">
+          <div className="p-3">
+            <div className="p-2 mb-2 bg-white rounded-lg border border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium block overflow-hidden text-ellipsis whitespace-nowrap">
+                    {user.name}
+                  </p>
+                  <p className="text-xs text-gray-500 block overflow-hidden text-ellipsis whitespace-nowrap">
+                    {user.role}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <LogoutButton collapsed={false} />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
-

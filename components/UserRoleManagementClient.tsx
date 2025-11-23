@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Card, Flex, Box, Text, Select, Separator, Heading, Spinner, Callout, Container, Section, Table, Dialog, Badge } from '@radix-ui/themes';
-import { Pencil1Icon } from '@radix-ui/react-icons';
+import { Modal } from './ui/Modal';
 
 interface Role {
   _id: string;
@@ -35,16 +34,40 @@ export default function UserRoleManagementClient() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await fetch('/api/staff');
+      
+      if (!response.ok) {
+        let errorMessage = 'Failed to fetch users';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = response.statusText || errorMessage;
+        }
+        
+        if (response.status === 401) {
+          errorMessage = 'Unauthorized. Please log in.';
+        } else if (response.status === 403) {
+          errorMessage = 'Access denied. Admin privileges required.';
+        }
+        
+        setError(errorMessage);
+        setTimeout(() => setError(null), 5000);
+        return;
+      }
+      
       const data = await response.json();
       
       if (data.success) {
         setUsers(data.data);
       } else {
         setError(data.error || 'Failed to fetch users');
+        setTimeout(() => setError(null), 5000);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch users');
+      setTimeout(() => setError(null), 5000);
     } finally {
       setLoading(false);
     }
@@ -80,18 +103,33 @@ export default function UserRoleManagementClient() {
         body: JSON.stringify({ roleId: selectedRoleId }),
       });
 
+      if (!response.ok) {
+        let errorMessage = 'Failed to update user role';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = response.statusText || errorMessage;
+        }
+        setError(errorMessage);
+        setTimeout(() => setError(null), 5000);
+        return;
+      }
+
       const data = await response.json();
       
       if (data.success) {
-        setSuccess('User role updated successfully');
+        setSuccess('User role updated successfully!');
         setEditingUser(null);
         fetchUsers();
         setTimeout(() => setSuccess(null), 3000);
       } else {
         setError(data.error || 'Failed to update user role');
+        setTimeout(() => setError(null), 5000);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to update user role');
+      setTimeout(() => setError(null), 5000);
     }
   };
 
@@ -104,116 +142,156 @@ export default function UserRoleManagementClient() {
 
   if (loading) {
     return (
-      <Container size="4">
-        <Flex justify="center" align="center" style={{ minHeight: '400px' }}>
-          <Spinner size="3" />
-        </Flex>
-      </Container>
+      <section className="py-6">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-col items-center gap-3" style={{ minHeight: '50vh', justifyContent: 'center' }}>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="text-gray-700">Loading users...</p>
+          </div>
+        </div>
+      </section>
     );
   }
 
   return (
-    <Container size="4" py="6">
-      <Section>
-        <Heading size="8" mb="4">User Role Management</Heading>
+    <section className="py-6">
+      <div className="container mx-auto px-4">
+        <div className="flex flex-col gap-4">
+          {/* Error/Success Messages */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-3">
+              <p className="text-red-800 text-sm">{error}</p>
+            </div>
+          )}
+          {success && (
+            <div className="bg-green-50 border border-green-200 rounded-md p-3">
+              <p className="text-green-800 text-sm">{success}</p>
+            </div>
+          )}
 
-        {error && (
-          <Callout.Root color="red" mb="4">
-            <Callout.Text>{error}</Callout.Text>
-          </Callout.Root>
-        )}
+          {/* Header */}
+          <div>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
+              <div>
+                <h1 className="text-3xl font-bold mb-1">User Role Management</h1>
+                <p className="text-sm text-gray-600">Assign and manage roles for system users</p>
+              </div>
+            </div>
+          </div>
 
-        {success && (
-          <Callout.Root color="green" mb="4">
-            <Callout.Text>{success}</Callout.Text>
-          </Callout.Root>
-        )}
-
-        <Card>
-          <Table.Root>
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Name</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Email</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Current Role</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Actions</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {users.map((user) => (
-                <Table.Row key={user._id}>
-                  <Table.Cell>
-                    <Text weight="medium">{user.name}</Text>
-                  </Table.Cell>
-                  <Table.Cell>{user.email}</Table.Cell>
-                  <Table.Cell>
-                    <Badge>{getRoleName(user)}</Badge>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Badge color={user.status === 'active' ? 'green' : 'red'}>
-                      {user.status}
-                    </Badge>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Button
-                      size="1"
-                      variant="soft"
-                      onClick={() => handleEditRole(user)}
-                    >
-                      <Pencil1Icon /> Change Role
-                    </Button>
-                  </Table.Cell>
-                </Table.Row>
-              ))}
-            </Table.Body>
-          </Table.Root>
-        </Card>
+          {/* Users Table */}
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            {users.length === 0 ? (
+              <div className="p-12 text-center">
+                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No users found</h3>
+                <p className="mt-1 text-sm text-gray-500">No users are available to manage.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Current Role</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {users.map((user) => (
+                      <tr key={user._id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-medium text-sm">{user.name}</span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm">{user.email}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                            {getRoleName(user)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                            user.status === 'active'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {user.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button
+                            onClick={() => handleEditRole(user)}
+                            className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors flex items-center gap-1"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M11.3333 1.99999C11.5084 1.82488 11.7163 1.68698 11.9444 1.59499C12.1726 1.503 12.4163 1.45898 12.6622 1.46599C12.9081 1.473 13.1511 1.53088 13.3752 1.63606C13.5993 1.74124 13.7998 1.89139 13.9648 2.07732C14.1298 2.26325 14.2557 2.4809 14.3353 2.71728C14.4149 2.95366 14.4464 3.20399 14.428 3.45332C14.4096 3.70265 14.3416 3.946 14.2277 4.16866C14.1138 4.39132 13.9564 4.58866 13.7647 4.74866L5.528 13L1.33333 14L2.33333 9.80533L10.57 1.57066L11.3333 1.99999Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                            Change Role
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
         {/* Edit Role Dialog */}
-        <Dialog.Root open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
-          <Dialog.Content style={{ maxWidth: 400 }}>
-            <Dialog.Title>Change User Role</Dialog.Title>
-            <Separator my="3" size="4" />
+        <Modal open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
+          <div className="p-6" style={{ maxWidth: 400 }}>
+            <h2 className="text-xl font-semibold mb-4">Change User Role</h2>
+            <hr className="border-gray-200 my-3" />
             
             {editingUser && (
-              <Flex direction="column" gap="3">
-                <Box>
-                  <Text size="2" weight="medium" mb="1">User</Text>
-                  <Text>{editingUser.name} ({editingUser.email})</Text>
-                </Box>
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">User</label>
+                  <p className="text-sm text-gray-700">{editingUser.name} ({editingUser.email})</p>
+                </div>
 
-                <Box>
-                  <Text size="2" weight="medium" mb="1">Select Role</Text>
-                  <Select.Root
+                <div>
+                  <label className="block text-sm font-medium mb-1">Select Role</label>
+                  <select
                     value={selectedRoleId}
-                    onValueChange={setSelectedRoleId}
+                    onChange={(e) => setSelectedRoleId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                   >
-                    <Select.Trigger placeholder="Select role" />
-                    <Select.Content>
-                      {roles.map((role) => (
-                        <Select.Item key={role._id} value={role._id}>
-                          {role.displayName}
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select.Root>
-                </Box>
-              </Flex>
+                    <option value="">Select role</option>
+                    {roles.map((role) => (
+                      <option key={role._id} value={role._id}>
+                        {role.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             )}
 
-            <Flex gap="3" mt="4" justify="end">
-              <Button variant="soft" onClick={() => setEditingUser(null)}>
+            <div className="flex gap-3 mt-4 justify-end">
+              <button
+                onClick={() => setEditingUser(null)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+              >
                 Cancel
-              </Button>
-              <Button onClick={handleSaveRole} disabled={!selectedRoleId}>
+              </button>
+              <button
+                onClick={handleSaveRole}
+                disabled={!selectedRoleId}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              >
                 Save
-              </Button>
-            </Flex>
-          </Dialog.Content>
-        </Dialog.Root>
-      </Section>
-    </Container>
+              </button>
+            </div>
+          </div>
+        </Modal>
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -3,8 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, AlertDialog, Flex, Container, Section, Box, Text, Heading, Card, Tabs, Callout, Dialog, TextField, Select, Switch, Spinner, Badge, Separator } from '@radix-ui/themes';
-import { Cross2Icon } from '@radix-ui/react-icons';
+import { Modal, AlertDialog } from './ui/Modal';
 
 interface Doctor {
   _id: string;
@@ -211,29 +210,32 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
 
   if (loading) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
-            <Spinner size="3" />
-            <Text>Loading doctor...</Text>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p>Loading doctor...</p>
+          </div>
+        </div>
+      </section>
     );
   }
 
   if (!doctor) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
-            <Heading size="5" mb="2">Doctor not found</Heading>
-            <Button asChild variant="soft" color="blue">
-              <Link href="/doctors">Back to Doctors</Link>
-            </Button>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+            <h2 className="text-xl font-semibold mb-2">Doctor not found</h2>
+            <Link 
+              href="/doctors"
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+            >
+              Back to Doctors
+            </Link>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -246,424 +248,449 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
   const completionRate = total > 0 ? (completed / total) * 100 : 0;
 
   return (
-    <Section size="3">
-      <Container size="4">
-        <Flex direction="column" gap="4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col gap-4">
           {/* Notifications */}
           {error && (
-            <Callout.Root color="red" size="2">
-              <Callout.Icon>
-                <Cross2Icon />
-              </Callout.Icon>
-              <Callout.Text>{error}</Callout.Text>
-            </Callout.Root>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
+              <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              <p className="text-sm text-red-800">{error}</p>
+            </div>
           )}
           {success && (
-            <Callout.Root color="green" size="2">
-              <Callout.Text>{success}</Callout.Text>
-            </Callout.Root>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <p className="text-sm text-green-800">{success}</p>
+            </div>
           )}
 
           {/* Header */}
-          <Flex direction="column" gap="1">
-            <Flex align="center" gap="2">
-              <Button asChild variant="ghost" size="2">
-                <Link href="/doctors">
-                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </Link>
-              </Button>
-              <Heading size="8">{fullName}</Heading>
-            </Flex>
-            <Text size="2" color="gray" ml="7">{doctor.specialization}</Text>
-          </Flex>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <Link 
+                href="/doctors"
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </Link>
+              <h1 className="text-3xl font-bold">{fullName}</h1>
+            </div>
+            <p className="text-sm text-gray-600 ml-9">{doctor.specialization}</p>
+          </div>
 
           {/* Tabs */}
-          <Card size="2" variant="surface">
-            <Tabs.Root value={activeTab} onValueChange={(value) => {
-              if (value === 'performance') {
-                handleRefreshPerformance();
-              }
-              setActiveTab(value as any);
-            }}>
-              <Tabs.List>
-                <Tabs.Trigger value="profile">Profile</Tabs.Trigger>
-                <Tabs.Trigger value="schedule">Schedule & Availability</Tabs.Trigger>
-                <Tabs.Trigger value="notes">Internal Notes ({doctor.internalNotes?.length || 0})</Tabs.Trigger>
-                <Tabs.Trigger value="performance">Performance</Tabs.Trigger>
-              </Tabs.List>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="border-b border-gray-200 overflow-x-auto">
+              <nav className="flex -mb-px min-w-max">
+                {[
+                  { value: 'profile', label: 'Profile' },
+                  { value: 'schedule', label: 'Schedule & Availability' },
+                  { value: 'notes', label: `Internal Notes (${doctor.internalNotes?.length || 0})` },
+                  { value: 'performance', label: 'Performance' }
+                ].map((tab) => (
+                  <button
+                    key={tab.value}
+                    onClick={() => {
+                      if (tab.value === 'performance') {
+                        handleRefreshPerformance();
+                      }
+                      setActiveTab(tab.value as any);
+                    }}
+                    className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                      activeTab === tab.value
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
 
-              <Box pt="3">
-                <Tabs.Content value="profile">
-                  <Flex direction="column" gap="3">
-                    <Flex gap="3" wrap="wrap">
-                      <Card size="2" variant="surface" style={{ flex: '1 1 300px' }}>
-                        <Flex direction="column" gap="3" p="3">
-                          <Heading size="4">Basic Information</Heading>
-                          <Flex direction="column" gap="2">
-                            <Box>
-                              <Text size="1" weight="medium" color="gray" mb="1" as="div">Full Name</Text>
-                              <Text size="2">{fullName}</Text>
-                            </Box>
-                            <Box>
-                              <Text size="1" weight="medium" color="gray" mb="1" as="div">Specialization</Text>
-                              <Text size="2">{doctor.specialization}</Text>
-                            </Box>
-                            {doctor.department && (
-                              <Box>
-                                <Text size="1" weight="medium" color="gray" mb="1" as="div">Department</Text>
-                                <Text size="2">{doctor.department}</Text>
-                              </Box>
-                            )}
-                            <Box>
-                              <Text size="1" weight="medium" color="gray" mb="1" as="div">License Number</Text>
-                              <Text size="2">{doctor.licenseNumber}</Text>
-                            </Box>
-                            <Box>
-                              <Text size="1" weight="medium" color="gray" mb="1" as="div">Status</Text>
-                              <Badge color={doctor.status === 'active' ? 'green' : doctor.status === 'inactive' ? 'gray' : 'yellow'} size="1">
-                                {doctor.status || 'active'}
-                              </Badge>
-                            </Box>
-                          </Flex>
-                        </Flex>
-                      </Card>
-                      <Card size="2" variant="surface" style={{ flex: '1 1 300px' }}>
-                        <Flex direction="column" gap="3" p="3">
-                          <Heading size="4">Contact Information</Heading>
-                          <Flex direction="column" gap="2">
-                            <Box>
-                              <Text size="1" weight="medium" color="gray" mb="1" as="div">Email</Text>
-                              <Text size="2">{doctor.email}</Text>
-                            </Box>
-                            <Box>
-                              <Text size="1" weight="medium" color="gray" mb="1" as="div">Phone</Text>
-                              <Text size="2">{doctor.phone}</Text>
-                            </Box>
-                          </Flex>
-                        </Flex>
-                      </Card>
-                    </Flex>
-                    {doctor.qualifications && doctor.qualifications.length > 0 && (
-                      <Card size="2" variant="surface">
-                        <Flex direction="column" gap="3" p="3">
-                          <Heading size="4">Qualifications</Heading>
-                          <Flex direction="column" gap="1" style={{ paddingLeft: '1.5rem' }}>
-                            {doctor.qualifications.map((qual, idx) => (
-                              <Text key={idx} size="2" style={{ position: 'relative', paddingLeft: '0.5rem' }}>
-                                <span style={{ position: 'absolute', left: '-0.75rem' }}>•</span>
-                                {qual}
-                              </Text>
-                            ))}
-                          </Flex>
-                        </Flex>
-                      </Card>
-                    )}
-                    {doctor.bio && (
-                      <Card size="2" variant="surface">
-                        <Flex direction="column" gap="3" p="3">
-                          <Heading size="4">Bio</Heading>
-                          <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{doctor.bio}</Text>
-                        </Flex>
-                      </Card>
-                    )}
-                  </Flex>
-                </Tabs.Content>
+            <div className="pt-3">
+              {activeTab === 'profile' && (
+                <div className="flex flex-col gap-3 p-4">
+                  <div className="flex gap-3 flex-wrap">
+                    <div className="bg-gray-50 rounded-lg border border-gray-200 flex-1 min-w-[300px]" style={{ flex: '1 1 300px' }}>
+                      <div className="flex flex-col gap-3 p-3">
+                        <h3 className="text-lg font-semibold">Basic Information</h3>
+                        <div className="flex flex-col gap-2">
+                          <div>
+                            <p className="text-xs font-medium text-gray-600 mb-1">Full Name</p>
+                            <p className="text-sm">{fullName}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-gray-600 mb-1">Specialization</p>
+                            <p className="text-sm">{doctor.specialization}</p>
+                          </div>
+                          {doctor.department && (
+                            <div>
+                              <p className="text-xs font-medium text-gray-600 mb-1">Department</p>
+                              <p className="text-sm">{doctor.department}</p>
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-xs font-medium text-gray-600 mb-1">License Number</p>
+                            <p className="text-sm">{doctor.licenseNumber}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-gray-600 mb-1">Status</p>
+                            <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${
+                              doctor.status === 'active' ? 'bg-green-100 text-green-800' :
+                              doctor.status === 'inactive' ? 'bg-gray-100 text-gray-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {doctor.status || 'active'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg border border-gray-200 flex-1 min-w-[300px]" style={{ flex: '1 1 300px' }}>
+                      <div className="flex flex-col gap-3 p-3">
+                        <h3 className="text-lg font-semibold">Contact Information</h3>
+                        <div className="flex flex-col gap-2">
+                          <div>
+                            <p className="text-xs font-medium text-gray-600 mb-1">Email</p>
+                            <p className="text-sm">{doctor.email}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-gray-600 mb-1">Phone</p>
+                            <p className="text-sm">{doctor.phone}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {doctor.qualifications && doctor.qualifications.length > 0 && (
+                    <div className="bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex flex-col gap-3 p-3">
+                        <h3 className="text-lg font-semibold">Qualifications</h3>
+                        <ul className="list-disc list-inside flex flex-col gap-1 pl-6">
+                          {doctor.qualifications.map((qual, idx) => (
+                            <li key={idx} className="text-sm">{qual}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                  {doctor.bio && (
+                    <div className="bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex flex-col gap-3 p-3">
+                        <h3 className="text-lg font-semibold">Bio</h3>
+                        <p className="text-sm whitespace-pre-wrap">{doctor.bio}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
-                <Tabs.Content value="schedule">
-                  <Flex direction="column" gap="3">
-                    <Flex justify="between" align="center">
-                      <Heading size="4">Weekly Schedule</Heading>
-                      <Button onClick={() => setShowScheduleForm(true)} size="2">
-                        + Add/Edit Schedule
-                      </Button>
-                    </Flex>
-                    {doctor.schedule && doctor.schedule.length > 0 ? (
-                      <Flex direction="column" gap="2">
-                        {[0, 1, 2, 3, 4, 5, 6].map((day) => {
-                          const schedule = doctor.schedule?.find((s) => s.dayOfWeek === day);
-                          return (
-                            <Card key={day} size="1" variant="surface">
-                              <Flex justify="between" align="center" p="2">
-                                <Flex align="center" gap="3">
-                                  <Text size="2" weight="medium" style={{ width: '80px' }}>{getDayName(day)}</Text>
-                                  {schedule && schedule.isAvailable ? (
-                                    <Text size="2" color="gray">
-                                      {formatTime(schedule.startTime)} - {formatTime(schedule.endTime)}
-                                    </Text>
-                                  ) : (
-                                    <Text size="2" color="gray">Not available</Text>
-                                  )}
-                                </Flex>
-                                {schedule && schedule.isAvailable && (
-                                  <Badge color="green" size="1">Available</Badge>
+              {activeTab === 'schedule' && (
+                <div className="flex flex-col gap-3 p-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold">Weekly Schedule</h3>
+                    <button 
+                      onClick={() => setShowScheduleForm(true)}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                    >
+                      + Add/Edit Schedule
+                    </button>
+                  </div>
+                  {doctor.schedule && doctor.schedule.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      {[0, 1, 2, 3, 4, 5, 6].map((day) => {
+                        const schedule = doctor.schedule?.find((s) => s.dayOfWeek === day);
+                        return (
+                          <div key={day} className="bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="flex justify-between items-center p-2">
+                              <div className="flex items-center gap-3">
+                                <p className="text-sm font-medium w-20">{getDayName(day)}</p>
+                                {schedule && schedule.isAvailable ? (
+                                  <p className="text-sm text-gray-600">
+                                    {formatTime(schedule.startTime)} - {formatTime(schedule.endTime)}
+                                  </p>
+                                ) : (
+                                  <p className="text-sm text-gray-600">Not available</p>
                                 )}
-                              </Flex>
-                            </Card>
-                          );
-                        })}
-                      </Flex>
-                    ) : (
-                      <Flex justify="center" align="center" style={{ minHeight: '150px' }}>
-                        <Text size="2" color="gray">No schedule set. Click &quot;Add/Edit Schedule&quot; to set availability.</Text>
-                      </Flex>
-                    )}
+                              </div>
+                              {schedule && schedule.isAvailable && (
+                                <span className="inline-block px-2 py-1 text-xs font-medium rounded bg-green-100 text-green-800">
+                                  Available
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex justify-center items-center" style={{ minHeight: '150px' }}>
+                      <p className="text-sm text-gray-600">No schedule set. Click &quot;Add/Edit Schedule&quot; to set availability.</p>
+                    </div>
+                  )}
 
-                    {/* Schedule Form Modal */}
-                    <Dialog.Root open={showScheduleForm} onOpenChange={setShowScheduleForm}>
-                      <Dialog.Content style={{ maxWidth: '500px' }}>
-                        <Dialog.Title>Edit Schedule</Dialog.Title>
-                        <Flex direction="column" gap="3" py="4">
-                          <Box>
-                            <Text size="2" weight="medium" mb="2" as="div">Day of Week</Text>
-                            <Select.Root
-                              value={scheduleForm.dayOfWeek.toString()}
-                              onValueChange={(value) => setScheduleForm({ ...scheduleForm, dayOfWeek: parseInt(value) })}
-                              size="2"
-                            >
-                              <Select.Trigger />
-                              <Select.Content>
-                                {[0, 1, 2, 3, 4, 5, 6].map((day) => (
-                                  <Select.Item key={day} value={day.toString()}>
-                                    {getDayName(day)}
-                                  </Select.Item>
-                                ))}
-                              </Select.Content>
-                            </Select.Root>
-                          </Box>
-                          <Flex gap="2">
-                            <Box flexGrow="1">
-                              <Text size="2" weight="medium" mb="2" as="div">Start Time</Text>
-                              <TextField.Root size="2" type="time">
-                                <input
-                                  type="time"
-                                  value={scheduleForm.startTime}
-                                  onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
-                                  style={{ all: 'unset', flex: 1 }}
-                                />
-                              </TextField.Root>
-                            </Box>
-                            <Box flexGrow="1">
-                              <Text size="2" weight="medium" mb="2" as="div">End Time</Text>
-                              <TextField.Root size="2" type="time">
-                                <input
-                                  type="time"
-                                  value={scheduleForm.endTime}
-                                  onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })}
-                                  style={{ all: 'unset', flex: 1 }}
-                                />
-                              </TextField.Root>
-                            </Box>
-                          </Flex>
-                          <Flex align="center" gap="2">
-                            <Switch
-                              size="2"
-                              checked={scheduleForm.isAvailable}
-                              onCheckedChange={(checked) => setScheduleForm({ ...scheduleForm, isAvailable: checked })}
-                            />
-                            <Text size="2">Available on this day</Text>
-                          </Flex>
-                          <Separator />
-                          <Flex justify="end" gap="2">
-                            <Button variant="soft" onClick={() => setShowScheduleForm(false)} size="2">
-                              Cancel
-                            </Button>
-                            <Button onClick={handleUpdateSchedule} size="2">
-                              Save
-                            </Button>
-                          </Flex>
-                        </Flex>
-                      </Dialog.Content>
-                    </Dialog.Root>
-                  </Flex>
-                </Tabs.Content>
-
-                <Tabs.Content value="notes">
-                  <Flex direction="column" gap="3">
-                    <Flex justify="between" align="center">
-                      <Heading size="4">Internal Notes</Heading>
-                      <Button onClick={() => setShowNoteForm(true)} size="2">
-                        + Add Note
-                      </Button>
-                    </Flex>
-                    {doctor.internalNotes && doctor.internalNotes.length > 0 ? (
-                      <Flex direction="column" gap="2">
-                        {doctor.internalNotes.map((note, index) => (
-                          <Card
-                            key={index}
-                            size="2"
-                            variant="surface"
-                            style={{
-                              borderColor: note.isImportant ? 'var(--red-6)' : undefined,
-                              backgroundColor: note.isImportant ? 'var(--red-2)' : undefined,
-                            }}
+                  {/* Schedule Form Modal */}
+                  <Modal open={showScheduleForm} onOpenChange={setShowScheduleForm} className="max-w-md">
+                    <div className="p-6">
+                      <h2 className="text-xl font-semibold mb-4">Edit Schedule</h2>
+                      <div className="flex flex-col gap-3 py-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-2">Day of Week</label>
+                          <select
+                            value={scheduleForm.dayOfWeek.toString()}
+                            onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfWeek: parseInt(e.target.value) })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
                           >
-                            <Flex direction="column" gap="2" p="3">
-                              <Flex justify="between" align="start">
-                                <Flex align="center" gap="2">
-                                  {note.isImportant && (
-                                    <Badge color="red" size="1">Important</Badge>
-                                  )}
-                                  <Text size="1" color="gray">
-                                    {new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                  </Text>
-                                </Flex>
-                                <Button
-                                  variant="ghost"
-                                  color="red"
-                                  size="1"
-                                  onClick={() => handleDeleteNoteClick(index)}
-                                >
-                                  Delete
-                                </Button>
-                              </Flex>
-                              <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{note.note}</Text>
-                            </Flex>
-                          </Card>
-                        ))}
-                      </Flex>
-                    ) : (
-                      <Flex justify="center" align="center" style={{ minHeight: '150px' }}>
-                        <Text size="2" color="gray">No internal notes. Click &quot;Add Note&quot; to add one.</Text>
-                      </Flex>
-                    )}
+                            {[0, 1, 2, 3, 4, 5, 6].map((day) => (
+                              <option key={day} value={day.toString()}>
+                                {getDayName(day)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="block text-sm font-medium mb-2">Start Time</label>
+                            <input
+                              type="time"
+                              value={scheduleForm.startTime}
+                              onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="block text-sm font-medium mb-2">End Time</label>
+                            <input
+                              type="time"
+                              value={scheduleForm.endTime}
+                              onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                            />
+                          </div>
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={scheduleForm.isAvailable}
+                            onChange={(e) => setScheduleForm({ ...scheduleForm, isAvailable: e.target.checked })}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                          <span className="text-sm">Available on this day</span>
+                        </label>
+                        <hr className="border-gray-200" />
+                        <div className="flex justify-end gap-2">
+                          <button 
+                            onClick={() => setShowScheduleForm(false)}
+                            className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                          >
+                            Cancel
+                          </button>
+                          <button 
+                            onClick={handleUpdateSchedule}
+                            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </Modal>
+                </div>
+              )}
 
-                    {/* Note Form Modal */}
-                    <Dialog.Root open={showNoteForm} onOpenChange={setShowNoteForm}>
-                      <Dialog.Content style={{ maxWidth: '500px' }}>
-                        <Dialog.Title>Add Internal Note</Dialog.Title>
-                        <form onSubmit={handleAddNote}>
-                          <Flex direction="column" gap="3" py="4">
-                            <Box>
-                              <Text size="2" weight="medium" mb="2" as="div">Note</Text>
-                              <TextField.Root size="2">
-                                <textarea
-                                  required
-                                  value={newNote.note}
-                                  onChange={(e) => setNewNote({ ...newNote, note: e.target.value })}
-                                  rows={4}
-                                  style={{
-                                    all: 'unset',
-                                    flex: 1,
-                                    width: '100%',
-                                    minHeight: '80px',
-                                    resize: 'vertical',
-                                  }}
-                                />
-                              </TextField.Root>
-                            </Box>
-                            <Flex align="center" gap="2">
-                              <Switch
-                                size="2"
-                                checked={newNote.isImportant}
-                                onCheckedChange={(checked) => setNewNote({ ...newNote, isImportant: checked })}
-                              />
-                              <Text size="2">Mark as important</Text>
-                            </Flex>
-                            <Separator />
-                            <Flex justify="end" gap="2">
-                              <Button type="button" variant="soft" onClick={() => setShowNoteForm(false)} size="2">
-                                Cancel
-                              </Button>
-                              <Button type="submit" size="2">
-                                Add Note
-                              </Button>
-                            </Flex>
-                          </Flex>
-                        </form>
-                      </Dialog.Content>
-                    </Dialog.Root>
-                  </Flex>
-                </Tabs.Content>
+              {activeTab === 'notes' && (
+                <div className="flex flex-col gap-3 p-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold">Internal Notes</h3>
+                    <button 
+                      onClick={() => setShowNoteForm(true)}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                    >
+                      + Add Note
+                    </button>
+                  </div>
+                  {doctor.internalNotes && doctor.internalNotes.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      {doctor.internalNotes.map((note, index) => (
+                        <div
+                          key={index}
+                          className={`rounded-lg border p-3 ${
+                            note.isImportant 
+                              ? 'border-red-300 bg-red-50' 
+                              : 'border-gray-200 bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex flex-col gap-2">
+                            <div className="flex justify-between items-start">
+                              <div className="flex items-center gap-2">
+                                {note.isImportant && (
+                                  <span className="inline-block px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-800">
+                                    Important
+                                  </span>
+                                )}
+                                <p className="text-xs text-gray-600">
+                                  {new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => handleDeleteNoteClick(index)}
+                                className="px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100 rounded transition-colors"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                            <p className="text-sm whitespace-pre-wrap">{note.note}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex justify-center items-center" style={{ minHeight: '150px' }}>
+                      <p className="text-sm text-gray-600">No internal notes. Click &quot;Add Note&quot; to add one.</p>
+                    </div>
+                  )}
 
-                <Tabs.Content value="performance">
-                  <Flex direction="column" gap="3">
-                    <Flex justify="between" align="center">
-                      <Heading size="4">Performance Metrics</Heading>
-                      <Button onClick={handleRefreshPerformance} size="2">
-                        Refresh Data
-                      </Button>
-                    </Flex>
-                    {metrics ? (
-                      <Flex direction="column" gap="3">
-                        <Flex gap="2" wrap="wrap">
-                          <Card size="2" variant="surface" style={{ flex: '1 1 200px', backgroundColor: 'var(--blue-3)' }}>
-                            <Flex direction="column" gap="1" p="3">
-                              <Text size="6" weight="bold" style={{ color: 'var(--blue-9)' }}>{total}</Text>
-                              <Text size="1" color="gray">Total Appointments</Text>
-                            </Flex>
-                          </Card>
-                          <Card size="2" variant="surface" style={{ flex: '1 1 200px', backgroundColor: 'var(--green-3)' }}>
-                            <Flex direction="column" gap="1" p="3">
-                              <Text size="6" weight="bold" style={{ color: 'var(--green-9)' }}>{completed}</Text>
-                              <Text size="1" color="gray">Completed</Text>
-                              <Text size="1" color="gray">{Math.round(completionRate)}% completion rate</Text>
-                            </Flex>
-                          </Card>
-                          <Card size="2" variant="surface" style={{ flex: '1 1 200px', backgroundColor: 'var(--red-3)' }}>
-                            <Flex direction="column" gap="1" p="3">
-                              <Text size="6" weight="bold" style={{ color: 'var(--red-9)' }}>{cancelled}</Text>
-                              <Text size="1" color="gray">Cancelled</Text>
-                              <Text size="1" color="gray">
-                                {total > 0 ? Math.round((cancelled / total) * 100) : 0}% cancellation rate
-                              </Text>
-                            </Flex>
-                          </Card>
-                          <Card size="2" variant="surface" style={{ flex: '1 1 200px', backgroundColor: 'var(--yellow-3)' }}>
-                            <Flex direction="column" gap="1" p="3">
-                              <Text size="6" weight="bold" style={{ color: 'var(--yellow-9)' }}>{noShow}</Text>
-                              <Text size="1" color="gray">No-Show</Text>
-                              <Text size="1" color="gray">
-                                {total > 0 ? Math.round((noShow / total) * 100) : 0}% no-show rate
-                              </Text>
-                            </Flex>
-                          </Card>
-                        </Flex>
-                        {metrics.lastUpdated && (
-                          <Text size="1" color="gray">
-                            Last updated: {new Date(metrics.lastUpdated).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                          </Text>
-                        )}
-                      </Flex>
-                    ) : (
-                      <Flex justify="center" align="center" style={{ minHeight: '150px' }}>
-                        <Text size="2" color="gray">No performance data available. Click &quot;Refresh Data&quot; to calculate metrics.</Text>
-                      </Flex>
-                    )}
-                  </Flex>
-                </Tabs.Content>
-              </Box>
-            </Tabs.Root>
-          </Card>
+                  {/* Note Form Modal */}
+                  <Modal open={showNoteForm} onOpenChange={setShowNoteForm} className="max-w-md">
+                    <div className="p-6">
+                      <h2 className="text-xl font-semibold mb-4">Add Internal Note</h2>
+                      <form onSubmit={handleAddNote}>
+                        <div className="flex flex-col gap-3 py-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-2">Note</label>
+                            <textarea
+                              required
+                              value={newNote.note}
+                              onChange={(e) => setNewNote({ ...newNote, note: e.target.value })}
+                              rows={4}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-y"
+                            />
+                          </div>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={newNote.isImportant}
+                              onChange={(e) => setNewNote({ ...newNote, isImportant: e.target.checked })}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <span className="text-sm">Mark as important</span>
+                          </label>
+                          <hr className="border-gray-200" />
+                          <div className="flex justify-end gap-2">
+                            <button 
+                              type="button"
+                              onClick={() => setShowNoteForm(false)}
+                              className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                            >
+                              Cancel
+                            </button>
+                            <button 
+                              type="submit"
+                              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                            >
+                              Add Note
+                            </button>
+                          </div>
+                        </div>
+                      </form>
+                    </div>
+                  </Modal>
+                </div>
+              )}
+
+              {activeTab === 'performance' && (
+                <div className="flex flex-col gap-3 p-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold">Performance Metrics</h3>
+                    <button 
+                      onClick={handleRefreshPerformance}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                    >
+                      Refresh Data
+                    </button>
+                  </div>
+                  {metrics ? (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex gap-2 flex-wrap">
+                        <div className="bg-blue-50 rounded-lg border border-blue-200 flex-1 min-w-[200px]" style={{ flex: '1 1 200px' }}>
+                          <div className="flex flex-col gap-1 p-3">
+                            <p className="text-3xl font-bold text-blue-700">{total}</p>
+                            <p className="text-xs text-gray-600">Total Appointments</p>
+                          </div>
+                        </div>
+                        <div className="bg-green-50 rounded-lg border border-green-200 flex-1 min-w-[200px]" style={{ flex: '1 1 200px' }}>
+                          <div className="flex flex-col gap-1 p-3">
+                            <p className="text-3xl font-bold text-green-700">{completed}</p>
+                            <p className="text-xs text-gray-600">Completed</p>
+                            <p className="text-xs text-gray-600">{Math.round(completionRate)}% completion rate</p>
+                          </div>
+                        </div>
+                        <div className="bg-red-50 rounded-lg border border-red-200 flex-1 min-w-[200px]" style={{ flex: '1 1 200px' }}>
+                          <div className="flex flex-col gap-1 p-3">
+                            <p className="text-3xl font-bold text-red-700">{cancelled}</p>
+                            <p className="text-xs text-gray-600">Cancelled</p>
+                            <p className="text-xs text-gray-600">
+                              {total > 0 ? Math.round((cancelled / total) * 100) : 0}% cancellation rate
+                            </p>
+                          </div>
+                        </div>
+                        <div className="bg-yellow-50 rounded-lg border border-yellow-200 flex-1 min-w-[200px]" style={{ flex: '1 1 200px' }}>
+                          <div className="flex flex-col gap-1 p-3">
+                            <p className="text-3xl font-bold text-yellow-700">{noShow}</p>
+                            <p className="text-xs text-gray-600">No-Show</p>
+                            <p className="text-xs text-gray-600">
+                              {total > 0 ? Math.round((noShow / total) * 100) : 0}% no-show rate
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      {metrics.lastUpdated && (
+                        <p className="text-xs text-gray-600">
+                          Last updated: {new Date(metrics.lastUpdated).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex justify-center items-center" style={{ minHeight: '150px' }}>
+                      <p className="text-sm text-gray-600">No performance data available. Click &quot;Refresh Data&quot; to calculate metrics.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Delete Note Alert Dialog */}
-          <AlertDialog.Root open={deleteNoteDialogOpen} onOpenChange={setDeleteNoteDialogOpen}>
-            <AlertDialog.Content>
-              <AlertDialog.Title>Delete Note</AlertDialog.Title>
-              <AlertDialog.Description>
-                Are you sure you want to delete this note? This action cannot be undone.
-              </AlertDialog.Description>
-              <Flex gap="3" mt="4" justify="end">
-                <AlertDialog.Cancel>
-                  <Button variant="soft" color="gray" onClick={() => {
-                    setDeleteNoteDialogOpen(false);
-                    setNoteToDelete(null);
-                  }}>
-                    Cancel
-                  </Button>
-                </AlertDialog.Cancel>
-                <AlertDialog.Action>
-                  <Button variant="solid" color="red" onClick={handleDeleteNote}>
-                    Delete
-                  </Button>
-                </AlertDialog.Action>
-              </Flex>
-            </AlertDialog.Content>
-          </AlertDialog.Root>
-        </Flex>
-      </Container>
-    </Section>
+          <AlertDialog 
+            open={deleteNoteDialogOpen} 
+            onOpenChange={setDeleteNoteDialogOpen}
+            title="Delete Note"
+            description="Are you sure you want to delete this note? This action cannot be undone."
+          >
+            <button
+              onClick={() => {
+                setDeleteNoteDialogOpen(false);
+                setNoteToDelete(null);
+              }}
+              className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeleteNote}
+              className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+            >
+              Delete
+            </button>
+          </AlertDialog>
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import QRCode from 'react-qr-code';
-import { Button, Flex, Box, AlertDialog, Skeleton, Container, Section, Text, Heading, Card, Badge, Tabs, Callout, Separator, IconButton, Dialog } from '@radix-ui/themes';
+import { Modal, AlertDialog } from './ui/Modal';
 import { useSetting } from './SettingsContext';
 
 interface Patient {
@@ -317,33 +317,36 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
 
   if (loading) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" gap="4">
-            <Skeleton height="40px" width="300px" />
-            <Flex gap="4" wrap="wrap">
-              <Skeleton height="200px" style={{ flex: '1 1 300px' }} />
-              <Skeleton height="200px" style={{ flex: '1 1 300px' }} />
-            </Flex>
-            <Skeleton height="400px" />
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col gap-4">
+            <div className="h-10 w-[300px] bg-gray-200 rounded animate-pulse"></div>
+            <div className="flex gap-4 flex-wrap">
+              <div className="h-[200px] bg-gray-200 rounded animate-pulse flex-1" style={{ flex: '1 1 300px' }}></div>
+              <div className="h-[200px] bg-gray-200 rounded animate-pulse flex-1" style={{ flex: '1 1 300px' }}></div>
+            </div>
+            <div className="h-[400px] bg-gray-200 rounded animate-pulse"></div>
+          </div>
+        </div>
+      </section>
     );
   }
 
   if (!patient) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" justify="center" gap="4" style={{ minHeight: '50vh' }}>
-            <Heading size="6">Patient not found</Heading>
-            <Button asChild>
-              <Link href="/patients">Back to Patients</Link>
-            </Button>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: '50vh' }}>
+            <h2 className="text-2xl font-semibold">Patient not found</h2>
+            <Link 
+              href="/patients"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Back to Patients
+            </Link>
+          </div>
+        </div>
+      </section>
     );
   }
   
@@ -369,192 +372,207 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
   const totalPaid = invoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
 
   return (
-    <Section size="3">
-      <Container size="4">
-        <Flex direction="column" gap="4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <Box>
-            <Flex align="center" gap="3" mb="3">
-              <Button asChild variant="ghost" size="2">
-                <Link href="/patients">
-                  <svg style={{ width: '20px', height: '20px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </Link>
-              </Button>
-              <Box style={{ flex: 1 }}>
-                <Heading size="7" mb="1">
+          <div>
+            <div className="flex items-center gap-3 mb-3">
+              <Link 
+                href="/patients"
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg style={{ width: '20px', height: '20px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </Link>
+              <div className="flex-1">
+                <h1 className="text-3xl font-bold mb-1">
                   {fullName}
-                </Heading>
-                <Flex align="center" gap="2" wrap="wrap">
+                </h1>
+                <div className="flex items-center gap-2 flex-wrap">
                   {patient.patientCode && (
-                    <Text size="2" color="gray">ID: {patient.patientCode}</Text>
+                    <p className="text-sm text-gray-600">ID: {patient.patientCode}</p>
                   )}
-                  {patient.patientCode && <Text size="2" color="gray">•</Text>}
-                  <Text size="2" color="gray">{calculateAge(patient.dateOfBirth)} years old</Text>
+                  {patient.patientCode && <p className="text-sm text-gray-600">•</p>}
+                  <p className="text-sm text-gray-600">{calculateAge(patient.dateOfBirth)} years old</p>
                   {patient.sex && patient.sex !== 'unknown' && (
                     <>
-                      <Text size="2" color="gray">•</Text>
-                      <Text size="2" color="gray" style={{ textTransform: 'capitalize' }}>{patient.sex}</Text>
+                      <p className="text-sm text-gray-600">•</p>
+                      <p className="text-sm text-gray-600 capitalize">{patient.sex}</p>
                     </>
                   )}
-                </Flex>
-              </Box>
-              <Flex align="center" gap="2">
-                <Button
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
                   onClick={() => setShowQR(!showQR)}
-                  size="2"
-                  color="blue"
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-1.5"
                 >
-                  <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                   </svg>
                   QR Code
-                </Button>
-                <Button asChild size="2" color="green">
-                  <Link href={`/patients?edit=${patient._id}`}>
-                    <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    Edit
-                  </Link>
-                </Button>
-              </Flex>
-            </Flex>
+                </button>
+                <Link 
+                  href={`/patients?edit=${patient._id}`}
+                  className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium flex items-center gap-1.5"
+                >
+                  <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit
+                </Link>
+              </div>
+            </div>
 
             {/* Quick Stats */}
-            <Flex gap="2" wrap="wrap" mb="3">
-              <Card style={{ flex: '1 1 120px', minWidth: '100px' }}>
-                <Box p="2">
-                  <Text size="1" color="gray" mb="1" as="div">Visits</Text>
-                  <Text size="5" weight="bold">{visits.length}</Text>
-                </Box>
-              </Card>
-              <Card style={{ flex: '1 1 120px', minWidth: '100px' }}>
-                <Box p="2">
-                  <Text size="1" color="gray" mb="1" as="div">Appointments</Text>
-                  <Text size="5" weight="bold">{appointments.length}</Text>
-                </Box>
-              </Card>
-              <Card style={{ flex: '1 1 120px', minWidth: '100px' }}>
-                <Box p="2">
-                  <Text size="1" color="gray" mb="1" as="div">Prescriptions</Text>
-                  <Text size="5" weight="bold">{prescriptions.length}</Text>
-                </Box>
-              </Card>
-              <Card style={{ flex: '1 1 120px', minWidth: '100px' }}>
-                <Box p="2">
-                  <Text size="1" color="gray" mb="1" as="div">Invoices</Text>
-                  <Text size="5" weight="bold">{invoices.length}</Text>
-                </Box>
-              </Card>
-              <Card style={{ flex: '1 1 120px', minWidth: '100px' }}>
-                <Box p="2">
-                  <Text size="1" color="gray" mb="1" as="div">Lab Results</Text>
-                  <Text size="5" weight="bold">{labResults.length}</Text>
-                </Box>
-              </Card>
-              <Card style={{ flex: '1 1 120px', minWidth: '100px' }}>
-                <Box p="2">
-                  <Text size="1" color="gray" mb="1" as="div">Outstanding</Text>
-                  <Text size="5" weight="bold" color="red">{formatCurrency(totalOutstanding)}</Text>
-                </Box>
-              </Card>
-            </Flex>
+            <div className="flex gap-2 flex-wrap mb-3">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[100px]" style={{ flex: '1 1 120px' }}>
+                <div className="p-2">
+                  <p className="text-xs text-gray-600 mb-1">Visits</p>
+                  <p className="text-2xl font-bold">{visits.length}</p>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[100px]" style={{ flex: '1 1 120px' }}>
+                <div className="p-2">
+                  <p className="text-xs text-gray-600 mb-1">Appointments</p>
+                  <p className="text-2xl font-bold">{appointments.length}</p>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[100px]" style={{ flex: '1 1 120px' }}>
+                <div className="p-2">
+                  <p className="text-xs text-gray-600 mb-1">Prescriptions</p>
+                  <p className="text-2xl font-bold">{prescriptions.length}</p>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[100px]" style={{ flex: '1 1 120px' }}>
+                <div className="p-2">
+                  <p className="text-xs text-gray-600 mb-1">Invoices</p>
+                  <p className="text-2xl font-bold">{invoices.length}</p>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[100px]" style={{ flex: '1 1 120px' }}>
+                <div className="p-2">
+                  <p className="text-xs text-gray-600 mb-1">Lab Results</p>
+                  <p className="text-2xl font-bold">{labResults.length}</p>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[100px]" style={{ flex: '1 1 120px' }}>
+                <div className="p-2">
+                  <p className="text-xs text-gray-600 mb-1">Outstanding</p>
+                  <p className="text-2xl font-bold text-red-600">{formatCurrency(totalOutstanding)}</p>
+                </div>
+              </div>
+            </div>
 
             {/* Quick Actions */}
-            <Card mb="3">
-              <Box p="3">
-                <Heading size="3" mb="2">Quick Actions</Heading>
-                <Flex gap="2" wrap="wrap">
-                  <Button asChild variant="soft" size="2" style={{ flex: '1 1 120px', minWidth: '100px' }}>
-                    <Link href={`/appointments/new?patientId=${patientId}`}>
-                      <svg style={{ width: '16px', height: '16px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      Schedule
-                    </Link>
-                  </Button>
-                  <Button asChild variant="soft" size="2" style={{ flex: '1 1 120px', minWidth: '100px' }}>
-                    <Link href={`/visits/new?patientId=${patientId}`}>
-                      <svg style={{ width: '16px', height: '16px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      New Visit
-                    </Link>
-                  </Button>
-                  <Button asChild variant="soft" size="2" style={{ flex: '1 1 120px', minWidth: '100px' }}>
-                    <Link href={`/prescriptions/new?patientId=${patientId}`}>
-                      <svg style={{ width: '16px', height: '16px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                      </svg>
-                      Prescription
-                    </Link>
-                  </Button>
-                  <Button asChild variant="soft" size="2" style={{ flex: '1 1 120px', minWidth: '100px' }}>
-                    <Link href={`/invoices/new?patientId=${patientId}`}>
-                      <svg style={{ width: '16px', height: '16px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      Invoice
-                    </Link>
-                  </Button>
-                  <Button asChild variant="soft" size="2" style={{ flex: '1 1 120px', minWidth: '100px' }}>
-                    <Link href={`/lab-results/new?patientId=${patientId}`}>
-                      <svg style={{ width: '16px', height: '16px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      Lab Result
-                    </Link>
-                  </Button>
-                  <Button onClick={() => setShowQR(!showQR)} variant="soft" size="2" style={{ flex: '1 1 120px', minWidth: '100px' }}>
-                    <svg style={{ width: '16px', height: '16px', marginRight: '4px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-3">
+              <div className="p-3">
+                <h3 className="text-lg font-semibold mb-2">Quick Actions</h3>
+                <div className="flex gap-2 flex-wrap">
+                  <Link 
+                    href={`/appointments/new?patientId=${patientId}`}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium flex items-center gap-1 flex-1 min-w-[100px]"
+                    style={{ flex: '1 1 120px' }}
+                  >
+                    <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Schedule
+                  </Link>
+                  <Link 
+                    href={`/visits/new?patientId=${patientId}`}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium flex items-center gap-1 flex-1 min-w-[100px]"
+                    style={{ flex: '1 1 120px' }}
+                  >
+                    <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    New Visit
+                  </Link>
+                  <Link 
+                    href={`/prescriptions/new?patientId=${patientId}`}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium flex items-center gap-1 flex-1 min-w-[100px]"
+                    style={{ flex: '1 1 120px' }}
+                  >
+                    <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                    </svg>
+                    Prescription
+                  </Link>
+                  <Link 
+                    href={`/invoices/new?patientId=${patientId}`}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium flex items-center gap-1 flex-1 min-w-[100px]"
+                    style={{ flex: '1 1 120px' }}
+                  >
+                    <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Invoice
+                  </Link>
+                  <Link 
+                    href={`/lab-results/new?patientId=${patientId}`}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium flex items-center gap-1 flex-1 min-w-[100px]"
+                    style={{ flex: '1 1 120px' }}
+                  >
+                    <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Lab Result
+                  </Link>
+                  <button 
+                    onClick={() => setShowQR(!showQR)}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium flex items-center gap-1 flex-1 min-w-[100px]"
+                    style={{ flex: '1 1 120px' }}
+                  >
+                    <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                     </svg>
                     QR Code
-                  </Button>
-                </Flex>
-              </Box>
-            </Card>
+                  </button>
+                </div>
+              </div>
+            </div>
 
           {/* QR Code Modal */}
-          <Dialog.Root open={showQR} onOpenChange={setShowQR}>
-            <Dialog.Content style={{ maxWidth: '450px' }}>
-              <Dialog.Title>Patient QR Code</Dialog.Title>
-              <Flex direction="column" align="center" gap="3" mt="4">
-                <Box p="4" style={{ background: 'white', border: '2px solid var(--gray-6)', borderRadius: 'var(--radius-2)' }}>
+          <Modal open={showQR} onOpenChange={setShowQR} className="max-w-md">
+            <div className="p-6">
+              <h2 className="text-xl font-semibold mb-4">Patient QR Code</h2>
+              <div className="flex flex-col items-center gap-3 mt-4">
+                <div className="p-4 bg-white border-2 border-gray-300 rounded-lg">
                   <QRCode value={qrValue} size={256} />
-                </Box>
-                <Text size="2" color="gray" style={{ textAlign: 'center' }}>
-                  Patient ID: <Text weight="bold">{qrValue}</Text>
-                </Text>
-                <Text size="1" color="gray" style={{ textAlign: 'center' }}>
+                </div>
+                <p className="text-sm text-gray-600 text-center">
+                  Patient ID: <span className="font-bold">{qrValue}</span>
+                </p>
+                <p className="text-xs text-gray-600 text-center">
                   Scan this code to quickly access patient information
-                </Text>
-              </Flex>
-            </Dialog.Content>
-          </Dialog.Root>
+                </p>
+              </div>
+            </div>
+          </Modal>
 
           {/* Patient Alerts */}
           {alerts.length > 0 && (
-            <Flex direction="column" gap="2" mb="3">
+            <div className="flex flex-col gap-2 mb-3">
               {alerts.map((alert, idx) => (
-                <Callout.Root
+                <div
                   key={idx}
-                  color={
-                    alert.severity === 'high' ? 'red' :
-                    alert.severity === 'medium' ? 'yellow' :
-                    'blue'
-                  }
+                  className={`rounded-lg p-3 ${
+                    alert.severity === 'high' ? 'bg-red-50 border border-red-200 text-red-800' :
+                    alert.severity === 'medium' ? 'bg-yellow-50 border border-yellow-200 text-yellow-800' :
+                    'bg-blue-50 border border-blue-200 text-blue-800'
+                  }`}
                 >
-                  <Callout.Text>{alert.message}</Callout.Text>
-                </Callout.Root>
+                  <p className="text-sm">{alert.message}</p>
+                </div>
               ))}
-            </Flex>
+            </div>
           )}
 
           {/* Tabs */}
-          <Card mb="3">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-3">
           <div className="border-b border-gray-200 overflow-x-auto">
             <nav className="flex -mb-px min-w-max">
               <button
@@ -1211,36 +1229,35 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
               </div>
             )}
           </div>
-          </Card>
+          </div>
 
           {/* Delete File Alert Dialog */}
-          <AlertDialog.Root open={deleteFileDialogOpen} onOpenChange={setDeleteFileDialogOpen}>
-            <AlertDialog.Content>
-              <AlertDialog.Title>Delete File</AlertDialog.Title>
-              <AlertDialog.Description>
-                Are you sure you want to delete this file? This action cannot be undone.
-              </AlertDialog.Description>
-              <Flex gap="3" mt="4" justify="end">
-                <AlertDialog.Cancel>
-                  <Button variant="soft" color="gray" onClick={() => {
-                    setDeleteFileDialogOpen(false);
-                    setFileToDelete(null);
-                  }}>
-                    Cancel
-                  </Button>
-                </AlertDialog.Cancel>
-                <AlertDialog.Action>
-                  <Button variant="solid" color="red" onClick={handleDeleteFile}>
-                    Delete
-                  </Button>
-                </AlertDialog.Action>
-              </Flex>
-            </AlertDialog.Content>
-          </AlertDialog.Root>
-          </Box>
-        </Flex>
-      </Container>
-    </Section>
+          <AlertDialog 
+            open={deleteFileDialogOpen} 
+            onOpenChange={setDeleteFileDialogOpen}
+            title="Delete File"
+            description="Are you sure you want to delete this file? This action cannot be undone."
+          >
+            <button
+              onClick={() => {
+                setDeleteFileDialogOpen(false);
+                setFileToDelete(null);
+              }}
+              className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeleteFile}
+              className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+            >
+              Delete
+            </button>
+          </AlertDialog>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

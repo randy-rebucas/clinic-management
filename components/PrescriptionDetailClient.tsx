@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Heading, IconButton, TextArea, Separator, Container, Section } from '@radix-ui/themes';
+import { Modal } from './ui/Modal';
 
 interface Prescription {
   _id: string;
@@ -182,29 +182,32 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
 
   if (loading) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
-            <Spinner size="3" />
-            <Text>Loading prescription...</Text>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p>Loading prescription...</p>
+          </div>
+        </div>
+      </section>
     );
   }
 
   if (!prescription) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
-            <Heading size="5">{error || 'Prescription not found'}</Heading>
-            <Button asChild variant="soft">
-              <Link href="/prescriptions">Back to Prescriptions</Link>
-            </Button>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+            <h2 className="text-xl font-semibold">{error || 'Prescription not found'}</h2>
+            <Link 
+              href="/prescriptions"
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+            >
+              Back to Prescriptions
+            </Link>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -218,482 +221,473 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
   );
 
   return (
-    <Section size="3">
-      <Container size="4">
-        <Flex direction="column" gap="4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col gap-4">
           {/* Notifications */}
           {error && (
-            <Callout.Root color="red">
-              <Callout.Text>{error}</Callout.Text>
-            </Callout.Root>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-sm text-red-800">{error}</p>
+            </div>
           )}
           {success && (
-            <Callout.Root color="green">
-              <Callout.Text>{success}</Callout.Text>
-            </Callout.Root>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <p className="text-sm text-green-800">{success}</p>
+            </div>
           )}
 
           {/* Header */}
-          <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3">
-            <Box>
-              <Flex align="center" gap="2" mb="2">
-                <IconButton
-                  variant="ghost"
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <button
                   onClick={() => router.push('/prescriptions')}
-                  size="2"
+                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <svg style={{ width: '20px', height: '20px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
-                </IconButton>
-                <Heading size="8">Prescription {prescription.prescriptionCode}</Heading>
-              </Flex>
-          <Flex align="center" gap="2" ml="8">
-            {prescription.patient && (
-              <>
-                <Link href={`/patients/${prescription.patient._id}`}>
-                  <Text size="2" style={{ color: 'var(--blue-9)', textDecoration: 'none' }}>
-                    {prescription.patient.firstName} {prescription.patient.lastName}
-                  </Text>
-                </Link>
-                <Text size="2" color="gray">•</Text>
-              </>
-            )}
-            {prescription.issuedAt && (
-              <Text size="2" color="gray">
-                {new Date(prescription.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-              </Text>
-            )}
-          </Flex>
-        </Box>
-        <Flex gap="2" wrap="wrap">
-          <Button onClick={() => handlePrint('patient')} size="2">
-            <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-            Patient Copy
-          </Button>
-          <Button onClick={() => handlePrint('clinic')} variant="soft" size="2">
-            <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-            Clinic Copy
-          </Button>
-          {prescription.status !== 'dispensed' && (
-            <Button onClick={() => setShowDispenseForm(true)} color="green" size="2">
-              Record Dispense
-            </Button>
-          )}
-        </Flex>
-      </Flex>
-
-          <Flex direction="column" gap="3">
-            {/* Patient Info */}
-            <Card>
-              <Box p="3">
-                <Heading size="4" mb="3">Patient Information</Heading>
-            <Flex direction={{ initial: 'column', md: 'row' }} gap="4" wrap="wrap">
-              {prescription.patient && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Name</Text>
-                  <Link href={`/patients/${prescription.patient._id}`}>
-                    <Text size="2" style={{ color: 'var(--blue-9)', textDecoration: 'none' }}>
-                      {prescription.patient.firstName} {prescription.patient.lastName}
-                    </Text>
-                  </Link>
-                </Box>
-              )}
-              {prescription.patient?.patientCode && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Patient ID</Text>
-                  <Text size="2">{prescription.patient.patientCode}</Text>
-                </Box>
-              )}
-              {prescription.patient?.dateOfBirth && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Date of Birth</Text>
-                  <Text size="2">{new Date(prescription.patient.dateOfBirth).toLocaleDateString()}</Text>
-                </Box>
-              )}
-              {prescription.patient?.phone && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Phone</Text>
-                  <Text size="2">{prescription.patient.phone}</Text>
-                </Box>
-              )}
-              {prescription.issuedAt && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Date Issued</Text>
-                  <Text size="2">
-                    {new Date(prescription.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </Text>
-                </Box>
-              )}
-              {prescription.prescribedBy && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Prescribed By</Text>
-                  <Text size="2">{prescription.prescribedBy.name}</Text>
-                </Box>
-              )}
-              {prescription.visit && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Visit</Text>
-                  <Button asChild variant="ghost" size="1">
-                    <Link href={`/visits/${prescription.visit._id}`}>
-                      {prescription.visit.visitCode}
+                </button>
+                <h1 className="text-3xl font-bold">Prescription {prescription.prescriptionCode}</h1>
+              </div>
+              <div className="flex items-center gap-2 ml-9">
+                {prescription.patient && (
+                  <>
+                    <Link href={`/patients/${prescription.patient._id}`}>
+                      <p className="text-sm text-blue-700 hover:underline">
+                        {prescription.patient.firstName} {prescription.patient.lastName}
+                      </p>
                     </Link>
-                  </Button>
-                </Box>
+                    <p className="text-sm text-gray-600">•</p>
+                  </>
+                )}
+                {prescription.issuedAt && (
+                  <p className="text-sm text-gray-600">
+                    {new Date(prescription.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <button 
+                onClick={() => handlePrint('patient')}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-1.5"
+              >
+                <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Patient Copy
+              </button>
+              <button 
+                onClick={() => handlePrint('clinic')}
+                className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium flex items-center gap-1.5"
+              >
+                <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Clinic Copy
+              </button>
+              {prescription.status !== 'dispensed' && (
+                <button 
+                  onClick={() => setShowDispenseForm(true)}
+                  className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                >
+                  Record Dispense
+                </button>
               )}
-            </Flex>
-          </Box>
-        </Card>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            {/* Patient Info */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="p-3">
+                <h3 className="text-lg font-semibold mb-3">Patient Information</h3>
+                <div className="flex flex-col md:flex-row gap-4 flex-wrap">
+                  {prescription.patient && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Name</p>
+                      <Link href={`/patients/${prescription.patient._id}`}>
+                        <p className="text-sm text-blue-700 hover:underline">
+                          {prescription.patient.firstName} {prescription.patient.lastName}
+                        </p>
+                      </Link>
+                    </div>
+                  )}
+                  {prescription.patient?.patientCode && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Patient ID</p>
+                      <p className="text-sm">{prescription.patient.patientCode}</p>
+                    </div>
+                  )}
+                  {prescription.patient?.dateOfBirth && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Date of Birth</p>
+                      <p className="text-sm">{new Date(prescription.patient.dateOfBirth).toLocaleDateString()}</p>
+                    </div>
+                  )}
+                  {prescription.patient?.phone && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Phone</p>
+                      <p className="text-sm">{prescription.patient.phone}</p>
+                    </div>
+                  )}
+                  {prescription.issuedAt && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Date Issued</p>
+                      <p className="text-sm">
+                        {new Date(prescription.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
+                    </div>
+                  )}
+                  {prescription.prescribedBy && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Prescribed By</p>
+                      <p className="text-sm">{prescription.prescribedBy.name}</p>
+                    </div>
+                  )}
+                  {prescription.visit && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Visit</p>
+                      <Link 
+                        href={`/visits/${prescription.visit._id}`}
+                        className="text-sm text-blue-700 hover:underline"
+                      >
+                        {prescription.visit.visitCode}
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* Medications */}
-            <Card>
-              <Box p="3">
-                <Heading size="4" mb="3">Medications</Heading>
-            <Flex direction="column" gap="2">
-              {(prescription.medications || []).map((medication, index) => (
-                <Card key={index} variant="surface">
-                  <Box p="2">
-                    <Text size="2" weight="bold" mb="2" as="div">
-                      {index + 1}. {medication.name}
-                      {medication.genericName && (
-                        <Text size="1" color="gray" as="span" ml="2">
-                          ({medication.genericName})
-                        </Text>
-                      )}
-                    </Text>
-                    <Flex direction={{ initial: 'column', md: 'row' }} gap="3" wrap="wrap" mb="2">
-                      {medication.strength && (
-                        <Box>
-                          <Text size="1" weight="medium">Strength:</Text> <Text size="1">{medication.strength}</Text>
-                        </Box>
-                      )}
-                      {medication.dose && (
-                        <Box>
-                          <Text size="1" weight="medium">Dose:</Text> <Text size="1">{medication.dose}</Text>
-                        </Box>
-                      )}
-                      {medication.frequency && (
-                        <Box>
-                          <Text size="1" weight="medium">Frequency:</Text> <Text size="1">{medication.frequency}</Text>
-                        </Box>
-                      )}
-                      {medication.durationDays && (
-                        <Box>
-                          <Text size="1" weight="medium">Duration:</Text> <Text size="1">{medication.durationDays} day(s)</Text>
-                        </Box>
-                      )}
-                      {medication.quantity && (
-                        <Box>
-                          <Text size="1" weight="medium">Quantity:</Text> <Text size="1">{medication.quantity}</Text>
-                        </Box>
-                      )}
-                      {medication.form && (
-                        <Box>
-                          <Text size="1" weight="medium">Form:</Text> <Text size="1">{medication.form}</Text>
-                        </Box>
-                      )}
-                      {medication.route && (
-                        <Box>
-                          <Text size="1" weight="medium">Route:</Text> <Text size="1">{medication.route}</Text>
-                        </Box>
-                      )}
-                    </Flex>
-                    {medication.instructions && (
-                      <Box mt="2" pt="2" style={{ borderTop: '1px solid var(--gray-6)' }}>
-                        <Text size="1" weight="medium" mb="1" as="div">Instructions:</Text>
-                        <Text size="1">{medication.instructions}</Text>
-                      </Box>
-                    )}
-                  </Box>
-                </Card>
-              ))}
-            </Flex>
-          </Box>
-        </Card>
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="p-3">
+                <h3 className="text-lg font-semibold mb-3">Medications</h3>
+                <div className="flex flex-col gap-2">
+                  {(prescription.medications || []).map((medication, index) => (
+                    <div key={index} className="bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="p-2">
+                        <p className="text-sm font-bold mb-2">
+                          {index + 1}. {medication.name}
+                          {medication.genericName && (
+                            <span className="text-xs text-gray-600 ml-2">
+                              ({medication.genericName})
+                            </span>
+                          )}
+                        </p>
+                        <div className="flex flex-col md:flex-row gap-3 flex-wrap mb-2">
+                          {medication.strength && (
+                            <div>
+                              <span className="text-xs font-medium">Strength:</span> <span className="text-xs">{medication.strength}</span>
+                            </div>
+                          )}
+                          {medication.dose && (
+                            <div>
+                              <span className="text-xs font-medium">Dose:</span> <span className="text-xs">{medication.dose}</span>
+                            </div>
+                          )}
+                          {medication.frequency && (
+                            <div>
+                              <span className="text-xs font-medium">Frequency:</span> <span className="text-xs">{medication.frequency}</span>
+                            </div>
+                          )}
+                          {medication.durationDays && (
+                            <div>
+                              <span className="text-xs font-medium">Duration:</span> <span className="text-xs">{medication.durationDays} day(s)</span>
+                            </div>
+                          )}
+                          {medication.quantity && (
+                            <div>
+                              <span className="text-xs font-medium">Quantity:</span> <span className="text-xs">{medication.quantity}</span>
+                            </div>
+                          )}
+                          {medication.form && (
+                            <div>
+                              <span className="text-xs font-medium">Form:</span> <span className="text-xs">{medication.form}</span>
+                            </div>
+                          )}
+                          {medication.route && (
+                            <div>
+                              <span className="text-xs font-medium">Route:</span> <span className="text-xs">{medication.route}</span>
+                            </div>
+                          )}
+                        </div>
+                        {medication.instructions && (
+                          <div className="mt-2 pt-2 border-t border-gray-200">
+                            <p className="text-xs font-medium mb-1">Instructions:</p>
+                            <p className="text-xs">{medication.instructions}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
 
             {/* Drug Interactions */}
             {prescription.drugInteractions && prescription.drugInteractions.length > 0 && (
-              <Card>
-                <Box p="3">
-                  <Heading size="4" mb="3">Drug Interactions</Heading>
-              <Flex direction="column" gap="2">
-                {prescription.drugInteractions.map((interaction, idx) => (
-                  <Callout.Root key={idx} color={getInteractionColor(interaction.severity)}>
-                    <Callout.Text>
-                      <Flex justify="between" align="start" gap="3" mb="2">
-                        <Text size="2" weight="bold">
-                          {interaction.medication1} + {interaction.medication2}
-                        </Text>
-                        <Badge color={getInteractionColor(interaction.severity)} size="1" variant="solid">
-                          {interaction.severity.toUpperCase()}
-                        </Badge>
-                      </Flex>
-                      <Text size="1" mb="1" as="div">{interaction.description}</Text>
-                      {interaction.recommendation && (
-                        <Text size="1" style={{ fontStyle: 'italic' }} as="div">{interaction.recommendation}</Text>
-                      )}
-                      {interaction.checkedAt && (
-                        <Text size="1" color="gray" mt="2" as="div">
-                          Checked: {new Date(interaction.checkedAt).toLocaleString()}
-                        </Text>
-                      )}
-                    </Callout.Text>
-                  </Callout.Root>
-                ))}
-              </Flex>
-            </Box>
-          </Card>
-        )}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3">
+                  <h3 className="text-lg font-semibold mb-3">Drug Interactions</h3>
+                  <div className="flex flex-col gap-2">
+                    {prescription.drugInteractions.map((interaction, idx) => (
+                      <div 
+                        key={idx} 
+                        className={`rounded-lg p-3 ${
+                          getInteractionColor(interaction.severity) === 'red' ? 'bg-red-50 border border-red-200' :
+                          getInteractionColor(interaction.severity) === 'yellow' ? 'bg-yellow-50 border border-yellow-200' :
+                          'bg-blue-50 border border-blue-200'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start gap-3 mb-2">
+                          <p className="text-sm font-bold">
+                            {interaction.medication1} + {interaction.medication2}
+                          </p>
+                          <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${
+                            getInteractionColor(interaction.severity) === 'red' ? 'bg-red-600 text-white' :
+                            getInteractionColor(interaction.severity) === 'yellow' ? 'bg-yellow-600 text-white' :
+                            'bg-blue-600 text-white'
+                          }`}>
+                            {interaction.severity.toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-xs mb-1">{interaction.description}</p>
+                        {interaction.recommendation && (
+                          <p className="text-xs italic">{interaction.recommendation}</p>
+                        )}
+                        {interaction.checkedAt && (
+                          <p className="text-xs text-gray-600 mt-2">
+                            Checked: {new Date(interaction.checkedAt).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Archive Status */}
             {prescription.copies && (
-              <Card>
-                <Box p="3">
-                  <Heading size="4" mb="3">Archive Status</Heading>
-              <Flex direction={{ initial: 'column', md: 'row' }} gap="4">
-                {prescription.copies.patientCopy && (
-                  <Box>
-                    <Heading size="2" mb="2">Patient Copy</Heading>
-                    {prescription.copies.patientCopy.printedAt && (
-                      <Text size="2" as="div" mb="1">
-                        Printed: {new Date(prescription.copies.patientCopy.printedAt).toLocaleString()}
-                      </Text>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3">
+                  <h3 className="text-lg font-semibold mb-3">Archive Status</h3>
+                  <div className="flex flex-col md:flex-row gap-4">
+                    {prescription.copies.patientCopy && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2">Patient Copy</h4>
+                        {prescription.copies.patientCopy.printedAt && (
+                          <p className="text-sm mb-1">
+                            Printed: {new Date(prescription.copies.patientCopy.printedAt).toLocaleString()}
+                          </p>
+                        )}
+                        {prescription.copies.patientCopy.digitalCopySent && (
+                          <p className="text-sm">
+                            Digital copy sent: {prescription.copies.patientCopy.sentAt
+                              ? new Date(prescription.copies.patientCopy.sentAt).toLocaleString()
+                              : 'Yes'}
+                          </p>
+                        )}
+                      </div>
                     )}
-                    {prescription.copies.patientCopy.digitalCopySent && (
-                      <Text size="2" as="div">
-                        Digital copy sent: {prescription.copies.patientCopy.sentAt
-                          ? new Date(prescription.copies.patientCopy.sentAt).toLocaleString()
-                          : 'Yes'}
-                      </Text>
+                    {prescription.copies.clinicCopy && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2">Clinic Copy</h4>
+                        {prescription.copies.clinicCopy.archivedAt && (
+                          <p className="text-sm mb-1">
+                            Archived: {new Date(prescription.copies.clinicCopy.archivedAt).toLocaleString()}
+                          </p>
+                        )}
+                        {prescription.copies.clinicCopy.location && (
+                          <p className="text-sm">
+                            Location: {prescription.copies.clinicCopy.location}
+                          </p>
+                        )}
+                      </div>
                     )}
-                  </Box>
-                )}
-                {prescription.copies.clinicCopy && (
-                  <Box>
-                    <Heading size="2" mb="2">Clinic Copy</Heading>
-                    {prescription.copies.clinicCopy.archivedAt && (
-                      <Text size="2" as="div" mb="1">
-                        Archived: {new Date(prescription.copies.clinicCopy.archivedAt).toLocaleString()}
-                      </Text>
-                    )}
-                    {prescription.copies.clinicCopy.location && (
-                      <Text size="2" as="div">
-                        Location: {prescription.copies.clinicCopy.location}
-                      </Text>
-                    )}
-                  </Box>
-                )}
-              </Flex>
-            </Box>
-          </Card>
-        )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Dispensing Status */}
-            <Card>
-              <Box p="3">
-                <Heading size="4" mb="3">Dispensing Status</Heading>
-            <Flex direction="column" gap="2" mb="3">
-              <Flex justify="between" align="center">
-                <Text size="1" color="gray">Prescribed</Text>
-                <Text size="2" weight="medium">{totalPrescribed}</Text>
-              </Flex>
-              <Flex justify="between" align="center">
-                <Text size="1" color="gray">Dispensed</Text>
-                <Text size="2" weight="medium">{totalDispensed}</Text>
-              </Flex>
-              <Box style={{ width: '100%', height: '8px', background: 'var(--gray-6)', borderRadius: '9999px', overflow: 'hidden' }}>
-                <Box
-                  style={{
-                    height: '100%',
-                    background: 'var(--blue-9)',
-                    width: `${totalPrescribed > 0 ? (totalDispensed / totalPrescribed) * 100 : 0}%`,
-                    transition: 'width 0.3s ease',
-                  }}
-                />
-              </Box>
-            </Flex>
-            {(prescription.pharmacyDispenses || []).length > 0 && (
-              <Flex direction="column" gap="2">
-                <Heading size="2" mb="1">Dispense History</Heading>
-                {(prescription.pharmacyDispenses || []).map((dispense, index) => (
-                  <Card key={index} variant="surface">
-                    <Box p="2">
-                      <Flex justify="between" align="start" gap="3">
-                        <Box>
-                          <Text size="2" weight="medium" as="div">
-                            {dispense.pharmacyName || 'Pharmacy'}
-                          </Text>
-                          {dispense.dispensedAt && (
-                            <Text size="1" color="gray" as="div">
-                              {new Date(dispense.dispensedAt).toLocaleDateString()}
-                            </Text>
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="p-3">
+                <h3 className="text-lg font-semibold mb-3">Dispensing Status</h3>
+                <div className="flex flex-col gap-2 mb-3">
+                  <div className="flex justify-between items-center">
+                    <p className="text-xs text-gray-600">Prescribed</p>
+                    <p className="text-sm font-medium">{totalPrescribed}</p>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <p className="text-xs text-gray-600">Dispensed</p>
+                    <p className="text-sm font-medium">{totalDispensed}</p>
+                  </div>
+                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-600 transition-all duration-300"
+                      style={{ width: `${totalPrescribed > 0 ? (totalDispensed / totalPrescribed) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+                {(prescription.pharmacyDispenses || []).length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <h4 className="text-sm font-semibold mb-1">Dispense History</h4>
+                    {(prescription.pharmacyDispenses || []).map((dispense, index) => (
+                      <div key={index} className="bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="p-2">
+                          <div className="flex justify-between items-start gap-3">
+                            <div>
+                              <p className="text-sm font-medium">
+                                {dispense.pharmacyName || 'Pharmacy'}
+                              </p>
+                              {dispense.dispensedAt && (
+                                <p className="text-xs text-gray-600">
+                                  {new Date(dispense.dispensedAt).toLocaleDateString()}
+                                </p>
+                              )}
+                              {dispense.quantityDispensed && (
+                                <p className="text-xs text-gray-600 mt-1">
+                                  Quantity: {dispense.quantityDispensed}
+                                </p>
+                              )}
+                            </div>
+                            {dispense.trackingNumber && (
+                              <p className="text-xs text-gray-600">#{dispense.trackingNumber}</p>
+                            )}
+                          </div>
+                          {dispense.notes && (
+                            <p className="text-xs mt-2">{dispense.notes}</p>
                           )}
-                          {dispense.quantityDispensed && (
-                            <Text size="1" color="gray" mt="1" as="div">
-                              Quantity: {dispense.quantityDispensed}
-                            </Text>
-                          )}
-                        </Box>
-                        {dispense.trackingNumber && (
-                          <Text size="1" color="gray">#{dispense.trackingNumber}</Text>
-                        )}
-                      </Flex>
-                      {dispense.notes && (
-                        <Text size="1" mt="2" as="div">{dispense.notes}</Text>
-                      )}
-                    </Box>
-                  </Card>
-                ))}
-              </Flex>
-            )}
-          </Box>
-        </Card>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Notes */}
             {prescription.notes && (
-              <Card>
-                <Box p="3">
-                  <Heading size="4" mb="3">Notes</Heading>
-              <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{prescription.notes}</Text>
-            </Box>
-          </Card>
-        )}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3">
+                  <h3 className="text-lg font-semibold mb-3">Notes</h3>
+                  <p className="text-sm whitespace-pre-wrap">{prescription.notes}</p>
+                </div>
+              </div>
+            )}
 
             {/* Digital Signature */}
             {prescription.digitalSignature && (
-              <Card>
-                <Box p="3">
-                  <Heading size="4" mb="3">Digital Signature</Heading>
-              <Flex align="center" gap="3">
-                <Box
-                  style={{
-                    border: '2px solid var(--gray-6)',
-                    borderRadius: 'var(--radius-2)',
-                    padding: '6px',
-                    background: 'white',
-                  }}
-                >
-                  <img
-                    src={prescription.digitalSignature.signatureData}
-                    alt="Signature"
-                    style={{ height: '64px', display: 'block' }}
-                  />
-                </Box>
-                <Box>
-                  <Text size="2" weight="medium" as="div">
-                    {prescription.digitalSignature.providerName}
-                  </Text>
-                  <Text size="1" color="gray" as="div">
-                    {new Date(prescription.digitalSignature.signedAt).toLocaleString()}
-                  </Text>
-                </Box>
-              </Flex>
-            </Box>
-          </Card>
-        )}
-      </Flex>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3">
+                  <h3 className="text-lg font-semibold mb-3">Digital Signature</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="border-2 border-gray-300 rounded-lg p-1.5 bg-white">
+                      <img
+                        src={prescription.digitalSignature.signatureData}
+                        alt="Signature"
+                        className="h-16 block"
+                      />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">
+                        {prescription.digitalSignature.providerName}
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        {new Date(prescription.digitalSignature.signedAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Dispense Form Modal */}
-      <Dialog.Root open={showDispenseForm} onOpenChange={(open) => {
-        if (!open) {
-          setShowDispenseForm(false);
-        }
-      }}>
-        <Dialog.Content style={{ maxWidth: '500px' }}>
-          <Dialog.Title>Record Dispense</Dialog.Title>
-          <Box py="4">
-            <Flex direction="column" gap="3">
-              <Box>
-                <Text size="1" weight="medium" mb="1" as="div">Pharmacy Name <Text color="red">*</Text></Text>
-                <TextField.Root size="2" style={{ width: '100%' }}>
-                  <input
-                    type="text"
-                    required
-                    value={dispenseForm.pharmacyName}
-                    onChange={(e) => setDispenseForm({ ...dispenseForm, pharmacyName: e.target.value })}
-                    style={{ 
-                      all: 'unset', 
-                      flex: 1, 
-                      width: '100%',
-                      padding: '0',
-                      fontSize: 'var(--font-size-2)',
-                      lineHeight: 'var(--line-height-2)'
-                    }}
-                  />
-                </TextField.Root>
-              </Box>
-              <Box>
-                <Text size="1" weight="medium" mb="1" as="div">Quantity Dispensed <Text color="red">*</Text></Text>
-                <TextField.Root size="2" style={{ width: '100%' }}>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    max={totalPrescribed - totalDispensed}
-                    value={dispenseForm.quantityDispensed}
-                    onChange={(e) => setDispenseForm({ ...dispenseForm, quantityDispensed: parseInt(e.target.value) || 0 })}
-                    style={{ 
-                      all: 'unset', 
-                      flex: 1, 
-                      width: '100%',
-                      padding: '0',
-                      fontSize: 'var(--font-size-2)',
-                      lineHeight: 'var(--line-height-2)'
-                    }}
-                  />
-                </TextField.Root>
-                <Text size="1" color="gray" mt="1" as="div">
-                  Remaining: {totalPrescribed - totalDispensed}
-                </Text>
-              </Box>
-              <Box>
-                <Text size="1" weight="medium" mb="1" as="div">Tracking Number</Text>
-                <TextField.Root size="2" style={{ width: '100%' }}>
-                  <input
-                    type="text"
-                    value={dispenseForm.trackingNumber}
-                    onChange={(e) => setDispenseForm({ ...dispenseForm, trackingNumber: e.target.value })}
-                    style={{ 
-                      all: 'unset', 
-                      flex: 1, 
-                      width: '100%',
-                      padding: '0',
-                      fontSize: 'var(--font-size-2)',
-                      lineHeight: 'var(--line-height-2)'
-                    }}
-                  />
-                </TextField.Root>
-              </Box>
-              <Box>
-                <Text size="1" weight="medium" mb="1" as="div">Notes</Text>
-                <TextArea
-                  size="2"
-                  value={dispenseForm.notes}
-                  onChange={(e) => setDispenseForm({ ...dispenseForm, notes: e.target.value })}
-                  rows={3}
-                  style={{ width: '100%' }}
-                />
-              </Box>
-              <Flex justify="end" gap="3" pt="2">
-                <Dialog.Close>
-                  <Button variant="soft" color="gray">
-                    Cancel
-                  </Button>
-                </Dialog.Close>
-                <Button onClick={handleDispense} color="green">
-                  Record Dispense
-                </Button>
-              </Flex>
-            </Flex>
-          </Box>
-        </Dialog.Content>
-      </Dialog.Root>
-        </Flex>
-      </Container>
-    </Section>
+          <Modal 
+            open={showDispenseForm} 
+            onOpenChange={(open) => {
+              if (!open) {
+                setShowDispenseForm(false);
+              }
+            }}
+            className="max-w-md"
+          >
+            <div className="p-6">
+              <h2 className="text-xl font-semibold mb-4">Record Dispense</h2>
+              <div className="py-4">
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">
+                      Pharmacy Name <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={dispenseForm.pharmacyName}
+                      onChange={(e) => setDispenseForm({ ...dispenseForm, pharmacyName: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">
+                      Quantity Dispensed <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      max={totalPrescribed - totalDispensed}
+                      value={dispenseForm.quantityDispensed}
+                      onChange={(e) => setDispenseForm({ ...dispenseForm, quantityDispensed: parseInt(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    />
+                    <p className="text-xs text-gray-600 mt-1">
+                      Remaining: {totalPrescribed - totalDispensed}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Tracking Number</label>
+                    <input
+                      type="text"
+                      value={dispenseForm.trackingNumber}
+                      onChange={(e) => setDispenseForm({ ...dispenseForm, trackingNumber: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Notes</label>
+                    <textarea
+                      value={dispenseForm.notes}
+                      onChange={(e) => setDispenseForm({ ...dispenseForm, notes: e.target.value })}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-y"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button
+                      onClick={() => setShowDispenseForm(false)}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleDispense}
+                      className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                    >
+                      Record Dispense
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Modal>
+        </div>
+      </div>
+    </section>
   );
 }

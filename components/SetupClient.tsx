@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card, Flex, Box, Text, TextField, Separator, Heading, Spinner, Callout, Container, Section } from '@radix-ui/themes';
-import { CheckIcon, Cross2Icon } from '@radix-ui/react-icons';
 
 export default function SetupClient() {
   const router = useRouter();
@@ -132,189 +130,213 @@ export default function SetupClient() {
 
   if (loading) {
     return (
-      <Container size="4">
-        <Flex justify="center" align="center" style={{ minHeight: '100vh' }}>
-          <Spinner size="3" />
-        </Flex>
-      </Container>
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="flex justify-center items-center" style={{ minHeight: '100vh' }}>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </div>
     );
   }
 
   if (setupComplete) {
     return (
-      <Container size="4">
-        <Flex justify="center" align="center" style={{ minHeight: '100vh' }}>
-          <Card style={{ maxWidth: 500, width: '100%' }}>
-            <Section p="6">
-              <Flex direction="column" align="center" gap="4">
-                <CheckIcon width="48" height="48" color="green" />
-                <Heading size="6">Setup Already Complete</Heading>
-                <Text color="gray" align="center">
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="flex justify-center items-center" style={{ minHeight: '100vh' }}>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 max-w-md w-full">
+            <div className="p-6">
+              <div className="flex flex-col items-center gap-4">
+                <svg className="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <h2 className="text-xl font-semibold">Setup Already Complete</h2>
+                <p className="text-sm text-gray-600 text-center">
                   The system has already been set up. Please log in to continue.
-                </Text>
-                <Button onClick={() => router.push('/login')}>
+                </p>
+                <button 
+                  onClick={() => router.push('/login')}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
                   Go to Login
-                </Button>
-              </Flex>
-            </Section>
-          </Card>
-        </Flex>
-      </Container>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Container size="4">
-      <Flex justify="center" align="center" style={{ minHeight: '100vh', padding: '2rem 0' }}>
-        <Card style={{ maxWidth: 600, width: '100%' }}>
-          <Section p="6">
-            <Heading size="8" mb="2">System Setup</Heading>
-            <Text color="gray" mb="6">
+    <div className="max-w-7xl mx-auto px-4">
+      <div className="flex justify-center items-center" style={{ minHeight: '100vh', padding: '2rem 0' }}>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 max-w-2xl w-full">
+          <div className="p-6">
+            <h1 className="text-3xl font-bold mb-2">System Setup</h1>
+            <p className="text-sm text-gray-600 mb-6">
               Welcome! Let's set up your clinic management system. This will create default roles, permissions, and an admin account.
-            </Text>
+            </p>
 
             {error && (
-              <Callout.Root color="red" mb="4">
-                <Callout.Text>{error}</Callout.Text>
-              </Callout.Root>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-red-800">{error}</p>
+              </div>
             )}
 
             {success && (
-              <Callout.Root color="green" mb="4">
-                <Callout.Text>{success}</Callout.Text>
-              </Callout.Root>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-green-800">{success}</p>
+              </div>
             )}
 
             <form onSubmit={handleSubmit}>
-              <Flex direction="column" gap="4">
-                <Box>
-                  <Text size="2" weight="medium" mb="1">
-                    Clinic Name <Text color="gray">(optional)</Text>
-                  </Text>
-                  <TextField.Root
+              <div className="flex flex-col gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Clinic Name <span className="text-gray-600">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
                     value={formData.clinicName}
                     onChange={(e) => setFormData({ ...formData, clinicName: e.target.value })}
                     placeholder="Enter clinic name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                </Box>
+                </div>
 
-                <Separator size="4" />
+                <hr className="border-gray-200" />
 
-                <Heading size="5">Admin Account</Heading>
-                <Text size="2" color="gray" mb="2">
+                <h2 className="text-lg font-semibold">Admin Account</h2>
+                <p className="text-sm text-gray-600 mb-2">
                   Create the initial administrator account
-                </Text>
+                </p>
 
-                <Box>
-                  <Text size="2" weight="medium" mb="1">
-                    Admin Name <Text color="red">*</Text>
-                  </Text>
-                  <TextField.Root
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Admin Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
                     value={formData.adminName}
                     onChange={(e) => setFormData({ ...formData, adminName: e.target.value })}
                     placeholder="Enter admin name"
                     required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                </Box>
+                </div>
 
-                <Box>
-                  <Text size="2" weight="medium" mb="1">
-                    Admin Email <Text color="red">*</Text>
-                  </Text>
-                  <TextField.Root
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Admin Email <span className="text-red-500">*</span>
+                  </label>
+                  <input
                     type="email"
                     value={formData.adminEmail}
                     onChange={(e) => setFormData({ ...formData, adminEmail: e.target.value })}
                     placeholder="Enter admin email"
                     required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                </Box>
+                </div>
 
-                <Box>
-                  <Text size="2" weight="medium" mb="1">
-                    Admin Password <Text color="red">*</Text>
-                  </Text>
-                  <TextField.Root
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Admin Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
                     type="password"
                     value={formData.adminPassword}
                     onChange={(e) => handlePasswordChange(e.target.value)}
                     placeholder="Enter password"
                     required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   {passwordErrors.length > 0 && (
-                    <Box mt="2">
+                    <div className="mt-2">
                       {passwordErrors.map((err, idx) => (
-                        <Text key={idx} size="1" color="red" style={{ display: 'block' }}>
-                          <Cross2Icon /> {err}
-                        </Text>
+                        <p key={idx} className="text-xs text-red-600 flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                          {err}
+                        </p>
                       ))}
-                    </Box>
+                    </div>
                   )}
                   {formData.adminPassword && passwordErrors.length === 0 && (
-                    <Text size="1" color="green" mt="2">
-                      <CheckIcon /> Password meets requirements
-                    </Text>
+                    <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Password meets requirements
+                    </p>
                   )}
-                </Box>
+                </div>
 
-                <Box>
-                  <Text size="2" weight="medium" mb="1">
-                    Confirm Password <Text color="red">*</Text>
-                  </Text>
-                  <TextField.Root
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Confirm Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
                     type="password"
                     value={formData.confirmPassword}
                     onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                     placeholder="Confirm password"
                     required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   {formData.confirmPassword && formData.adminPassword !== formData.confirmPassword && (
-                    <Text size="1" color="red" mt="2">
-                      <Cross2Icon /> Passwords do not match
-                    </Text>
+                    <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Passwords do not match
+                    </p>
                   )}
                   {formData.confirmPassword && formData.adminPassword === formData.confirmPassword && (
-                    <Text size="1" color="green" mt="2">
-                      <CheckIcon /> Passwords match
-                    </Text>
+                    <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Passwords match
+                    </p>
                   )}
-                </Box>
+                </div>
 
-                <Separator size="4" />
+                <hr className="border-gray-200" />
 
-                <Box>
-                  <Text size="2" color="gray">
+                <div>
+                  <p className="text-sm text-gray-600">
                     <strong>What will be created:</strong>
-                  </Text>
-                  <Box as="ul" mt="2" style={{ paddingLeft: '1.5rem' }}>
-                    <Text as="li" size="2" color="gray">5 default roles (Admin, Doctor, Nurse, Receptionist, Accountant)</Text>
-                    <Text as="li" size="2" color="gray">Permission documents for each role (stored in database)</Text>
-                    <Text as="li" size="2" color="gray">Admin user account</Text>
-                    <Text as="li" size="2" color="gray">Default system settings (appointments, billing, queue, etc.)</Text>
-                    <Text as="li" size="2" color="gray">Business hours configuration</Text>
-                  </Box>
-                </Box>
+                  </p>
+                  <ul className="mt-2 pl-6 list-disc text-sm text-gray-600 space-y-1">
+                    <li>5 default roles (Admin, Doctor, Nurse, Receptionist, Accountant)</li>
+                    <li>Permission documents for each role (stored in database)</li>
+                    <li>Admin user account</li>
+                    <li>Default system settings (appointments, billing, queue, etc.)</li>
+                    <li>Business hours configuration</li>
+                  </ul>
+                </div>
 
-                <Button 
+                <button 
                   type="submit" 
-                  size="3" 
                   disabled={submitting || passwordErrors.length > 0}
-                  style={{ width: '100%' }}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                 >
                   {submitting ? (
                     <>
-                      <Spinner size="2" /> Setting up system...
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Setting up system...
                     </>
                   ) : (
                     'Complete Setup'
                   )}
-                </Button>
-              </Flex>
+                </button>
+              </div>
             </form>
-          </Section>
-        </Card>
-      </Flex>
-    </Container>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

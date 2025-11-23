@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppointmentCalendar from './AppointmentCalendar';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Heading, Callout, TextArea, Container, Section } from '@radix-ui/themes';
+import { Modal } from './ui/Modal';
 import { useSetting } from './SettingsContext';
 
 interface Appointment {
@@ -408,14 +408,14 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
 
   if (loading) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" gap="3" style={{ minHeight: '50vh', justifyContent: 'center' }}>
-            <Spinner size="3" />
-            <Text>Loading appointments...</Text>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-6">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-col items-center gap-3" style={{ minHeight: '50vh', justifyContent: 'center' }}>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p>Loading appointments...</p>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -423,442 +423,446 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   const walkInQueue = getWalkInQueue();
 
   return (
-    <Section size="3">
-      <Container size="4">
-        <Flex direction="column" gap="4">
+    <section className="py-6">
+      <div className="container mx-auto px-4">
+        <div className="flex flex-col gap-4">
           {/* Error/Success Messages */}
           {error && (
-            <Callout.Root color="red">
-              <Callout.Text>{error}</Callout.Text>
-            </Callout.Root>
+            <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md">
+              <p>{error}</p>
+            </div>
           )}
           {success && (
-            <Callout.Root color="green">
-              <Callout.Text>{success}</Callout.Text>
-            </Callout.Root>
+            <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-md">
+              <p>{success}</p>
+            </div>
           )}
 
           {/* Header */}
-          <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3">
-            <Box>
-              <Heading size="8" mb="1">Appointments</Heading>
-              <Text size="2" color="gray">Manage appointments and walk-in queue</Text>
-            </Box>
-        <Flex gap="2" wrap="wrap">
-          <Button
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h1 className="text-3xl font-bold mb-1">Appointments</h1>
+              <p className="text-sm text-gray-600">Manage appointments and walk-in queue</p>
+            </div>
+        <div className="flex gap-2 flex-wrap">
+          <button
             onClick={() => {
               setFormData({ ...formData, isWalkIn: false, appointmentDate: selectedDate.toISOString().split('T')[0] });
               setShowWalkInForm(false);
               setShowForm(true);
             }}
-            size="3"
-            color="blue"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
           >
-            <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             Schedule Appointment
-          </Button>
-          <Button
+          </button>
+          <button
             onClick={() => {
               setFormData({ ...formData, isWalkIn: true, appointmentDate: new Date().toISOString().split('T')[0] });
               setShowForm(false);
               setShowWalkInForm(true);
             }}
-            size="3"
-            color="orange"
+            className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors flex items-center"
           >
-            <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Add Walk-In
-          </Button>
-        </Flex>
-      </Flex>
+          </button>
+        </div>
+      </div>
 
           {/* View Mode Tabs */}
-          <Card>
-            <Tabs.Root value={viewMode} onValueChange={(value) => setViewMode(value as typeof viewMode)}>
-          <Tabs.List>
-            <Tabs.Trigger value="calendar">Calendar View</Tabs.Trigger>
-            <Tabs.Trigger value="list">List View</Tabs.Trigger>
-            <Tabs.Trigger value="queue">
-              Walk-In Queue
-              {walkInQueue.length > 0 && (
-                <Badge size="1" variant="solid" color="orange" style={{ marginLeft: '6px' }}>
-                  {walkInQueue.length}
-                </Badge>
-              )}
-            </Tabs.Trigger>
-          </Tabs.List>
-        </Tabs.Root>
-      </Card>
+          <div className="bg-white border border-gray-200 rounded-lg">
+            <div className="border-b border-gray-200">
+              <div className="flex">
+                <button
+                  onClick={() => setViewMode('calendar')}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    viewMode === 'calendar'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Calendar View
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    viewMode === 'list'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  List View
+                </button>
+                <button
+                  onClick={() => setViewMode('queue')}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center ${
+                    viewMode === 'queue'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Walk-In Queue
+                  {walkInQueue.length > 0 && (
+                    <span className="ml-1.5 px-2 py-0.5 bg-orange-600 text-white text-xs rounded-full">
+                      {walkInQueue.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+      </div>
 
           {/* Calendar View */}
           {viewMode === 'calendar' && (
-            <Flex direction={{ initial: 'column', lg: 'row' }} gap="4">
-          <Box style={{ flex: '0 0 350px' }}>
+            <div className="flex flex-col lg:flex-row gap-4">
+          <div className="flex-none" style={{ width: '350px' }}>
             <AppointmentCalendar
               appointments={appointments}
               selectedDate={selectedDate}
               onDateSelect={setSelectedDate}
             />
             {/* Filters */}
-            <Card mt="4">
-              <Box p="3">
-                <Heading size="4" mb="3">Filters</Heading>
-                <Flex direction="column" gap="3">
-                  <Box>
-                    <Text size="1" weight="medium" mb="1" as="div">Doctor</Text>
-                    <Select.Root
-                      value={filterDoctor || undefined}
-                      onValueChange={(value) => setFilterDoctor(value === 'all' ? '' : value)}
+            <div className="bg-white border border-gray-200 rounded-lg mt-4">
+              <div className="p-3">
+                <h3 className="text-lg font-semibold mb-3">Filters</h3>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Doctor</label>
+                    <select
+                      value={filterDoctor || ''}
+                      onChange={(e) => setFilterDoctor(e.target.value === 'all' ? '' : e.target.value)}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                     >
-                      <Select.Trigger placeholder="All Doctors" />
-                      <Select.Content>
-                        <Select.Item value="all">All Doctors</Select.Item>
-                        {doctors.map((doctor) => (
-                          <Select.Item key={doctor._id} value={doctor._id}>
-                            {doctor.firstName} {doctor.lastName}
-                          </Select.Item>
-                        ))}
-                      </Select.Content>
-                    </Select.Root>
-                  </Box>
-                  <Box>
-                    <Text size="1" weight="medium" mb="1" as="div">Room</Text>
-                    <TextField.Root size="2" style={{ width: '100%' }}>
-                      <input
-                        type="text"
-                        placeholder="Filter by room..."
-                        value={filterRoom}
-                        onChange={(e) => setFilterRoom(e.target.value)}
-                        style={{ 
-                          all: 'unset', 
-                          flex: 1, 
-                          width: '100%',
-                          padding: '0',
-                          fontSize: 'var(--font-size-2)',
-                          lineHeight: 'var(--line-height-2)'
-                        }}
-                      />
-                    </TextField.Root>
-                  </Box>
+                      <option value="all">All Doctors</option>
+                      {doctors.map((doctor) => (
+                        <option key={doctor._id} value={doctor._id}>
+                          {doctor.firstName} {doctor.lastName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Room</label>
+                    <input
+                      type="text"
+                      placeholder="Filter by room..."
+                      value={filterRoom}
+                      onChange={(e) => setFilterRoom(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    />
+                  </div>
                   {(filterDoctor || filterRoom) && (
-                    <Button
+                    <button
                       onClick={() => {
                         setFilterDoctor('');
                         setFilterRoom('');
                       }}
-                      variant="soft"
-                      size="2"
-                      style={{ width: '100%' }}
+                      className="w-full px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm"
                     >
                       Clear Filters
-                    </Button>
+                    </button>
                   )}
-                </Flex>
-              </Box>
-            </Card>
-          </Box>
-          <Box style={{ flex: 1 }}>
-            <Card>
-              <Box p="3">
-                <Heading size="4" mb="3">
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1">
+            <div className="bg-white border border-gray-200 rounded-lg">
+              <div className="p-3">
+                <h3 className="text-lg font-semibold mb-3">
                   Appointments for {formatDate(selectedDate.toISOString())}
                   {(filterDoctor || filterRoom) && (
-                    <Text size="2" color="gray" as="span" style={{ marginLeft: '8px' }}>
+                    <span className="text-sm text-gray-600 ml-2">
                       (Filtered{filterDoctor ? ' by doctor' : ''}{filterRoom ? ' by room' : ''})
-                    </Text>
+                    </span>
                   )}
-                </Heading>
+                </h3>
                 {selectedDateAppointments.length === 0 ? (
-                  <Box style={{ textAlign: 'center', padding: '48px 0' }}>
-                    <Box mb="3">
-                      <svg style={{ width: '48px', height: '48px', margin: '0 auto', color: 'var(--gray-9)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="text-center py-12">
+                    <div className="mb-3">
+                      <svg className="w-12 h-12 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
-                    </Box>
-                    <Text color="gray">No appointments scheduled for this date</Text>
-                  </Box>
+                    </div>
+                    <p className="text-gray-600">No appointments scheduled for this date</p>
+                  </div>
                 ) : (
-                  <Flex direction="column" gap="3">
+                  <div className="flex flex-col gap-3">
                     {selectedDateAppointments.map((appointment) => (
-                      <Card key={appointment._id} size="2">
-                        <Flex justify="between" align="start" gap="3">
-                          <Box style={{ flex: 1 }}>
-                            <Flex align="center" gap="2" mb="2" wrap="wrap">
-                              <Badge color={getStatusColor(appointment.status)} size="1">
+                      <div key={appointment._id} className="bg-white border border-gray-200 rounded-lg p-3">
+                        <div className="flex justify-between items-start gap-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2 flex-wrap">
+                              <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                getStatusColor(appointment.status) === 'green' ? 'bg-green-100 text-green-800' :
+                                getStatusColor(appointment.status) === 'blue' ? 'bg-blue-100 text-blue-800' :
+                                getStatusColor(appointment.status) === 'red' ? 'bg-red-100 text-red-800' :
+                                getStatusColor(appointment.status) === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
+                                getStatusColor(appointment.status) === 'purple' ? 'bg-purple-100 text-purple-800' :
+                                getStatusColor(appointment.status) === 'orange' ? 'bg-orange-100 text-orange-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
                                 {appointment.status}
-                              </Badge>
+                              </span>
                               {appointment.isWalkIn && (
-                                <Badge color="orange" size="1">
+                                <span className="px-2 py-0.5 bg-orange-100 text-orange-800 text-xs rounded-full">
                                   Walk-In #{appointment.queueNumber}
-                                </Badge>
+                                </span>
                               )}
                               {appointment.appointmentCode && (
-                                <Text size="1" color="gray">#{appointment.appointmentCode}</Text>
+                                <span className="text-xs text-gray-600">#{appointment.appointmentCode}</span>
                               )}
-                            </Flex>
-                            <Text size="2" weight="bold" mb="1" as="div">
+                            </div>
+                            <div className="text-sm font-bold mb-1">
                               {appointment.patient.firstName} {appointment.patient.lastName}
-                            </Text>
-                            <Text size="2" color="gray" mb="1" as="div">
+                            </div>
+                            <div className="text-sm text-gray-600 mb-1">
                               {appointment.doctor
                                 ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName} - ${appointment.doctor.specialization}`
                                 : appointment.provider
                                 ? appointment.provider.name
                                 : 'No provider assigned'}
-                            </Text>
-                            <Text size="2" color="gray" mb="1" as="div">
+                            </div>
+                            <div className="text-sm text-gray-600 mb-1">
                               {formatTime(appointment.appointmentTime)} ({appointment.duration} min)
                               {appointment.room && (
-                                <Text as="span" color="blue" style={{ marginLeft: '8px' }}>
+                                <span className="text-blue-600 ml-2">
                                   • Room: {appointment.room}
-                                </Text>
+                                </span>
                               )}
-                            </Text>
+                            </div>
                             {appointment.reason && (
-                              <Text size="2" color="gray" mt="1" as="div">Reason: {appointment.reason}</Text>
+                              <div className="text-sm text-gray-600 mt-1">Reason: {appointment.reason}</div>
                             )}
                             {appointment.estimatedWaitTime && (
-                              <Text size="1" color="orange" mt="1" as="div">
+                              <div className="text-xs text-orange-600 mt-1">
                                 Estimated wait: {appointment.estimatedWaitTime} minutes
-                              </Text>
+                              </div>
                             )}
-                          </Box>
-                          <Flex direction="column" gap="2">
+                          </div>
+                          <div className="flex flex-col gap-2">
                             {appointment.status === 'scheduled' && (
                               <>
-                                <Button
+                                <button
                                   onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
-                                  size="1"
-                                  variant="soft"
-                                  color="green"
+                                  className="px-2 py-1 bg-green-50 text-green-700 rounded-md hover:bg-green-100 transition-colors text-xs"
                                 >
                                   Confirm
-                                </Button>
-                                <Button
+                                </button>
+                                <button
                                   onClick={() => handleStatusUpdate(appointment._id, 'cancelled')}
-                                  size="1"
-                                  variant="soft"
-                                  color="red"
+                                  className="px-2 py-1 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors text-xs"
                                 >
                                   Cancel
-                                </Button>
+                                </button>
                               </>
                             )}
                             {appointment.status === 'confirmed' && (
                               <>
-                                <Button
+                                <button
                                   onClick={() => handleStatusUpdate(appointment._id, 'completed')}
-                                  size="1"
-                                  variant="soft"
-                                  color="gray"
+                                  className="px-2 py-1 bg-gray-50 text-gray-700 rounded-md hover:bg-gray-100 transition-colors text-xs"
                                 >
                                   Complete
-                                </Button>
-                                <Button
+                                </button>
+                                <button
                                   onClick={() => handleStatusUpdate(appointment._id, 'no-show')}
-                                  size="1"
-                                  variant="soft"
-                                  color="yellow"
+                                  className="px-2 py-1 bg-yellow-50 text-yellow-700 rounded-md hover:bg-yellow-100 transition-colors text-xs"
                                 >
                                   No-Show
-                                </Button>
+                                </button>
                               </>
                             )}
-                          </Flex>
-                        </Flex>
-                      </Card>
+                          </div>
+                        </div>
+                      </div>
                     ))}
-                  </Flex>
+                  </div>
                 )}
-              </Box>
-            </Card>
-          </Box>
-            </Flex>
+              </div>
+            </div>
+          </div>
+            </div>
           )}
 
           {/* List View */}
           {viewMode === 'list' && (
-        <Card>
-          <Table.Root>
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Patient</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Provider</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Date & Time</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell style={{ textAlign: 'right' }}>Actions</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {appointments.length === 0 ? (
-                <Table.Row>
-                  <Table.Cell colSpan={5} style={{ textAlign: 'center', padding: '48px' }}>
-                    <Text color="gray">No appointments found</Text>
-                  </Table.Cell>
-                </Table.Row>
-              ) : (
-                appointments.map((appointment) => (
-                  <Table.Row key={appointment._id}>
-                    <Table.Cell>
-                      <Text size="2" weight="medium" as="div">
-                        {appointment.patient.firstName} {appointment.patient.lastName}
-                      </Text>
-                      {appointment.isWalkIn && (
-                        <Badge size="1" color="orange" variant="soft">
-                          Walk-In #{appointment.queueNumber}
-                        </Badge>
-                      )}
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text size="2" color="gray">
-                        {appointment.doctor
-                          ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`
-                          : appointment.provider
-                          ? appointment.provider.name
-                          : 'N/A'}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text size="2" color="gray" as="div">
-                        {formatDate(appointment.appointmentDate)} at {formatTime(appointment.appointmentTime)}
-                      </Text>
-                      {appointment.room && (
-                        <Text size="1" color="blue" mt="1" as="div">Room: {appointment.room}</Text>
-                      )}
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Badge color={getStatusColor(appointment.status)} size="1">
-                        {appointment.status}
-                      </Badge>
-                    </Table.Cell>
-                    <Table.Cell style={{ textAlign: 'right' }}>
-                      <Flex gap="2" justify="end">
-                        {appointment.status === 'scheduled' && (
-                          <>
-                            <Button
-                              onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
-                              size="1"
-                              variant="ghost"
-                              color="green"
-                            >
-                              Confirm
-                            </Button>
-                            <Button
-                              onClick={() => handleStatusUpdate(appointment._id, 'cancelled')}
-                              size="1"
-                              variant="ghost"
-                              color="red"
-                            >
-                              Cancel
-                            </Button>
-                          </>
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Patient</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Provider</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Date & Time</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {appointments.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-12 text-center">
+                      <p className="text-gray-600">No appointments found</p>
+                    </td>
+                  </tr>
+                ) : (
+                  appointments.map((appointment) => (
+                    <tr key={appointment._id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-medium">
+                          {appointment.patient.firstName} {appointment.patient.lastName}
+                        </div>
+                        {appointment.isWalkIn && (
+                          <span className="inline-block mt-1 px-2 py-0.5 bg-orange-100 text-orange-800 text-xs rounded">
+                            Walk-In #{appointment.queueNumber}
+                          </span>
                         )}
-                        {appointment.status === 'confirmed' && (
-                          <>
-                            <Button
-                              onClick={() => handleStatusUpdate(appointment._id, 'completed')}
-                              size="1"
-                              variant="ghost"
-                              color="gray"
-                            >
-                              Complete
-                            </Button>
-                            <Button
-                              onClick={() => handleStatusUpdate(appointment._id, 'no-show')}
-                              size="1"
-                              variant="ghost"
-                              color="yellow"
-                            >
-                              No-Show
-                            </Button>
-                          </>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-sm text-gray-600">
+                          {appointment.doctor
+                            ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`
+                            : appointment.provider
+                            ? appointment.provider.name
+                            : 'N/A'}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-sm text-gray-600">
+                          {formatDate(appointment.appointmentDate)} at {formatTime(appointment.appointmentTime)}
+                        </div>
+                        {appointment.room && (
+                          <div className="text-xs text-blue-600 mt-1">Room: {appointment.room}</div>
                         )}
-                      </Flex>
-                    </Table.Cell>
-                  </Table.Row>
-                ))
-              )}
-            </Table.Body>
-          </Table.Root>
-        </Card>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 text-xs rounded-full ${
+                          getStatusColor(appointment.status) === 'green' ? 'bg-green-100 text-green-800' :
+                          getStatusColor(appointment.status) === 'blue' ? 'bg-blue-100 text-blue-800' :
+                          getStatusColor(appointment.status) === 'red' ? 'bg-red-100 text-red-800' :
+                          getStatusColor(appointment.status) === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
+                          getStatusColor(appointment.status) === 'purple' ? 'bg-purple-100 text-purple-800' :
+                          getStatusColor(appointment.status) === 'orange' ? 'bg-orange-100 text-orange-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {appointment.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex gap-2 justify-end">
+                          {appointment.status === 'scheduled' && (
+                            <>
+                              <button
+                                onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
+                                className="px-2 py-1 text-green-700 hover:bg-green-50 rounded transition-colors text-xs"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                onClick={() => handleStatusUpdate(appointment._id, 'cancelled')}
+                                className="px-2 py-1 text-red-700 hover:bg-red-50 rounded transition-colors text-xs"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          )}
+                          {appointment.status === 'confirmed' && (
+                            <>
+                              <button
+                                onClick={() => handleStatusUpdate(appointment._id, 'completed')}
+                                className="px-2 py-1 text-gray-700 hover:bg-gray-50 rounded transition-colors text-xs"
+                              >
+                                Complete
+                              </button>
+                              <button
+                                onClick={() => handleStatusUpdate(appointment._id, 'no-show')}
+                                className="px-2 py-1 text-yellow-700 hover:bg-yellow-50 rounded transition-colors text-xs"
+                              >
+                                No-Show
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
           )}
 
           {/* Walk-In Queue View */}
           {viewMode === 'queue' && (
-            <Card>
-              <Box p="3">
-                <Heading size="4" mb="3">Today&apos;s Walk-In Queue</Heading>
+            <div className="bg-white border border-gray-200 rounded-lg">
+              <div className="p-3">
+                <h2 className="text-xl font-semibold mb-3">Today&apos;s Walk-In Queue</h2>
             {walkInQueue.length === 0 ? (
-              <Box style={{ textAlign: 'center', padding: '48px 0' }}>
-                <Box mb="3">
-                  <svg style={{ width: '48px', height: '48px', margin: '0 auto', color: 'var(--gray-9)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="text-center py-12">
+                <div className="mb-3">
+                  <svg className="w-12 h-12 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                </Box>
-                <Text color="gray">No walk-in patients in queue</Text>
-              </Box>
+                </div>
+                <p className="text-gray-600">No walk-in patients in queue</p>
+              </div>
             ) : (
-              <Flex direction="column" gap="3">
+              <div className="flex flex-col gap-3">
                 {walkInQueue.map((appointment) => (
-                  <Card key={appointment._id} style={{ background: 'var(--orange-2)', borderColor: 'var(--orange-6)' }}>
-                    <Flex justify="between" align="center" gap="3">
-                      <Flex align="center" gap="3">
-                        <Box
-                          style={{
-                            width: '48px',
-                            height: '48px',
-                            borderRadius: '50%',
-                            background: 'var(--orange-9)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white',
-                            fontSize: '18px',
-                            fontWeight: 'bold',
-                          }}
+                  <div key={appointment._id} className="bg-orange-50 border border-orange-300 rounded-lg p-3">
+                    <div className="flex justify-between items-center gap-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-12 h-12 rounded-full bg-orange-600 flex items-center justify-center text-white text-lg font-bold"
                         >
                           {appointment.queueNumber}
-                        </Box>
-                        <Box>
-                          <Text size="2" weight="bold" as="div">
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold">
                             {appointment.patient.firstName} {appointment.patient.lastName}
-                          </Text>
-                          <Text size="1" color="gray">{appointment.patient.phone}</Text>
+                          </div>
+                          <div className="text-xs text-gray-600">{appointment.patient.phone}</div>
                           {appointment.estimatedWaitTime && (
-                            <Text size="1" color="orange" mt="1" as="div">
+                            <div className="text-xs text-orange-600 mt-1">
                               Est. wait: {appointment.estimatedWaitTime} minutes
-                            </Text>
+                            </div>
                           )}
-                        </Box>
-                      </Flex>
-                      <Flex align="center" gap="2">
-                        <Badge color={getStatusColor(appointment.status)} size="1">
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 text-xs rounded-full ${
+                          getStatusColor(appointment.status) === 'red' ? 'bg-red-100 text-red-800' :
+                          getStatusColor(appointment.status) === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
+                          getStatusColor(appointment.status) === 'green' ? 'bg-green-100 text-green-800' :
+                          'bg-blue-100 text-blue-800'
+                        }`}>
                           {appointment.status}
-                        </Badge>
-                        <Button
+                        </span>
+                        <button
                           onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
-                          size="1"
-                          variant="soft"
-                          color="green"
+                          className="px-2 py-1 bg-green-50 text-green-700 rounded-md hover:bg-green-100 transition-colors text-xs"
                         >
                           Confirm
-                        </Button>
-                      </Flex>
-                    </Flex>
-                  </Card>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 ))}
-              </Flex>
+              </div>
             )}
-          </Box>
-        </Card>
+              </div>
+            </div>
           )}
 
           {/* Appointment Form Modal */}
-          <Dialog.Root open={showForm || showWalkInForm} onOpenChange={(open) => {
+          <Modal open={showForm || showWalkInForm} onOpenChange={(open) => {
         if (!open) {
           setShowForm(false);
           setShowWalkInForm(false);
@@ -866,262 +870,188 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
           setSelectedPatient(null);
           setFormData({ ...formData, patient: '' });
         }
-      }}>
-        <Dialog.Content style={{ maxWidth: '800px' }}>
-          <Dialog.Title>
+      }} className="max-w-3xl">
+        <div className="p-6">
+          <h2 className="text-xl font-semibold mb-4">
             {showWalkInForm ? 'Add Walk-In Patient' : 'Schedule Appointment'}
-          </Dialog.Title>
+          </h2>
           <form onSubmit={handleSubmit}>
-            <Flex direction="column" gap="3" mt="4">
-              <Flex direction={{ initial: 'column', md: 'row' }} gap="3">
-                <Box style={{ flex: 1 }}>
-                  <Text size="2" weight="medium" mb="1" as="div">Patient <Text color="red">*</Text></Text>
-                  <Box style={{ position: 'relative' }}>
-                    <TextField.Root size="2" style={{ width: '100%' }}>
-                      <input
-                        type="text"
-                        required
-                        value={patientSearch}
-                        onChange={(e) => {
-                          setPatientSearch(e.target.value);
-                          setShowPatientSearch(true);
-                          if (!e.target.value) {
-                            setFormData({ ...formData, patient: '' });
-                            setSelectedPatient(null);
-                          }
-                        }}
-                        onFocus={() => setShowPatientSearch(true)}
-                        placeholder="Type to search patients..."
-                        style={{ 
-                          all: 'unset', 
-                          flex: 1, 
-                          width: '100%',
-                          padding: '0',
-                          fontSize: 'var(--font-size-2)',
-                          lineHeight: 'var(--line-height-2)'
-                        }}
-                      />
-                    </TextField.Root>
+            <div className="flex flex-col gap-3 mt-4">
+              <div className="flex flex-col md:flex-row gap-3">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium mb-1">Patient <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={patientSearch}
+                      onChange={(e) => {
+                        setPatientSearch(e.target.value);
+                        setShowPatientSearch(true);
+                        if (!e.target.value) {
+                          setFormData({ ...formData, patient: '' });
+                          setSelectedPatient(null);
+                        }
+                      }}
+                      onFocus={() => setShowPatientSearch(true)}
+                      placeholder="Type to search patients..."
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    />
                     {showPatientSearch && (
-                      <Box
-                        style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: 0,
-                          right: 0,
-                          zIndex: 10,
-                          marginTop: '4px',
-                          background: 'var(--color-panel)',
-                          border: '1px solid var(--gray-6)',
-                          borderRadius: 'var(--radius-2)',
-                          boxShadow: 'var(--shadow-4)',
-                          maxHeight: '200px',
-                          overflowY: 'auto',
-                        }}
+                      <div
+                        className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto"
                       >
                       {filteredPatients.length > 0 ? (
-                        <Flex direction="column" gap="1">
+                        <div className="flex flex-col gap-1">
                           {filteredPatients.map((patient) => (
-                            <Button
+                            <button
                               key={patient._id}
-                              variant="ghost"
+                              type="button"
                               onClick={() => {
                                 selectPatient(patient);
                                 setShowPatientSearch(false);
                               }}
-                              style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                              className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded transition-colors"
                             >
-                              <Text weight="medium" size="2">{patient.firstName} {patient.lastName}</Text>
-                            </Button>
+                              <span className="font-medium text-sm">{patient.firstName} {patient.lastName}</span>
+                            </button>
                           ))}
-                        </Flex>
+                        </div>
                       ) : patientSearch ? (
-                        <Box p="2">
-                          <Text size="2" color="gray">No patients found</Text>
-                        </Box>
+                        <div className="p-2">
+                          <p className="text-sm text-gray-600">No patients found</p>
+                        </div>
                       ) : (
-                        <Box p="2">
-                          <Text size="2" color="gray">Start typing to search...</Text>
-                        </Box>
+                        <div className="p-2">
+                          <p className="text-sm text-gray-600">Start typing to search...</p>
+                        </div>
                       )}
-                      </Box>
+                      </div>
                     )}
-                  </Box>
+                  </div>
                   {formData.patient && !selectedPatient && (
-                    <Text size="1" color="red" mt="1" as="div">Please select a valid patient from the list</Text>
+                    <p className="text-xs text-red-600 mt-1">Please select a valid patient from the list</p>
                   )}
-                </Box>
-                <Box style={{ flex: 1 }}>
-                  <Text size="2" weight="medium" mb="1" as="div">Doctor/Provider <Text color="red">*</Text></Text>
-                  <Select.Root
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium mb-1">Doctor/Provider <span className="text-red-500">*</span></label>
+                  <select
                     required
-                    value={formData.doctor || undefined}
-                    onValueChange={(value) => setFormData({ ...formData, doctor: value })}
+                    value={formData.doctor || ''}
+                    onChange={(e) => setFormData({ ...formData, doctor: e.target.value })}
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   >
-                    <Select.Trigger placeholder="Select a doctor" />
-                    <Select.Content>
-                      {doctors.map((doctor) => (
-                        <Select.Item key={doctor._id} value={doctor._id}>
-                          {doctor.firstName} {doctor.lastName} - {doctor.specialization}
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select.Root>
-                </Box>
-              </Flex>
-              <Flex direction={{ initial: 'column', md: 'row' }} gap="3">
-                <Box style={{ flex: 1 }}>
-                  <Text size="2" weight="medium" mb="1" as="div">Date <Text color="red">*</Text></Text>
-                  <TextField.Root size="2" style={{ width: '100%' }}>
-                    <input
-                      type="date"
-                      required
-                      value={formData.appointmentDate}
-                      onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value })}
-                      min={new Date().toISOString().split('T')[0]}
-                      style={{ 
-                        all: 'unset', 
-                        flex: 1, 
-                        width: '100%',
-                        padding: '0',
-                        fontSize: 'var(--font-size-2)',
-                        lineHeight: 'var(--line-height-2)'
-                      }}
-                    />
-                  </TextField.Root>
-                </Box>
-                <Box style={{ flex: 1 }}>
-                  <Text size="2" weight="medium" mb="1" as="div">Time <Text color="red">*</Text></Text>
-                  <TextField.Root size="2" style={{ width: '100%' }}>
-                    <input
-                      type="time"
-                      required
-                      value={formData.appointmentTime}
-                      onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
-                      style={{ 
-                        all: 'unset', 
-                        flex: 1, 
-                        width: '100%',
-                        padding: '0',
-                        fontSize: 'var(--font-size-2)',
-                        lineHeight: 'var(--line-height-2)'
-                      }}
-                    />
-                  </TextField.Root>
-                </Box>
-              </Flex>
-              <Flex direction={{ initial: 'column', md: 'row' }} gap="3">
-                <Box style={{ flex: 1 }}>
-                  <Text size="2" weight="medium" mb="1" as="div">Duration (minutes)</Text>
-                  <TextField.Root size="2" style={{ width: '100%' }}>
-                    <input
-                      type="number"
-                      min="15"
-                      max="240"
-                      step="15"
-                      value={formData.duration}
-                      onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 30 })}
-                      style={{ 
-                        all: 'unset', 
-                        flex: 1, 
-                        width: '100%',
-                        padding: '0',
-                        fontSize: 'var(--font-size-2)',
-                        lineHeight: 'var(--line-height-2)'
-                      }}
-                    />
-                  </TextField.Root>
-                </Box>
-                <Box style={{ flex: 1 }}>
-                  <Text size="2" weight="medium" mb="1" as="div">Room (Optional)</Text>
-                  <TextField.Root size="2" style={{ width: '100%' }}>
-                    <input
-                      type="text"
-                      value={formData.room}
-                      onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                      placeholder="e.g., Room 101, Consultation Room A"
-                      style={{ 
-                        all: 'unset', 
-                        flex: 1, 
-                        width: '100%',
-                        padding: '0',
-                        fontSize: 'var(--font-size-2)',
-                        lineHeight: 'var(--line-height-2)'
-                      }}
-                    />
-                  </TextField.Root>
-                </Box>
-              </Flex>
-              <Box>
-                <Text size="2" weight="medium" mb="1" as="div">Status</Text>
-                <Select.Root
-                  value={formData.status}
-                  onValueChange={(value) => setFormData({ ...formData, status: value as any })}
-                >
-                  <Select.Trigger />
-                  <Select.Content>
-                    <Select.Item value="scheduled">Scheduled</Select.Item>
-                    <Select.Item value="confirmed">Confirmed</Select.Item>
-                    <Select.Item value="pending">Pending</Select.Item>
-                  </Select.Content>
-                </Select.Root>
-              </Box>
-              <Box>
-                <Text size="2" weight="medium" mb="1" as="div">Reason</Text>
-                <TextField.Root size="2" style={{ width: '100%' }}>
+                    <option value="">Select a doctor</option>
+                    {doctors.map((doctor) => (
+                      <option key={doctor._id} value={doctor._id}>
+                        {doctor.firstName} {doctor.lastName} - {doctor.specialization}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="flex flex-col md:flex-row gap-3">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium mb-1">Date <span className="text-red-500">*</span></label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.appointmentDate}
+                    onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value })}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium mb-1">Time <span className="text-red-500">*</span></label>
+                  <input
+                    type="time"
+                    required
+                    value={formData.appointmentTime}
+                    onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col md:flex-row gap-3">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium mb-1">Duration (minutes)</label>
+                  <input
+                    type="number"
+                    min="15"
+                    max="240"
+                    step="15"
+                    value={formData.duration}
+                    onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 30 })}
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium mb-1">Room (Optional)</label>
                   <input
                     type="text"
-                    value={formData.reason}
-                    onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                    placeholder="Appointment reason"
-                    style={{ 
-                      all: 'unset', 
-                      flex: 1, 
-                      width: '100%',
-                      padding: '0',
-                      fontSize: 'var(--font-size-2)',
-                      lineHeight: 'var(--line-height-2)'
-                    }}
+                    value={formData.room}
+                    onChange={(e) => setFormData({ ...formData, room: e.target.value })}
+                    placeholder="e.g., Room 101, Consultation Room A"
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
-                </TextField.Root>
-              </Box>
-              <Box>
-                <Text size="2" weight="medium" mb="1" as="div">Notes</Text>
-                <TextArea
-                  size="2"
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Status</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                >
+                  <option value="scheduled">Scheduled</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Reason</label>
+                <input
+                  type="text"
+                  value={formData.reason}
+                  onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                  placeholder="Appointment reason"
+                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Notes</label>
+                <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows={3}
-                  style={{ width: '100%' }}
+                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 />
-              </Box>
-              <Flex justify="end" gap="3" pt="4">
-                <Dialog.Close>
-                  <Button
-                    type="button"
-                    variant="soft"
-                    color="gray"
-                    onClick={() => {
-                      setShowForm(false);
-                      setShowWalkInForm(false);
-                      setPatientSearch('');
-                      setSelectedPatient(null);
-                      setFormData({ ...formData, patient: '' });
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </Dialog.Close>
-                <Button type="submit" color="blue">
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForm(false);
+                    setShowWalkInForm(false);
+                    setPatientSearch('');
+                    setSelectedPatient(null);
+                    setFormData({ ...formData, patient: '' });
+                  }}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
                   {showWalkInForm ? 'Add Walk-In' : 'Schedule Appointment'}
-                </Button>
-              </Flex>
-            </Flex>
+                </button>
+              </div>
+            </div>
           </form>
-        </Dialog.Content>
-      </Dialog.Root>
-        </Flex>
-      </Container>
-    </Section>
+        </div>
+      </Modal>
+        </div>
+      </div>
+    </section>
   );
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useRef, useState, useEffect } from 'react';
-import { Button, Flex, Box, Text } from '@radix-ui/themes';
 
 interface SignaturePadProps {
   onSave: (signatureData: string) => void;
@@ -93,18 +92,12 @@ export default function SignaturePad({ onSave, onCancel, providerName }: Signatu
   };
 
   return (
-    <Flex direction="column" gap="4">
-      <Box>
-        <Text as="label" size="2" weight="medium" mb="2" style={{ display: 'block' }}>
+    <div className="flex flex-col gap-4">
+      <div>
+        <label className="block text-sm font-medium mb-2">
           Digital Signature - {providerName}
-        </Text>
-        <Box
-          style={{
-            border: '2px solid var(--gray-6)',
-            borderRadius: 'var(--radius-2)',
-            backgroundColor: 'white',
-          }}
-        >
+        </label>
+        <div className="border-2 border-gray-300 rounded-lg bg-white">
           <canvas
             ref={canvasRef}
             onMouseDown={startDrawing}
@@ -114,31 +107,40 @@ export default function SignaturePad({ onSave, onCancel, providerName }: Signatu
             onTouchStart={startDrawing}
             onTouchMove={draw}
             onTouchEnd={stopDrawing}
-            style={{
-              width: '100%',
-              cursor: 'crosshair',
-              touchAction: 'none',
-            }}
+            className="w-full cursor-crosshair"
+            style={{ touchAction: 'none' }}
           />
-        </Box>
-        <Text size="1" color="gray" mt="1" style={{ display: 'block' }}>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">
           Sign above using your mouse or touch screen
-        </Text>
-      </Box>
-      <Flex justify="between" align="center">
-        <Button variant="soft" color="gray" onClick={clearSignature}>
+        </p>
+      </div>
+      <div className="flex justify-between items-center">
+        <button
+          type="button"
+          onClick={clearSignature}
+          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+        >
           Clear
-        </Button>
-        <Flex gap="2">
-          <Button variant="outline" color="gray" onClick={onCancel}>
+        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+          >
             Cancel
-          </Button>
-          <Button variant="solid" color="blue" onClick={handleSave}>
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+          >
             Save Signature
-          </Button>
-        </Flex>
-      </Flex>
-    </Flex>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

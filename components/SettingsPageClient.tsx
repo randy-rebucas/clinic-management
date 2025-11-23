@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Card, Flex, Box, Text, TextField, Select, Separator, Heading, Switch, Tabs, Spinner, Callout, Container, Section } from '@radix-ui/themes';
-import { CheckIcon, Cross2Icon } from '@radix-ui/react-icons';
 
 interface Settings {
   _id?: string;
@@ -108,25 +106,18 @@ const LabeledTextField = ({
   step?: string;
   placeholder?: string;
 }) => (
-  <Box>
-    <Text size="2" weight="medium" mb="1" as="div">{label}</Text>
-    <TextField.Root size="2">
-      <input
-        type={type}
-        step={step}
-        value={value}
-        onChange={onChange}
-        disabled={disabled}
-        placeholder={placeholder}
-        style={{ 
-          all: 'unset', 
-          flex: 1,
-          width: '100%',
-          minWidth: 0
-        }}
-      />
-    </TextField.Root>
-  </Box>
+  <div>
+    <label className="block text-sm font-medium mb-1">{label}</label>
+    <input
+      type={type}
+      step={step}
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      placeholder={placeholder}
+      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+    />
+  </div>
 );
 
 export default function SettingsPageClient({ user }: SettingsPageClientProps) {
@@ -134,6 +125,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [activeTab, setActiveTab] = useState('clinic');
   const isAdmin = user.role === 'admin';
 
   useEffect(() => {
@@ -420,82 +412,113 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
 
   if (loading) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex justify="center" align="center" style={{ minHeight: '400px' }}>
-            <Spinner size="3" />
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex justify-center items-center" style={{ minHeight: '400px' }}>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        </div>
+      </section>
     );
   }
 
   if (!settings) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Callout.Root color="red" size="2">
-            <Callout.Text>Failed to load settings</Callout.Text>
-          </Callout.Root>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <p className="text-sm text-red-800">Failed to load settings</p>
+          </div>
+        </div>
+      </section>
     );
   }
 
   return (
-    <Section size="3">
-      <Container size="4">
-        <Flex direction="column" gap="4">
-          <Flex justify="between" align="center" wrap="wrap" gap="3">
-            <Box>
-              <Heading size="8" mb="1">Settings</Heading>
-              <Text size="2" color="gray">Manage clinic settings and preferences</Text>
-            </Box>
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col gap-4">
+          <div className="flex justify-between items-center flex-wrap gap-3">
+            <div>
+              <h1 className="text-3xl font-bold mb-1">Settings</h1>
+              <p className="text-sm text-gray-600">Manage clinic settings and preferences</p>
+            </div>
             {isAdmin && (
-              <Button 
+              <button 
                 onClick={handleSave} 
                 disabled={saving} 
-                size="3"
-                variant="solid"
-                color="blue"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center gap-2"
               >
-                {saving ? <Spinner size="2" /> : 'Save Changes'}
-              </Button>
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Save Changes
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </button>
             )}
-          </Flex>
+          </div>
         {message && (
-          <Callout.Root color={message.type === 'success' ? 'green' : 'red'} size="2">
-            <Callout.Icon>
-              {message.type === 'success' ? <CheckIcon /> : <Cross2Icon />}
-            </Callout.Icon>
-            <Callout.Text>{message.text}</Callout.Text>
-          </Callout.Root>
+          <div className={`rounded-lg p-3 ${
+            message.type === 'success' 
+              ? 'bg-green-50 border border-green-200 text-green-800' 
+              : 'bg-red-50 border border-red-200 text-red-800'
+          }`}>
+            <div className="flex items-center gap-2">
+              {message.type === 'success' ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              )}
+              <p className="text-sm">{message.text}</p>
+            </div>
+          </div>
         )}
 
         {!isAdmin && (
-          <Callout.Root color="amber" size="2">
-            <Callout.Text>You can view settings but only admins can make changes.</Callout.Text>
-          </Callout.Root>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+            <p className="text-sm text-yellow-800">You can view settings but only admins can make changes.</p>
+          </div>
         )}
 
-        <Tabs.Root defaultValue="clinic">
-          <Tabs.List size="2">
-            <Tabs.Trigger value="clinic">Clinic Info</Tabs.Trigger>
-            <Tabs.Trigger value="hours">Business Hours</Tabs.Trigger>
-            <Tabs.Trigger value="appointments">Appointments</Tabs.Trigger>
-            <Tabs.Trigger value="communication">Communication</Tabs.Trigger>
-            <Tabs.Trigger value="billing">Billing</Tabs.Trigger>
-            <Tabs.Trigger value="queue">Queue</Tabs.Trigger>
-            <Tabs.Trigger value="general">General</Tabs.Trigger>
-            <Tabs.Trigger value="display">Display</Tabs.Trigger>
-            <Tabs.Trigger value="integrations">Integrations</Tabs.Trigger>
-          </Tabs.List>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="border-b border-gray-200 overflow-x-auto">
+            <nav className="flex -mb-px min-w-max">
+              {['clinic', 'hours', 'appointments', 'communication', 'billing', 'queue', 'general', 'display', 'integrations'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === tab
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {tab === 'clinic' ? 'Clinic Info' :
+                   tab === 'hours' ? 'Business Hours' :
+                   tab === 'appointments' ? 'Appointments' :
+                   tab === 'communication' ? 'Communication' :
+                   tab === 'billing' ? 'Billing' :
+                   tab === 'queue' ? 'Queue' :
+                   tab === 'general' ? 'General' :
+                   tab === 'display' ? 'Display' :
+                   'Integrations'}
+                </button>
+              ))}
+            </nav>
+          </div>
 
-          <Box pt="3">
-            <Tabs.Content value="clinic">
-              <Card size="2" variant="surface">
-                <Flex direction="column" gap="4" p="4">
-                  <Heading size="5">Clinic Information</Heading>
+          <div className="pt-3">
+            {activeTab === 'clinic' && (
+              <div className="bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex flex-col gap-4 p-4">
+                  <h3 className="text-xl font-semibold">Clinic Information</h3>
                   <LabeledTextField
                     label="Clinic Name"
                     value={settings.clinicName || ''}
@@ -546,90 +569,68 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     disabled={!isAdmin}
                     placeholder="Enter license number"
                   />
-                </Flex>
-              </Card>
-            </Tabs.Content>
+                </div>
+              </div>
+            )}
 
-            <Tabs.Content value="hours">
-              <Card size="2" variant="surface">
-                <Flex direction="column" gap="4" p="4">
-                  <Heading size="5">Business Hours</Heading>
+            {activeTab === 'hours' && (
+              <div className="bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex flex-col gap-4 p-4">
+                  <h3 className="text-xl font-semibold">Business Hours</h3>
                   {DAYS.map((day) => {
                     const hours = settings.businessHours.find((h) => h.day === day.value);
                     if (!hours) return null;
 
                     return (
-                      <Flex key={day.value} gap="3" align="center" wrap="wrap">
-                        <Box width="100px" flexShrink="0">
-                          <Text size="2" weight="medium">{day.label}</Text>
-                        </Box>
-                        <Flex gap="2" align="center">
-                          <Switch
-                            size="2"
-                            checked={!hours.closed}
-                            onCheckedChange={(checked) => updateBusinessHours(day.value, 'closed', !checked)}
-                            disabled={!isAdmin}
-                          />
-                          <Text size="2" color="gray">
+                      <div key={day.value} className="flex gap-3 items-center flex-wrap">
+                        <div className="w-[100px] flex-shrink-0">
+                          <p className="text-sm font-medium">{day.label}</p>
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={!hours.closed}
+                              onChange={(e) => updateBusinessHours(day.value, 'closed', !e.target.checked)}
+                              disabled={!isAdmin}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"></div>
+                          </label>
+                          <p className="text-sm text-gray-600">
                             {hours.closed ? 'Closed' : 'Open'}
-                          </Text>
-                        </Flex>
+                          </p>
+                        </div>
                         {!hours.closed && (
-                          <Flex gap="2" align="center" style={{ flex: 1, minWidth: '200px' }}>
-                            <TextField.Root size="2" style={{ width: '140px', flexShrink: 0 }}>
-                              <input
-                                type="time"
-                                value={hours.open}
-                                onChange={(e) => updateBusinessHours(day.value, 'open', e.target.value)}
-                                disabled={!isAdmin}
-                                style={{ 
-                                  border: 'none',
-                                  outline: 'none',
-                                  background: 'transparent',
-                                  flex: 1,
-                                  width: '100%',
-                                  minWidth: 0,
-                                  padding: '0',
-                                  fontSize: 'inherit',
-                                  fontFamily: 'inherit',
-                                  color: 'inherit'
-                                }}
-                              />
-                            </TextField.Root>
-                            <Text size="2" color="gray">to</Text>
-                            <TextField.Root size="2" style={{ width: '140px', flexShrink: 0 }}>
-                              <input
-                                type="time"
-                                value={hours.close}
-                                onChange={(e) => updateBusinessHours(day.value, 'close', e.target.value)}
-                                disabled={!isAdmin}
-                                style={{ 
-                                  border: 'none',
-                                  outline: 'none',
-                                  background: 'transparent',
-                                  flex: 1,
-                                  width: '100%',
-                                  minWidth: 0,
-                                  padding: '0',
-                                  fontSize: 'inherit',
-                                  fontFamily: 'inherit',
-                                  color: 'inherit'
-                                }}
-                              />
-                            </TextField.Root>
-                          </Flex>
+                          <div className="flex gap-2 items-center flex-1 min-w-[200px]">
+                            <input
+                              type="time"
+                              value={hours.open}
+                              onChange={(e) => updateBusinessHours(day.value, 'open', e.target.value)}
+                              disabled={!isAdmin}
+                              className="w-[140px] flex-shrink-0 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            />
+                            <p className="text-sm text-gray-600">to</p>
+                            <input
+                              type="time"
+                              value={hours.close}
+                              onChange={(e) => updateBusinessHours(day.value, 'close', e.target.value)}
+                              disabled={!isAdmin}
+                              className="w-[140px] flex-shrink-0 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            />
+                          </div>
                         )}
-                      </Flex>
+                      </div>
                     );
                   })}
-                </Flex>
-              </Card>
-            </Tabs.Content>
+                </div>
+              </div>
+            )}
 
-            <Tabs.Content value="appointments">
-              <Card size="2" variant="surface">
-                <Flex direction="column" gap="4" p="4">
-                  <Heading size="5">Appointment Settings</Heading>
+            {activeTab === 'appointments' && (
+              <div className="bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex flex-col gap-4 p-4">
+                  <h3 className="text-xl font-semibold">Appointment Settings</h3>
                   <LabeledTextField
                     label="Default Duration (minutes)"
                     type="number"
@@ -648,28 +649,26 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     disabled={!isAdmin}
                     placeholder="24, 2"
                   />
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.appointmentSettings.allowOnlineBooking}
-                        onCheckedChange={(checked) => updateSettings('appointmentSettings.allowOnlineBooking', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Allow Online Booking
-                    </Flex>
-                  </Text>
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.appointmentSettings.requireConfirmation}
-                        onCheckedChange={(checked) => updateSettings('appointmentSettings.requireConfirmation', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Require Confirmation
-                    </Flex>
-                  </Text>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.appointmentSettings.allowOnlineBooking}
+                      onChange={(e) => updateSettings('appointmentSettings.allowOnlineBooking', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Allow Online Booking</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.appointmentSettings.requireConfirmation}
+                      onChange={(e) => updateSettings('appointmentSettings.requireConfirmation', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Require Confirmation</span>
+                  </label>
                   <LabeledTextField
                     label="Max Advance Booking (days)"
                     type="number"
@@ -686,77 +685,72 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     disabled={!isAdmin}
                     placeholder="2"
                   />
-                </Flex>
-              </Card>
-            </Tabs.Content>
+                </div>
+              </div>
+            )}
 
-            <Tabs.Content value="communication">
-              <Card size="2" variant="surface">
-                <Flex direction="column" gap="4" p="4">
-                  <Heading size="5">Communication Settings</Heading>
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.communicationSettings.smsEnabled}
-                        onCheckedChange={(checked) => updateSettings('communicationSettings.smsEnabled', checked)}
-                        disabled={!isAdmin}
-                      />
-                      SMS Enabled
-                    </Flex>
-                  </Text>
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.communicationSettings.emailEnabled}
-                        onCheckedChange={(checked) => updateSettings('communicationSettings.emailEnabled', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Email Enabled
-                    </Flex>
-                  </Text>
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.communicationSettings.appointmentReminders}
-                        onCheckedChange={(checked) => updateSettings('communicationSettings.appointmentReminders', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Appointment Reminders
-                    </Flex>
-                  </Text>
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.communicationSettings.labResultNotifications}
-                        onCheckedChange={(checked) => updateSettings('communicationSettings.labResultNotifications', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Lab Result Notifications
-                    </Flex>
-                  </Text>
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.communicationSettings.invoiceReminders}
-                        onCheckedChange={(checked) => updateSettings('communicationSettings.invoiceReminders', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Invoice Reminders
-                    </Flex>
-                  </Text>
-                </Flex>
-              </Card>
-            </Tabs.Content>
+            {activeTab === 'communication' && (
+              <div className="bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex flex-col gap-4 p-4">
+                  <h3 className="text-xl font-semibold">Communication Settings</h3>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.communicationSettings.smsEnabled}
+                      onChange={(e) => updateSettings('communicationSettings.smsEnabled', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">SMS Enabled</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.communicationSettings.emailEnabled}
+                      onChange={(e) => updateSettings('communicationSettings.emailEnabled', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Email Enabled</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.communicationSettings.appointmentReminders}
+                      onChange={(e) => updateSettings('communicationSettings.appointmentReminders', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Appointment Reminders</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.communicationSettings.labResultNotifications}
+                      onChange={(e) => updateSettings('communicationSettings.labResultNotifications', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Lab Result Notifications</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.communicationSettings.invoiceReminders}
+                      onChange={(e) => updateSettings('communicationSettings.invoiceReminders', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Invoice Reminders</span>
+                  </label>
+                </div>
+              </div>
+            )}
 
-            <Tabs.Content value="billing">
-              <Card size="2" variant="surface">
-                <Flex direction="column" gap="4" p="4">
-                  <Heading size="5">Billing Settings</Heading>
+            {activeTab === 'billing' && (
+              <div className="bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex flex-col gap-4 p-4">
+                  <h3 className="text-xl font-semibold">Billing Settings</h3>
                   <LabeledTextField
                     label="Currency"
                     value={settings.billingSettings.currency || 'USD'}
@@ -797,47 +791,44 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     disabled={!isAdmin}
                     placeholder="INV"
                   />
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.billingSettings.allowPartialPayments}
-                        onCheckedChange={(checked) => updateSettings('billingSettings.allowPartialPayments', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Allow Partial Payments
-                    </Flex>
-                  </Text>
-                </Flex>
-              </Card>
-            </Tabs.Content>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.billingSettings.allowPartialPayments}
+                      onChange={(e) => updateSettings('billingSettings.allowPartialPayments', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Allow Partial Payments</span>
+                  </label>
+                </div>
+              </div>
+            )}
 
-            <Tabs.Content value="queue">
-              <Card size="2" variant="surface">
-                <Flex direction="column" gap="4" p="4">
-                  <Heading size="5">Queue Settings</Heading>
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.queueSettings.enableQueue}
-                        onCheckedChange={(checked) => updateSettings('queueSettings.enableQueue', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Enable Queue
-                    </Flex>
-                  </Text>
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.queueSettings.autoAssignRooms}
-                        onCheckedChange={(checked) => updateSettings('queueSettings.autoAssignRooms', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Auto Assign Rooms
-                    </Flex>
-                  </Text>
+            {activeTab === 'queue' && (
+              <div className="bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex flex-col gap-4 p-4">
+                  <h3 className="text-xl font-semibold">Queue Settings</h3>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.queueSettings.enableQueue}
+                      onChange={(e) => updateSettings('queueSettings.enableQueue', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Enable Queue</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.queueSettings.autoAssignRooms}
+                      onChange={(e) => updateSettings('queueSettings.autoAssignRooms', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Auto Assign Rooms</span>
+                  </label>
                   <LabeledTextField
                     label="Estimated Wait Time (minutes)"
                     type="number"
@@ -846,25 +837,24 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     disabled={!isAdmin}
                     placeholder="15"
                   />
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.queueSettings.displayQueuePublicly}
-                        onCheckedChange={(checked) => updateSettings('queueSettings.displayQueuePublicly', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Display Queue Publicly
-                    </Flex>
-                  </Text>
-                </Flex>
-              </Card>
-            </Tabs.Content>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.queueSettings.displayQueuePublicly}
+                      onChange={(e) => updateSettings('queueSettings.displayQueuePublicly', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Display Queue Publicly</span>
+                  </label>
+                </div>
+              </div>
+            )}
 
-            <Tabs.Content value="general">
-              <Card size="2" variant="surface">
-                <Flex direction="column" gap="4" p="4">
-                  <Heading size="5">General Settings</Heading>
+            {activeTab === 'general' && (
+              <div className="bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex flex-col gap-4 p-4">
+                  <h3 className="text-xl font-semibold">General Settings</h3>
                   <LabeledTextField
                     label="Timezone"
                     value={settings.generalSettings.timezone || 'UTC'}
@@ -872,37 +862,31 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     disabled={!isAdmin}
                     placeholder="UTC"
                   />
-                  <Box>
-                    <Text size="2" weight="medium" mb="1" as="div">Date Format</Text>
-                    <Select.Root
-                      size="2"
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Date Format</label>
+                    <select
                       value={settings.generalSettings.dateFormat}
-                      onValueChange={(value) => updateSettings('generalSettings.dateFormat', value)}
+                      onChange={(e) => updateSettings('generalSettings.dateFormat', e.target.value)}
                       disabled={!isAdmin}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                     >
-                      <Select.Trigger placeholder="Date Format" />
-                      <Select.Content>
-                        <Select.Item value="MM/DD/YYYY">MM/DD/YYYY</Select.Item>
-                        <Select.Item value="DD/MM/YYYY">DD/MM/YYYY</Select.Item>
-                        <Select.Item value="YYYY-MM-DD">YYYY-MM-DD</Select.Item>
-                      </Select.Content>
-                    </Select.Root>
-                  </Box>
-                  <Box>
-                    <Text size="2" weight="medium" mb="1" as="div">Time Format</Text>
-                    <Select.Root
-                      size="2"
+                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Time Format</label>
+                    <select
                       value={settings.generalSettings.timeFormat}
-                      onValueChange={(value) => updateSettings('generalSettings.timeFormat', value as '12h' | '24h')}
+                      onChange={(e) => updateSettings('generalSettings.timeFormat', e.target.value as '12h' | '24h')}
                       disabled={!isAdmin}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                     >
-                      <Select.Trigger placeholder="Time Format" />
-                      <Select.Content>
-                        <Select.Item value="12h">12 Hour</Select.Item>
-                        <Select.Item value="24h">24 Hour</Select.Item>
-                      </Select.Content>
-                    </Select.Root>
-                  </Box>
+                      <option value="12h">12 Hour</option>
+                      <option value="24h">24 Hour</option>
+                    </select>
+                  </div>
                   <LabeledTextField
                     label="Items Per Page"
                     type="number"
@@ -911,17 +895,16 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     disabled={!isAdmin}
                     placeholder="20"
                   />
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.generalSettings.enableAuditLog}
-                        onCheckedChange={(checked) => updateSettings('generalSettings.enableAuditLog', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Enable Audit Log
-                    </Flex>
-                  </Text>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.generalSettings.enableAuditLog}
+                      onChange={(e) => updateSettings('generalSettings.enableAuditLog', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Enable Audit Log</span>
+                  </label>
                   <LabeledTextField
                     label="Session Timeout (minutes)"
                     type="number"
@@ -930,237 +913,241 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     disabled={!isAdmin}
                     placeholder="480"
                   />
-                </Flex>
-              </Card>
-            </Tabs.Content>
+                </div>
+              </div>
+            )}
 
-            <Tabs.Content value="display">
-              <Card size="2" variant="surface">
-                <Flex direction="column" gap="4" p="4">
-                  <Heading size="5">Display Settings</Heading>
-                  <Box>
-                    <Text size="2" weight="medium" mb="1" as="div">Theme</Text>
-                    <Select.Root
-                      size="2"
+            {activeTab === 'display' && (
+              <div className="bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex flex-col gap-4 p-4">
+                  <h3 className="text-xl font-semibold">Display Settings</h3>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Theme</label>
+                    <select
                       value={settings.displaySettings.theme}
-                      onValueChange={(value) => updateSettings('displaySettings.theme', value as 'light' | 'dark' | 'auto')}
+                      onChange={(e) => updateSettings('displaySettings.theme', e.target.value as 'light' | 'dark' | 'auto')}
                       disabled={!isAdmin}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                     >
-                      <Select.Trigger placeholder="Theme" />
-                      <Select.Content>
-                        <Select.Item value="light">Light</Select.Item>
-                        <Select.Item value="dark">Dark</Select.Item>
-                        <Select.Item value="auto">Auto</Select.Item>
-                      </Select.Content>
-                    </Select.Root>
-                  </Box>
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.displaySettings.sidebarCollapsed}
-                        onCheckedChange={(checked) => updateSettings('displaySettings.sidebarCollapsed', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Sidebar Collapsed by Default
-                    </Flex>
-                  </Text>
-                  <Text as="label" size="2">
-                    <Flex gap="2">
-                      <Switch
-                        size="2"
-                        checked={settings.displaySettings.showNotifications}
-                        onCheckedChange={(checked) => updateSettings('displaySettings.showNotifications', checked)}
-                        disabled={!isAdmin}
-                      />
-                      Show Notifications
-                    </Flex>
-                  </Text>
-                </Flex>
-              </Card>
-            </Tabs.Content>
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                      <option value="auto">Auto</option>
+                    </select>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.displaySettings.sidebarCollapsed}
+                      onChange={(e) => updateSettings('displaySettings.sidebarCollapsed', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Sidebar Collapsed by Default</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.displaySettings.showNotifications}
+                      onChange={(e) => updateSettings('displaySettings.showNotifications', e.target.checked)}
+                      disabled={!isAdmin}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm">Show Notifications</span>
+                  </label>
+                </div>
+              </div>
+            )}
 
-            <Tabs.Content value="integrations">
-              <Flex direction="column" gap="4">
+            {activeTab === 'integrations' && (
+              <div className="flex flex-col gap-4">
                 {/* Twilio Integration */}
-                <Card size="2" variant="surface">
-                  <Flex direction="column" gap="4" p="4">
-                    <Flex justify="between" align="center">
-                      <Box>
-                        <Heading size="5" mb="1">Twilio (SMS)</Heading>
-                        <Text size="2" color="gray">Configure SMS notifications via Twilio</Text>
-                      </Box>
-                      <Flex gap="2" align="center">
+                <div className="bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex flex-col gap-4 p-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="text-xl font-semibold mb-1">Twilio (SMS)</h3>
+                        <p className="text-sm text-gray-600">Configure SMS notifications via Twilio</p>
+                      </div>
+                      <div className="flex gap-2 items-center">
                         {settings.integrationStatus?.twilio ? (
-                          <Callout.Root color="green" size="1">
-                            <Callout.Icon><CheckIcon /></Callout.Icon>
-                            <Callout.Text size="1">Configured</Callout.Text>
-                          </Callout.Root>
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-2 flex items-center gap-1">
+                            <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            <p className="text-xs text-green-800">Configured</p>
+                          </div>
                         ) : (
-                          <Callout.Root color="amber" size="1">
-                            <Callout.Icon><Cross2Icon /></Callout.Icon>
-                            <Callout.Text size="1">Not Configured</Callout.Text>
-                          </Callout.Root>
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 flex items-center gap-1">
+                            <svg className="w-3 h-3 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            <p className="text-xs text-yellow-800">Not Configured</p>
+                          </div>
                         )}
-                      </Flex>
-                    </Flex>
-                    <Separator />
-                    <Box>
-                      <Text size="2" weight="medium" mb="2" as="div">Required Environment Variables</Text>
-                      <Flex direction="column" gap="2">
-                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                      </div>
+                    </div>
+                    <hr className="border-gray-200" />
+                    <div>
+                      <p className="text-sm font-medium mb-2">Required Environment Variables</p>
+                      <div className="flex flex-col gap-2">
+                        <p className="text-xs text-gray-600 font-mono">
                           TWILIO_ACCOUNT_SID
-                        </Text>
-                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                        </p>
+                        <p className="text-xs text-gray-600 font-mono">
                           TWILIO_AUTH_TOKEN
-                        </Text>
-                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                        </p>
+                        <p className="text-xs text-gray-600 font-mono">
                           TWILIO_PHONE_NUMBER
-                        </Text>
-                      </Flex>
-                    </Box>
-                    <Callout.Root color="blue" size="1">
-                      <Callout.Text size="1">
-                        Add these variables to your <code style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>.env.local</code> file and restart the server.
-                      </Callout.Text>
-                    </Callout.Root>
-                    <Text as="label" size="2">
-                      <Flex gap="2">
-                        <Switch
-                          size="2"
-                          checked={settings.integrationSettings.twilioEnabled}
-                          onCheckedChange={(checked) => updateSettings('integrationSettings.twilioEnabled', checked)}
-                          disabled={!isAdmin}
-                        />
-                        Enable Twilio Integration
-                      </Flex>
-                    </Text>
-                  </Flex>
-                </Card>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                      <p className="text-xs text-blue-800">
+                        Add these variables to your <code className="font-mono text-xs">.env.local</code> file and restart the server.
+                      </p>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.integrationSettings.twilioEnabled}
+                        onChange={(e) => updateSettings('integrationSettings.twilioEnabled', e.target.checked)}
+                        disabled={!isAdmin}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                      <span className="text-sm">Enable Twilio Integration</span>
+                    </label>
+                  </div>
+                </div>
 
                 {/* SMTP Integration */}
-                <Card size="2" variant="surface">
-                  <Flex direction="column" gap="4" p="4">
-                    <Flex justify="between" align="center">
-                      <Box>
-                        <Heading size="5" mb="1">SMTP (Email)</Heading>
-                        <Text size="2" color="gray">Configure email notifications via SMTP</Text>
-                      </Box>
-                      <Flex gap="2" align="center">
+                <div className="bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex flex-col gap-4 p-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="text-xl font-semibold mb-1">SMTP (Email)</h3>
+                        <p className="text-sm text-gray-600">Configure email notifications via SMTP</p>
+                      </div>
+                      <div className="flex gap-2 items-center">
                         {settings.integrationStatus?.smtp ? (
-                          <Callout.Root color="green" size="1">
-                            <Callout.Icon><CheckIcon /></Callout.Icon>
-                            <Callout.Text size="1">Configured</Callout.Text>
-                          </Callout.Root>
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-2 flex items-center gap-1">
+                            <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            <p className="text-xs text-green-800">Configured</p>
+                          </div>
                         ) : (
-                          <Callout.Root color="amber" size="1">
-                            <Callout.Icon><Cross2Icon /></Callout.Icon>
-                            <Callout.Text size="1">Not Configured</Callout.Text>
-                          </Callout.Root>
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 flex items-center gap-1">
+                            <svg className="w-3 h-3 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            <p className="text-xs text-yellow-800">Not Configured</p>
+                          </div>
                         )}
-                      </Flex>
-                    </Flex>
-                    <Separator />
-                    <Box>
-                      <Text size="2" weight="medium" mb="2" as="div">Required Environment Variables</Text>
-                      <Flex direction="column" gap="2">
-                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                      </div>
+                    </div>
+                    <hr className="border-gray-200" />
+                    <div>
+                      <p className="text-sm font-medium mb-2">Required Environment Variables</p>
+                      <div className="flex flex-col gap-2">
+                        <p className="text-xs text-gray-600 font-mono">
                           SMTP_HOST
-                        </Text>
-                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                        </p>
+                        <p className="text-xs text-gray-600 font-mono">
                           SMTP_PORT
-                        </Text>
-                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                        </p>
+                        <p className="text-xs text-gray-600 font-mono">
                           SMTP_USER
-                        </Text>
-                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                        </p>
+                        <p className="text-xs text-gray-600 font-mono">
                           SMTP_PASS
-                        </Text>
-                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                        </p>
+                        <p className="text-xs text-gray-600 font-mono">
                           SMTP_FROM (optional)
-                        </Text>
-                      </Flex>
-                    </Box>
-                    <Callout.Root color="blue" size="1">
-                      <Callout.Text size="1">
-                        Add these variables to your <code style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>.env.local</code> file and restart the server.
-                      </Callout.Text>
-                    </Callout.Root>
-                    <Text as="label" size="2">
-                      <Flex gap="2">
-                        <Switch
-                          size="2"
-                          checked={settings.integrationSettings.smtpEnabled}
-                          onCheckedChange={(checked) => updateSettings('integrationSettings.smtpEnabled', checked)}
-                          disabled={!isAdmin}
-                        />
-                        Enable SMTP Integration
-                      </Flex>
-                    </Text>
-                  </Flex>
-                </Card>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                      <p className="text-xs text-blue-800">
+                        Add these variables to your <code className="font-mono text-xs">.env.local</code> file and restart the server.
+                      </p>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.integrationSettings.smtpEnabled}
+                        onChange={(e) => updateSettings('integrationSettings.smtpEnabled', e.target.checked)}
+                        disabled={!isAdmin}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                      <span className="text-sm">Enable SMTP Integration</span>
+                    </label>
+                  </div>
+                </div>
 
                 {/* Cloudinary Integration */}
-                <Card size="2" variant="surface">
-                  <Flex direction="column" gap="4" p="4">
-                    <Flex justify="between" align="center">
-                      <Box>
-                        <Heading size="5" mb="1">Cloudinary (File Storage)</Heading>
-                        <Text size="2" color="gray">Configure document and image storage via Cloudinary</Text>
-                      </Box>
-                      <Flex gap="2" align="center">
+                <div className="bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex flex-col gap-4 p-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="text-xl font-semibold mb-1">Cloudinary (File Storage)</h3>
+                        <p className="text-sm text-gray-600">Configure document and image storage via Cloudinary</p>
+                      </div>
+                      <div className="flex gap-2 items-center">
                         {settings.integrationStatus?.cloudinary ? (
-                          <Callout.Root color="green" size="1">
-                            <Callout.Icon><CheckIcon /></Callout.Icon>
-                            <Callout.Text size="1">Configured</Callout.Text>
-                          </Callout.Root>
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-2 flex items-center gap-1">
+                            <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            <p className="text-xs text-green-800">Configured</p>
+                          </div>
                         ) : (
-                          <Callout.Root color="amber" size="1">
-                            <Callout.Icon><Cross2Icon /></Callout.Icon>
-                            <Callout.Text size="1">Not Configured</Callout.Text>
-                          </Callout.Root>
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 flex items-center gap-1">
+                            <svg className="w-3 h-3 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            <p className="text-xs text-yellow-800">Not Configured</p>
+                          </div>
                         )}
-                      </Flex>
-                    </Flex>
-                    <Separator />
-                    <Box>
-                      <Text size="2" weight="medium" mb="2" as="div">Required Environment Variables</Text>
-                      <Flex direction="column" gap="2">
-                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                      </div>
+                    </div>
+                    <hr className="border-gray-200" />
+                    <div>
+                      <p className="text-sm font-medium mb-2">Required Environment Variables</p>
+                      <div className="flex flex-col gap-2">
+                        <p className="text-xs text-gray-600 font-mono">
                           CLOUDINARY_CLOUD_NAME
-                        </Text>
-                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                        </p>
+                        <p className="text-xs text-gray-600 font-mono">
                           CLOUDINARY_API_KEY
-                        </Text>
-                        <Text size="1" color="gray" style={{ fontFamily: 'monospace' }}>
+                        </p>
+                        <p className="text-xs text-gray-600 font-mono">
                           CLOUDINARY_API_SECRET
-                        </Text>
-                      </Flex>
-                    </Box>
-                    <Callout.Root color="blue" size="1">
-                      <Callout.Text size="1">
-                        Add these variables to your <code style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>.env.local</code> file and restart the server.
-                      </Callout.Text>
-                    </Callout.Root>
-                    <Text as="label" size="2">
-                      <Flex gap="2">
-                        <Switch
-                          size="2"
-                          checked={settings.integrationSettings.cloudinaryEnabled}
-                          onCheckedChange={(checked) => updateSettings('integrationSettings.cloudinaryEnabled', checked)}
-                          disabled={!isAdmin}
-                        />
-                        Enable Cloudinary Integration
-                      </Flex>
-                    </Text>
-                  </Flex>
-                </Card>
-              </Flex>
-            </Tabs.Content>
-          </Box>
-        </Tabs.Root>
-        </Flex>
-      </Container>
-    </Section>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                      <p className="text-xs text-blue-800">
+                        Add these variables to your <code className="font-mono text-xs">.env.local</code> file and restart the server.
+                      </p>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.integrationSettings.cloudinaryEnabled}
+                        onChange={(e) => updateSettings('integrationSettings.cloudinaryEnabled', e.target.checked)}
+                        disabled={!isAdmin}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                      <span className="text-sm">Enable Cloudinary Integration</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        </div>
+      </div>
+    </section>
   );
 }

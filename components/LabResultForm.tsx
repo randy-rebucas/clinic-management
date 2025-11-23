@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-import { Button, TextField, Select, TextArea, Card, Flex, Box, Text, Badge, Callout, Checkbox, Separator, Popover } from '@radix-ui/themes';
 
 interface Patient {
   _id: string;
@@ -133,114 +132,104 @@ export default function LabResultForm({
 
   return (
     <form onSubmit={handleSubmit}>
-      <Box style={{ maxHeight: '80vh', overflowY: 'auto' }}>
-        <Flex direction="column" gap="3" p="4">
+      <div className="max-h-[80vh] overflow-y-auto">
+        <div className="flex flex-col gap-3 p-4">
           {/* Patient Selection */}
-          <Box>
-            <Text size="2" weight="medium" mb="2" as="div">
-              Patient <Text color="red">*</Text>
-            </Text>
-        <Popover.Root open={showPatientSearch} onOpenChange={setShowPatientSearch}>
-          <Popover.Trigger>
-            <TextField.Root size="2" style={{ width: '100%' }}>
-              <input
-                type="text"
-                required
-                value={patientSearch}
-                onChange={(e) => {
-                  setPatientSearch(e.target.value);
-                  setShowPatientSearch(true);
-                  if (!e.target.value) {
-                    setFormData({ ...formData, patient: '' });
-                    setSelectedPatient(null);
-                  }
-                }}
-                onFocus={() => setShowPatientSearch(true)}
-                placeholder="Type to search patients..."
-                style={{ all: 'unset', flex: 1 }}
-              />
-            </TextField.Root>
-          </Popover.Trigger>
-          <Popover.Content style={{ width: 'var(--radix-popover-trigger-width)', maxHeight: '200px', overflowY: 'auto' }}>
-            {filteredPatients.length > 0 ? (
-              <Flex direction="column" gap="1">
-                {filteredPatients.map((patient) => {
-                  const age = patient.dateOfBirth
-                    ? Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-                    : null;
-                  return (
-                    <Button
-                      key={patient._id}
-                      variant="ghost"
-                      onClick={() => {
-                        selectPatient(patient);
-                        setShowPatientSearch(false);
-                      }}
-                      style={{ justifyContent: 'flex-start', textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start' }}
-                    >
-                      <Text weight="medium">{patient.firstName} {patient.lastName}</Text>
-                      <Text size="1" color="gray">
-                        {patient.patientCode && `${patient.patientCode}`}
-                        {age && ` • Age: ${age} years`}
-                      </Text>
-                    </Button>
-                  );
-                })}
-              </Flex>
-            ) : patientSearch ? (
-              <Text size="2" color="gray">No patients found</Text>
-            ) : (
-              <Text size="2" color="gray">Start typing to search...</Text>
-            )}
-          </Popover.Content>
-        </Popover.Root>
+          <div>
+            <label className="block text-xs font-medium mb-2">
+              Patient <span className="text-red-500">*</span>
+            </label>
+        <div className="relative patient-search-container">
+          <input
+            type="text"
+            required
+            value={patientSearch}
+            onChange={(e) => {
+              setPatientSearch(e.target.value);
+              setShowPatientSearch(true);
+              if (!e.target.value) {
+                setFormData({ ...formData, patient: '' });
+                setSelectedPatient(null);
+              }
+            }}
+            onFocus={() => setShowPatientSearch(true)}
+            placeholder="Type to search patients..."
+            className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          />
+          {showPatientSearch && filteredPatients.length > 0 && (
+            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
+              {filteredPatients.map((patient) => {
+                const age = patient.dateOfBirth
+                  ? Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+                  : null;
+                return (
+                  <button
+                    key={patient._id}
+                    type="button"
+                    onClick={() => {
+                      selectPatient(patient);
+                      setShowPatientSearch(false);
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded transition-colors flex flex-col items-start"
+                  >
+                    <span className="font-medium text-xs">{patient.firstName} {patient.lastName}</span>
+                    <span className="text-xs text-gray-500">
+                      {patient.patientCode && `${patient.patientCode}`}
+                      {age && ` • Age: ${age} years`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {showPatientSearch && patientSearch && filteredPatients.length === 0 && (
+            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg p-2">
+              <span className="text-xs text-gray-500">No patients found</span>
+            </div>
+          )}
+        </div>
         {formData.patient && !selectedPatient && (
-          <Text size="1" color="red" mt="1" as="div">Please select a valid patient from the list</Text>
+          <p className="text-xs text-red-500 mt-1">Please select a valid patient from the list</p>
         )}
-      </Box>
+      </div>
 
           {/* Test Type */}
-          <Box>
-            <Text size="2" weight="medium" mb="2" as="div">
-              Test Type <Text color="red">*</Text>
-            </Text>
-            <TextField.Root size="2">
-              <input
-                type="text"
-                required
-                value={formData.request.testType}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  request: { ...formData.request, testType: e.target.value }
-                })}
-                placeholder="e.g., CBC, Urinalysis, Blood Glucose"
-                style={{ all: 'unset', flex: 1 }}
-              />
-            </TextField.Root>
-          </Box>
+          <div>
+            <label className="block text-xs font-medium mb-2">
+              Test Type <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.request.testType}
+              onChange={(e) => setFormData({
+                ...formData,
+                request: { ...formData.request, testType: e.target.value }
+              })}
+              placeholder="e.g., CBC, Urinalysis, Blood Glucose"
+              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            />
+          </div>
 
           {/* Test Code (Optional) */}
-          <Box>
-            <Text size="2" weight="medium" mb="2" as="div">Test Code (Optional)</Text>
-            <TextField.Root size="2">
-              <input
-                type="text"
-                value={formData.request.testCode}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  request: { ...formData.request, testCode: e.target.value }
-                })}
-                placeholder="e.g., LOINC code"
-                style={{ all: 'unset', flex: 1 }}
-              />
-            </TextField.Root>
-          </Box>
+          <div>
+            <label className="block text-xs font-medium mb-2">Test Code (Optional)</label>
+            <input
+              type="text"
+              value={formData.request.testCode}
+              onChange={(e) => setFormData({
+                ...formData,
+                request: { ...formData.request, testCode: e.target.value }
+              })}
+              placeholder="e.g., LOINC code"
+              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            />
+          </div>
 
           {/* Description */}
-          <Box>
-            <Text size="2" weight="medium" mb="2" as="div">Description (Optional)</Text>
-            <TextArea
-              size="2"
+          <div>
+            <label className="block text-xs font-medium mb-2">Description (Optional)</label>
+            <textarea
               value={formData.request.description}
               onChange={(e) => setFormData({
                 ...formData,
@@ -248,52 +237,50 @@ export default function LabResultForm({
               })}
               placeholder="Additional test description or notes"
               rows={2}
+              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
             />
-          </Box>
+          </div>
 
           {/* Urgency */}
-          <Box>
-            <Text size="2" weight="medium" mb="2" as="div">
-              Urgency <Text color="red">*</Text>
-            </Text>
-            <Select.Root
-              size="2"
+          <div>
+            <label className="block text-xs font-medium mb-2">
+              Urgency <span className="text-red-500">*</span>
+            </label>
+            <select
               value={formData.request.urgency}
-              onValueChange={(value) => setFormData({
+              onChange={(e) => setFormData({
                 ...formData,
-                request: { ...formData.request, urgency: value as 'routine' | 'urgent' | 'stat' }
+                request: { ...formData.request, urgency: e.target.value as 'routine' | 'urgent' | 'stat' }
               })}
+              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             >
-              <Select.Trigger />
-              <Select.Content>
-                <Select.Item value="routine">Routine</Select.Item>
-                <Select.Item value="urgent">Urgent</Select.Item>
-                <Select.Item value="stat">STAT</Select.Item>
-              </Select.Content>
-            </Select.Root>
-          </Box>
+              <option value="routine">Routine</option>
+              <option value="urgent">Urgent</option>
+              <option value="stat">STAT</option>
+            </select>
+          </div>
 
       {/* Fasting Required */}
-      <Flex align="center" gap="2">
-        <Checkbox
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
           id="fastingRequired"
           checked={formData.request.fastingRequired}
-          onCheckedChange={(checked) => setFormData({
+          onChange={(e) => setFormData({
             ...formData,
-            request: { ...formData.request, fastingRequired: checked as boolean }
+            request: { ...formData.request, fastingRequired: e.target.checked }
           })}
-          size="1"
+          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
         />
-        <Text as="label" htmlFor="fastingRequired" size="1">
+        <label htmlFor="fastingRequired" className="text-xs cursor-pointer">
           Fasting Required
-        </Text>
-      </Flex>
+        </label>
+      </div>
 
           {/* Special Instructions */}
-          <Box>
-            <Text size="2" weight="medium" mb="2" as="div">Special Instructions (Optional)</Text>
-            <TextArea
-              size="2"
+          <div>
+            <label className="block text-xs font-medium mb-2">Special Instructions (Optional)</label>
+            <textarea
               value={formData.request.specialInstructions}
               onChange={(e) => setFormData({
                 ...formData,
@@ -301,14 +288,14 @@ export default function LabResultForm({
               })}
               placeholder="Any special instructions for the lab"
               rows={2}
+              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
             />
-          </Box>
+          </div>
 
           {/* Preparation Notes */}
-          <Box>
-            <Text size="2" weight="medium" mb="2" as="div">Preparation Notes (Optional)</Text>
-            <TextArea
-              size="2"
+          <div>
+            <label className="block text-xs font-medium mb-2">Preparation Notes (Optional)</label>
+            <textarea
               value={formData.request.preparationNotes}
               onChange={(e) => setFormData({
                 ...formData,
@@ -316,23 +303,31 @@ export default function LabResultForm({
               })}
               placeholder="Patient preparation instructions"
               rows={2}
+              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
             />
-          </Box>
+          </div>
 
           {/* Form Actions */}
-          <Separator />
-          <Flex justify="end" gap="2">
+          <hr className="border-gray-300" />
+          <div className="flex justify-end gap-2">
             {onCancel && (
-              <Button type="button" variant="soft" onClick={onCancel} size="2">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition-colors"
+              >
                 Cancel
-              </Button>
+              </button>
             )}
-            <Button type="submit" size="2">
+            <button
+              type="submit"
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors"
+            >
               Create Lab Order
-            </Button>
-          </Flex>
-        </Flex>
-      </Box>
+            </button>
+          </div>
+        </div>
+      </div>
     </form>
   );
 }

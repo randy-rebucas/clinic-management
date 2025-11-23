@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Heading, IconButton, Container, Section } from '@radix-ui/themes';
+import { Modal } from './ui/Modal';
 
 interface Doctor {
   _id: string;
@@ -157,14 +157,14 @@ export default function DoctorsPageClient() {
 
   if (loading) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
-            <Spinner size="3" />
-            <Text>Loading doctors...</Text>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p>Loading doctors...</p>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -181,387 +181,386 @@ export default function DoctorsPageClient() {
   });
 
   return (
-    <Section size="3">
-      <Container size="4">
-        <Flex direction="column" gap="4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col gap-4">
           {/* Notifications */}
           {error && (
-            <Callout.Root color="red" size="2">
-              <Callout.Text>{error}</Callout.Text>
-            </Callout.Root>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-sm text-red-800">{error}</p>
+            </div>
           )}
           {success && (
-            <Callout.Root color="green" size="2">
-              <Callout.Text>{success}</Callout.Text>
-            </Callout.Root>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <p className="text-sm text-green-800">{success}</p>
+            </div>
           )}
 
           {/* Header */}
-          <Flex justify="between" align={{ sm: 'center' }} direction={{ initial: 'column', sm: 'row' }} gap="3">
-            <Box>
-              <Heading size="8" mb="1">Doctors & Staff</Heading>
-              <Text size="2" color="gray">Manage doctor profiles, schedules, and performance</Text>
-            </Box>
-            <Button onClick={() => setShowForm(true)} size="3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h1 className="text-3xl font-bold mb-1">Doctors & Staff</h1>
+              <p className="text-sm text-gray-600">Manage doctor profiles, schedules, and performance</p>
+            </div>
+            <button 
+              onClick={() => setShowForm(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
               Add Doctor
-            </Button>
-          </Flex>
+            </button>
+          </div>
 
           {/* View Mode Tabs */}
-          <Card size="2" variant="surface">
-            <Tabs.Root value={viewMode} onValueChange={(value) => setViewMode(value as any)}>
-              <Tabs.List>
-                <Tabs.Trigger value="list">Doctor Profiles</Tabs.Trigger>
-                <Tabs.Trigger value="roster">Duty Roster</Tabs.Trigger>
-                <Tabs.Trigger value="performance">Performance Reports</Tabs.Trigger>
-              </Tabs.List>
-            </Tabs.Root>
-          </Card>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-1">
+            <div className="flex border-b border-gray-200">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  viewMode === 'list'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Doctor Profiles
+              </button>
+              <button
+                onClick={() => setViewMode('roster')}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  viewMode === 'roster'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Duty Roster
+              </button>
+              <button
+                onClick={() => setViewMode('performance')}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  viewMode === 'performance'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Performance Reports
+              </button>
+            </div>
+          </div>
 
       {/* Form Modal */}
-      <Dialog.Root open={showForm} onOpenChange={(open) => {
+      <Modal open={showForm} onOpenChange={(open) => {
         if (!open) setShowForm(false);
-      }}>
-        <Dialog.Content style={{ maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
-          <Dialog.Title>Add New Doctor</Dialog.Title>
+      }} className="max-w-2xl">
+        <div className="p-6">
+          <h2 className="text-xl font-semibold mb-4">Add New Doctor</h2>
           <form onSubmit={handleSubmit}>
-            <Flex direction="column" gap="3" py="4">
-              <Flex direction={{ initial: 'column', md: 'row' }} gap="2" wrap="wrap">
-                <Box flexGrow="1" minWidth="200px">
-                  <Text size="1" weight="medium" mb="1" as="div">Title</Text>
-                  <TextField.Root size="2">
-                    <input
-                      type="text"
-                      value={formData.title}
-                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      placeholder="Dr., Prof., etc."
-                      style={{ all: 'unset', flex: 1 }}
-                    />
-                  </TextField.Root>
-                </Box>
-                <Box flexGrow="1" minWidth="200px">
-                  <Text size="1" weight="medium" mb="1" as="div">First Name <Text color="red">*</Text></Text>
-                  <TextField.Root size="2">
-                    <input
-                      type="text"
-                      required
-                      value={formData.firstName}
-                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                      style={{ all: 'unset', flex: 1 }}
-                    />
-                  </TextField.Root>
-                </Box>
-                <Box flexGrow="1" minWidth="200px">
-                  <Text size="1" weight="medium" mb="1" as="div">Last Name <Text color="red">*</Text></Text>
-                  <TextField.Root size="2">
-                    <input
-                      type="text"
-                      required
-                      value={formData.lastName}
-                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                      style={{ all: 'unset', flex: 1 }}
-                    />
-                  </TextField.Root>
-                </Box>
-                <Box flexGrow="1" minWidth="200px">
-                  <Text size="1" weight="medium" mb="1" as="div">Email <Text color="red">*</Text></Text>
-                  <TextField.Root size="2" type="email">
-                    <input
-                      required
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      style={{ all: 'unset', flex: 1 }}
-                    />
-                  </TextField.Root>
-                </Box>
-                <Box flexGrow="1" minWidth="200px">
-                  <Text size="1" weight="medium" mb="1" as="div">Phone <Text color="red">*</Text></Text>
-                  <TextField.Root size="2" type="tel">
-                    <input
-                      required
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      style={{ all: 'unset', flex: 1 }}
-                    />
-                  </TextField.Root>
-                </Box>
-                <Box flexGrow="1" minWidth="200px">
-                  <Text size="1" weight="medium" mb="1" as="div">Specialization <Text color="red">*</Text></Text>
-                  <TextField.Root size="2">
-                    <input
-                      type="text"
-                      required
-                      value={formData.specialization}
-                      onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-                      style={{ all: 'unset', flex: 1 }}
-                    />
-                  </TextField.Root>
-                </Box>
-                <Box flexGrow="1" minWidth="200px">
-                  <Text size="1" weight="medium" mb="1" as="div">License Number <Text color="red">*</Text></Text>
-                  <TextField.Root size="2">
-                    <input
-                      type="text"
-                      required
-                      value={formData.licenseNumber}
-                      onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
-                      style={{ all: 'unset', flex: 1 }}
-                    />
-                  </TextField.Root>
-                </Box>
-                <Box flexGrow="1" minWidth="200px">
-                  <Text size="1" weight="medium" mb="1" as="div">Department</Text>
-                  <TextField.Root size="2">
-                    <input
-                      type="text"
-                      value={formData.department}
-                      onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                      style={{ all: 'unset', flex: 1 }}
-                    />
-                  </TextField.Root>
-                </Box>
-                <Box flexGrow="1" minWidth="200px">
-                  <Text size="1" weight="medium" mb="1" as="div">Status</Text>
-                  <Select.Root
+            <div className="flex flex-col gap-3 py-4">
+              <div className="flex flex-col md:flex-row gap-2 flex-wrap">
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-xs font-medium mb-1">Title</label>
+                  <input
+                    type="text"
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    placeholder="Dr., Prof., etc."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-xs font-medium mb-1">First Name <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-xs font-medium mb-1">Last Name <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.lastName}
+                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-xs font-medium mb-1">Email <span className="text-red-500">*</span></label>
+                  <input
+                    type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-xs font-medium mb-1">Phone <span className="text-red-500">*</span></label>
+                  <input
+                    type="tel"
+                    required
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-xs font-medium mb-1">Specialization <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.specialization}
+                    onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-xs font-medium mb-1">License Number <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.licenseNumber}
+                    onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-xs font-medium mb-1">Department</label>
+                  <input
+                    type="text"
+                    value={formData.department}
+                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-xs font-medium mb-1">Status</label>
+                  <select
                     value={formData.status}
-                    onValueChange={(value) => setFormData({ ...formData, status: value as any })}
-                    size="2"
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
                   >
-                    <Select.Trigger />
-                    <Select.Content>
-                      <Select.Item value="active">Active</Select.Item>
-                      <Select.Item value="inactive">Inactive</Select.Item>
-                      <Select.Item value="on-leave">On Leave</Select.Item>
-                    </Select.Content>
-                  </Select.Root>
-                </Box>
-              </Flex>
-              <Flex justify="end" gap="2" pt="3" style={{ borderTop: '1px solid var(--gray-6)' }}>
-                <Button type="button" onClick={() => setShowForm(false)} variant="soft" size="2">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="on-leave">On Leave</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
+                <button 
+                  type="button" 
+                  onClick={() => setShowForm(false)}
+                  className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                >
                   Cancel
-                </Button>
-                <Button type="submit" size="2">
+                </button>
+                <button 
+                  type="submit"
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                >
                   Add Doctor
-                </Button>
-              </Flex>
-            </Flex>
+                </button>
+              </div>
+            </div>
           </form>
-        </Dialog.Content>
-      </Dialog.Root>
+        </div>
+      </Modal>
 
       {/* List View */}
       {viewMode === 'list' && (
         <>
           {/* Search and Filters */}
-          <Card>
-            <Flex direction="column" gap="2" p="3">
-              <TextField.Root size="2">
-                <TextField.Slot side="left">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="flex flex-col gap-2 p-3">
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
                   </svg>
-                </TextField.Slot>
+                </div>
                 <input
                   type="text"
                   placeholder="Search by name, specialization, or email..."
                   value={searchQuery || ''}
                   onChange={(e) => setSearchQuery(e.target.value || '')}
-                  style={{ all: 'unset', flex: 1 }}
+                  className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
                 {searchQuery && (
-                  <TextField.Slot side="right">
-                    <IconButton
-                      variant="ghost"
-                      size="1"
-                      onClick={() => setSearchQuery('')}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="1.2"/>
-                      </svg>
-                    </IconButton>
-                  </TextField.Slot>
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="1.2"/>
+                    </svg>
+                  </button>
                 )}
-              </TextField.Root>
-              <Flex gap="2">
-                <Select.Root
+              </div>
+              <div className="flex gap-2">
+                <select
                   value={filterStatus || 'all'}
-                  onValueChange={(value) => setFilterStatus(value || 'all')}
-                  size="1"
+                  onChange={(e) => setFilterStatus(e.target.value || 'all')}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
                 >
-                  <Select.Trigger />
-                  <Select.Content>
-                    <Select.Item value="all">All Statuses</Select.Item>
-                    <Select.Item value="active">Active</Select.Item>
-                    <Select.Item value="inactive">Inactive</Select.Item>
-                    <Select.Item value="on-leave">On Leave</Select.Item>
-                  </Select.Content>
-                </Select.Root>
+                  <option value="all">All Statuses</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="on-leave">On Leave</option>
+                </select>
                 {(searchQuery || filterStatus !== 'all') && (
-                  <Button
+                  <button
                     onClick={() => {
                       setSearchQuery('');
                       setFilterStatus('all');
                     }}
-                    variant="soft"
-                    size="1"
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
                   >
                     Clear
-                  </Button>
+                  </button>
                 )}
-              </Flex>
-            </Flex>
-          </Card>
+              </div>
+            </div>
+          </div>
 
-          <Card>
-            <Flex justify="between" align="center" p="2" style={{ borderBottom: '1px solid var(--gray-6)' }}>
-              <Heading size="3">Doctors</Heading>
-              <Text size="2" color="gray">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="flex justify-between items-center p-2 border-b border-gray-200">
+              <h3 className="text-lg font-semibold">Doctors</h3>
+              <p className="text-sm text-gray-600">
                 {filteredDoctors.length} {filteredDoctors.length === 1 ? 'doctor' : 'doctors'}
-              </Text>
-            </Flex>
+              </p>
+            </div>
             {filteredDoctors.length === 0 ? (
-              <Box p="6" style={{ textAlign: 'center' }}>
-                <Text size="5" color="gray" mb="2" as="div">👨‍⚕️</Text>
-                <Heading size="4" mb="1">
+              <div className="p-6 text-center">
+                <div className="text-4xl mb-2">👨‍⚕️</div>
+                <h4 className="text-lg font-semibold mb-1">
                   {searchQuery || filterStatus !== 'all' ? 'No doctors match your filters' : 'No doctors found'}
-                </Heading>
-                <Text size="2" color="gray" mb="2" as="div">
+                </h4>
+                <p className="text-sm text-gray-600 mb-2">
                   {searchQuery || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Get started by adding your first doctor'}
-                </Text>
+                </p>
                 {!searchQuery && filterStatus === 'all' && (
-                  <Button onClick={() => setShowForm(true)} size="2">
+                  <button 
+                    onClick={() => setShowForm(true)}
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                  >
                     Add First Doctor
-                  </Button>
+                  </button>
                 )}
-              </Box>
+              </div>
             ) : (
-              <Flex direction="column">
+              <div className="flex flex-col">
                 {filteredDoctors.map((doctor) => (
-                  <Card key={doctor._id} size="1" style={{ borderRadius: 0, borderTop: '1px solid var(--gray-6)' }}>
-                    <Flex justify="between" align="start">
-                      <Flex align="start" gap="2" style={{ flex: 1 }}>
-                        <Box
-                          style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '50%',
-                            background: 'var(--blue-9)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white',
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                            flexShrink: 0,
-                          }}
-                        >
+                  <div key={doctor._id} className="border-t border-gray-200 first:border-t-0">
+                    <div className="flex justify-between items-start p-3 hover:bg-gray-50">
+                      <div className="flex items-start gap-2 flex-1">
+                        <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                           {doctor.firstName.charAt(0)}{doctor.lastName.charAt(0)}
-                        </Box>
-                        <Box style={{ flex: 1 }}>
-                          <Flex align="center" gap="2" mb="1">
-                            <Text size="2" weight="bold">
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm font-bold">
                               {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
-                            </Text>
-                            <Badge
-                              color={
-                                doctor.status === 'active'
-                                  ? 'green'
-                                  : doctor.status === 'inactive'
-                                  ? 'gray'
-                                  : 'yellow'
-                              }
-                              size="1"
-                            >
+                            </p>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
+                              doctor.status === 'active'
+                                ? 'bg-green-100 text-green-800 border-green-200'
+                                : doctor.status === 'inactive'
+                                ? 'bg-gray-100 text-gray-800 border-gray-200'
+                                : 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                            }`}>
                               {doctor.status || 'active'}
-                            </Badge>
-                          </Flex>
-                          <Text size="1" color="gray">{doctor.specialization}</Text>
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-600">{doctor.specialization}</p>
                           {doctor.department && (
-                            <Text size="1" color="gray">{doctor.department}</Text>
+                            <p className="text-xs text-gray-600">{doctor.department}</p>
                           )}
-                          <Flex direction="column" gap="0.5" mt="1">
-                            <Text size="1" color="gray">{doctor.email}</Text>
-                            <Text size="1" color="gray">{doctor.phone}</Text>
-                            <Text size="1" color="gray">License: {doctor.licenseNumber}</Text>
+                          <div className="flex flex-col gap-0.5 mt-1">
+                            <p className="text-xs text-gray-600">{doctor.email}</p>
+                            <p className="text-xs text-gray-600">{doctor.phone}</p>
+                            <p className="text-xs text-gray-600">License: {doctor.licenseNumber}</p>
                             {doctor.schedule && doctor.schedule.length > 0 && (
-                              <Box mt="1">
-                                <Text size="1" weight="medium" mb="1" as="div">Schedule:</Text>
-                                <Flex gap="1" wrap="wrap">
+                              <div className="mt-1">
+                                <p className="text-xs font-medium mb-1">Schedule:</p>
+                                <div className="flex gap-1 flex-wrap">
                                   {doctor.schedule
                                     .filter((s) => s.isAvailable)
                                     .map((s, idx) => (
-                                      <Badge key={idx} size="1" color="blue">
+                                      <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border bg-blue-100 text-blue-800 border-blue-200">
                                         {getDayName(s.dayOfWeek).substring(0, 3)} {formatTime(s.startTime)}-{formatTime(s.endTime)}
-                                      </Badge>
+                                      </span>
                                     ))}
-                                </Flex>
-                              </Box>
+                                </div>
+                              </div>
                             )}
-                          </Flex>
-                        </Box>
-                      </Flex>
-                      <Button asChild variant="soft" color="blue" size="1">
-                        <Link href={`/doctors/${doctor._id}`}>View →</Link>
-                      </Button>
-                    </Flex>
-                  </Card>
+                          </div>
+                        </div>
+                      </div>
+                      <Link 
+                        href={`/doctors/${doctor._id}`}
+                        className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors text-xs font-medium"
+                      >
+                        View →
+                      </Link>
+                    </div>
+                  </div>
                 ))}
-              </Flex>
+              </div>
             )}
-          </Card>
+          </div>
           </>
         )}
 
       {/* Roster View */}
       {viewMode === 'roster' && (
-        <Card>
-          <Box style={{ overflowX: 'auto' }}>
-            <Table.Root>
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeaderCell>Doctor</Table.ColumnHeaderCell>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">Doctor</th>
                   {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                    <Table.ColumnHeaderCell key={day} style={{ textAlign: 'center' }}>
+                    <th key={day} className="text-center py-2 px-3 text-sm font-semibold text-gray-700">
                       {day}
-                    </Table.ColumnHeaderCell>
+                    </th>
                   ))}
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
+                </tr>
+              </thead>
+              <tbody>
                 {doctors.filter(d => d.status === 'active').map((doctor) => (
-                  <Table.Row key={doctor._id}>
-                    <Table.Cell>
-                      <Text size="2" weight="medium">
+                  <tr key={doctor._id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-2 px-3">
+                      <p className="text-sm font-medium">
                         {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
-                      </Text>
-                      <Text size="1" color="gray">{doctor.specialization}</Text>
-                    </Table.Cell>
+                      </p>
+                      <p className="text-xs text-gray-600">{doctor.specialization}</p>
+                    </td>
                     {[0, 1, 2, 3, 4, 5, 6].map((day) => {
                       const schedule = doctor.schedule?.find((s) => s.dayOfWeek === day);
                       return (
-                        <Table.Cell key={day} style={{ textAlign: 'center' }}>
+                        <td key={day} className="text-center py-2 px-3">
                           {schedule && schedule.isAvailable ? (
-                            <Text size="1" color="green" weight="medium">
+                            <p className="text-xs text-green-600 font-medium">
                               {formatTime(schedule.startTime)} - {formatTime(schedule.endTime)}
-                            </Text>
+                            </p>
                           ) : (
-                            <Text size="1" color="gray">—</Text>
+                            <p className="text-xs text-gray-600">—</p>
                           )}
-                        </Table.Cell>
+                        </td>
                       );
                     })}
-                  </Table.Row>
+                  </tr>
                 ))}
-              </Table.Body>
-            </Table.Root>
-          </Box>
-        </Card>
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {/* Performance View */}
       {viewMode === 'performance' && (
-        <Flex direction="column" gap="2">
+        <div className="flex flex-col gap-2">
           {doctors.map((doctor) => {
             const metrics = doctor.performanceMetrics;
             const total = metrics?.totalAppointments || 0;
@@ -571,47 +570,50 @@ export default function DoctorsPageClient() {
             const completionRate = total > 0 ? (completed / total) * 100 : 0;
 
             return (
-              <Card key={doctor._id} size="1">
-                <Flex justify="between" align="start" mb="2">
-                  <Box>
-                    <Heading size="3">
+              <div key={doctor._id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <h3 className="text-lg font-semibold">
                       {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
-                    </Heading>
-                    <Text size="2" color="gray">{doctor.specialization}</Text>
-                  </Box>
-                  <Button asChild variant="soft" color="blue" size="1">
-                    <Link href={`/doctors/${doctor._id}`}>View →</Link>
-                  </Button>
-                </Flex>
-                <Flex gap="2" wrap="wrap">
-                  <Box>
-                    <Text size="3" weight="bold">{total}</Text>
-                    <Text size="1" color="gray">Total</Text>
-                  </Box>
-                  <Box>
-                    <Text size="3" weight="bold">{completed}</Text>
-                    <Text size="1" color="gray">Completed</Text>
-                  </Box>
-                  <Box>
-                    <Text size="3" weight="bold">{completionRate.toFixed(1)}%</Text>
-                    <Text size="1" color="gray">Completion Rate</Text>
-                  </Box>
-                  <Box>
-                    <Text size="3" weight="bold">{cancellationRate.toFixed(1)}%</Text>
-                    <Text size="1" color="gray">Cancellation Rate</Text>
-                  </Box>
-                  <Box>
-                    <Text size="3" weight="bold">{noShowRate.toFixed(1)}%</Text>
-                    <Text size="1" color="gray">No-Show Rate</Text>
-                  </Box>
-                </Flex>
-              </Card>
+                    </h3>
+                    <p className="text-sm text-gray-600">{doctor.specialization}</p>
+                  </div>
+                  <Link 
+                    href={`/doctors/${doctor._id}`}
+                    className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors text-xs font-medium"
+                  >
+                    View →
+                  </Link>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <div>
+                    <p className="text-xl font-bold">{total}</p>
+                    <p className="text-xs text-gray-600">Total</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold">{completed}</p>
+                    <p className="text-xs text-gray-600">Completed</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold">{completionRate.toFixed(1)}%</p>
+                    <p className="text-xs text-gray-600">Completion Rate</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold">{cancellationRate.toFixed(1)}%</p>
+                    <p className="text-xs text-gray-600">Cancellation Rate</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold">{noShowRate.toFixed(1)}%</p>
+                    <p className="text-xs text-gray-600">No-Show Rate</p>
+                  </div>
+                </div>
+              </div>
             );
           })}
-        </Flex>
+        </div>
       )}
-        </Flex>
-      </Container>
-    </Section>
+        </div>
+      </div>
+    </section>
   );
 }

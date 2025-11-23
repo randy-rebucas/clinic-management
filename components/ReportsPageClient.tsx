@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Skeleton, Container, Section, Heading } from '@radix-ui/themes';
+import { Modal } from './ui/Modal';
 
 interface ReportData {
   totalConsultations?: number;
@@ -90,411 +90,363 @@ export default function ReportsPageClient() {
     switch (reportType) {
       case 'consultations':
         return (
-          <Flex direction="column" gap="3">
-            <Text size="3" weight="bold">Consultations Summary</Text>
-            <Flex gap="2" wrap="wrap">
-              <Card size="1" variant="surface" style={{ flex: '1 1 200px' }}>
-                <Flex direction="column" gap="1" p="2">
-                  <Text size="1" color="gray">Total</Text>
-                  <Text size="4" weight="bold">{data.summary?.totalConsultations || 0}</Text>
-                </Flex>
-              </Card>
-            </Flex>
+          <div className="flex flex-col gap-3">
+            <p className="text-lg font-bold">Consultations Summary</p>
+            <div className="flex gap-2 flex-wrap">
+              <div className="bg-gray-50 rounded-lg border border-gray-200 flex-1 min-w-[200px]" style={{ flex: '1 1 200px' }}>
+                <div className="flex flex-col gap-1 p-2">
+                  <p className="text-xs text-gray-600">Total</p>
+                  <p className="text-xl font-bold">{data.summary?.totalConsultations || 0}</p>
+                </div>
+              </div>
+            </div>
             {data.summary?.byType && (
-              <Box>
-                <Text size="2" weight="medium" mb="2" as="div">By Type</Text>
-                <Flex direction="column" gap="1">
+              <div>
+                <p className="text-sm font-medium mb-2">By Type</p>
+                <div className="flex flex-col gap-1">
                   {Object.entries(data.summary.byType).map(([type, count]: [string, any]) => (
-                    <Flex key={type} justify="between" py="1">
-                      <Text size="2" color="gray" style={{ textTransform: 'capitalize' }}>{type}</Text>
-                      <Text size="2" weight="medium">{count}</Text>
-                    </Flex>
+                    <div key={type} className="flex justify-between py-1">
+                      <p className="text-sm text-gray-600 capitalize">{type}</p>
+                      <p className="text-sm font-medium">{count}</p>
+                    </div>
                   ))}
-                </Flex>
-              </Box>
+                </div>
+              </div>
             )}
             {data.summary?.byProvider && (
-              <Box>
-                <Text size="2" weight="medium" mb="2" as="div">By Provider</Text>
-                <Flex direction="column" gap="1">
+              <div>
+                <p className="text-sm font-medium mb-2">By Provider</p>
+                <div className="flex flex-col gap-1">
                   {Object.entries(data.summary.byProvider).slice(0, 5).map(([provider, count]: [string, any]) => (
-                    <Flex key={provider} justify="between" py="1">
-                      <Text size="2" color="gray">{provider}</Text>
-                      <Text size="2" weight="medium">{count}</Text>
-                    </Flex>
+                    <div key={provider} className="flex justify-between py-1">
+                      <p className="text-sm text-gray-600">{provider}</p>
+                      <p className="text-sm font-medium">{count}</p>
+                    </div>
                   ))}
-                </Flex>
-              </Box>
+                </div>
+              </div>
             )}
-          </Flex>
+          </div>
         );
       case 'income':
         return (
-          <Flex direction="column" gap="3">
-            <Text size="3" weight="bold">Income Summary</Text>
-            <Flex direction="column" gap="2">
-              <Card size="1" variant="surface" style={{ backgroundColor: 'var(--green-3)' }}>
-                <Flex direction="column" gap="1" p="2">
-                  <Text size="1" color="gray">Total Paid</Text>
-                  <Text size="4" weight="bold" style={{ color: 'var(--green-9)' }}>
+          <div className="flex flex-col gap-3">
+            <p className="text-lg font-bold">Income Summary</p>
+            <div className="flex flex-col gap-2">
+              <div className="bg-green-50 rounded-lg border border-green-200">
+                <div className="flex flex-col gap-1 p-2">
+                  <p className="text-xs text-gray-600">Total Paid</p>
+                  <p className="text-xl font-bold text-green-700">
                     ₱{(data.summary?.totalPaid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </Text>
-                </Flex>
-              </Card>
-              <Card size="1" variant="surface">
-                <Flex direction="column" gap="1" p="2">
-                  <Text size="1" color="gray">Total Billed</Text>
-                  <Text size="4" weight="bold">₱{(data.summary?.totalBilled || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
-                </Flex>
-              </Card>
-              <Card size="1" variant="surface" style={{ backgroundColor: 'var(--yellow-3)' }}>
-                <Flex direction="column" gap="1" p="2">
-                  <Text size="1" color="gray">Outstanding</Text>
-                  <Text size="4" weight="bold" style={{ color: 'var(--yellow-9)' }}>
+                  </p>
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex flex-col gap-1 p-2">
+                  <p className="text-xs text-gray-600">Total Billed</p>
+                  <p className="text-xl font-bold">₱{(data.summary?.totalBilled || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+              <div className="bg-yellow-50 rounded-lg border border-yellow-200">
+                <div className="flex flex-col gap-1 p-2">
+                  <p className="text-xs text-gray-600">Outstanding</p>
+                  <p className="text-xl font-bold text-yellow-700">
                     ₱{(data.summary?.totalOutstanding || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </Text>
-                </Flex>
-              </Card>
-            </Flex>
+                  </p>
+                </div>
+              </div>
+            </div>
             {data.breakdowns?.byPaymentMethod && (
-              <Box>
-                <Text size="2" weight="medium" mb="2" as="div">By Payment Method</Text>
-                <Flex direction="column" gap="1">
+              <div>
+                <p className="text-sm font-medium mb-2">By Payment Method</p>
+                <div className="flex flex-col gap-1">
                   {Object.entries(data.breakdowns.byPaymentMethod).map(([method, amount]: [string, any]) => (
-                    <Flex key={method} justify="between" py="1">
-                      <Text size="2" color="gray" style={{ textTransform: 'capitalize' }}>{method.replace('_', ' ')}</Text>
-                      <Text size="2" weight="medium">₱{amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
-                    </Flex>
+                    <div key={method} className="flex justify-between py-1">
+                      <p className="text-sm text-gray-600 capitalize">{method.replace('_', ' ')}</p>
+                      <p className="text-sm font-medium">₱{amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    </div>
                   ))}
-                </Flex>
-              </Box>
+                </div>
+              </div>
             )}
-          </Flex>
+          </div>
         );
       case 'demographics':
         return (
-          <Flex direction="column" gap="3">
-            <Text size="3" weight="bold">Demographics Summary</Text>
+          <div className="flex flex-col gap-3">
+            <p className="text-lg font-bold">Demographics Summary</p>
             {data.demographics?.ageGroups && (
-              <Box>
-                <Text size="2" weight="medium" mb="2" as="div">Age Groups</Text>
-                <Flex direction="column" gap="1">
+              <div>
+                <p className="text-sm font-medium mb-2">Age Groups</p>
+                <div className="flex flex-col gap-1">
                   {Object.entries(data.demographics.ageGroups).map(([age, count]: [string, any]) => (
-                    <Flex key={age} justify="between" py="1">
-                      <Text size="2" color="gray">{age}</Text>
-                      <Text size="2" weight="medium">{count}</Text>
-                    </Flex>
+                    <div key={age} className="flex justify-between py-1">
+                      <p className="text-sm text-gray-600">{age}</p>
+                      <p className="text-sm font-medium">{count}</p>
+                    </div>
                   ))}
-                </Flex>
-              </Box>
+                </div>
+              </div>
             )}
-          </Flex>
+          </div>
         );
       case 'inventory':
         return (
-          <Flex direction="column" gap="3">
-            <Text size="3" weight="bold">Inventory Summary</Text>
-            <Flex gap="2" wrap="wrap">
-              <Card size="1" variant="surface" style={{ flex: '1 1 200px' }}>
-                <Flex direction="column" gap="1" p="2">
-                  <Text size="1" color="gray">Total Items</Text>
-                  <Text size="4" weight="bold">{data.summary?.totalItems || 0}</Text>
-                </Flex>
-              </Card>
-              <Card size="1" variant="surface" style={{ flex: '1 1 200px', backgroundColor: 'var(--red-3)' }}>
-                <Flex direction="column" gap="1" p="2">
-                  <Text size="1" color="gray">Low Stock</Text>
-                  <Text size="4" weight="bold" style={{ color: 'var(--red-9)' }}>{data.summary?.lowStockCount || 0}</Text>
-                </Flex>
-              </Card>
-            </Flex>
+          <div className="flex flex-col gap-3">
+            <p className="text-lg font-bold">Inventory Summary</p>
+            <div className="flex gap-2 flex-wrap">
+              <div className="bg-gray-50 rounded-lg border border-gray-200 flex-1 min-w-[200px]" style={{ flex: '1 1 200px' }}>
+                <div className="flex flex-col gap-1 p-2">
+                  <p className="text-xs text-gray-600">Total Items</p>
+                  <p className="text-xl font-bold">{data.summary?.totalItems || 0}</p>
+                </div>
+              </div>
+              <div className="bg-red-50 rounded-lg border border-red-200 flex-1 min-w-[200px]" style={{ flex: '1 1 200px' }}>
+                <div className="flex flex-col gap-1 p-2">
+                  <p className="text-xs text-gray-600">Low Stock</p>
+                  <p className="text-xl font-bold text-red-700">{data.summary?.lowStockCount || 0}</p>
+                </div>
+              </div>
+            </div>
             {data.lowStockItems && data.lowStockItems.length > 0 && (
-              <Box>
-                <Text size="2" weight="medium" mb="2" as="div">Low Stock Items</Text>
-                <Flex direction="column" gap="1">
+              <div>
+                <p className="text-sm font-medium mb-2">Low Stock Items</p>
+                <div className="flex flex-col gap-1">
                   {data.lowStockItems.slice(0, 5).map((item: any) => (
-                    <Flex key={item._id} justify="between" py="1">
-                      <Text size="2" color="gray" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>
+                    <div key={item._id} className="flex justify-between py-1">
+                      <p className="text-sm text-gray-600 truncate max-w-[200px]">
                         {item.name}
-                      </Text>
-                      <Text size="2" weight="medium" style={{ color: 'var(--red-9)' }}>
+                      </p>
+                      <p className="text-sm font-medium text-red-700">
                         {item.quantity} {item.unit}
-                      </Text>
-                    </Flex>
+                      </p>
+                    </div>
                   ))}
-                </Flex>
-              </Box>
+                </div>
+              </div>
             )}
-          </Flex>
+          </div>
         );
       case 'hmo-claims':
         return (
-          <Flex direction="column" gap="3">
-            <Text size="3" weight="bold">HMO Claims Summary</Text>
-            <Flex gap="2" wrap="wrap">
-              <Card size="1" variant="surface" style={{ flex: '1 1 200px' }}>
-                <Flex direction="column" gap="1" p="2">
-                  <Text size="1" color="gray">Total Claims</Text>
-                  <Text size="4" weight="bold">{data.summary?.totalClaims || 0}</Text>
-                </Flex>
-              </Card>
-              <Card size="1" variant="surface" style={{ flex: '1 1 200px', backgroundColor: 'var(--yellow-3)' }}>
-                <Flex direction="column" gap="1" p="2">
-                  <Text size="1" color="gray">Pending</Text>
-                  <Text size="4" weight="bold" style={{ color: 'var(--yellow-9)' }}>{data.summary?.pendingClaims || 0}</Text>
-                </Flex>
-              </Card>
-            </Flex>
-            <Card size="1" variant="surface">
-              <Flex direction="column" gap="1" p="2">
-                <Text size="1" color="gray">Backlog Amount</Text>
-                <Text size="4" weight="bold">₱{(data.summary?.backlogAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
-              </Flex>
-            </Card>
-          </Flex>
+          <div className="flex flex-col gap-3">
+            <p className="text-lg font-bold">HMO Claims Summary</p>
+            <div className="flex gap-2 flex-wrap">
+              <div className="bg-gray-50 rounded-lg border border-gray-200 flex-1 min-w-[200px]" style={{ flex: '1 1 200px' }}>
+                <div className="flex flex-col gap-1 p-2">
+                  <p className="text-xs text-gray-600">Total Claims</p>
+                  <p className="text-xl font-bold">{data.summary?.totalClaims || 0}</p>
+                </div>
+              </div>
+              <div className="bg-yellow-50 rounded-lg border border-yellow-200 flex-1 min-w-[200px]" style={{ flex: '1 1 200px' }}>
+                <div className="flex flex-col gap-1 p-2">
+                  <p className="text-xs text-gray-600">Pending</p>
+                  <p className="text-xl font-bold text-yellow-700">{data.summary?.pendingClaims || 0}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex flex-col gap-1 p-2">
+                <p className="text-xs text-gray-600">Backlog Amount</p>
+                <p className="text-xl font-bold">₱{(data.summary?.backlogAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+              </div>
+            </div>
+          </div>
         );
       default:
-        return <Text size="2" color="gray">Report data not available</Text>;
+        return <p className="text-sm text-gray-600">Report data not available</p>;
     }
   };
 
   if (loading) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" gap="3">
-            <Skeleton height="32px" width="200px" />
-            <Skeleton height="40px" />
-            <Flex gap="3" wrap="wrap">
-              <Skeleton height="150px" style={{ flex: '1 1 250px' }} />
-              <Skeleton height="150px" style={{ flex: '1 1 250px' }} />
-              <Skeleton height="150px" style={{ flex: '1 1 250px' }} />
-            </Flex>
-            <Skeleton height="400px" />
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col gap-3">
+            <div className="h-8 w-[200px] bg-gray-200 rounded animate-pulse"></div>
+            <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+            <div className="flex gap-3 flex-wrap">
+              <div className="h-[150px] bg-gray-200 rounded animate-pulse flex-1" style={{ flex: '1 1 250px' }}></div>
+              <div className="h-[150px] bg-gray-200 rounded animate-pulse flex-1" style={{ flex: '1 1 250px' }}></div>
+              <div className="h-[150px] bg-gray-200 rounded animate-pulse flex-1" style={{ flex: '1 1 250px' }}></div>
+            </div>
+            <div className="h-[400px] bg-gray-200 rounded animate-pulse"></div>
+          </div>
+        </div>
+      </section>
     );
   }
 
   return (
-    <Section size="3">
-      <Container size="4">
-        <Flex direction="column" gap="4">
-          <Box>
-            <Heading size="8" mb="1">Reports & Analytics</Heading>
-            <Text size="2" color="gray">View clinic performance metrics and reports</Text>
-          </Box>
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col gap-4">
+          <div>
+            <h1 className="text-3xl font-bold mb-1">Reports & Analytics</h1>
+            <p className="text-sm text-gray-600">View clinic performance metrics and reports</p>
+          </div>
 
-          <Flex gap="3" wrap="wrap">
-            <Card size="2" variant="surface" style={{ flex: '1 1 250px', minWidth: '200px' }}>
-              <Flex justify="between" align="center" gap="3">
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Total Consultations</Text>
-                  <Text size="6" weight="bold">
+          <div className="flex gap-3 flex-wrap">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[200px]" style={{ flex: '1 1 250px' }}>
+              <div className="flex justify-between items-center gap-3 p-4">
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Total Consultations</p>
+                  <p className="text-3xl font-bold">
                     {dashboardData.periodVisits || dashboardData.totalConsultations || 0}
-                  </Text>
-                </Box>
-                <Box
-                  style={{
-                    width: '40px',
-                    height: '40px',
-                    backgroundColor: 'var(--blue-3)',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <svg width="20" height="20" fill="none" stroke="var(--blue-9)" viewBox="0 0 24 24">
+                  </p>
+                </div>
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <svg width="20" height="20" fill="none" stroke="rgb(37 99 235)" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                </Box>
-              </Flex>
-            </Card>
+                </div>
+              </div>
+            </div>
 
-            <Card size="2" variant="surface" style={{ flex: '1 1 250px', minWidth: '200px' }}>
-              <Flex justify="between" align="center" gap="3">
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Total Income</Text>
-                  <Text size="6" weight="bold">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[200px]" style={{ flex: '1 1 250px' }}>
+              <div className="flex justify-between items-center gap-3 p-4">
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Total Income</p>
+                  <p className="text-3xl font-bold">
                     ₱{(dashboardData.periodRevenue || dashboardData.totalIncome || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </Text>
-                </Box>
-                <Box
-                  style={{
-                    width: '40px',
-                    height: '40px',
-                    backgroundColor: 'var(--green-3)',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <svg width="20" height="20" fill="none" stroke="var(--green-9)" viewBox="0 0 24 24">
+                  </p>
+                </div>
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <svg width="20" height="20" fill="none" stroke="rgb(22 163 74)" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                </Box>
-              </Flex>
-            </Card>
+                </div>
+              </div>
+            </div>
 
-            <Card size="2" variant="surface" style={{ flex: '1 1 250px', minWidth: '200px' }}>
-              <Flex justify="between" align="center" gap="3">
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Total Patients</Text>
-                  <Text size="6" weight="bold">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[200px]" style={{ flex: '1 1 250px' }}>
+              <div className="flex justify-between items-center gap-3 p-4">
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Total Patients</p>
+                  <p className="text-3xl font-bold">
                     {dashboardData.totalPatients || 0}
-                  </Text>
-                </Box>
-                <Box
-                  style={{
-                    width: '40px',
-                    height: '40px',
-                    backgroundColor: 'var(--purple-3)',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <svg width="20" height="20" fill="none" stroke="var(--purple-9)" viewBox="0 0 24 24">
+                  </p>
+                </div>
+                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <svg width="20" height="20" fill="none" stroke="rgb(147 51 234)" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
-                </Box>
-              </Flex>
-            </Card>
+                </div>
+              </div>
+            </div>
 
-            <Card size="2" variant="surface" style={{ flex: '1 1 250px', minWidth: '200px' }}>
-              <Flex justify="between" align="center" gap="3">
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Available Reports</Text>
-                  <Text size="6" weight="bold">6</Text>
-                </Box>
-                <Box
-                  style={{
-                    width: '40px',
-                    height: '40px',
-                    backgroundColor: 'var(--orange-3)',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <svg width="20" height="20" fill="none" stroke="var(--orange-9)" viewBox="0 0 24 24">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[200px]" style={{ flex: '1 1 250px' }}>
+              <div className="flex justify-between items-center gap-3 p-4">
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Available Reports</p>
+                  <p className="text-3xl font-bold">6</p>
+                </div>
+                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                  <svg width="20" height="20" fill="none" stroke="rgb(234 88 12)" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                </Box>
-              </Flex>
-            </Card>
-          </Flex>
+                </div>
+              </div>
+            </div>
+          </div>
 
-          <Flex gap="3" direction={{ initial: 'column', md: 'row' }}>
-            <Card size="2" variant="surface" style={{ flex: 1 }}>
-              <Flex direction="column" gap="3" p="3">
-                <Flex justify="between" align="center">
-                  <Heading size="4">Available Reports</Heading>
+          <div className="flex gap-3 flex-col md:flex-row">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1">
+              <div className="flex flex-col gap-3 p-3">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold">Available Reports</h3>
                   {(selectedReport === 'consultations' || selectedReport === 'income') && (
-                    <Select.Root
+                    <select
                       value={period}
-                      onValueChange={(value) => {
-                        setPeriod(value as 'daily' | 'weekly' | 'monthly');
+                      onChange={(e) => {
+                        setPeriod(e.target.value as 'daily' | 'weekly' | 'monthly');
                         if (selectedReport) {
-                          fetchReport(selectedReport, value as 'daily' | 'weekly' | 'monthly');
+                          fetchReport(selectedReport, e.target.value as 'daily' | 'weekly' | 'monthly');
                         }
                       }}
-                      size="1"
+                      className="px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
                     >
-                      <Select.Trigger />
-                      <Select.Content>
-                        <Select.Item value="daily">Daily</Select.Item>
-                        <Select.Item value="weekly">Weekly</Select.Item>
-                        <Select.Item value="monthly">Monthly</Select.Item>
-                      </Select.Content>
-                    </Select.Root>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
                   )}
-                </Flex>
-                <Flex direction="column" gap="2">
-                  <Button
-                    variant="soft"
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button
                     onClick={() => fetchReport('consultations', period)}
-                    style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-left"
                   >
-                    <Flex direction="column" align="start" gap="1" style={{ width: '100%' }}>
-                      <Text size="2" weight="medium">Consultations Report</Text>
-                      <Text size="1" color="gray">View consultation statistics</Text>
-                    </Flex>
-                  </Button>
-                  <Button
-                    variant="soft"
+                    <div className="flex flex-col items-start gap-1 w-full">
+                      <p className="text-sm font-medium">Consultations Report</p>
+                      <p className="text-xs text-gray-600">View consultation statistics</p>
+                    </div>
+                  </button>
+                  <button
                     onClick={() => fetchReport('income', period)}
-                    style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-left"
                   >
-                    <Flex direction="column" align="start" gap="1" style={{ width: '100%' }}>
-                      <Text size="2" weight="medium">Income Report</Text>
-                      <Text size="1" color="gray">Financial performance analysis</Text>
-                    </Flex>
-                  </Button>
-                  <Button
-                    variant="soft"
+                    <div className="flex flex-col items-start gap-1 w-full">
+                      <p className="text-sm font-medium">Income Report</p>
+                      <p className="text-xs text-gray-600">Financial performance analysis</p>
+                    </div>
+                  </button>
+                  <button
                     onClick={() => fetchReport('demographics')}
-                    style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-left"
                   >
-                    <Flex direction="column" align="start" gap="1" style={{ width: '100%' }}>
-                      <Text size="2" weight="medium">Demographics Report</Text>
-                      <Text size="1" color="gray">Patient demographics analysis</Text>
-                    </Flex>
-                  </Button>
-                  <Button
-                    variant="soft"
+                    <div className="flex flex-col items-start gap-1 w-full">
+                      <p className="text-sm font-medium">Demographics Report</p>
+                      <p className="text-xs text-gray-600">Patient demographics analysis</p>
+                    </div>
+                  </button>
+                  <button
                     onClick={() => fetchReport('inventory')}
-                    style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-left"
                   >
-                    <Flex direction="column" align="start" gap="1" style={{ width: '100%' }}>
-                      <Text size="2" weight="medium">Inventory Report</Text>
-                      <Text size="1" color="gray">Inventory status and usage</Text>
-                    </Flex>
-                  </Button>
-                  <Button
-                    variant="soft"
+                    <div className="flex flex-col items-start gap-1 w-full">
+                      <p className="text-sm font-medium">Inventory Report</p>
+                      <p className="text-xs text-gray-600">Inventory status and usage</p>
+                    </div>
+                  </button>
+                  <button
                     onClick={() => fetchReport('hmo-claims')}
-                    style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-left"
                   >
-                    <Flex direction="column" align="start" gap="1" style={{ width: '100%' }}>
-                      <Text size="2" weight="medium">HMO Claims Report</Text>
-                      <Text size="1" color="gray">HMO claims and reimbursements</Text>
-                    </Flex>
-                  </Button>
-                </Flex>
-              </Flex>
-            </Card>
+                    <div className="flex flex-col items-start gap-1 w-full">
+                      <p className="text-sm font-medium">HMO Claims Report</p>
+                      <p className="text-xs text-gray-600">HMO claims and reimbursements</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
 
-            <Card size="2" variant="surface" style={{ flex: 1 }}>
-              <Flex direction="column" gap="3" p="3">
-                <Heading size="4">Report Details</Heading>
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1">
+              <div className="flex flex-col gap-3 p-3">
+                <h3 className="text-lg font-semibold">Report Details</h3>
                 {reportLoading ? (
-                  <Flex justify="center" align="center" style={{ minHeight: '200px' }}>
-                    <Flex direction="column" align="center" gap="2">
-                      <Spinner size="3" />
-                      <Text size="2" color="gray">Loading report...</Text>
-                    </Flex>
-                  </Flex>
+                  <div className="flex justify-center items-center" style={{ minHeight: '200px' }}>
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      <p className="text-sm text-gray-600">Loading report...</p>
+                    </div>
+                  </div>
                 ) : reportData ? (
-                  <Box style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                  <div className="max-h-[500px] overflow-y-auto">
                     {renderReportDetails(selectedReport!, reportData)}
-                  </Box>
+                  </div>
                 ) : (
-                  <Flex justify="center" align="center" style={{ minHeight: '200px' }}>
-                    <Text size="2" color="gray">Select a report to view details</Text>
-                  </Flex>
+                  <div className="flex justify-center items-center" style={{ minHeight: '200px' }}>
+                    <p className="text-sm text-gray-600">Select a report to view details</p>
+                  </div>
                 )}
-              </Flex>
-            </Card>
-          </Flex>
-        </Flex>
-      </Container>
-    </Section>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

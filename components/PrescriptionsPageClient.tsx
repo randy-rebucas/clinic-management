@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import PrescriptionForm from './PrescriptionForm';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tooltip, Heading, Callout, IconButton, Container, Section } from '@radix-ui/themes';
+import { Modal } from './ui/Modal';
 
 interface Prescription {
   _id: string;
@@ -190,279 +190,269 @@ export default function PrescriptionsPageClient() {
 
   if (loading) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
-            <Spinner size="3" />
-            <Text>Loading prescriptions...</Text>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-6">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p>Loading prescriptions...</p>
+          </div>
+        </div>
+      </section>
     );
   }
 
   return (
-    <Section size="3">
-      <Container size="4">
-        <Flex direction="column" gap="4">
+    <section className="py-6">
+      <div className="container mx-auto px-4">
+        <div className="flex flex-col gap-4">
           {/* Error/Success Messages */}
           {error && (
-            <Callout.Root color="red">
-              <Callout.Text>{error}</Callout.Text>
-            </Callout.Root>
+            <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md">
+              <p>{error}</p>
+            </div>
           )}
           {success && (
-            <Callout.Root color="green">
-              <Callout.Text>{success}</Callout.Text>
-            </Callout.Root>
+            <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-md">
+              <p>{success}</p>
+            </div>
           )}
 
           {/* Header */}
-          <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3">
-            <Box>
-              <Heading size="8" mb="1">E-Prescriptions</Heading>
-              <Text size="2" color="gray">Manage prescriptions and track dispensing</Text>
-            </Box>
-        <Button
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h1 className="text-3xl font-bold mb-1">E-Prescriptions</h1>
+              <p className="text-sm text-gray-600">Manage prescriptions and track dispensing</p>
+            </div>
+        <button
           onClick={() => setShowForm(true)}
-          size="3"
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
         >
-          <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           New Prescription
-        </Button>
-      </Flex>
+        </button>
+      </div>
 
           {/* Search and Filters */}
-          <Card>
-            <Box p="3">
-          <Flex direction={{ initial: 'column', sm: 'row' }} gap="3">
-            <Box flexGrow="1">
-              <TextField.Root size="2" style={{ width: '100%' }}>
-                <TextField.Slot>
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
-                  </svg>
-                </TextField.Slot>
+          <div className="bg-white border border-gray-200 rounded-lg">
+            <div className="p-3">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1">
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
+                </svg>
                 <input
                   type="text"
                   placeholder="Search by patient name, prescription code, or medication..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{ 
-                    all: 'unset', 
-                    flex: 1, 
-                    width: '100%',
-                    padding: '0',
-                    fontSize: 'var(--font-size-2)',
-                    lineHeight: 'var(--line-height-2)'
-                  }}
+                  className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 />
                 {searchQuery && (
-                  <TextField.Slot>
-                    <IconButton
-                      size="1"
-                      variant="ghost"
-                      onClick={() => setSearchQuery('')}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      </svg>
-                    </IconButton>
-                  </TextField.Slot>
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  </button>
                 )}
-              </TextField.Root>
-            </Box>
-            <Box style={{ minWidth: '180px' }}>
-              <Select.Root
+              </div>
+            </div>
+            <div style={{ minWidth: '180px' }}>
+              <select
                 value={filterStatus}
-                onValueChange={(value) => setFilterStatus(value)}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               >
-                <Select.Trigger placeholder="All Statuses" />
-                <Select.Content>
-                  <Select.Item value="all">All Statuses</Select.Item>
-                  <Select.Item value="active">Active</Select.Item>
-                  <Select.Item value="partially-dispensed">Partially Dispensed</Select.Item>
-                  <Select.Item value="dispensed">Dispensed</Select.Item>
-                  <Select.Item value="completed">Completed</Select.Item>
-                  <Select.Item value="cancelled">Cancelled</Select.Item>
-                </Select.Content>
-              </Select.Root>
-            </Box>
+                <option value="all">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="partially-dispensed">Partially Dispensed</option>
+                <option value="dispensed">Dispensed</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
             {(searchQuery || filterStatus !== 'all') && (
-              <Button
+              <button
                 onClick={() => {
                   setSearchQuery('');
                   setFilterStatus('all');
                 }}
-                variant="soft"
-                size="2"
+                className="px-3 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
               >
                 Clear
-              </Button>
+              </button>
             )}
-          </Flex>
-        </Box>
-      </Card>
+          </div>
+        </div>
+      </div>
 
       {/* Form Modal */}
-      <Dialog.Root open={showForm} onOpenChange={(open) => {
+      <Modal open={showForm} onOpenChange={(open) => {
         if (!open) {
           setShowForm(false);
         }
-      }}>
-        <Dialog.Content style={{ maxWidth: '800px' }}>
-          <Dialog.Title>New Prescription</Dialog.Title>
-          <Box py="4">
+      }} className="max-w-4xl">
+        <div className="p-6">
+          <h2 className="text-xl font-semibold mb-4">New Prescription</h2>
+          <div className="py-4">
             <PrescriptionForm
               patients={patients}
               onSubmit={handleSubmit}
               onCancel={() => setShowForm(false)}
               providerName={providerName}
             />
-          </Box>
-        </Dialog.Content>
-      </Dialog.Root>
+          </div>
+        </div>
+      </Modal>
 
       {/* Prescriptions List */}
-      <Card>
-        <Box p="3">
-          <Flex justify="between" align="center" mb="3">
-            <Heading size="3">Prescriptions</Heading>
-            <Text size="2" color="gray">
+      <div className="bg-white border border-gray-200 rounded-lg">
+        <div className="p-3">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-lg font-semibold">Prescriptions</h3>
+            <p className="text-sm text-gray-600">
               {filteredPrescriptions.length} {filteredPrescriptions.length === 1 ? 'prescription' : 'prescriptions'}
-            </Text>
-          </Flex>
+            </p>
+          </div>
           {filteredPrescriptions.length === 0 ? (
-            <Box p="8" style={{ textAlign: 'center' }}>
-              <Box mb="3">
-                <svg style={{ width: '48px', height: '48px', margin: '0 auto', color: 'var(--gray-9)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="p-8 text-center">
+              <div className="mb-3">
+                <svg className="w-12 h-12 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-              </Box>
-              <Heading size="3" mb="1">
+              </div>
+              <h3 className="text-lg font-semibold mb-1">
                 {searchQuery || filterStatus !== 'all' ? 'No prescriptions match your filters' : 'No prescriptions found'}
-              </Heading>
-              <Text size="2" color="gray" mb="3" as="div">
+              </h3>
+              <p className="text-sm text-gray-600 mb-3">
                 {searchQuery || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Create your first prescription to get started'}
-              </Text>
+              </p>
               {!searchQuery && filterStatus === 'all' && (
-                <Button onClick={() => setShowForm(true)}>
-                  <svg style={{ width: '14px', height: '14px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <button onClick={() => setShowForm(true)} className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center mx-auto">
+                  <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                   New Prescription
-                </Button>
+                </button>
               )}
-            </Box>
+            </div>
           ) : (
-            <Table.Root>
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeaderCell>Prescription Code</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Patient</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Medications</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Dispensed</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell style={{ textAlign: 'right' }}>Actions</Table.ColumnHeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {filteredPrescriptions.map((prescription) => {
-                  const totalPrescribed = prescription.medications.reduce(
-                    (sum, m) => sum + (m.quantity || 0),
-                    0
-                  );
-                  const totalDispensed = prescription.pharmacyDispenses?.reduce(
-                    (sum, d) => sum + (d.quantityDispensed || 0),
-                    0
-                  ) || 0;
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Prescription Code</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Patient</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Medications</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Dispensed</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredPrescriptions.map((prescription) => {
+                    const totalPrescribed = prescription.medications.reduce(
+                      (sum, m) => sum + (m.quantity || 0),
+                      0
+                    );
+                    const totalDispensed = prescription.pharmacyDispenses?.reduce(
+                      (sum, d) => sum + (d.quantityDispensed || 0),
+                      0
+                    ) || 0;
 
-                  return (
-                    <Table.Row key={prescription._id}>
-                      <Table.Cell>
-                        <Text size="2" weight="medium">{prescription.prescriptionCode}</Text>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Link href={`/patients/${prescription.patient._id}`}>
-                          <Text size="2" weight="medium" style={{ color: 'var(--blue-9)', textDecoration: 'none' }}>
-                            {prescription.patient.firstName} {prescription.patient.lastName}
-                          </Text>
-                        </Link>
-                        {prescription.patient.patientCode && (
-                          <Text size="1" color="gray" as="div">{prescription.patient.patientCode}</Text>
-                        )}
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Flex direction="column" gap="1">
-                          {prescription.medications.slice(0, 2).map((med, idx) => (
-                            <Text key={idx} size="1">
-                              {med.name} {med.dose && `(${med.dose})`}
-                            </Text>
-                          ))}
-                          {prescription.medications.length > 2 && (
-                            <Text size="1" color="gray">+{prescription.medications.length - 2} more</Text>
+                    return (
+                      <tr key={prescription._id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-medium">{prescription.prescriptionCode}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Link href={`/patients/${prescription.patient._id}`}>
+                            <div className="text-sm font-medium text-blue-600 hover:underline">
+                              {prescription.patient.firstName} {prescription.patient.lastName}
+                            </div>
+                          </Link>
+                          {prescription.patient.patientCode && (
+                            <div className="text-xs text-gray-600">{prescription.patient.patientCode}</div>
                           )}
-                        </Flex>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Text size="2">
-                          {new Date(prescription.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Badge color={getStatusColor(prescription.status)} size="1">
-                          {prescription.status}
-                        </Badge>
-                      </Table.Cell>
-                      <Table.Cell>
-                        {totalDispensed > 0 ? (
-                          <Flex direction="column" gap="1">
-                            <Text size="1">{totalDispensed} / {totalPrescribed}</Text>
-                            {prescription.pharmacyDispenses && prescription.pharmacyDispenses.length > 0 && (
-                              <Text size="1" color="gray">
-                                {prescription.pharmacyDispenses[0].pharmacyName}
-                              </Text>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1">
+                            {prescription.medications.slice(0, 2).map((med, idx) => (
+                              <div key={idx} className="text-xs">
+                                {med.name} {med.dose && `(${med.dose})`}
+                              </div>
+                            ))}
+                            {prescription.medications.length > 2 && (
+                              <div className="text-xs text-gray-600">+{prescription.medications.length - 2} more</div>
                             )}
-                          </Flex>
-                        ) : (
-                          <Text size="2" color="gray">—</Text>
-                        )}
-                      </Table.Cell>
-                      <Table.Cell style={{ textAlign: 'right' }}>
-                        <Flex gap="2" justify="end">
-                          <Tooltip content="Print">
-                            <Button
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="text-sm">
+                            {new Date(prescription.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 text-xs rounded-full ${
+                            getStatusColor(prescription.status) === 'green' ? 'bg-green-100 text-green-800' :
+                            getStatusColor(prescription.status) === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
+                            getStatusColor(prescription.status) === 'blue' ? 'bg-blue-100 text-blue-800' :
+                            getStatusColor(prescription.status) === 'red' ? 'bg-red-100 text-red-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {prescription.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {totalDispensed > 0 ? (
+                            <div className="flex flex-col gap-1">
+                              <div className="text-xs">{totalDispensed} / {totalPrescribed}</div>
+                              {prescription.pharmacyDispenses && prescription.pharmacyDispenses.length > 0 && (
+                                <div className="text-xs text-gray-600">
+                                  {prescription.pharmacyDispenses[0].pharmacyName}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-600">—</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex gap-2 justify-end">
+                            <button
                               onClick={() => handlePrint(prescription._id)}
-                              variant="soft"
-                              color="blue"
-                              size="1"
+                              className="px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
+                              title="Print"
                             >
-                              <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                               </svg>
-                            </Button>
-                          </Tooltip>
-                          <Button asChild size="1" variant="soft" color="blue">
+                            </button>
                             <Link href={`/prescriptions/${prescription._id}`}>
-                              View
+                              <button className="px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors text-xs">
+                                View
+                              </button>
                             </Link>
-                          </Button>
-                        </Flex>
-                      </Table.Cell>
-                    </Table.Row>
-                  );
-                })}
-              </Table.Body>
-            </Table.Root>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
-        </Box>
-      </Card>
-        </Flex>
-      </Container>
-    </Section>
+        </div>
+      </div>
+        </div>
+      </div>
+    </section>
   );
 }

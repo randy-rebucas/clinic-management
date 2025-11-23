@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import PatientForm from '@/components/PatientForm';
 import { useRouter } from 'next/navigation';
-import { Button, TextField, Select, Dialog, Card, Flex, Box, Text, Spinner, Badge, AlertDialog, Tooltip, IconButton, Separator, Heading, Callout, Container, Section } from '@radix-ui/themes';
+import { Modal, AlertDialog } from './ui/Modal';
 
 interface Patient {
   _id: string;
@@ -312,287 +312,276 @@ export default function PatientsPageClient() {
 
   if (loading) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" gap="3" style={{ minHeight: '50vh', justifyContent: 'center' }}>
-            <Spinner size="3" />
-            <Text>Loading patients...</Text>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-6">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-col items-center gap-3" style={{ minHeight: '50vh', justifyContent: 'center' }}>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="text-gray-700">Loading patients...</p>
+          </div>
+        </div>
+      </section>
     );
   }
 
   return (
-    <Section size="3">
-      <Container size="4">
-        <Flex direction="column" gap="4">
+    <section className="py-6">
+      <div className="container mx-auto px-4">
+        <div className="flex flex-col gap-4">
           {/* Error/Success Messages */}
           {error && (
-            <Callout.Root color="red">
-              <Callout.Text>{error}</Callout.Text>
-            </Callout.Root>
+            <div className="bg-red-50 border border-red-200 rounded-md p-3">
+              <p className="text-red-800 text-sm">{error}</p>
+            </div>
           )}
           {success && (
-            <Callout.Root color="green">
-              <Callout.Text>{success}</Callout.Text>
-            </Callout.Root>
+            <div className="bg-green-50 border border-green-200 rounded-md p-3">
+              <p className="text-green-800 text-sm">{success}</p>
+            </div>
           )}
 
           {/* Header */}
-          <Box>
-            <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3" mb="3">
-              <Box>
-                <Heading size="8" mb="1">Patients</Heading>
-                <Text size="2" color="gray">Manage patient records and information</Text>
-              </Box>
-          <Button
+          <div>
+            <div className="flex flex-col sm:flex-row justify-between items-center sm:items-center gap-3 mb-3">
+              <div>
+                <h1 className="text-3xl font-bold mb-1">Patients</h1>
+                <p className="text-sm text-gray-600">Manage patient records and information</p>
+              </div>
+          <button
             onClick={() => {
               setEditingPatient(null);
               setShowForm(true);
             }}
-            size="3"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
           >
             Add New Patient
-          </Button>
-        </Flex>
+          </button>
+        </div>
 
         {/* Quick Stats */}
-        <Flex gap="2" mb="3" wrap="wrap">
-          <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
-            <Box p="2">
-              <Text size="1" color="gray" mb="1" as="div">Total Patients</Text>
-              <Text size="5" weight="bold">{patients.length}</Text>
-            </Box>
-          </Card>
-          <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
-            <Box p="2">
-              <Text size="1" color="gray" mb="1" as="div">Showing</Text>
-              <Text size="5" weight="bold">{filteredPatients.length}</Text>
-            </Box>
-          </Card>
-          <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
-            <Box p="2">
-              <Text size="1" color="gray" mb="1" as="div">This Month</Text>
-              <Text size="5" weight="bold">
+        <div className="flex gap-2 mb-3 flex-wrap">
+          <div className="bg-white border border-gray-200 rounded-lg p-2" style={{ flex: '1 1 150px', minWidth: '120px' }}>
+            <div className="p-2">
+              <div className="text-xs text-gray-600 mb-1">Total Patients</div>
+              <div className="text-2xl font-bold">{patients.length}</div>
+            </div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-lg p-2" style={{ flex: '1 1 150px', minWidth: '120px' }}>
+            <div className="p-2">
+              <div className="text-xs text-gray-600 mb-1">Showing</div>
+              <div className="text-2xl font-bold">{filteredPatients.length}</div>
+            </div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-lg p-2" style={{ flex: '1 1 150px', minWidth: '120px' }}>
+            <div className="p-2">
+              <div className="text-xs text-gray-600 mb-1">This Month</div>
+              <div className="text-2xl font-bold">
                 {patients.filter((p) => {
                   const created = new Date((p as any).createdAt || 0);
                   const now = new Date();
                   return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
                 }).length}
-              </Text>
-            </Box>
-          </Card>
-          <Card style={{ flex: '1 1 150px', minWidth: '120px' }}>
-            <Box p="2">
-              <Text size="1" color="gray" mb="1" as="div">Active</Text>
-              <Text size="5" weight="bold">
+              </div>
+            </div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-lg p-2" style={{ flex: '1 1 150px', minWidth: '120px' }}>
+            <div className="p-2">
+              <div className="text-xs text-gray-600 mb-1">Active</div>
+              <div className="text-2xl font-bold">
                 {patients.filter((p) => (p as any).active !== false).length}
-              </Text>
-            </Box>
-          </Card>
-        </Flex>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Search and Filter Bar */}
-        <Card>
-          <Box p="3">
-            <Flex direction={{ initial: 'column', sm: 'row' }} gap="3" mb={debouncedSearchQuery || activeFilterCount > 0 ? "2" : "0"}>
+        <div className="bg-white border border-gray-200 rounded-lg">
+          <div className="p-3">
+            <div className={`flex flex-col sm:flex-row gap-3 ${debouncedSearchQuery || activeFilterCount > 0 ? "mb-2" : "mb-0"}`}>
               {/* Search Input */}
-              <Box flexGrow="1" style={{ minWidth: 0 }}>
-                <TextField.Root size="2" style={{ width: '100%' }}>
-                  <TextField.Slot>
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <div className="flex-1" style={{ minWidth: 0 }}>
+                <div className="relative w-full">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="w-4 h-4 text-gray-400" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
                     </svg>
-                  </TextField.Slot>
+                  </div>
                   <input
                     type="text"
                     placeholder="Search by name, email, phone, code, or location..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    style={{ 
-                      all: 'unset', 
-                      flex: 1, 
-                      width: '100%',
-                      padding: '0',
-                      fontSize: 'var(--font-size-2)',
-                      lineHeight: 'var(--line-height-2)'
-                    }}
+                    className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
                   {searchQuery && (
-                    <TextField.Slot>
-                      <Button 
-                        variant="ghost" 
-                        size="1" 
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                      <button 
                         onClick={() => setSearchQuery('')}
-                        style={{ cursor: 'pointer', padding: '4px' }}
+                        className="cursor-pointer p-1 text-gray-400 hover:text-gray-600"
                       >
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
                         </svg>
-                      </Button>
-                    </TextField.Slot>
+                      </button>
+                    </div>
                   )}
-                </TextField.Root>
-              </Box>
+                </div>
+              </div>
 
               {/* Sort Dropdown */}
-              <Box style={{ minWidth: '180px' }}>
-                <Select.Root
+              <div style={{ minWidth: '180px' }}>
+                <select
                   value={sortBy}
-                  onValueChange={(value) => setSortBy(value as SortOption)}
+                  onChange={(e) => setSortBy(e.target.value as SortOption)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 >
-                  <Select.Trigger placeholder="Sort by..." />
-                  <Select.Content>
-                    <Select.Item value="name-asc">Name (A-Z)</Select.Item>
-                    <Select.Item value="name-desc">Name (Z-A)</Select.Item>
-                    <Select.Item value="date-desc">Date of Birth (Newest)</Select.Item>
-                    <Select.Item value="date-asc">Date of Birth (Oldest)</Select.Item>
-                    <Select.Item value="code-asc">Patient Code (A-Z)</Select.Item>
-                    <Select.Item value="code-desc">Patient Code (Z-A)</Select.Item>
-                  </Select.Content>
-                </Select.Root>
-              </Box>
+                  <option value="name-asc">Name (A-Z)</option>
+                  <option value="name-desc">Name (Z-A)</option>
+                  <option value="date-desc">Date of Birth (Newest)</option>
+                  <option value="date-asc">Date of Birth (Oldest)</option>
+                  <option value="code-asc">Patient Code (A-Z)</option>
+                  <option value="code-desc">Patient Code (Z-A)</option>
+                </select>
+              </div>
 
               {/* Filter Toggle Button */}
-              <Button
-                variant={showFilters || activeFilterCount > 0 ? "solid" : "soft"}
-                size="2"
+              <button
+                className={`px-4 py-2 rounded-md transition-colors flex items-center ${
+                  showFilters || activeFilterCount > 0 
+                    ? "bg-blue-600 text-white hover:bg-blue-700" 
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
                 onClick={() => setShowFilters(!showFilters)}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '4px' }}>
+                <svg className="w-4 h-4 mr-1" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M2 4h12M4 8h8M6 12h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                 </svg>
                 Filters
                 {activeFilterCount > 0 && (
-                  <Badge size="1" variant="solid" color="blue" style={{ marginLeft: '6px' }}>
+                  <span className="ml-1.5 px-1.5 py-0.5 bg-blue-500 text-white text-xs rounded-full">
                     {activeFilterCount}
-                  </Badge>
+                  </span>
                 )}
-              </Button>
-            </Flex>
+              </button>
+            </div>
 
             {/* Filter Panel */}
             {showFilters && (
-              <Box pt="3" style={{ borderTop: '1px solid var(--gray-6)' }}>
-                <Flex direction={{ initial: 'column', sm: 'row' }} gap="3" wrap="wrap">
+              <div className="pt-3 border-t border-gray-200">
+                <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
                   {/* Sex Filter */}
-                  <Box style={{ minWidth: '140px', flex: '1 1 140px' }}>
-                    <Text size="1" weight="medium" mb="1" as="div">Sex</Text>
-                    <Select.Root
+                  <div style={{ minWidth: '140px', flex: '1 1 140px' }}>
+                    <div className="text-xs font-medium mb-1">Sex</div>
+                    <select
                       value={filters.sex}
-                      onValueChange={(value) => setFilters({ ...filters, sex: value })}
+                      onChange={(e) => setFilters({ ...filters, sex: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     >
-                      <Select.Trigger />
-                      <Select.Content>
-                        <Select.Item value="all">All</Select.Item>
-                        <Select.Item value="male">Male</Select.Item>
-                        <Select.Item value="female">Female</Select.Item>
-                        <Select.Item value="other">Other</Select.Item>
-                      </Select.Content>
-                    </Select.Root>
-                  </Box>
+                      <option value="all">All</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
 
                   {/* Active Status Filter */}
-                  <Box style={{ minWidth: '140px', flex: '1 1 140px' }}>
-                    <Text size="1" weight="medium" mb="1" as="div">Status</Text>
-                    <Select.Root
+                  <div style={{ minWidth: '140px', flex: '1 1 140px' }}>
+                    <div className="text-xs font-medium mb-1">Status</div>
+                    <select
                       value={filters.active}
-                      onValueChange={(value) => setFilters({ ...filters, active: value })}
+                      onChange={(e) => setFilters({ ...filters, active: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     >
-                      <Select.Trigger />
-                      <Select.Content>
-                        <Select.Item value="all">All</Select.Item>
-                        <Select.Item value="true">Active</Select.Item>
-                        <Select.Item value="false">Inactive</Select.Item>
-                      </Select.Content>
-                    </Select.Root>
-                  </Box>
+                      <option value="all">All</option>
+                      <option value="true">Active</option>
+                      <option value="false">Inactive</option>
+                    </select>
+                  </div>
 
                   {/* Age Range Filters */}
-                  <Box style={{ minWidth: '100px', flex: '1 1 100px' }}>
-                    <Text size="1" weight="medium" mb="1" as="div">Min Age</Text>
-                    <TextField.Root
-                      size="2"
+                  <div style={{ minWidth: '100px', flex: '1 1 100px' }}>
+                    <div className="text-xs font-medium mb-1">Min Age</div>
+                    <input
                       type="number"
                       placeholder="Min"
                       value={filters.minAge}
                       onChange={(e) => setFilters({ ...filters, minAge: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
-                  </Box>
-                  <Box style={{ minWidth: '100px', flex: '1 1 100px' }}>
-                    <Text size="1" weight="medium" mb="1" as="div">Max Age</Text>
-                    <TextField.Root
-                      size="2"
+                  </div>
+                  <div style={{ minWidth: '100px', flex: '1 1 100px' }}>
+                    <div className="text-xs font-medium mb-1">Max Age</div>
+                    <input
                       type="number"
                       placeholder="Max"
                       value={filters.maxAge}
                       onChange={(e) => setFilters({ ...filters, maxAge: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
-                  </Box>
+                  </div>
 
                   {/* City Filter */}
-                  <Box style={{ minWidth: '140px', flex: '1 1 140px' }}>
-                    <Text size="1" weight="medium" mb="1" as="div">City</Text>
-                    <TextField.Root
-                      size="2"
+                  <div style={{ minWidth: '140px', flex: '1 1 140px' }}>
+                    <div className="text-xs font-medium mb-1">City</div>
+                    <input
+                      type="text"
                       placeholder="City"
                       value={filters.city}
                       onChange={(e) => setFilters({ ...filters, city: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
-                  </Box>
+                  </div>
 
                   {/* State Filter */}
-                  <Box style={{ minWidth: '140px', flex: '1 1 140px' }}>
-                    <Text size="1" weight="medium" mb="1" as="div">State</Text>
-                    <TextField.Root
-                      size="2"
+                  <div style={{ minWidth: '140px', flex: '1 1 140px' }}>
+                    <div className="text-xs font-medium mb-1">State</div>
+                    <input
+                      type="text"
                       placeholder="State"
                       value={filters.state}
                       onChange={(e) => setFilters({ ...filters, state: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
-                  </Box>
+                  </div>
 
                   {/* Clear Filters Button */}
                   {activeFilterCount > 0 && (
-                    <Box style={{ display: 'flex', alignItems: 'flex-end' }}>
-                      <Button
-                        variant="soft"
-                        size="2"
+                    <div className="flex items-end">
+                      <button
+                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
                         onClick={clearFilters}
                       >
                         Clear Filters
-                      </Button>
-                    </Box>
+                      </button>
+                    </div>
                   )}
-                </Flex>
-              </Box>
+                </div>
+              </div>
             )}
 
             {/* Results Count */}
             {(debouncedSearchQuery || activeFilterCount > 0) && (
-              <Box pt="2" style={{ borderTop: '1px solid var(--gray-6)' }}>
-                <Text size="2" color="gray">
+              <div className="pt-2 border-t border-gray-200">
+                <p className="text-sm text-gray-600">
                   Found {filteredPatients.length} {filteredPatients.length === 1 ? 'patient' : 'patients'}
-                </Text>
-              </Box>
+                </p>
+              </div>
             )}
-          </Box>
-        </Card>
-      </Box>
+          </div>
+        </div>
+      </div>
 
       {/* Form Modal/Overlay */}
-      <Dialog.Root open={showForm} onOpenChange={(open) => {
+      <Modal open={showForm} onOpenChange={(open) => {
         if (!open) {
           setShowForm(false);
           setEditingPatient(null);
         }
-      }}>
-        <Dialog.Content style={{ maxWidth: '800px' }}>
-          <Dialog.Title>
+      }} className="max-w-3xl">
+        <div className="p-6">
+          <h2 className="text-xl font-semibold mb-4">
             {editingPatient ? 'Edit Patient' : 'New Patient'}
-          </Dialog.Title>
-          <Box py="4">
+          </h2>
+          <div className="py-4">
             <PatientForm
               initialData={editingPatient ? {
                 ...editingPatient,
@@ -620,206 +609,182 @@ export default function PatientsPageClient() {
                 setEditingPatient(null);
               }}
             />
-          </Box>
-        </Dialog.Content>
-      </Dialog.Root>
+          </div>
+        </div>
+      </Modal>
 
       {/* Patients List */}
       {filteredPatients.length === 0 && patients.length > 0 ? (
-        <Card>
-          <Box p="8" style={{ textAlign: 'center' }}>
-            <Box mb="3">
-              <svg style={{ width: '48px', height: '48px', margin: '0 auto', color: 'var(--gray-9)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="bg-white border border-gray-200 rounded-lg">
+          <div className="p-8 text-center">
+            <div className="mb-3">
+              <svg className="w-12 h-12 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-            </Box>
-            <Heading size="4" mb="1">No patients found</Heading>
-            <Text size="2" color="gray" mb="3" as="div">Try adjusting your search or filter criteria.</Text>
-            <Button onClick={() => setSearchQuery('')} variant="soft" color="blue">
+            </div>
+            <h2 className="text-xl font-semibold mb-1">No patients found</h2>
+            <p className="text-sm text-gray-600 mb-3">Try adjusting your search or filter criteria.</p>
+            <button onClick={() => setSearchQuery('')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors">
               Clear Search
-            </Button>
-          </Box>
-        </Card>
+            </button>
+          </div>
+        </div>
       ) : filteredPatients.length === 0 ? (
-        <Card>
-          <Box p="4" style={{ textAlign: 'center' }}>
-            <Box mb="2">
-              <svg style={{ width: '48px', height: '48px', margin: '0 auto', color: 'var(--gray-9)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="bg-white border border-gray-200 rounded-lg">
+          <div className="p-4 text-center">
+            <div className="mb-2">
+              <svg className="w-12 h-12 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
-            </Box>
-            <Heading size="4" mb="1">No patients found</Heading>
-            <Text size="2" color="gray" mb="3" as="div">Get started by adding your first patient.</Text>
-            <Button
+            </div>
+            <h2 className="text-xl font-semibold mb-1">No patients found</h2>
+            <p className="text-sm text-gray-600 mb-3">Get started by adding your first patient.</p>
+            <button
               onClick={() => {
                 setEditingPatient(null);
                 setShowForm(true);
               }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
             >
               Add First Patient
-            </Button>
-          </Box>
-        </Card>
+            </button>
+          </div>
+        </div>
       ) : (
-        <Box>
-          <Flex direction="column" gap="2">
+        <div>
+          <div className="flex flex-col gap-2">
             {filteredPatients.map((patient) => {
               const age = Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
               return (
-                <Card key={patient._id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/patients/${patient._id}`)}>
-                  <Box p="3">
-                    <Flex align="center" gap="3" justify="between" wrap={{ initial: 'wrap', sm: 'nowrap' }}>
+                <div key={patient._id} className="bg-white border border-gray-200 rounded-lg cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push(`/patients/${patient._id}`)}>
+                  <div className="p-3">
+                    <div className="flex items-center gap-3 justify-between flex-wrap sm:flex-nowrap">
                       {/* Patient Info */}
-                      <Flex align="center" gap="3" style={{ flex: 1, minWidth: 0 }}>
-                        <Box
-                          style={{
-                            width: '48px',
-                            height: '48px',
-                            borderRadius: '50%',
-                            background: 'var(--blue-9)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white',
-                            fontSize: '16px',
-                            fontWeight: 'bold',
-                            flexShrink: 0,
-                          }}
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div
+                          className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white text-base font-bold flex-shrink-0"
                         >
                           {patient.firstName.charAt(0)}{patient.lastName.charAt(0)}
-                        </Box>
-                        <Box style={{ flex: 1, minWidth: 0 }}>
-                          <Flex align="center" gap="2" mb="1" wrap="wrap">
-                            <Text size="3" weight="bold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="text-base font-bold overflow-hidden text-ellipsis whitespace-nowrap">
                               {patient.firstName} {patient.lastName}
-                            </Text>
+                            </span>
                             {patient.patientCode && (
-                              <Badge size="1" variant="soft" color="gray">
+                              <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full">
                                 {patient.patientCode}
-                              </Badge>
+                              </span>
                             )}
                             {patient.sex && patient.sex !== 'unknown' && (
-                              <Badge size="1" variant="soft" color="blue" style={{ textTransform: 'capitalize' }}>
+                              <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full capitalize">
                                 {patient.sex}
-                              </Badge>
+                              </span>
                             )}
                             {age > 0 && (
-                              <Text size="2" color="gray">
+                              <span className="text-sm text-gray-600">
                                 {age} years
-                              </Text>
+                              </span>
                             )}
-                          </Flex>
-                          <Flex direction="column" gap="1">
-                            <Flex align="center" gap="2" wrap="wrap">
-                              <Text size="2" color="gray" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm text-gray-600 flex items-center gap-1">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                 </svg>
                                 {patient.email}
-                              </Text>
-                              <Text size="2" color="gray" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              </span>
+                              <span className="text-sm text-gray-600 flex items-center gap-1">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                                 </svg>
                                 {patient.phone}
-                              </Text>
-                              <Text size="2" color="gray" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              </span>
+                              <span className="text-sm text-gray-600 flex items-center gap-1">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                 </svg>
                                 {new Date(patient.dateOfBirth).toLocaleDateString()}
-                              </Text>
+                              </span>
                               {patient.address && (patient.address.city || patient.address.state) && (
-                                <Text size="2" color="gray" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <span className="text-sm text-gray-600 flex items-center gap-1">
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                                   </svg>
                                   {[patient.address.city, patient.address.state].filter(Boolean).join(', ')}
-                                </Text>
+                                </span>
                               )}
-                            </Flex>
-                          </Flex>
-                        </Box>
-                      </Flex>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
 
                       {/* Actions */}
-                      <Flex gap="1" align="center" onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0 }}>
-                        <Tooltip content="View Details">
-                          <Button asChild size="2" variant="soft" color="green">
-                            <Link href={`/patients/${patient._id}`}>
-                              <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                            </Link>
-                          </Button>
-                        </Tooltip>
-                        <Tooltip content="Schedule Appointment">
-                          <Button asChild size="2" variant="soft" color="purple">
-                            <Link href={`/appointments/new?patientId=${patient._id}`}>
-                              <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                            </Link>
-                          </Button>
-                        </Tooltip>
-                        <Tooltip content="Edit Patient">
-                          <Button
-                            onClick={() => {
-                              setEditingPatient(patient);
-                              setShowForm(true);
-                            }}
-                            size="2"
-                            variant="soft"
-                            color="blue"
-                          >
-                            <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </Button>
-                        </Tooltip>
-                        <Tooltip content="Delete Patient">
-                          <Button
-                            onClick={() => handleDeleteClick(patient._id)}
-                            size="2"
-                            variant="soft"
-                            color="red"
-                          >
-                            <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </Button>
-                        </Tooltip>
-                      </Flex>
-                    </Flex>
-                  </Box>
-                </Card>
+                      <div className="flex gap-1 items-center flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <Link href={`/patients/${patient._id}`} className="p-2 bg-green-50 text-green-700 rounded-md hover:bg-green-100 transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                        </Link>
+                        <Link href={`/appointments/new?patientId=${patient._id}`} className="p-2 bg-purple-50 text-purple-700 rounded-md hover:bg-purple-100 transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </Link>
+                        <button
+                          onClick={() => {
+                            setEditingPatient(patient);
+                            setShowForm(true);
+                          }}
+                          className="p-2 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClick(patient._id)}
+                          className="p-2 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               );
             })}
-          </Flex>
-        </Box>
+          </div>
+        </div>
       )}
 
-        {/* Delete Confirmation Dialog */}
-        <AlertDialog.Root open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <AlertDialog.Content>
-            <AlertDialog.Title>Delete Patient</AlertDialog.Title>
-            <AlertDialog.Description>
-              Are you sure you want to delete this patient? This action cannot be undone.
-            </AlertDialog.Description>
-            <Flex gap="3" mt="4" justify="end">
-              <AlertDialog.Cancel>
-                <Button variant="soft" color="gray">Cancel</Button>
-              </AlertDialog.Cancel>
-              <AlertDialog.Action>
-                <Button variant="solid" color="red" onClick={handleDelete}>Delete</Button>
-              </AlertDialog.Action>
-            </Flex>
-          </AlertDialog.Content>
-        </AlertDialog.Root>
-        </Flex>
-      </Container>
-    </Section>
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Patient"
+        description="Are you sure you want to delete this patient? This action cannot be undone."
+      >
+        <button
+          onClick={() => setDeleteDialogOpen(false)}
+          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleDelete}
+          className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+        >
+          Delete
+        </button>
+      </AlertDialog>
+        </div>
+      </div>
+    </section>
   );
 }

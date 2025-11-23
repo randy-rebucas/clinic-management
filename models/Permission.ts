@@ -20,19 +20,13 @@ const PermissionSchema: Schema = new Schema(
     user: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: function() {
-        // User is required only if role is not provided
-        return !this.role;
-      },
+      required: false,
       index: true,
     },
     role: {
       type: Schema.Types.ObjectId,
       ref: 'Role',
-      required: function() {
-        // Role is required only if user is not provided
-        return !this.user;
-      },
+      required: false,
       index: true,
     },
     resource: {

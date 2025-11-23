@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import mongoose from 'mongoose';
 import Role from '@/models/Role';
+import Permission from '@/models/Permission'; // Import to register model for populate
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, forbiddenResponse } from '@/app/lib/auth-helpers';
 
@@ -21,6 +23,12 @@ export async function GET(
 
   try {
     await connectDB();
+    
+    // Ensure Permission model is registered on mongoose before populate
+    if (!mongoose.models.Permission) {
+      const _ = Permission;
+    }
+    
     const { id } = await params;
     const role = await Role.findById(id)
       .populate('permissions', 'resource actions')
@@ -60,6 +68,12 @@ export async function PUT(
 
   try {
     await connectDB();
+    
+    // Ensure Permission model is registered on mongoose before populate
+    if (!mongoose.models.Permission) {
+      const _ = Permission;
+    }
+    
     const { id } = await params;
     const body = await request.json();
 

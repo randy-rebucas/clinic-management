@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import mongoose from 'mongoose';
 import Role from '@/models/Role';
+import Permission from '@/models/Permission'; // Import to register model for populate
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requireAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
 
@@ -19,16 +21,36 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Ensure Permission model is registered on mongoose before populate
+    // Access mongoose.models to ensure the model is registered
+    if (!mongoose.models.Permission) {
+      // Force registration by accessing the imported model
+      const _ = Permission;
+    }
+    
+    // Fetch roles with populate
     const roles = await Role.find({})
       .populate('permissions', 'resource actions')
       .sort({ level: -1, name: 1 })
-      .lean();
+      .lean()
+      .exec();
 
-    return NextResponse.json({ success: true, data: roles });
+    // Ensure we always return an array
+    const rolesData = Array.isArray(roles) ? roles : [];
+
+    return NextResponse.json({ success: true, data: rolesData });
   } catch (error: any) {
     console.error('Error fetching roles:', error);
+    // Provide more detailed error information
+    const errorMessage = error.message || error.toString() || 'Failed to fetch roles';
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch roles' },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }

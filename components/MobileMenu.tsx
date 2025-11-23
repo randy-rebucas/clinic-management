@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Button, Card, Flex, Box, Text, Avatar, Separator, Dialog } from '@radix-ui/themes';
+import { Modal } from './ui/Modal';
 
 interface NavItem {
   href: string;
@@ -28,11 +28,11 @@ export default function MobileMenu({ navItems, user }: MobileMenuProps) {
   return (
     <>
       {/* Menu Button */}
-      <Button
-        variant="ghost"
+      <button
         onClick={() => setIsOpen(!isOpen)}
         aria-label="Toggle menu"
         aria-expanded={isOpen}
+        className="p-2 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900 transition-colors"
       >
         {isOpen ? (
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -43,70 +43,69 @@ export default function MobileMenu({ navItems, user }: MobileMenuProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         )}
-      </Button>
+      </button>
 
       {/* Mobile Menu Overlay */}
-      <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-        <Dialog.Content style={{ maxWidth: '100vw', margin: 0, position: 'fixed', top: '64px', left: 0, right: 0, bottom: 0, borderRadius: 0 }}>
-          <Flex direction="column" gap="2" p="4">
-            {/* User Info */}
-            <Card size="2" style={{ background: 'var(--blue-3)' }}>
-              <Flex align="center" gap="3">
-                <Avatar
-                  size="3"
-                  fallback={user.name.charAt(0).toUpperCase()}
-                  style={{ background: 'var(--blue-9)' }}
-                />
-                <Box style={{ flex: 1, minWidth: 0 }}>
-                  <Text size="2" weight="bold" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {user.name}
-                  </Text>
-                  <Text size="1" color="gray" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {user.role}
-                  </Text>
-                </Box>
-              </Flex>
-            </Card>
+      <Modal
+        open={isOpen}
+        onOpenChange={setIsOpen}
+        className="max-w-full m-0 fixed top-16 left-0 right-0 bottom-0 rounded-none"
+      >
+        <div className="flex flex-col gap-2 p-4 h-full overflow-y-auto">
+          {/* User Info */}
+          <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold block overflow-hidden text-ellipsis whitespace-nowrap">
+                  {user.name}
+                </p>
+                <p className="text-xs text-gray-500 block overflow-hidden text-ellipsis whitespace-nowrap">
+                  {user.role}
+                </p>
+              </div>
+            </div>
+          </div>
 
-            <Separator />
+          <hr className="border-gray-300" />
 
-            {/* Navigation Items */}
-            <Flex direction="column" gap="1">
-              {navItems.map((item) => {
-                const isActive = pathname === item.href;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setIsOpen(false)}
+          {/* Navigation Items */}
+          <div className="flex flex-col gap-1">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setIsOpen(false)}
+                >
+                  <div
+                    className={`p-2 rounded-lg border transition-colors ${
+                      isActive
+                        ? 'bg-blue-50 border-blue-300'
+                        : 'bg-transparent border-transparent hover:bg-gray-50'
+                    }`}
                   >
-                    <Card
-                      size="1"
-                      style={{
-                        background: isActive ? 'var(--blue-3)' : 'transparent',
-                        border: isActive ? '1px solid var(--blue-6)' : '1px solid transparent',
-                      }}
-                    >
-                      <Flex align="center" gap="3">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
-                        </svg>
-                        <Text size="2" weight={isActive ? 'bold' : 'regular'} color={isActive ? 'blue' : 'gray'}>
-                          {item.label}
-                        </Text>
-                        {isActive && (
-                          <Box style={{ marginLeft: 'auto', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--blue-9)' }} />
-                        )}
-                      </Flex>
-                    </Card>
-                  </Link>
-                );
-              })}
-            </Flex>
-          </Flex>
-        </Dialog.Content>
-      </Dialog.Root>
+                    <div className="flex items-center gap-3">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
+                      </svg>
+                      <span className={`text-sm ${isActive ? 'font-bold text-blue-700' : 'font-normal text-gray-600'}`}>
+                        {item.label}
+                      </span>
+                      {isActive && (
+                        <div className="ml-auto w-2 h-2 rounded-full bg-blue-600" />
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }
-

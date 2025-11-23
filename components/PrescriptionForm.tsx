@@ -3,7 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import SignaturePad from './SignaturePad';
 import { calculateDosage, calculateQuantity, formatDosageInstructions } from '@/lib/dosage-calculator';
-import { Button, TextField, Flex, Box, Text, Callout, AlertDialog, Popover, Tooltip, TextArea, Separator, Heading, Badge, Card, IconButton } from '@radix-ui/themes';
+import { AlertDialog } from './ui/Modal';
 
 interface Medicine {
   _id: string;
@@ -345,412 +345,380 @@ export default function PrescriptionForm({
 
   return (
     <form onSubmit={handleSubmit}>
-      <Box style={{ maxHeight: '80vh', overflowY: 'auto' }}>
-        <Flex direction="column" gap="4" p="4">
+      <div className="max-h-[80vh] overflow-y-auto">
+        <div className="flex flex-col gap-4 p-4">
           {/* Patient Selection */}
-          <Box>
-            <Text size="2" weight="medium" mb="2" as="div">
-              Patient <Text color="red">*</Text>
-            </Text>
-        <Popover.Root open={showPatientSearch} onOpenChange={setShowPatientSearch}>
-          <Popover.Trigger>
-            <TextField.Root size="2" style={{ width: '100%' }}>
-              <input
-                type="text"
-                required
-                value={patientSearch}
-                onChange={(e) => {
-                  setPatientSearch(e.target.value);
-                  setShowPatientSearch(true);
-                  if (!e.target.value) {
-                    setFormData({ ...formData, patient: '' });
-                    setSelectedPatient(null);
-                  }
-                }}
-                onFocus={() => setShowPatientSearch(true)}
-                placeholder="Type to search patients..."
-                style={{ all: 'unset', flex: 1 }}
-              />
-            </TextField.Root>
-          </Popover.Trigger>
-          <Popover.Content style={{ width: 'var(--radix-popover-trigger-width)', maxHeight: '200px', overflowY: 'auto' }}>
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              Patient <span className="text-red-500">*</span>
+            </label>
+            <div className="relative patient-search-container">
+          <input
+            type="text"
+            required
+            value={patientSearch}
+            onChange={(e) => {
+              setPatientSearch(e.target.value);
+              setShowPatientSearch(true);
+              if (!e.target.value) {
+                setFormData({ ...formData, patient: '' });
+                setSelectedPatient(null);
+              }
+            }}
+            onFocus={() => setShowPatientSearch(true)}
+            placeholder="Type to search patients..."
+            className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          />
+          {showPatientSearch && filteredPatients.length > 0 && (
+          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
             {filteredPatients.length > 0 ? (
-              <Flex direction="column" gap="1">
+              <div className="flex flex-col gap-1">
                 {filteredPatients.map((patient) => {
                   const age = patient.dateOfBirth
                     ? Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
                     : null;
                   return (
-                    <Button
+                    <button
                       key={patient._id}
-                      variant="ghost"
+                      type="button"
                       onClick={() => {
                         selectPatient(patient);
                         setShowPatientSearch(false);
                       }}
-                      style={{ justifyContent: 'flex-start', textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start' }}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded transition-colors flex flex-col items-start"
                     >
-                      <Text weight="medium" size="2">{patient.firstName} {patient.lastName}</Text>
-                      <Text size="1" color="gray">
+                      <span className="font-medium text-sm">{patient.firstName} {patient.lastName}</span>
+                      <span className="text-xs text-gray-600">
                         {age && `Age: ${age} years`}
                         {age && patient.weight && ' • '}
                         {patient.weight && `${patient.weight} kg`}
-                      </Text>
-                    </Button>
+                      </span>
+                    </button>
                   );
                 })}
-              </Flex>
+              </div>
             ) : patientSearch ? (
-              <Text size="2" color="gray">No patients found</Text>
+              <span className="text-sm text-gray-600 p-2">No patients found</span>
             ) : (
-              <Text size="2" color="gray">Start typing to search...</Text>
+              <span className="text-sm text-gray-600 p-2">Start typing to search...</span>
             )}
-          </Popover.Content>
-        </Popover.Root>
+          </div>
+          )}
+        </div>
         {formData.patient && !selectedPatient && (
-          <Text size="1" color="red" mt="1" as="div">Please select a valid patient from the list</Text>
+          <p className="text-xs text-red-600 mt-1">Please select a valid patient from the list</p>
         )}
-      </Box>
+      </div>
 
           {/* Drug Interactions Warning */}
           {drugInteractions.length > 0 && (
-            <Callout.Root
-              color={
+            <div
+              className={
                 drugInteractions.some(i => i.severity === 'contraindicated' || i.severity === 'severe')
-                  ? 'red'
+                  ? 'bg-red-50 border border-red-200 rounded-md p-3'
                   : drugInteractions.some(i => i.severity === 'moderate')
-                  ? 'yellow'
-                  : 'blue'
+                  ? 'bg-yellow-50 border border-yellow-200 rounded-md p-3'
+                  : 'bg-blue-50 border border-blue-200 rounded-md p-3'
               }
             >
-              <Callout.Icon>
-                <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                 </svg>
-              </Callout.Icon>
-              <Callout.Text>
-                <Text size="2" weight="bold" mb="2" as="div">Drug Interaction Warning</Text>
-                <Flex direction="column" gap="2">
-                  {drugInteractions.map((interaction, idx) => (
-                    <Box key={idx}>
-                      <Flex align="center" gap="2" mb="1">
-                        <Text size="2" weight="medium">
-                          {interaction.medication1} + {interaction.medication2}
-                        </Text>
-                        <Badge
-                          color={
-                            interaction.severity === 'contraindicated' || interaction.severity === 'severe'
-                              ? 'red'
-                              : interaction.severity === 'moderate'
-                              ? 'yellow'
-                              : 'blue'
-                          }
-                          size="1"
-                          variant="solid"
-                        >
-                          {interaction.severity.toUpperCase()}
-                        </Badge>
-                      </Flex>
-                      <Text size="1" as="div" mb="1">{interaction.description}</Text>
-                      {interaction.recommendation && (
-                        <Text size="1" style={{ fontStyle: 'italic' }} as="div">{interaction.recommendation}</Text>
-                      )}
-                    </Box>
-                  ))}
-                </Flex>
-              </Callout.Text>
-            </Callout.Root>
+                <div className="flex-1">
+                  <div className="text-sm font-bold mb-2">Drug Interaction Warning</div>
+                  <div className="flex flex-col gap-2">
+                    {drugInteractions.map((interaction, idx) => (
+                      <div key={idx}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-medium">
+                            {interaction.medication1} + {interaction.medication2}
+                          </span>
+                          <span
+                            className={
+                              interaction.severity === 'contraindicated' || interaction.severity === 'severe'
+                                ? 'px-2 py-0.5 bg-red-600 text-white text-xs rounded-full'
+                                : interaction.severity === 'moderate'
+                                ? 'px-2 py-0.5 bg-yellow-600 text-white text-xs rounded-full'
+                                : 'px-2 py-0.5 bg-blue-600 text-white text-xs rounded-full'
+                            }
+                          >
+                            {interaction.severity.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="text-xs mb-1">{interaction.description}</div>
+                        {interaction.recommendation && (
+                          <div className="text-xs italic">{interaction.recommendation}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Medications */}
-          <Box>
-            <Flex justify="between" align="center" mb="3">
-              <Heading size="3">Medications</Heading>
-              <Flex align="center" gap="3">
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-lg font-semibold">Medications</h2>
+              <div className="flex items-center gap-3">
                 {checkingInteractions && (
-                  <Text size="1" color="gray">Checking interactions...</Text>
+                  <span className="text-xs text-gray-600">Checking interactions...</span>
                 )}
-                <Button
+                <button
                   type="button"
-                  variant="ghost"
-                  size="1"
                   onClick={() => formData.medications.length >= 2 && checkInteractions(formData.medications)}
                   disabled={formData.medications.length < 2 || checkingInteractions}
+                  className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   🔍 Check Interactions
-                </Button>
-                <Button
+                </button>
+                <button
                   type="button"
-                  variant="soft"
-                  size="1"
                   onClick={addMedication}
+                  className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
                 >
                   + Add Medication
-                </Button>
-              </Flex>
-            </Flex>
+                </button>
+              </div>
+            </div>
 
             {formData.medications.length === 0 ? (
-              <Text size="2" color="gray" as="div">No medications added. Click &quot;Add Medication&quot; to add one.</Text>
+              <p className="text-sm text-gray-600">No medications added. Click &quot;Add Medication&quot; to add one.</p>
             ) : (
-              <Flex direction="column" gap="3">
+              <div className="flex flex-col gap-3">
                 {formData.medications.map((medication, index) => (
-                  <Card key={index} variant="surface">
-                    <Box p="3">
-                      <Flex justify="between" align="start" mb="3">
-                        <Heading size="3">Medication {index + 1}</Heading>
-                        <IconButton
+                  <div key={index} className="bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="p-3">
+                      <div className="flex justify-between items-start mb-3">
+                        <h3 className="text-lg font-semibold">Medication {index + 1}</h3>
+                        <button
                           type="button"
-                          variant="ghost"
-                          color="red"
-                          size="1"
                           onClick={() => removeMedication(index)}
+                          className="px-2 py-1 text-xs text-red-700 hover:bg-red-100 rounded transition-colors"
                         >
                           Remove
-                        </IconButton>
-                      </Flex>
+                        </button>
+                      </div>
 
-                {/* Medicine Search */}
-                <Box mb="3">
-                  <Text size="1" weight="medium" mb="1" as="div">Search Medicine</Text>
-                  <Popover.Root open={showMedicineSearch} onOpenChange={setShowMedicineSearch}>
-                    <Popover.Trigger>
-                      <TextField.Root size="2" style={{ width: '100%' }}>
-                        <input
-                          type="text"
-                          value={medicineSearch}
-                          onChange={(e) => {
-                            setMedicineSearch(e.target.value);
-                            setShowMedicineSearch(true);
-                          }}
-                          onFocus={() => setShowMedicineSearch(true)}
-                          placeholder="Type to search medicines..."
-                          style={{ all: 'unset', flex: 1 }}
-                        />
-                      </TextField.Root>
-                    </Popover.Trigger>
-                    <Popover.Content style={{ width: 'var(--radix-popover-trigger-width)', maxHeight: '200px', overflowY: 'auto' }}>
-                      {medicineResults.length > 0 ? (
-                        <Flex direction="column" gap="1">
-                          {medicineResults.map((medicine) => (
-                            <Button
-                              key={medicine._id}
-                              variant="ghost"
-                              onClick={() => {
-                                selectMedicine(medicine, index);
-                                setShowMedicineSearch(false);
-                              }}
-                              style={{ justifyContent: 'flex-start', textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start' }}
-                            >
-                              <Text weight="medium" size="2">{medicine.name}</Text>
-                              {medicine.genericName && (
-                                <Text size="1" color="gray">{medicine.genericName}</Text>
+                      {/* Medicine Search */}
+                      <div className="mb-3">
+                        <label className="block text-xs font-medium mb-1">Search Medicine</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={medicineSearch}
+                            onChange={(e) => {
+                              setMedicineSearch(e.target.value);
+                              setShowMedicineSearch(true);
+                            }}
+                            onFocus={() => setShowMedicineSearch(true)}
+                            placeholder="Type to search medicines..."
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          />
+                          {showMedicineSearch && (
+                            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-[200px] overflow-y-auto">
+                              {medicineResults.length > 0 ? (
+                                <div className="flex flex-col gap-1">
+                                  {medicineResults.map((medicine) => (
+                                    <button
+                                      key={medicine._id}
+                                      type="button"
+                                      onClick={() => {
+                                        selectMedicine(medicine, index);
+                                        setShowMedicineSearch(false);
+                                      }}
+                                      className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded transition-colors flex flex-col items-start"
+                                    >
+                                      <span className="font-medium text-sm">{medicine.name}</span>
+                                      {medicine.genericName && (
+                                        <span className="text-xs text-gray-600">{medicine.genericName}</span>
+                                      )}
+                                      <span className="text-xs text-gray-600">
+                                        {medicine.strength} • {medicine.form} • {medicine.category}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : medicineSearch ? (
+                                <p className="text-sm text-gray-600 p-2">No medicines found</p>
+                              ) : (
+                                <p className="text-sm text-gray-600 p-2">Start typing to search...</p>
                               )}
-                              <Text size="1" color="gray">
-                                {medicine.strength} • {medicine.form} • {medicine.category}
-                              </Text>
-                            </Button>
-                          ))}
-                        </Flex>
-                      ) : medicineSearch ? (
-                        <Text size="2" color="gray">No medicines found</Text>
-                      ) : (
-                        <Text size="2" color="gray">Start typing to search...</Text>
-                      )}
-                    </Popover.Content>
-                  </Popover.Root>
-                </Box>
+                            </div>
+                          )}
+                        </div>
+                      </div>
 
                       {/* Medication Details */}
-                      <Flex direction="column" gap="3">
-                        <Flex gap="3" wrap="wrap">
-                          <Box flexGrow="1" style={{ minWidth: '200px' }}>
-                            <Text size="1" weight="medium" mb="2" as="div">
-                              Name <Text color="red">*</Text>
-                            </Text>
-                            <TextField.Root size="2">
-                              <input
-                                type="text"
-                                required
-                                value={medication.name}
-                                onChange={(e) => updateMedication(index, 'name', e.target.value)}
-                                style={{ all: 'unset', flex: 1 }}
-                              />
-                            </TextField.Root>
-                          </Box>
+                      <div className="flex flex-col gap-3">
+                        <div className="flex gap-3 flex-wrap">
+                          <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-medium mb-2">
+                              Name <span className="text-red-600">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={medication.name}
+                              onChange={(e) => updateMedication(index, 'name', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                            />
+                          </div>
                           {medication.genericName && (
-                            <Box flexGrow="1" style={{ minWidth: '200px' }}>
-                              <Text size="1" weight="medium" mb="2" as="div">Generic Name</Text>
-                              <TextField.Root size="2" disabled>
-                                <input
-                                  type="text"
-                                  value={medication.genericName}
-                                  readOnly
-                                  style={{ all: 'unset', flex: 1 }}
-                                />
-                              </TextField.Root>
-                            </Box>
+                            <div className="flex-1 min-w-[200px]">
+                              <label className="block text-xs font-medium mb-2">Generic Name</label>
+                              <input
+                                type="text"
+                                value={medication.genericName}
+                                readOnly
+                                disabled
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-sm cursor-not-allowed"
+                              />
+                            </div>
                           )}
-                          <Box flexGrow="1" style={{ minWidth: '200px' }}>
-                            <Text size="1" weight="medium" mb="2" as="div">Form</Text>
-                            <TextField.Root size="2">
-                              <input
-                                type="text"
-                                value={medication.form || ''}
-                                onChange={(e) => updateMedication(index, 'form', e.target.value)}
-                                placeholder="tablet, capsule, etc."
-                                style={{ all: 'unset', flex: 1 }}
-                              />
-                            </TextField.Root>
-                          </Box>
-                          <Box flexGrow="1" style={{ minWidth: '200px' }}>
-                            <Text size="1" weight="medium" mb="2" as="div">Strength</Text>
-                            <TextField.Root size="2">
-                              <input
-                                type="text"
-                                value={medication.strength || ''}
-                                onChange={(e) => updateMedication(index, 'strength', e.target.value)}
-                                placeholder="500 mg"
-                                style={{ all: 'unset', flex: 1 }}
-                              />
-                            </TextField.Root>
-                          </Box>
-                          <Box flexGrow="1" style={{ minWidth: '200px' }}>
-                            <Text size="1" weight="medium" mb="2" as="div">
-                              Dose <Text color="red">*</Text>
-                            </Text>
-                            <Flex gap="2">
-                              <Box flexGrow="1">
-                                <TextField.Root size="2">
+                          <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-medium mb-2">Form</label>
+                            <input
+                              type="text"
+                              value={medication.form || ''}
+                              onChange={(e) => updateMedication(index, 'form', e.target.value)}
+                              placeholder="tablet, capsule, etc."
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-medium mb-2">Strength</label>
+                            <input
+                              type="text"
+                              value={medication.strength || ''}
+                              onChange={(e) => updateMedication(index, 'strength', e.target.value)}
+                              placeholder="500 mg"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-medium mb-2">
+                              Dose <span className="text-red-600">*</span>
+                            </label>
+                            <div className="flex gap-2">
+                              <div className="flex-1">
                                 <input
                                   type="text"
                                   required
                                   value={medication.dose || ''}
                                   onChange={(e) => updateMedication(index, 'dose', e.target.value)}
                                   placeholder="500 mg"
-                                  style={{ all: 'unset', flex: 1 }}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                                 />
-                              </TextField.Root>
-                              </Box>
+                              </div>
                               {medication.medicineId && selectedPatient && (
-                                <Tooltip content="Recalculate dosage based on patient info">
-                                  <Button
-                                    type="button"
-                                    onClick={() => calculateDosageForMedication(index)}
-                                    variant="soft"
-                                    color="blue"
-                                    size="2"
-                                  >
-                                    ↻
-                                  </Button>
-                                </Tooltip>
+                                <button
+                                  type="button"
+                                  onClick={() => calculateDosageForMedication(index)}
+                                  title="Recalculate dosage based on patient info"
+                                  className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
+                                >
+                                  ↻
+                                </button>
                               )}
-                            </Flex>
-                          </Box>
-                          <Box flexGrow="1" style={{ minWidth: '200px' }}>
-                            <Text size="1" weight="medium" mb="2" as="div">
-                              Frequency <Text color="red">*</Text>
-                            </Text>
-                            <TextField.Root size="2">
-                              <input
-                                type="text"
-                                required
-                                value={medication.frequency || ''}
-                                onChange={(e) => updateMedication(index, 'frequency', e.target.value)}
-                                placeholder="BID, TID, QID, etc."
-                                style={{ all: 'unset', flex: 1 }}
-                              />
-                            </TextField.Root>
-                          </Box>
-                          <Box flexGrow="1" style={{ minWidth: '200px' }}>
-                            <Text size="1" weight="medium" mb="2" as="div">Duration (days)</Text>
-                            <TextField.Root size="2" type="number">
-                              <input
-                                type="number"
-                                min="1"
-                                value={medication.durationDays || 7}
-                                onChange={(e) => updateMedication(index, 'durationDays', parseInt(e.target.value) || 7)}
-                                style={{ all: 'unset', flex: 1 }}
-                              />
-                            </TextField.Root>
-                          </Box>
-                          <Box flexGrow="1" style={{ minWidth: '200px' }}>
-                            <Text size="1" weight="medium" mb="2" as="div">Quantity</Text>
-                            <TextField.Root size="2" type="number">
-                              <input
-                                type="number"
-                                min="1"
-                                value={medication.quantity || 0}
-                                onChange={(e) => updateMedication(index, 'quantity', parseInt(e.target.value) || 0)}
-                                style={{ all: 'unset', flex: 1 }}
-                              />
-                            </TextField.Root>
-                          </Box>
-                        </Flex>
-                        <Box>
-                          <Text size="1" weight="medium" mb="2" as="div">Instructions</Text>
-                          <TextArea
-                            size="2"
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-medium mb-2">
+                              Frequency <span className="text-red-600">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={medication.frequency || ''}
+                              onChange={(e) => updateMedication(index, 'frequency', e.target.value)}
+                              placeholder="BID, TID, QID, etc."
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-medium mb-2">Duration (days)</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={medication.durationDays || 7}
+                              onChange={(e) => updateMedication(index, 'durationDays', parseInt(e.target.value) || 7)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-medium mb-2">Quantity</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={medication.quantity || 0}
+                              onChange={(e) => updateMedication(index, 'quantity', parseInt(e.target.value) || 0)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium mb-2">Instructions</label>
+                          <textarea
                             value={medication.instructions || ''}
                             onChange={(e) => updateMedication(index, 'instructions', e.target.value)}
                             rows={2}
                             placeholder="Take with food, etc."
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-y"
                           />
-                        </Box>
-                      </Flex>
-                    </Box>
-                  </Card>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 ))}
-              </Flex>
+              </div>
             )}
-          </Box>
+          </div>
 
           {/* Additional Notes */}
-          <Box>
-            <Text size="2" weight="medium" mb="2" as="div">Additional Notes</Text>
-            <TextArea
-              size="2"
+          <div>
+            <label className="block text-sm font-medium mb-2">Additional Notes</label>
+            <textarea
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-y"
             />
-          </Box>
+          </div>
 
           {/* Digital Signature */}
-          <Box>
+          <div>
             {digitalSignature ? (
-              <Card variant="surface" style={{ backgroundColor: 'var(--green-2)', borderColor: 'var(--green-6)' }}>
-                <Flex justify="between" align="center" p="3">
-                  <Box>
-                    <Text size="2" weight="medium" color="green" as="div">Digital Signature Added</Text>
-                    <Text size="1" color="green" as="div">Signed by: {providerName}</Text>
-                  </Box>
-                  <Button
+              <div className="bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex justify-between items-center p-3">
+                  <div>
+                    <p className="text-sm font-medium text-green-800">Digital Signature Added</p>
+                    <p className="text-xs text-green-700">Signed by: {providerName}</p>
+                  </div>
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="1"
-                    color="green"
                     onClick={() => {
                       setDigitalSignature(null);
                       setShowSignaturePad(true);
                     }}
+                    className="px-2 py-1 text-xs text-green-700 hover:bg-green-100 rounded transition-colors"
                   >
                     Change
-                  </Button>
-                </Flex>
-              </Card>
+                  </button>
+                </div>
+              </div>
             ) : (
-              <Button
+              <button
                 type="button"
-                variant="soft"
-                size="2"
                 onClick={() => setShowSignaturePad(true)}
-                style={{ width: '100%' }}
+                className="w-full px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
               >
                 + Add Digital Signature
-              </Button>
+              </button>
             )}
-          </Box>
+          </div>
 
       {/* Signature Pad Modal */}
       {showSignaturePad && (
@@ -772,55 +740,65 @@ export default function PrescriptionForm({
       )}
 
           {/* Form Actions */}
-          <Separator />
-          <Flex justify="end" gap="2">
+          <hr className="border-gray-200" />
+          <div className="flex justify-end gap-2">
             {onCancel && (
-              <Button type="button" variant="soft" onClick={onCancel} size="2">
+              <button 
+                type="button" 
+                onClick={onCancel}
+                className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+              >
                 Cancel
-              </Button>
+              </button>
             )}
-            <Button type="submit" size="2">
+            <button 
+              type="submit"
+              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
               Create Prescription
-            </Button>
-          </Flex>
-        </Flex>
-      </Box>
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Drug Interaction Alert Dialog */}
-      <AlertDialog.Root open={showInteractionAlert} onOpenChange={setShowInteractionAlert}>
-        <AlertDialog.Content>
-          <AlertDialog.Title>Drug Interaction Warning</AlertDialog.Title>
-          <AlertDialog.Description>
-            <Text mb="3" as="div">
+      <AlertDialog 
+        open={showInteractionAlert} 
+        onOpenChange={setShowInteractionAlert}
+        title="Drug Interaction Warning"
+        description={
+          <div>
+            <p className="mb-3">
               {drugInteractions.filter(i => i.severity === 'contraindicated' || i.severity === 'severe').length} severe or contraindicated drug interaction(s) detected.
-            </Text>
-            <Callout.Root color="red" size="2">
-              <Callout.Text>
+            </p>
+            <div className="bg-red-50 border border-red-200 rounded-md p-3">
+              <p className="text-sm">
                 Are you sure you want to proceed with this prescription?
-              </Callout.Text>
-            </Callout.Root>
-          </AlertDialog.Description>
-          <Flex gap="3" mt="4" justify="end">
-            <AlertDialog.Cancel>
-              <Button variant="soft" color="gray" onClick={() => {
-                setShowInteractionAlert(false);
-                setPendingSubmit(false);
-              }}>
-                Cancel
-              </Button>
-            </AlertDialog.Cancel>
-            <AlertDialog.Action>
-              <Button variant="solid" color="red" onClick={() => {
-                setShowInteractionAlert(false);
-                handleSubmitConfirm();
-                setPendingSubmit(false);
-              }}>
-                Proceed Anyway
-              </Button>
-            </AlertDialog.Action>
-          </Flex>
-        </AlertDialog.Content>
-      </AlertDialog.Root>
+              </p>
+            </div>
+          </div>
+        }
+      >
+        <button
+          onClick={() => {
+            setShowInteractionAlert(false);
+            setPendingSubmit(false);
+          }}
+          className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => {
+            setShowInteractionAlert(false);
+            handleSubmitConfirm();
+            setPendingSubmit(false);
+          }}
+          className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+        >
+          Proceed Anyway
+        </button>
+      </AlertDialog>
     </form>
   );
 }

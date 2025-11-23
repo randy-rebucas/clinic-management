@@ -1,7 +1,11 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
 import { isSetupComplete } from '@/lib/setup';
-import DashboardClient from '@/components/DashboardClient';
+import AdminDashboard from '@/components/dashboards/AdminDashboard';
+import DoctorDashboard from '@/components/dashboards/DoctorDashboard';
+import NurseDashboard from '@/components/dashboards/NurseDashboard';
+import ReceptionistDashboard from '@/components/dashboards/ReceptionistDashboard';
+import AccountantDashboard from '@/components/dashboards/AccountantDashboard';
 
 export default async function Dashboard() {
   // Check if setup is complete first
@@ -16,5 +20,20 @@ export default async function Dashboard() {
     redirect('/login');
   }
 
-  return <DashboardClient />;
+  // Route to role-specific dashboard
+  switch (session.role) {
+    case 'admin':
+      return <AdminDashboard />;
+    case 'doctor':
+      return <DoctorDashboard />;
+    case 'nurse':
+      return <NurseDashboard />;
+    case 'receptionist':
+      return <ReceptionistDashboard />;
+    case 'accountant':
+      return <AccountantDashboard />;
+    default:
+      // Fallback to admin dashboard if role is unknown
+      return <AdminDashboard />;
+  }
 }

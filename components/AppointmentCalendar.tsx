@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Flex, Box, Text, Card, Badge, Heading } from '@radix-ui/themes';
 
 interface Appointment {
   _id: string;
@@ -120,50 +119,51 @@ export default function AppointmentCalendar({
   const days = getDaysInMonth(currentMonth);
 
   return (
-    <Card>
-      <Flex direction="column" gap="4" p="4">
-        <Flex align="center" justify="between">
-          <Heading size="4">
+    <div className="bg-white border border-gray-200 rounded-lg">
+      <div className="flex flex-col gap-4 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">
             {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-          </Heading>
-          <Flex align="center" gap="2">
-            <Button
-              variant="ghost"
-              size="1"
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
               onClick={() => navigateMonth('prev')}
               aria-label="Previous month"
+              className="p-1.5 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900 transition-colors"
             >
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-            </Button>
-            <Button variant="soft" color="blue" size="1" onClick={goToToday}>
+            </button>
+            <button
+              onClick={goToToday}
+              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md text-xs font-medium transition-colors"
+            >
               Today
-            </Button>
-            <Button
-              variant="ghost"
-              size="1"
+            </button>
+            <button
               onClick={() => navigateMonth('next')}
               aria-label="Next month"
+              className="p-1.5 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900 transition-colors"
             >
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
-            </Button>
-          </Flex>
-        </Flex>
+            </button>
+          </div>
+        </div>
 
-        <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '8px' }}>
+        <div className="grid grid-cols-7 gap-1 mb-2">
           {dayNames.map((day) => (
-            <Box key={day} style={{ textAlign: 'center' }} py="2">
-              <Text size="1" weight="medium" color="gray">
+            <div key={day} className="text-center py-2">
+              <span className="text-xs font-medium text-gray-500">
                 {day}
-              </Text>
-            </Box>
+              </span>
+            </div>
           ))}
-        </Box>
+        </div>
 
-        <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+        <div className="grid grid-cols-7 gap-1">
           {days.map((date, index) => {
             const dayAppointments = getAppointmentsForDate(date);
             const appointmentCount = dayAppointments.length;
@@ -171,50 +171,43 @@ export default function AppointmentCalendar({
             const isPastDate = date && date < new Date(new Date().setHours(0, 0, 0, 0));
 
             return (
-              <Button
+              <button
                 key={index}
-                variant={isSelected(date) ? 'solid' : 'ghost'}
-                color={isSelected(date) ? 'blue' : 'gray'}
-                size="1"
                 onClick={() => date && onDateSelect(date)}
                 disabled={!date}
-                style={{
-                  aspectRatio: '1',
-                  padding: '4px',
-                  position: 'relative',
-                  opacity: isPastDate ? 0.5 : 1,
-                  ...(isToday(date) && !isSelected(date)
-                    ? {
-                        border: '2px solid var(--blue-9)',
-                      }
-                    : {}),
-                }}
+                className={`aspect-square p-1 relative transition-colors ${
+                  isSelected(date)
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-transparent hover:bg-gray-100 text-gray-700'
+                } ${isPastDate ? 'opacity-50' : ''} ${
+                  isToday(date) && !isSelected(date) ? 'border-2 border-blue-600' : ''
+                } rounded disabled:opacity-0 disabled:cursor-default`}
               >
-                <Flex direction="column" align="center" justify="center" gap="1" style={{ height: '100%' }}>
-                  <Text
-                    size="2"
-                    weight={isSelected(date) ? 'bold' : 'regular'}
-                    color={isSelected(date) ? 'blue' : 'gray'}
+                <div className="flex flex-col items-center justify-center gap-1 h-full">
+                  <span
+                    className={`text-sm ${
+                      isSelected(date) ? 'font-bold text-white' : 'font-normal text-gray-700'
+                    }`}
                   >
                     {date?.getDate()}
-                  </Text>
+                  </span>
                   {appointmentCount > 0 && (
-                    <Badge
-                      size="1"
-                      color={hasWalkIn ? 'orange' : 'blue'}
-                      variant="soft"
-                      style={{ marginTop: '2px' }}
+                    <span
+                      className={`text-xs px-1.5 py-0.5 rounded mt-0.5 ${
+                        hasWalkIn
+                          ? 'bg-orange-100 text-orange-700'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}
                     >
                       {appointmentCount}
-                    </Badge>
+                    </span>
                   )}
-                </Flex>
-              </Button>
+                </div>
+              </button>
             );
           })}
-        </Box>
-      </Flex>
-    </Card>
+        </div>
+      </div>
+    </div>
   );
 }
-

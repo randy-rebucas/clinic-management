@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VisitForm from './VisitForm';
-import { Button, Tooltip, Container, Section, Flex, Box, Text, Heading, Card, Spinner, Badge, Select, IconButton, Separator, TextField } from '@radix-ui/themes';
 
 interface Visit {
   _id: string;
@@ -225,109 +224,107 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
 
   if (loading) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
-            <Spinner size="3" />
-            <Text>Loading visit...</Text>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p>Loading visit...</p>
+          </div>
+        </div>
+      </section>
     );
   }
 
   if (!visit) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
-            <Heading size="5">Visit not found</Heading>
-            <Button asChild variant="soft">
-              <Link href="/visits">Back to Visits</Link>
-            </Button>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+            <h2 className="text-xl font-semibold">Visit not found</h2>
+            <Link 
+              href="/visits"
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              Back to Visits
+            </Link>
+          </div>
+        </div>
+      </section>
     );
   }
 
   return (
-    <Section size="3">
-      <Container size="4">
-        <Flex direction="column" gap="4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3">
-            <Box>
-              <Flex align="center" gap="3" mb="2">
-                <IconButton variant="ghost" size="2" asChild>
-                  <Link href="/visits">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </Link>
-                </IconButton>
-                <Heading size="8">Visit {visit.visitCode}</Heading>
-              </Flex>
-              <Text size="2" color="gray" ml="8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <Link 
+                  href="/visits"
+                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </Link>
+                <h1 className="text-3xl font-bold">Visit {visit.visitCode}</h1>
+              </div>
+              <p className="text-sm text-gray-600 ml-11">
                 {visit.patient.firstName} {visit.patient.lastName} • {new Date(visit.date).toLocaleDateString()}
-              </Text>
-            </Box>
-            <Flex gap="2" wrap="wrap">
-              <Select.Root
+              </p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <select
                 value={visit.status}
-                onValueChange={(value) => handleStatusChange(value)}
+                onChange={(e) => handleStatusChange(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
               >
-                <Select.Trigger />
-                <Select.Content>
-                  <Select.Item value="open">Open</Select.Item>
-                  <Select.Item value="closed">Closed</Select.Item>
-                  <Select.Item value="cancelled">Cancelled</Select.Item>
-                </Select.Content>
-              </Select.Root>
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
               {!editing && (
                 <>
-                  <Tooltip content="Print Medical Certificate">
-                    <Button
-                      onClick={() => handlePrint('medical-certificate')}
-                      color="green"
-                      size="2"
-                    >
-                      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '6px' }}>
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      Medical Certificate
-                    </Button>
-                  </Tooltip>
-                  <Tooltip content="Print Lab Request">
-                    <Button
-                      onClick={() => handlePrint('lab-request')}
-                      color="purple"
-                      size="2"
-                    >
-                      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '6px' }}>
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      Lab Request
-                    </Button>
-                  </Tooltip>
-                  <Button
-                    onClick={() => setEditing(true)}
-                    size="2"
+                  <button
+                    onClick={() => handlePrint('medical-certificate')}
+                    className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium flex items-center gap-1.5"
+                    title="Print Medical Certificate"
                   >
-                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '6px' }}>
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Medical Certificate
+                  </button>
+                  <button
+                    onClick={() => handlePrint('lab-request')}
+                    className="px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium flex items-center gap-1.5"
+                    title="Print Lab Request"
+                  >
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Lab Request
+                  </button>
+                  <button
+                    onClick={() => setEditing(true)}
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-1.5"
+                  >
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                     Edit
-                  </Button>
+                  </button>
                 </>
               )}
-            </Flex>
-          </Flex>
+            </div>
+          </div>
 
           {/* Edit Mode */}
           {editing ? (
-            <Card>
-              <Box p="3">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="p-3">
                 <VisitForm
               initialData={{
                 patient: visit.patient._id,
@@ -351,265 +348,259 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
               onCancel={() => setEditing(false)}
               providerName={providerName}
             />
-              </Box>
-            </Card>
+              </div>
+            </div>
           ) : (
             /* View Mode */
-            <Flex direction="column" gap="3">
+            <div className="flex flex-col gap-3">
               {/* Patient Info */}
-              <Card>
-                <Box p="3">
-                  <Heading size="4" mb="3">Patient Information</Heading>
-                  <Flex direction={{ initial: 'column', md: 'row' }} gap="4" wrap="wrap">
-                    <Box>
-                      <Text size="1" color="gray" mb="1" as="div">Name</Text>
-                      <Text size="2">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3">
+                  <h3 className="text-lg font-semibold mb-3">Patient Information</h3>
+                  <div className="flex flex-col md:flex-row gap-4 flex-wrap">
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Name</p>
+                      <p className="text-sm">
                         {visit.patient.firstName} {visit.patient.lastName}
-                      </Text>
-                    </Box>
+                      </p>
+                    </div>
                     {visit.patient.patientCode && (
-                      <Box>
-                        <Text size="1" color="gray" mb="1" as="div">Patient ID</Text>
-                        <Text size="2">{visit.patient.patientCode}</Text>
-                      </Box>
+                      <div>
+                        <p className="text-xs text-gray-600 mb-1">Patient ID</p>
+                        <p className="text-sm">{visit.patient.patientCode}</p>
+                      </div>
                     )}
-                    <Box>
-                      <Text size="1" color="gray" mb="1" as="div">Email</Text>
-                      <Text size="2">{visit.patient.email}</Text>
-                    </Box>
-                    <Box>
-                      <Text size="1" color="gray" mb="1" as="div">Phone</Text>
-                      <Text size="2">{visit.patient.phone}</Text>
-                    </Box>
-                  </Flex>
-                </Box>
-              </Card>
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Email</p>
+                      <p className="text-sm">{visit.patient.email}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Phone</p>
+                      <p className="text-sm">{visit.patient.phone}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               {/* SOAP Notes */}
               {visit.soapNotes && (
-                <Card>
-                  <Box p="3">
-                    <Heading size="4" mb="3">SOAP Notes</Heading>
-                    <Flex direction="column" gap="3">
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3">
+                    <h3 className="text-lg font-semibold mb-3">SOAP Notes</h3>
+                    <div className="flex flex-col gap-3">
                       {visit.soapNotes.subjective && (
-                        <Box>
-                          <Text size="2" weight="bold" mb="2" as="div">S - Subjective</Text>
-                          <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{visit.soapNotes.subjective}</Text>
-                        </Box>
+                        <div>
+                          <p className="text-sm font-bold mb-2">S - Subjective</p>
+                          <p className="text-sm whitespace-pre-wrap">{visit.soapNotes.subjective}</p>
+                        </div>
                       )}
                       {visit.soapNotes.objective && (
-                        <Box>
-                          <Text size="2" weight="bold" mb="2" as="div">O - Objective</Text>
-                          <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{visit.soapNotes.objective}</Text>
-                        </Box>
+                        <div>
+                          <p className="text-sm font-bold mb-2">O - Objective</p>
+                          <p className="text-sm whitespace-pre-wrap">{visit.soapNotes.objective}</p>
+                        </div>
                       )}
                       {visit.soapNotes.assessment && (
-                        <Box>
-                          <Text size="2" weight="bold" mb="2" as="div">A - Assessment</Text>
-                          <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{visit.soapNotes.assessment}</Text>
-                        </Box>
+                        <div>
+                          <p className="text-sm font-bold mb-2">A - Assessment</p>
+                          <p className="text-sm whitespace-pre-wrap">{visit.soapNotes.assessment}</p>
+                        </div>
                       )}
                       {visit.soapNotes.plan && (
-                        <Box>
-                          <Text size="2" weight="bold" mb="2" as="div">P - Plan</Text>
-                          <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{visit.soapNotes.plan}</Text>
-                        </Box>
+                        <div>
+                          <p className="text-sm font-bold mb-2">P - Plan</p>
+                          <p className="text-sm whitespace-pre-wrap">{visit.soapNotes.plan}</p>
+                        </div>
                       )}
-                    </Flex>
-                  </Box>
-                </Card>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {/* Diagnoses */}
               {visit.diagnoses && visit.diagnoses.length > 0 && (
-                <Card>
-                  <Box p="3">
-                    <Heading size="4" mb="3">Diagnoses</Heading>
-                    <Flex direction="column" gap="2">
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3">
+                    <h3 className="text-lg font-semibold mb-3">Diagnoses</h3>
+                    <div className="flex flex-col gap-2">
                       {visit.diagnoses.map((diag, idx) => (
-                        <Card key={idx} variant="surface">
-                          <Flex justify="between" align="start" gap="3" p="2">
-                            <Box flexGrow="1">
+                        <div key={idx} className="bg-gray-50 rounded-lg border border-gray-200">
+                          <div className="flex justify-between items-start gap-3 p-2">
+                            <div className="flex-1">
                               {diag.code && (
-                                <Text size="2" weight="medium" style={{ fontFamily: 'monospace', color: 'var(--blue-9)' }} as="div">
+                                <p className="text-sm font-medium font-mono text-blue-600">
                                   {diag.code}
-                                </Text>
+                                </p>
                               )}
                               {diag.description && (
-                                <Text size="2" mt="1" as="div">{diag.description}</Text>
+                                <p className="text-sm mt-1">{diag.description}</p>
                               )}
-                            </Box>
+                            </div>
                             {diag.primary && (
-                              <Badge color="blue" size="1">Primary</Badge>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border bg-blue-100 text-blue-800 border-blue-200">
+                                Primary
+                              </span>
                             )}
-                          </Flex>
-                        </Card>
+                          </div>
+                        </div>
                       ))}
-                    </Flex>
-                  </Box>
-                </Card>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {/* Treatment Plan */}
               {visit.treatmentPlan && (
-                <Card>
-                  <Box p="3">
-                    <Heading size="4" mb="3">Treatment Plan</Heading>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3">
+                    <h3 className="text-lg font-semibold mb-3">Treatment Plan</h3>
                     {visit.treatmentPlan.medications && visit.treatmentPlan.medications.length > 0 && (
-                      <Box mb="3">
-                        <Text size="2" weight="bold" mb="2" as="div">Medications</Text>
-                        <Flex direction="column" gap="2">
+                      <div className="mb-3">
+                        <p className="text-sm font-bold mb-2">Medications</p>
+                        <div className="flex flex-col gap-2">
                           {visit.treatmentPlan.medications.map((med, idx) => (
-                            <Card key={idx} variant="surface">
-                              <Box p="2">
-                                <Text size="2" weight="medium" as="div">{med.name}</Text>
-                                <Text size="1" color="gray" as="div">
+                            <div key={idx} className="bg-gray-50 rounded-lg border border-gray-200">
+                              <div className="p-2">
+                                <p className="text-sm font-medium">{med.name}</p>
+                                <p className="text-xs text-gray-600">
                                   {med.dosage} • {med.frequency} • {med.duration}
-                                </Text>
+                                </p>
                                 {med.instructions && (
-                                  <Text size="1" color="gray" mt="1" as="div">{med.instructions}</Text>
+                                  <p className="text-xs text-gray-600 mt-1">{med.instructions}</p>
                                 )}
-                              </Box>
-                            </Card>
+                              </div>
+                            </div>
                           ))}
-                        </Flex>
-                      </Box>
+                        </div>
+                      </div>
                     )}
                     {visit.treatmentPlan.followUp && (
-                      <Box>
-                        <Text size="2" weight="bold" mb="2" as="div">Follow-up</Text>
+                      <div>
+                        <p className="text-sm font-bold mb-2">Follow-up</p>
                         {visit.treatmentPlan.followUp.date && (
-                          <Text size="2" as="div">
+                          <p className="text-sm">
                             Date: {new Date(visit.treatmentPlan.followUp.date).toLocaleDateString()}
-                          </Text>
+                          </p>
                         )}
                         {visit.treatmentPlan.followUp.instructions && (
-                          <Text size="2" mt="1" style={{ whiteSpace: 'pre-wrap' }} as="div">
+                          <p className="text-sm mt-1 whitespace-pre-wrap">
                             {visit.treatmentPlan.followUp.instructions}
-                          </Text>
+                          </p>
                         )}
                         {visit.followUpReminderSent && (
-                          <Text size="1" color="green" mt="2" as="div">✓ Reminder sent</Text>
+                          <p className="text-xs text-green-600 mt-2">✓ Reminder sent</p>
                         )}
-                      </Box>
+                      </div>
                     )}
-                  </Box>
-                </Card>
+                  </div>
+                </div>
               )}
 
               {/* Digital Signature */}
               {visit.digitalSignature && (
-                <Card>
-                  <Box p="3">
-                    <Heading size="4" mb="3">Digital Signature</Heading>
-                    <Flex align="center" gap="3">
-                      <Box
-                        style={{
-                          border: '2px solid var(--gray-6)',
-                          borderRadius: 'var(--radius-2)',
-                          padding: '6px',
-                          background: 'white',
-                        }}
-                      >
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3">
+                    <h3 className="text-lg font-semibold mb-3">Digital Signature</h3>
+                    <div className="flex items-center gap-3">
+                      <div className="border-2 border-gray-300 rounded-lg p-1.5 bg-white">
                         <img
                           src={visit.digitalSignature.signatureData}
                           alt="Signature"
-                          style={{ height: '80px', display: 'block' }}
+                          className="h-20 block"
                         />
-                      </Box>
-                      <Box>
-                        <Text size="2" weight="medium" as="div">
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">
                           Signed by: {visit.digitalSignature.providerName}
-                        </Text>
-                        <Text size="1" color="gray" as="div">
+                        </p>
+                        <p className="text-xs text-gray-600">
                           {new Date(visit.digitalSignature.signedAt).toLocaleString()}
-                        </Text>
-                      </Box>
-                    </Flex>
-                  </Box>
-                </Card>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {/* Additional Notes */}
               {visit.notes && (
-                <Card>
-                  <Box p="3">
-                    <Heading size="4" mb="3">Additional Notes</Heading>
-                    <Text size="2" style={{ whiteSpace: 'pre-wrap' }}>{visit.notes}</Text>
-                  </Box>
-                </Card>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3">
+                    <h3 className="text-lg font-semibold mb-3">Additional Notes</h3>
+                    <p className="text-sm whitespace-pre-wrap">{visit.notes}</p>
+                  </div>
+                </div>
               )}
 
               {/* Clinical Images/Attachments */}
-              <Card>
-                <Box p="3">
-                  <Flex justify="between" align="center" mb="3">
-                    <Heading size="4">Clinical Images & Attachments</Heading>
-                  </Flex>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-lg font-semibold">Clinical Images & Attachments</h3>
+                  </div>
                   
                   {/* File Upload Section */}
                   <FileUploadSection onUpload={handleFileUpload} />
 
                   {/* Display Attachments */}
                   {visit.attachments && visit.attachments.length > 0 && (
-                    <Box mt="4">
-                      <Text size="2" weight="bold" mb="3" as="div">Uploaded Files</Text>
-                      <Flex gap="3" wrap="wrap">
+                    <div className="mt-4">
+                      <p className="text-sm font-bold mb-3">Uploaded Files</p>
+                      <div className="flex gap-3 flex-wrap">
                         {visit.attachments.map((attachment, idx) => (
-                          <Card key={attachment._id || idx} variant="surface" style={{ minWidth: '200px', flex: '1 1 200px' }}>
-                            <Box p="3">
+                          <div key={attachment._id || idx} className="bg-gray-50 rounded-lg border border-gray-200 min-w-[200px] flex-1" style={{ flex: '1 1 200px' }}>
+                            <div className="p-3">
                               {attachment.url && attachment.contentType?.startsWith('image/') ? (
-                                <Box mb="2">
+                                <div className="mb-2">
                                   <img
                                     src={attachment.url}
                                     alt={attachment.filename}
-                                    style={{ width: '100%', height: '128px', objectFit: 'cover', borderRadius: '6px', cursor: 'pointer' }}
+                                    className="w-full h-32 object-cover rounded-lg cursor-pointer"
                                     onClick={() => window.open(attachment.url, '_blank')}
                                   />
-                                </Box>
+                                </div>
                               ) : (
-                                <Flex align="center" justify="center" mb="2" style={{ height: '128px', background: 'var(--gray-2)', borderRadius: '6px' }}>
-                                  <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--gray-9)' }}>
+                                <div className="flex items-center justify-center mb-2 h-32 bg-gray-100 rounded-lg">
+                                  <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24" className="text-gray-600">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                   </svg>
-                                </Flex>
+                                </div>
                               )}
-                              <Box>
-                                <Text size="2" weight="medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={attachment.filename} as="div">
+                              <div>
+                                <p className="text-sm font-medium truncate" title={attachment.filename}>
                                   {attachment.filename}
-                                </Text>
+                                </p>
                                 {attachment.notes && (
-                                  <Text size="1" color="gray" mt="1" as="div">{attachment.notes}</Text>
+                                  <p className="text-xs text-gray-600 mt-1">{attachment.notes}</p>
                                 )}
-                                <Text size="1" color="gray" mt="1" as="div">
+                                <p className="text-xs text-gray-600 mt-1">
                                   {new Date(attachment.uploadDate).toLocaleDateString()}
                                   {attachment.size && ` • ${(attachment.size / 1024).toFixed(1)} KB`}
-                                </Text>
+                                </p>
                                 {attachment.url && (
-                                  <Button asChild variant="ghost" size="1" mt="1">
-                                    <a
-                                      href={attachment.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      View/Download
-                                    </a>
-                                  </Button>
+                                  <a
+                                    href={attachment.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-block mt-1 px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-xs font-medium"
+                                  >
+                                    View/Download
+                                  </a>
                                 )}
-                              </Box>
-                            </Box>
-                          </Card>
+                              </div>
+                            </div>
+                          </div>
                         ))}
-                      </Flex>
-                    </Box>
+                      </div>
+                    </div>
                   )}
-                </Box>
-              </Card>
-            </Flex>
+                </div>
+              </div>
+            </div>
           )}
-        </Flex>
-      </Container>
-    </Section>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -617,7 +608,6 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
   const [file, setFile] = useState<File | null>(null);
   const [notes, setNotes] = useState('');
   const [uploading, setUploading] = useState(false);
-  const { TextField, Button } = require('@radix-ui/themes');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -637,50 +627,44 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
   };
 
   return (
-    <Card variant="surface">
-      <Box p="3">
+    <div className="bg-gray-50 rounded-lg border border-gray-200">
+      <div className="p-3">
         <form onSubmit={handleSubmit}>
-          <Flex direction="column" gap="3">
-            <Box>
-              <Text size="2" weight="medium" mb="2" as="div">
+          <div className="flex flex-col gap-3">
+            <div>
+              <p className="text-sm font-medium mb-2">
                 Upload Clinical Image or Document
-              </Text>
+              </p>
               <input
                 id="visit-file-input"
                 type="file"
                 accept="image/*,.pdf,.doc,.docx"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
                 required
-                style={{
-                  width: '100%',
-                  fontSize: 'var(--font-size-2)',
-                }}
+                className="w-full text-sm"
               />
-            </Box>
-            <Box>
-              <Text size="2" weight="medium" mb="2" as="div">Notes (Optional)</Text>
-              <TextField.Root size="2">
-                <input
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="e.g., X-ray image, wound photo, etc."
-                  style={{ all: 'unset', flex: 1 }}
-                />
-              </TextField.Root>
-            </Box>
-            <Button
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-2">Notes (Optional)</p>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g., X-ray image, wound photo, etc."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              />
+            </div>
+            <button
               type="submit"
               disabled={!file || uploading}
-              size="2"
-              style={{ width: '100%' }}
+              className="w-full px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors text-sm font-medium"
             >
               {uploading ? 'Uploading...' : 'Upload File'}
-            </Button>
-          </Flex>
+            </button>
+          </div>
         </form>
-      </Box>
-    </Card>
+      </div>
+    </div>
   );
 }
 

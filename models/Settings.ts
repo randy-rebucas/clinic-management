@@ -182,8 +182,8 @@ const SettingsSchema = new Schema<ISettings>(
   }
 );
 
-// Ensure only one settings document exists
-SettingsSchema.index({ _id: 1 }, { unique: true });
+// Note: MongoDB automatically creates a unique index on _id, so no custom index is needed
+// To ensure only one settings document exists, enforce this at the application level
 
 // Prevent re-compilation during development
 const Settings = mongoose.models.Settings || mongoose.model<ISettings>('Settings', SettingsSchema);

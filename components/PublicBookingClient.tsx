@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-import { Button, TextField, Select, Card, Flex, Box, Text, Spinner, Callout, TextArea, Heading, Separator } from '@radix-ui/themes';
 
 interface Doctor {
   _id: string;
@@ -147,119 +146,129 @@ export default function PublicBookingClient() {
 
   if (loading) {
     return (
-      <Box className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white">
-        <Flex direction="column" align="center" gap="4">
-          <Spinner size="3" />
-          <Text size="3" color="gray">Loading...</Text>
-        </Flex>
-      </Box>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white">
+        <div className="flex flex-col items-center gap-4">
+          <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <p className="text-base text-gray-600">Loading...</p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Box className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50">
-      <Box className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <Card size="3">
-          <Flex direction="column" gap="4" mb="4">
-            <Box style={{ textAlign: 'center' }}>
-              <Heading size="7" mb="2">Book an Appointment</Heading>
-              <Text size="2" color="gray">Fill out the form below to request an appointment</Text>
-            </Box>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-6">
+          <div className="flex flex-col gap-4 mb-4">
+            <div className="text-center">
+              <h1 className="text-3xl font-bold mb-2">Book an Appointment</h1>
+              <p className="text-sm text-gray-600">Fill out the form below to request an appointment</p>
+            </div>
 
             {success && (
-              <Callout.Root color="green" size="2">
-                <Callout.Text>
-                  Appointment request submitted successfully! You will receive a confirmation shortly.
-                </Callout.Text>
-              </Callout.Root>
+              <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-700">
+                Appointment request submitted successfully! You will receive a confirmation shortly.
+              </div>
             )}
 
             {error && (
-              <Callout.Root color="red" size="2">
-                <Callout.Text>{error}</Callout.Text>
-              </Callout.Root>
+              <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                {error}
+              </div>
             )}
-          </Flex>
+          </div>
 
           <form onSubmit={handleSubmit}>
-            <Flex direction="column" gap="6">
+            <div className="flex flex-col gap-6">
               {/* Patient Information */}
-              <Box pb="6" style={{ borderBottom: '1px solid var(--gray-6)' }}>
-                <Heading size="5" mb="4">Patient Information</Heading>
-                <Flex direction="column" gap="4" className="md:flex-row md:flex-wrap">
-                  <Box className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
-                    <Text size="2" weight="medium" mb="2" as="div">First Name <Text color="red">*</Text></Text>
-                    <TextField.Root
-                      size="2"
+              <div className="pb-6 border-b border-gray-300">
+                <h2 className="text-xl font-semibold mb-4">Patient Information</h2>
+                <div className="flex flex-col gap-4 md:flex-row md:flex-wrap">
+                  <div className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
+                    <label className="block text-xs font-medium mb-2">
+                      First Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
                       required
                       value={formData.patientFirstName}
                       onChange={(e) => setFormData({ ...formData, patientFirstName: e.target.value })}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
-                  </Box>
-                  <Box className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
-                    <Text size="2" weight="medium" mb="2" as="div">Last Name <Text color="red">*</Text></Text>
-                    <TextField.Root
-                      size="2"
+                  </div>
+                  <div className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
+                    <label className="block text-xs font-medium mb-2">
+                      Last Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
                       required
                       value={formData.patientLastName}
                       onChange={(e) => setFormData({ ...formData, patientLastName: e.target.value })}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
-                  </Box>
-                  <Box className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
-                    <Text size="2" weight="medium" mb="2" as="div">Email <Text color="red">*</Text></Text>
-                    <TextField.Root
+                  </div>
+                  <div className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
+                    <label className="block text-xs font-medium mb-2">
+                      Email <span className="text-red-500">*</span>
+                    </label>
+                    <input
                       type="email"
-                      size="2"
                       required
                       value={formData.patientEmail}
                       onChange={(e) => setFormData({ ...formData, patientEmail: e.target.value })}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
-                  </Box>
-                  <Box className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
-                    <Text size="2" weight="medium" mb="2" as="div">Phone <Text color="red">*</Text></Text>
-                    <TextField.Root
+                  </div>
+                  <div className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
+                    <label className="block text-xs font-medium mb-2">
+                      Phone <span className="text-red-500">*</span>
+                    </label>
+                    <input
                       type="tel"
-                      size="2"
                       required
                       value={formData.patientPhone}
                       onChange={(e) => setFormData({ ...formData, patientPhone: e.target.value })}
                       placeholder="+1234567890"
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
-                  </Box>
-                </Flex>
-              </Box>
+                  </div>
+                </div>
+              </div>
 
               {/* Appointment Details */}
-              <Box pb="6" style={{ borderBottom: '1px solid var(--gray-6)' }}>
-                <Heading size="5" mb="4">Appointment Details</Heading>
-                <Flex direction="column" gap="4">
-                  <Box>
-                    <Text size="2" weight="medium" mb="2" as="div">Doctor <Text color="red">*</Text></Text>
-                    <Select.Root
+              <div className="pb-6 border-b border-gray-300">
+                <h2 className="text-xl font-semibold mb-4">Appointment Details</h2>
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <label className="block text-xs font-medium mb-2">
+                      Doctor <span className="text-red-500">*</span>
+                    </label>
+                    <select
                       required
                       value={selectedDoctor}
-                      onValueChange={(value) => {
-                        setSelectedDoctor(value);
-                        setFormData({ ...formData, doctorId: value });
+                      onChange={(e) => {
+                        setSelectedDoctor(e.target.value);
+                        setFormData({ ...formData, doctorId: e.target.value });
                       }}
-                      size="2"
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     >
-                      <Select.Trigger placeholder="Select a doctor" />
-                      <Select.Content>
-                        {doctors.map((doctor) => (
-                          <Select.Item key={doctor._id} value={doctor._id}>
-                            Dr. {doctor.firstName} {doctor.lastName} - {doctor.specialization}
-                          </Select.Item>
-                        ))}
-                      </Select.Content>
-                    </Select.Root>
-                  </Box>
-                  <Flex direction="column" gap="4" className="md:flex-row">
-                    <Box className="md:flex-1" style={{ flex: 1 }}>
-                      <Text size="2" weight="medium" mb="2" as="div">Preferred Date <Text color="red">*</Text></Text>
-                      <TextField.Root
+                      <option value="">Select a doctor</option>
+                      {doctors.map((doctor) => (
+                        <option key={doctor._id} value={doctor._id}>
+                          Dr. {doctor.firstName} {doctor.lastName} - {doctor.specialization}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-4 md:flex-row">
+                    <div className="md:flex-1" style={{ flex: 1 }}>
+                      <label className="block text-xs font-medium mb-2">
+                        Preferred Date <span className="text-red-500">*</span>
+                      </label>
+                      <input
                         type="date"
-                        size="2"
                         required
                         min={getMinDate()}
                         value={selectedDate}
@@ -267,89 +276,91 @@ export default function PublicBookingClient() {
                           setSelectedDate(e.target.value);
                           setFormData({ ...formData, appointmentDate: e.target.value });
                         }}
+                        className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                       />
-                    </Box>
-                    <Box className="md:flex-1" style={{ flex: 1 }}>
-                      <Text size="2" weight="medium" mb="2" as="div">Preferred Time <Text color="red">*</Text></Text>
+                    </div>
+                    <div className="md:flex-1" style={{ flex: 1 }}>
+                      <label className="block text-xs font-medium mb-2">
+                        Preferred Time <span className="text-red-500">*</span>
+                      </label>
                       {availableSlots.length > 0 ? (
-                        <Select.Root
+                        <select
                           required
                           value={formData.appointmentTime}
-                          onValueChange={(value) => setFormData({ ...formData, appointmentTime: value })}
-                          size="2"
+                          onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                         >
-                          <Select.Trigger placeholder="Select a time" />
-                          <Select.Content>
-                            {availableSlots.map((slot) => (
-                              <Select.Item key={slot} value={slot}>
-                                {formatTime(slot)}
-                              </Select.Item>
-                            ))}
-                          </Select.Content>
-                        </Select.Root>
+                          <option value="">Select a time</option>
+                          {availableSlots.map((slot) => (
+                            <option key={slot} value={slot}>
+                              {formatTime(slot)}
+                            </option>
+                          ))}
+                        </select>
                       ) : (
-                        <TextField.Root
+                        <input
                           type="time"
-                          size="2"
                           required
                           value={formData.appointmentTime}
                           onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
                           disabled={!selectedDate || !selectedDoctor}
+                          className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
                         />
                       )}
                       {selectedDate && selectedDoctor && availableSlots.length === 0 && (
-                        <Text size="1" color="gray" mt="1" as="div">No available slots. Please select a different date or doctor.</Text>
+                        <p className="text-xs text-gray-500 mt-1">No available slots. Please select a different date or doctor.</p>
                       )}
-                    </Box>
-                  </Flex>
-                  <Box>
-                    <Text size="2" weight="medium" mb="2" as="div">Reason for Visit</Text>
-                    <TextArea
-                      size="2"
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-2">Reason for Visit</label>
+                    <textarea
                       value={formData.reason}
                       onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                       rows={3}
                       placeholder="Brief description of your reason for the appointment..."
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
                     />
-                  </Box>
-                  <Box>
-                    <Text size="2" weight="medium" mb="2" as="div">Preferred Room (Optional)</Text>
-                    <TextField.Root
-                      size="2"
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-2">Preferred Room (Optional)</label>
+                    <input
                       value={formData.room}
                       onChange={(e) => setFormData({ ...formData, room: e.target.value })}
                       placeholder="e.g., Room 101"
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
-                  </Box>
-                </Flex>
-              </Box>
+                  </div>
+                </div>
+              </div>
 
-              <Separator size="4" />
-              <Flex direction="column" gap="4" pt="4" className="sm:flex-row sm:items-center sm:justify-between">
-                <Text size="2" color="gray" className="sm:mb-0">
+              <hr className="border-gray-300" />
+              <div className="flex flex-col gap-4 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-gray-600 sm:mb-0">
                   * Required fields. Your appointment request will be reviewed and confirmed.
-                </Text>
-                <Button
+                </p>
+                <button
                   type="submit"
                   disabled={submitting}
-                  size="3"
-                  className="w-full sm:w-auto"
+                  className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
                 >
                   {submitting ? (
-                    <Flex align="center" gap="2">
-                      <Spinner size="1" />
+                    <>
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
                       Submitting...
-                    </Flex>
+                    </>
                   ) : (
                     'Request Appointment'
                   )}
-                </Button>
-              </Flex>
-            </Flex>
+                </button>
+              </div>
+            </div>
           </form>
-        </Card>
-      </Box>
-    </Box>
+        </div>
+      </div>
+    </div>
   );
 }
-

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Heading, IconButton, Container, Section } from '@radix-ui/themes';
+import { Modal } from './ui/Modal';
 
 interface Invoice {
   _id: string;
@@ -86,206 +86,204 @@ export default function InvoicesPageClient() {
     return true;
   });
 
+  const getBadgeColorClasses = (color: string) => {
+    const colorMap: Record<string, string> = {
+      green: 'bg-green-100 text-green-800 border-green-200',
+      blue: 'bg-blue-100 text-blue-800 border-blue-200',
+      yellow: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      gray: 'bg-gray-100 text-gray-800 border-gray-200',
+      red: 'bg-red-100 text-red-800 border-red-200',
+    };
+    return colorMap[color] || colorMap.gray;
+  };
+
   if (loading) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
-            <Spinner size="3" />
-            <Text>Loading invoices...</Text>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p>Loading invoices...</p>
+          </div>
+        </div>
+      </section>
     );
   }
 
   return (
-    <Section size="3">
-      <Container size="4">
-        <Flex direction="column" gap="4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <Flex direction={{ initial: 'column', sm: 'row' }} justify="between" align={{ sm: 'center' }} gap="3">
-            <Box>
-              <Heading size="8" mb="1">Billing & Invoices</Heading>
-              <Text size="2" color="gray">Manage invoices and payments</Text>
-            </Box>
-            <Button asChild size="3">
-              <Link href="/invoices/new">
-                <svg style={{ width: '16px', height: '16px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Create Invoice
-              </Link>
-            </Button>
-          </Flex>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h1 className="text-3xl font-bold mb-1">Billing & Invoices</h1>
+              <p className="text-sm text-gray-600">Manage invoices and payments</p>
+            </div>
+            <Link 
+              href="/invoices/new"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create Invoice
+            </Link>
+          </div>
 
           {/* Search and Filters */}
-          <Card>
-            <Box p="3">
-          <Flex direction={{ initial: 'column', sm: 'row' }} gap="3">
-            <Box flexGrow="1">
-              <TextField.Root size="2" style={{ width: '100%' }}>
-                <TextField.Slot>
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
-                  </svg>
-                </TextField.Slot>
-                <input
-                  type="text"
-                  placeholder="Search by patient name or invoice number..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{ 
-                    all: 'unset', 
-                    flex: 1, 
-                    width: '100%',
-                    padding: '0',
-                    fontSize: 'var(--font-size-2)',
-                    lineHeight: 'var(--line-height-2)'
-                  }}
-                />
-                {searchQuery && (
-                  <TextField.Slot>
-                    <IconButton
-                      size="1"
-                      variant="ghost"
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-3">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search by patient name or invoice number..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                  {searchQuery && (
+                    <button
                       onClick={() => setSearchQuery('')}
-                      style={{ cursor: 'pointer' }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
                     >
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                       </svg>
-                    </IconButton>
-                  </TextField.Slot>
+                    </button>
+                  )}
+                </div>
+                <div className="min-w-[180px]">
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="unpaid">Unpaid</option>
+                    <option value="partial">Partial</option>
+                    <option value="paid">Paid</option>
+                    <option value="refunded">Refunded</option>
+                  </select>
+                </div>
+                {(searchQuery || filterStatus !== 'all') && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      setFilterStatus('all');
+                    }}
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                  >
+                    Clear
+                  </button>
                 )}
-              </TextField.Root>
-            </Box>
-            <Box style={{ minWidth: '180px' }}>
-              <Select.Root
-                value={filterStatus}
-                onValueChange={(value) => setFilterStatus(value)}
-              >
-                <Select.Trigger placeholder="All Statuses" />
-                <Select.Content>
-                  <Select.Item value="all">All Statuses</Select.Item>
-                  <Select.Item value="unpaid">Unpaid</Select.Item>
-                  <Select.Item value="partial">Partial</Select.Item>
-                  <Select.Item value="paid">Paid</Select.Item>
-                  <Select.Item value="refunded">Refunded</Select.Item>
-                </Select.Content>
-              </Select.Root>
-            </Box>
-            {(searchQuery || filterStatus !== 'all') && (
-              <Button
-                onClick={() => {
-                  setSearchQuery('');
-                  setFilterStatus('all');
-                }}
-                variant="soft"
-                size="2"
-              >
-                Clear
-              </Button>
-            )}
-          </Flex>
-        </Box>
-      </Card>
+              </div>
+            </div>
+          </div>
 
           {/* Invoices Table */}
-          <Card>
-            <Box p="3">
-              <Flex justify="between" align="center" mb="3">
-                <Heading size="4">Invoices</Heading>
-            <Text size="2" color="gray">
-              {filteredInvoices.length} {filteredInvoices.length === 1 ? 'invoice' : 'invoices'}
-            </Text>
-          </Flex>
-          {filteredInvoices.length === 0 ? (
-            <Box p="8" style={{ textAlign: 'center' }}>
-              <Box mb="3">
-                <svg style={{ width: '48px', height: '48px', margin: '0 auto', color: 'var(--gray-9)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </Box>
-              <Heading size="3" mb="1">
-                {searchQuery || filterStatus !== 'all' ? 'No invoices match your filters' : 'No invoices found'}
-              </Heading>
-              <Text size="2" color="gray" mb="3" as="div">
-                {searchQuery || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Create your first invoice to get started'}
-              </Text>
-              {!searchQuery && filterStatus === 'all' && (
-                <Button asChild>
-                  <Link href="/invoices/new">
-                    <svg style={{ width: '14px', height: '14px', marginRight: '6px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-3">
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-xl font-semibold">Invoices</h2>
+                <p className="text-sm text-gray-600">
+                  {filteredInvoices.length} {filteredInvoices.length === 1 ? 'invoice' : 'invoices'}
+                </p>
+              </div>
+              {filteredInvoices.length === 0 ? (
+                <div className="py-8 text-center">
+                  <div className="mb-3">
+                    <svg className="w-12 h-12 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    Create Invoice
-                  </Link>
-                </Button>
+                  </div>
+                  <h3 className="text-lg font-semibold mb-1">
+                    {searchQuery || filterStatus !== 'all' ? 'No invoices match your filters' : 'No invoices found'}
+                  </h3>
+                  <div className="text-sm text-gray-600 mb-3">
+                    {searchQuery || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Create your first invoice to get started'}
+                  </div>
+                  {!searchQuery && filterStatus === 'all' && (
+                    <Link 
+                      href="/invoices/new"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Create Invoice
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">Invoice Number</th>
+                        <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">Patient</th>
+                        <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">Total</th>
+                        <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">Status</th>
+                        <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">Date</th>
+                        <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredInvoices.map((invoice) => (
+                        <tr key={invoice._id} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="py-2 px-3">
+                            <p className="text-sm font-medium">{invoice.invoiceNumber}</p>
+                          </td>
+                          <td className="py-2 px-3">
+                            {invoice.patient?._id ? (
+                              <Link href={`/patients/${invoice.patient._id}`} className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline">
+                                {invoice.patient.firstName} {invoice.patient.lastName}
+                              </Link>
+                            ) : (
+                              <p className="text-sm">
+                                {invoice.patient?.firstName} {invoice.patient?.lastName}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-2 px-3">
+                            <p className="text-sm font-medium">
+                              ₱{invoice.total?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                            </p>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getBadgeColorClasses(getStatusColor(invoice.status))}`}>
+                              {invoice.status}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3">
+                            <p className="text-sm text-gray-600">
+                              {new Date(invoice.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </p>
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <Link 
+                              href={`/invoices/${invoice._id}`}
+                              className="inline-flex items-center px-2.5 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors text-xs font-medium"
+                            >
+                              View
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
-            </Box>
-          ) : (
-            <Table.Root>
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeaderCell>Invoice Number</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Patient</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Total</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell style={{ textAlign: 'right' }}>Actions</Table.ColumnHeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {filteredInvoices.map((invoice) => (
-                  <Table.Row key={invoice._id}>
-                    <Table.Cell>
-                      <Text size="2" weight="medium">{invoice.invoiceNumber}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      {invoice.patient?._id ? (
-                        <Link href={`/patients/${invoice.patient._id}`}>
-                          <Text size="2" weight="medium" style={{ color: 'var(--blue-9)', textDecoration: 'none' }}>
-                            {invoice.patient.firstName} {invoice.patient.lastName}
-                          </Text>
-                        </Link>
-                      ) : (
-                        <Text size="2">
-                          {invoice.patient?.firstName} {invoice.patient?.lastName}
-                        </Text>
-                      )}
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text size="2" weight="medium">
-                        ₱{invoice.total?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Badge color={getStatusColor(invoice.status)} size="1">
-                        {invoice.status}
-                      </Badge>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text size="2" color="gray">
-                        {new Date(invoice.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell style={{ textAlign: 'right' }}>
-                      <Button asChild size="1" variant="soft" color="blue">
-                        <Link href={`/invoices/${invoice._id}`}>
-                          View
-                        </Link>
-                      </Button>
-                    </Table.Cell>
-                  </Table.Row>
-                ))}
-              </Table.Body>
-            </Table.Root>
-          )}
-        </Box>
-      </Card>
-        </Flex>
-      </Container>
-    </Section>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }

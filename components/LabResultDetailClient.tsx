@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, TextField, Select, Table, Dialog, Card, Flex, Box, Text, Spinner, Badge, Tabs, Callout, Heading, IconButton, Separator, Container, Section } from '@radix-ui/themes';
+import { Modal } from './ui/Modal';
 
 interface LabResult {
   _id: string;
@@ -127,304 +127,311 @@ export default function LabResultDetailClient({ labResultId }: { labResultId: st
 
   if (loading) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
-            <Spinner size="3" />
-            <Text>Loading lab result...</Text>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p>Loading lab result...</p>
+          </div>
+        </div>
+      </section>
     );
   }
 
   if (!labResult) {
     return (
-      <Section size="3">
-        <Container size="4">
-          <Flex direction="column" align="center" justify="center" gap="3" style={{ minHeight: '256px' }}>
-            <Heading size="5">Lab result not found</Heading>
-            <Button asChild variant="soft">
-              <Link href="/lab-results">Back to Lab Results</Link>
-            </Button>
-          </Flex>
-        </Container>
-      </Section>
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '256px' }}>
+            <h2 className="text-xl font-semibold">Lab result not found</h2>
+            <Link 
+              href="/lab-results"
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+            >
+              Back to Lab Results
+            </Link>
+          </div>
+        </div>
+      </section>
     );
   }
 
   return (
-    <Section size="3">
-      <Container size="4">
-        <Flex direction="column" gap="4">
+    <section className="py-12 px-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <Box>
-            <Flex align="center" gap="3" mb="2">
-              <IconButton
-                variant="ghost"
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <button
                 onClick={() => router.push('/lab-results')}
-                size="2"
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <svg style={{ width: '20px', height: '20px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-              </IconButton>
-              <Heading size="8">{labResult.requestCode || 'Lab Order'}</Heading>
-            </Flex>
-        <Flex align="center" gap="2" ml="8">
-          <Link href={`/patients/${labResult.patient._id}`}>
-            <Text size="2" style={{ color: 'var(--blue-9)', textDecoration: 'none' }}>
-              {labResult.patient.firstName} {labResult.patient.lastName}
-            </Text>
-          </Link>
-          <Text size="2" color="gray">•</Text>
-          <Text size="2" color="gray">
-            {new Date(labResult.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-          </Text>
-        </Flex>
-      </Box>
+              </button>
+              <h1 className="text-3xl font-bold">{labResult.requestCode || 'Lab Order'}</h1>
+            </div>
+            <div className="flex items-center gap-2 ml-9">
+              <Link href={`/patients/${labResult.patient._id}`}>
+                <p className="text-sm text-blue-700 hover:underline">
+                  {labResult.patient.firstName} {labResult.patient.lastName}
+                </p>
+              </Link>
+              <p className="text-sm text-gray-600">•</p>
+              <p className="text-sm text-gray-600">
+                {new Date(labResult.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </p>
+            </div>
+          </div>
 
-          <Flex direction="column" gap="3">
+          <div className="flex flex-col gap-3">
             {/* Status Card */}
-            <Card>
-              <Box p="3">
-                <Flex justify="between" align="center" mb="3">
-                  <Heading size="4">Status</Heading>
-              <Badge color={getStatusColor(labResult.status)} size="2">
-                {labResult.status}
-              </Badge>
-            </Flex>
-            <Flex direction={{ initial: 'column', sm: 'row' }} gap="4" wrap="wrap">
-              <Box>
-                <Text size="1" color="gray" mb="1" as="div">Order Date</Text>
-                <Text size="2" weight="medium">
-                  {new Date(labResult.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </Text>
-              </Box>
-              {labResult.resultDate && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Result Date</Text>
-                  <Text size="2" weight="medium">
-                    {new Date(labResult.resultDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </Text>
-                </Box>
-              )}
-              {labResult.orderedBy && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Ordered By</Text>
-                  <Text size="2" weight="medium">{labResult.orderedBy.name}</Text>
-                </Box>
-              )}
-              {labResult.reviewedBy && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Reviewed By</Text>
-                  <Text size="2" weight="medium">{labResult.reviewedBy.name}</Text>
-                </Box>
-              )}
-            </Flex>
-          </Box>
-        </Card>
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="p-3">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-lg font-semibold">Status</h3>
+                  <span className={`inline-block px-2 py-1 text-sm font-medium rounded ${
+                    getStatusColor(labResult.status) === 'green' ? 'bg-green-100 text-green-800' :
+                    getStatusColor(labResult.status) === 'blue' ? 'bg-blue-100 text-blue-800' :
+                    getStatusColor(labResult.status) === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
+                    getStatusColor(labResult.status) === 'red' ? 'bg-red-100 text-red-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {labResult.status}
+                  </span>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
+                  <div>
+                    <p className="text-xs text-gray-600 mb-1">Order Date</p>
+                    <p className="text-sm font-medium">
+                      {new Date(labResult.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  </div>
+                  {labResult.resultDate && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Result Date</p>
+                      <p className="text-sm font-medium">
+                        {new Date(labResult.resultDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
+                    </div>
+                  )}
+                  {labResult.orderedBy && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Ordered By</p>
+                      <p className="text-sm font-medium">{labResult.orderedBy.name}</p>
+                    </div>
+                  )}
+                  {labResult.reviewedBy && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Reviewed By</p>
+                      <p className="text-sm font-medium">{labResult.reviewedBy.name}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* Test Request Information */}
-            <Card>
-              <Box p="3">
-                <Heading size="4" mb="3">Test Request</Heading>
-            <Flex direction="column" gap="3">
-              <Box>
-                <Text size="1" color="gray" mb="1" as="div">Test Type</Text>
-                <Text size="2" weight="medium">{labResult.request.testType}</Text>
-              </Box>
-              {labResult.request.testCode && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Test Code</Text>
-                  <Text size="2" weight="medium">{labResult.request.testCode}</Text>
-                </Box>
-              )}
-              {labResult.request.description && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Description</Text>
-                  <Text size="2" weight="medium">{labResult.request.description}</Text>
-                </Box>
-              )}
-              <Flex gap="4" wrap="wrap">
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Urgency</Text>
-                  <Badge color={getUrgencyColor(labResult.request.urgency)} size="1" variant="soft">
-                    {labResult.request.urgency || 'routine'}
-                  </Badge>
-                </Box>
-                {labResult.request.fastingRequired && (
-                  <Box>
-                    <Text size="1" color="gray" mb="1" as="div">Fasting Required</Text>
-                    <Text size="2" weight="medium">Yes</Text>
-                  </Box>
-                )}
-              </Flex>
-              {labResult.request.specialInstructions && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Special Instructions</Text>
-                  <Text size="2" weight="medium">{labResult.request.specialInstructions}</Text>
-                </Box>
-              )}
-              {labResult.request.preparationNotes && (
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Preparation Notes</Text>
-                  <Text size="2" weight="medium">{labResult.request.preparationNotes}</Text>
-                </Box>
-              )}
-            </Flex>
-          </Box>
-        </Card>
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="p-3">
+                <h3 className="text-lg font-semibold mb-3">Test Request</h3>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <p className="text-xs text-gray-600 mb-1">Test Type</p>
+                    <p className="text-sm font-medium">{labResult.request.testType}</p>
+                  </div>
+                  {labResult.request.testCode && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Test Code</p>
+                      <p className="text-sm font-medium">{labResult.request.testCode}</p>
+                    </div>
+                  )}
+                  {labResult.request.description && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Description</p>
+                      <p className="text-sm font-medium">{labResult.request.description}</p>
+                    </div>
+                  )}
+                  <div className="flex gap-4 flex-wrap">
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Urgency</p>
+                      <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${
+                        getUrgencyColor(labResult.request.urgency) === 'red' ? 'bg-red-100 text-red-800' :
+                        getUrgencyColor(labResult.request.urgency) === 'orange' ? 'bg-orange-100 text-orange-800' :
+                        'bg-green-100 text-green-800'
+                      }`}>
+                        {labResult.request.urgency || 'routine'}
+                      </span>
+                    </div>
+                    {labResult.request.fastingRequired && (
+                      <div>
+                        <p className="text-xs text-gray-600 mb-1">Fasting Required</p>
+                        <p className="text-sm font-medium">Yes</p>
+                      </div>
+                    )}
+                  </div>
+                  {labResult.request.specialInstructions && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Special Instructions</p>
+                      <p className="text-sm font-medium">{labResult.request.specialInstructions}</p>
+                    </div>
+                  )}
+                  {labResult.request.preparationNotes && (
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Preparation Notes</p>
+                      <p className="text-sm font-medium">{labResult.request.preparationNotes}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* Results */}
             {labResult.results && (
-              <Card>
-                <Box p="3">
-                  <Heading size="4" mb="3">Results</Heading>
-              <Flex direction="column" gap="2">
-                {typeof labResult.results === 'object' && labResult.results !== null ? (
-                  Object.entries(labResult.results).map(([key, value]) => {
-                    const flag = labResult.abnormalFlags?.[key];
-                    const referenceRange = labResult.referenceRanges?.[key];
-                    return (
-                      <Box key={key} pb="2" style={{ borderBottom: '1px solid var(--gray-6)' }}>
-                        <Flex justify="between" align="start" gap="3">
-                          <Box style={{ flex: 1 }}>
-                            <Text size="2" weight="medium" style={{ textTransform: 'capitalize' }}>
-                              {key.replace(/([A-Z])/g, ' $1').trim()}
-                            </Text>
-                            {referenceRange && (
-                              <Text size="1" color="gray" as="div">Ref: {referenceRange}</Text>
-                            )}
-                          </Box>
-                          <Flex align="center" gap="2">
-                            <Text 
-                              size="2" 
-                              weight="medium"
-                              color={flag === 'high' ? 'red' : flag === 'low' ? 'orange' : undefined}
-                            >
-                              {String(value)}
-                            </Text>
-                            {flag && (
-                              <Badge 
-                                color={flag === 'high' ? 'red' : flag === 'low' ? 'orange' : 'green'} 
-                                size="1"
-                                variant="soft"
-                              >
-                                {flag.toUpperCase()}
-                              </Badge>
-                            )}
-                          </Flex>
-                        </Flex>
-                      </Box>
-                    );
-                  })
-                ) : (
-                  <Text size="2">{String(labResult.results)}</Text>
-                )}
-              </Flex>
-              {labResult.interpretation && (
-                <Box mt="3" pt="3" style={{ borderTop: '1px solid var(--gray-6)' }}>
-                  <Text size="1" color="gray" mb="1" as="div">Interpretation</Text>
-                  <Text size="2" weight="medium">{labResult.interpretation}</Text>
-                </Box>
-              )}
-            </Box>
-          </Card>
-        )}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3">
+                  <h3 className="text-lg font-semibold mb-3">Results</h3>
+                  <div className="flex flex-col gap-2">
+                    {typeof labResult.results === 'object' && labResult.results !== null ? (
+                      Object.entries(labResult.results).map(([key, value]) => {
+                        const flag = labResult.abnormalFlags?.[key];
+                        const referenceRange = labResult.referenceRanges?.[key];
+                        return (
+                          <div key={key} className="pb-2 border-b border-gray-200">
+                            <div className="flex justify-between items-start gap-3">
+                              <div className="flex-1">
+                                <p className="text-sm font-medium capitalize">
+                                  {key.replace(/([A-Z])/g, ' $1').trim()}
+                                </p>
+                                {referenceRange && (
+                                  <p className="text-xs text-gray-600">Ref: {referenceRange}</p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <p className={`text-sm font-medium ${
+                                  flag === 'high' ? 'text-red-600' :
+                                  flag === 'low' ? 'text-orange-600' :
+                                  ''
+                                }`}>
+                                  {String(value)}
+                                </p>
+                                {flag && (
+                                  <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${
+                                    flag === 'high' ? 'bg-red-100 text-red-800' :
+                                    flag === 'low' ? 'bg-orange-100 text-orange-800' :
+                                    'bg-green-100 text-green-800'
+                                  }`}>
+                                    {flag.toUpperCase()}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-sm">{String(labResult.results)}</p>
+                    )}
+                  </div>
+                  {labResult.interpretation && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Interpretation</p>
+                      <p className="text-sm font-medium">{labResult.interpretation}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Third Party Lab Information */}
             {labResult.thirdPartyLab && (
-              <Card>
-                <Box p="3">
-                  <Heading size="4" mb="3">Third Party Lab</Heading>
-              <Flex direction="column" gap="3">
-                <Box>
-                  <Text size="1" color="gray" mb="1" as="div">Lab Name</Text>
-                  <Text size="2" weight="medium">{labResult.thirdPartyLab.labName}</Text>
-                </Box>
-                {labResult.thirdPartyLab.labCode && (
-                  <Box>
-                    <Text size="1" color="gray" mb="1" as="div">Lab Code</Text>
-                    <Text size="2" weight="medium">{labResult.thirdPartyLab.labCode}</Text>
-                  </Box>
-                )}
-                {labResult.thirdPartyLab.status && (
-                  <Box>
-                    <Text size="1" color="gray" mb="1" as="div">Status</Text>
-                    <Text size="2" weight="medium" style={{ textTransform: 'capitalize' }}>
-                      {labResult.thirdPartyLab.status}
-                    </Text>
-                  </Box>
-                )}
-                {labResult.thirdPartyLab.sentAt && (
-                  <Box>
-                    <Text size="1" color="gray" mb="1" as="div">Sent At</Text>
-                    <Text size="2" weight="medium">
-                      {new Date(labResult.thirdPartyLab.sentAt).toLocaleString()}
-                    </Text>
-                  </Box>
-                )}
-                {labResult.thirdPartyLab.receivedAt && (
-                  <Box>
-                    <Text size="1" color="gray" mb="1" as="div">Received At</Text>
-                    <Text size="2" weight="medium">
-                      {new Date(labResult.thirdPartyLab.receivedAt).toLocaleString()}
-                    </Text>
-                  </Box>
-                )}
-              </Flex>
-            </Box>
-          </Card>
-        )}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3">
+                  <h3 className="text-lg font-semibold mb-3">Third Party Lab</h3>
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Lab Name</p>
+                      <p className="text-sm font-medium">{labResult.thirdPartyLab.labName}</p>
+                    </div>
+                    {labResult.thirdPartyLab.labCode && (
+                      <div>
+                        <p className="text-xs text-gray-600 mb-1">Lab Code</p>
+                        <p className="text-sm font-medium">{labResult.thirdPartyLab.labCode}</p>
+                      </div>
+                    )}
+                    {labResult.thirdPartyLab.status && (
+                      <div>
+                        <p className="text-xs text-gray-600 mb-1">Status</p>
+                        <p className="text-sm font-medium capitalize">
+                          {labResult.thirdPartyLab.status}
+                        </p>
+                      </div>
+                    )}
+                    {labResult.thirdPartyLab.sentAt && (
+                      <div>
+                        <p className="text-xs text-gray-600 mb-1">Sent At</p>
+                        <p className="text-sm font-medium">
+                          {new Date(labResult.thirdPartyLab.sentAt).toLocaleString()}
+                        </p>
+                      </div>
+                    )}
+                    {labResult.thirdPartyLab.receivedAt && (
+                      <div>
+                        <p className="text-xs text-gray-600 mb-1">Received At</p>
+                        <p className="text-sm font-medium">
+                          {new Date(labResult.thirdPartyLab.receivedAt).toLocaleString()}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Attachments */}
             {labResult.attachments && labResult.attachments.length > 0 && (
-              <Card>
-                <Box p="3">
-                  <Heading size="4" mb="3">Attachments</Heading>
-              <Flex direction="column" gap="2">
-                {labResult.attachments.map((attachment, index) => (
-                  <Button
-                    key={index}
-                    asChild
-                    variant="ghost"
-                    size="2"
-                  >
-                    <a
-                      href={attachment.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ justifyContent: 'flex-start', textDecoration: 'none' }}
-                    >
-                      <svg style={{ width: '16px', height: '16px', marginRight: '8px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                      </svg>
-                      {attachment.filename || `Attachment ${index + 1}`}
-                    </a>
-                  </Button>
-                ))}
-              </Flex>
-            </Box>
-          </Card>
-        )}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3">
+                  <h3 className="text-lg font-semibold mb-3">Attachments</h3>
+                  <div className="flex flex-col gap-2">
+                    {labResult.attachments.map((attachment, index) => (
+                      <a
+                        key={index}
+                        href={attachment.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex items-center"
+                      >
+                        <svg style={{ width: '16px', height: '16px', marginRight: '8px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                        {attachment.filename || `Attachment ${index + 1}`}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Visit Link */}
             {labResult.visit && (
-              <Card>
-                <Box p="3">
-                  <Heading size="4" mb="2">Related Visit</Heading>
-              <Button asChild variant="soft" size="2">
-                <Link href={`/visits/${labResult.visit._id}`}>
-                  {labResult.visit.visitCode} - {new Date(labResult.visit.date).toLocaleDateString()}
-                </Link>
-              </Button>
-            </Box>
-          </Card>
-        )}
-      </Flex>
-        </Flex>
-      </Container>
-    </Section>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3">
+                  <h3 className="text-lg font-semibold mb-2">Related Visit</h3>
+                  <Link 
+                    href={`/visits/${labResult.visit._id}`}
+                    className="inline-block px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                  >
+                    {labResult.visit.visitCode} - {new Date(labResult.visit.date).toLocaleDateString()}
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
