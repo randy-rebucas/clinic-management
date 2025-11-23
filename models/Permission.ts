@@ -33,7 +33,6 @@ const PermissionSchema: Schema = new Schema(
       type: String,
       required: [true, 'Resource is required'],
       trim: true,
-      index: true,
     },
     actions: {
       type: [String],

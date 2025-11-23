@@ -46,7 +46,7 @@ export interface IQueue extends Document {
 
 const QueueSchema: Schema = new Schema(
   {
-    queueNumber: { type: String, required: true, unique: true, index: true },
+    queueNumber: { type: String, unique: true, index: true }, // Auto-generated in pre-validate hook
     queueType: {
       type: String,
       enum: ['appointment', 'walk-in', 'follow-up'],
@@ -89,8 +89,8 @@ QueueSchema.index({ room: 1, status: 1 });
 QueueSchema.index({ checkedIn: 1, status: 1 });
 QueueSchema.index({ qrCode: 1 });
 
-// Pre-save hook to generate queue number
-QueueSchema.pre('save', async function (next) {
+// Pre-validate hook to generate queue number (runs before validation)
+QueueSchema.pre('validate', async function (next) {
   if (!this.queueNumber) {
     const prefix = this.queueType === 'appointment' ? 'A' : this.queueType === 'walk-in' ? 'W' : 'F';
     const today = new Date();

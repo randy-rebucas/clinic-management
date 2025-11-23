@@ -33,7 +33,6 @@ const StaffSchema: Schema = new Schema(
     employeeId: {
       type: String,
       trim: true,
-      index: true,
       sparse: true,
     },
     department: {
@@ -76,7 +75,7 @@ const StaffSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-StaffSchema.index({ employeeId: 1 });
+StaffSchema.index({ employeeId: 1 }, { sparse: true });
 StaffSchema.index({ department: 1 });
 StaffSchema.index({ position: 1 });
 

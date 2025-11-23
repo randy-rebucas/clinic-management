@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "setup:admin": "tsx scripts/create-admin.ts"
+    "setup:admin": "tsx scripts/create-admin.ts",
+    "seed": "tsx scripts/seed-data.ts"
   },
   "dependencies": {
     "@types/nodemailer": "^7.0.4",

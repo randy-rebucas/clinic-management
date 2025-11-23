@@ -191,11 +191,11 @@ const VisitSchema: Schema = new Schema(
       },
     },
     
-    // Digital Signature
+    // Digital Signature (optional, but if provided, all fields are required)
     digitalSignature: {
-      providerName: { type: String, required: true },
-      providerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-      signatureData: { type: String, required: true }, // Base64 encoded
+      providerName: { type: String },
+      providerId: { type: Schema.Types.ObjectId, ref: 'User' },
+      signatureData: { type: String }, // Base64 encoded
       signedAt: { type: Date, default: Date.now },
       ipAddress: { type: String },
     },
@@ -215,6 +215,38 @@ const VisitSchema: Schema = new Schema(
 
 VisitSchema.index({ patient: 1, date: -1 });
 VisitSchema.index({ provider: 1 });
+
+// Pre-validate hook: if digitalSignature is provided (has any field), all required fields must be present
+VisitSchema.pre('validate', function(next) {
+  const sig = this.digitalSignature as any;
+  // Only validate if digitalSignature exists, is an object, and has at least one of the REQUIRED fields
+  // Skip validation if it's undefined, null, or doesn't have any required fields
+  if (sig != null && typeof sig === 'object' && !Array.isArray(sig)) {
+    // Check if object has any of the REQUIRED fields (not optional ones like signedAt or ipAddress)
+    const hasProviderName = sig.providerName && String(sig.providerName).trim().length > 0;
+    const hasProviderId = sig.providerId != null;
+    const hasSignatureData = sig.signatureData && String(sig.signatureData).trim().length > 0;
+    const hasAnyRequiredField = hasProviderName || hasProviderId || hasSignatureData;
+    
+    // If it doesn't have any required fields, delete it to avoid validation issues
+    // (signedAt has a default, so it might exist even if the object wasn't intentionally set)
+    if (!hasAnyRequiredField) {
+      this.digitalSignature = undefined;
+    } else {
+      // Object has at least one required field, so validate all required fields are present
+      if (!hasProviderName) {
+        this.invalidate('digitalSignature.providerName', 'Provider name is required when digital signature is provided');
+      }
+      if (!hasProviderId) {
+        this.invalidate('digitalSignature.providerId', 'Provider ID is required when digital signature is provided');
+      }
+      if (!hasSignatureData) {
+        this.invalidate('digitalSignature.signatureData', 'Signature data is required when digital signature is provided');
+      }
+    }
+  }
+  next();
+});
 
 export default mongoose.models.Visit || mongoose.model<IVisit>('Visit', VisitSchema);
 
