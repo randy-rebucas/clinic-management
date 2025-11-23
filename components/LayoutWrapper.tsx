@@ -2,6 +2,8 @@
 
 import { usePathname } from 'next/navigation';
 import { ReactNode } from 'react';
+import ContentHeader from './ContentHeader';
+import { useEffect, useState } from 'react';
 
 interface LayoutWrapperProps {
   children: ReactNode;
@@ -10,6 +12,33 @@ interface LayoutWrapperProps {
 export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   const pathname = usePathname();
   const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/book' || pathname === '/setup';
+  const [user, setUser] = useState<{ name: string; role: string; email?: string } | null>(null);
+
+  useEffect(() => {
+    if (!isAuthPage) {
+      // Fetch user info for header
+      fetch('/api/user/me')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.user) {
+            // Handle role - can be object with name or string
+            let roleName = 'user';
+            if (typeof data.user.role === 'object' && data.user.role?.name) {
+              roleName = data.user.role.name;
+            } else if (typeof data.user.role === 'string') {
+              roleName = data.user.role;
+            }
+            
+            setUser({
+              name: data.user.name,
+              role: roleName,
+              email: data.user.email,
+            });
+          }
+        })
+        .catch(err => console.error('Error fetching user:', err));
+    }
+  }, [isAuthPage]);
 
   if (isAuthPage) {
     return <>{children}</>;
@@ -23,7 +52,8 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
         marginLeft: '280px',
       }}
     >
-      {children}
+      <ContentHeader user={user} />
+      <main>{children}</main>
     </div>
   );
 }

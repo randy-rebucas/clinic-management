@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import LogoutButton from './LogoutButton';
 
 interface NavItem {
   href: string;
@@ -120,28 +119,6 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
               })}
             </div>
           ))}
-          </div>
-        </div>
-
-        {/* User Info and Logout - Footer */}
-        <div className="border-t border-gray-300 bg-gray-50">
-          <div className="p-3">
-            <div className="p-2 mb-2 bg-white rounded-lg border border-gray-200">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                  {user.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium block overflow-hidden text-ellipsis whitespace-nowrap">
-                    {user.name}
-                  </p>
-                  <p className="text-xs text-gray-500 block overflow-hidden text-ellipsis whitespace-nowrap">
-                    {user.role}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <LogoutButton collapsed={false} />
           </div>
         </div>
       </div>

@@ -28,6 +28,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
     { resource: 'reports', actions: ['read'] },
     { resource: 'queue', actions: ['read', 'write', 'update'] },
     { resource: 'referrals', actions: ['read', 'write', 'update'] },
+    { resource: 'notifications', actions: ['read', 'update'] },
   ],
   nurse: [
     { resource: 'patients', actions: ['read', 'write', 'update'] },
@@ -38,6 +39,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
     { resource: 'invoices', actions: ['read'] },
     { resource: 'doctors', actions: ['read'] },
     { resource: 'queue', actions: ['read', 'write', 'update'] },
+    { resource: 'notifications', actions: ['read', 'update'] },
   ],
   receptionist: [
     { resource: 'patients', actions: ['read', 'write', 'update'] },
@@ -46,12 +48,14 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
     { resource: 'invoices', actions: ['read', 'write', 'update'] },
     { resource: 'doctors', actions: ['read'] },
     { resource: 'queue', actions: ['read', 'write', 'update'] },
+    { resource: 'notifications', actions: ['read', 'update'] },
   ],
   accountant: [
     { resource: 'patients', actions: ['read'] },
     { resource: 'invoices', actions: ['read', 'write', 'update'] },
     { resource: 'appointments', actions: ['read'] },
     { resource: 'reports', actions: ['read'] },
+    { resource: 'notifications', actions: ['read', 'update'] },
   ],
 };
 
