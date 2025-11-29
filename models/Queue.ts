@@ -56,7 +56,7 @@ const QueueSchema: Schema = new Schema(
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
     patientName: { type: String, required: true },
     appointment: { type: Schema.Types.ObjectId, ref: 'Appointment', index: true },
-    visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
+    visit: { type: Schema.Types.ObjectId, ref: 'Visit', index: true },
     doctor: { type: Schema.Types.ObjectId, ref: 'Doctor', index: true },
     room: { type: Schema.Types.ObjectId, ref: 'Room', index: true },
     status: {

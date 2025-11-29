@@ -1,20 +1,24 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
-export interface IDoctor extends Document {
+export interface IReceptionist extends Document {
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
-  specialization: string;
-  licenseNumber: string;
+  
+  // Receptionist-specific information
+  employeeId?: string;
+  department?: string;
+  hireDate?: Date;
+  address?: string;
   
   // Schedule and availability
-  schedule: {
+  schedule?: {
     dayOfWeek: number; // 0 = Sunday, 1 = Monday, etc.
     startTime: string; // HH:mm format
     endTime: string; // HH:mm format
-    isAvailable: boolean; // Can temporarily disable specific days
+    isAvailable: boolean;
   }[];
   
   // Availability overrides (for specific dates)
@@ -25,6 +29,13 @@ export interface IDoctor extends Document {
     endTime?: string;
     reason?: string;
   }[];
+  
+  // Emergency contact
+  emergencyContact?: {
+    name: string;
+    phone: string;
+    relationship: string;
+  };
   
   // Internal notes (staff-only)
   internalNotes?: Array<{
@@ -37,25 +48,21 @@ export interface IDoctor extends Document {
   // Performance metrics
   performanceMetrics?: {
     totalAppointments: number;
-    completedAppointments: number;
+    scheduledAppointments: number;
     cancelledAppointments: number;
-    noShowAppointments: number;
-    averageRating?: number;
     lastUpdated: Date;
   };
   
   // Additional profile information
-  title?: string; // Dr., Prof., etc.
-  qualifications?: string[];
+  title?: string;
   bio?: string;
-  department?: string;
   status: 'active' | 'inactive' | 'on-leave';
   
   createdAt: Date;
   updatedAt: Date;
 }
 
-const DoctorSchema: Schema = new Schema(
+const ReceptionistSchema: Schema = new Schema(
   {
     firstName: {
       type: String,
@@ -80,15 +87,20 @@ const DoctorSchema: Schema = new Schema(
       required: [true, 'Phone number is required'],
       trim: true,
     },
-    specialization: {
+    employeeId: {
       type: String,
-      required: [true, 'Specialization is required'],
+      trim: true,
+      sparse: true,
+    },
+    department: {
+      type: String,
       trim: true,
     },
-    licenseNumber: {
+    hireDate: {
+      type: Date,
+    },
+    address: {
       type: String,
-      required: [true, 'License number is required'],
-      unique: true,
       trim: true,
     },
     schedule: [
@@ -99,8 +111,6 @@ const DoctorSchema: Schema = new Schema(
         isAvailable: { type: Boolean, default: true },
       },
     ],
-    
-    // Availability overrides
     availabilityOverrides: [
       {
         date: { type: Date, required: true },
@@ -110,8 +120,20 @@ const DoctorSchema: Schema = new Schema(
         reason: { type: String },
       },
     ],
-    
-    // Internal notes
+    emergencyContact: {
+      name: {
+        type: String,
+        trim: true,
+      },
+      phone: {
+        type: String,
+        trim: true,
+      },
+      relationship: {
+        type: String,
+        trim: true,
+      },
+    },
     internalNotes: [
       {
         note: { type: String, required: true },
@@ -120,22 +142,19 @@ const DoctorSchema: Schema = new Schema(
         isImportant: { type: Boolean, default: false },
       },
     ],
-    
-    // Performance metrics
     performanceMetrics: {
       totalAppointments: { type: Number, default: 0 },
-      completedAppointments: { type: Number, default: 0 },
+      scheduledAppointments: { type: Number, default: 0 },
       cancelledAppointments: { type: Number, default: 0 },
-      noShowAppointments: { type: Number, default: 0 },
-      averageRating: { type: Number, min: 0, max: 5 },
       lastUpdated: { type: Date, default: Date.now },
     },
-    
-    // Additional profile information
-    title: { type: String, trim: true },
-    qualifications: [{ type: String, trim: true }],
-    bio: { type: String },
-    department: { type: String, trim: true },
+    title: {
+      type: String,
+      trim: true,
+    },
+    bio: {
+      type: String,
+    },
     status: {
       type: String,
       enum: ['active', 'inactive', 'on-leave'],
@@ -147,18 +166,21 @@ const DoctorSchema: Schema = new Schema(
   }
 );
 
-// Register Doctor model immediately after schema definition
-// This ensures it's available when other models (like User) reference it via ref: 'Doctor'
-// Must be registered before the post-save hook that imports User model
-if (!mongoose.models.Doctor) {
-  mongoose.model<IDoctor>('Doctor', DoctorSchema);
+// Indexes for efficient queries
+ReceptionistSchema.index({ email: 1 });
+ReceptionistSchema.index({ employeeId: 1 }, { sparse: true });
+ReceptionistSchema.index({ department: 1 });
+ReceptionistSchema.index({ status: 1 });
+
+// Register Receptionist model immediately after schema definition
+if (!mongoose.models.Receptionist) {
+  mongoose.model<IReceptionist>('Receptionist', ReceptionistSchema);
 }
 
-// Post-save hook to automatically create a User when a Doctor is created
-DoctorSchema.post('save', async function (doc: IDoctor) {
+// Post-save hook to automatically create a User when a Receptionist is created
+ReceptionistSchema.post('save', async function (doc: IReceptionist) {
   try {
     // Ensure models are registered by importing them first
-    // Import the model files to ensure they're registered in mongoose.models
     if (!mongoose.models.User) {
       await import('./User');
     }
@@ -175,11 +197,11 @@ DoctorSchema.post('save', async function (doc: IDoctor) {
       return;
     }
 
-    // Check if a User with this doctorProfile already exists (to avoid duplicates on updates)
-    const existingUserByProfile = await User.findOne({ doctorProfile: doc._id });
+    // Check if a User with this receptionistProfile already exists (to avoid duplicates on updates)
+    const existingUserByProfile = await User.findOne({ receptionistProfile: doc._id });
     
     if (existingUserByProfile) {
-      // User already linked to this doctor, skip
+      // User already linked to this receptionist, skip
       return;
     }
 
@@ -187,17 +209,16 @@ DoctorSchema.post('save', async function (doc: IDoctor) {
     const existingUserByEmail = await User.findOne({ email: doc.email.toLowerCase().trim() });
     
     if (!existingUserByEmail) {
-      // Find the doctor role
-      const doctorRole = await Role.findOne({ name: 'doctor' });
+      // Find the receptionist role
+      const receptionistRole = await Role.findOne({ name: 'receptionist' });
       
-      if (!doctorRole) {
-        console.warn(`⚠️  Doctor role not found. User not created for doctor: ${doc.email}`);
+      if (!receptionistRole) {
+        console.warn(`⚠️  Receptionist role not found. User not created for receptionist: ${doc.email}`);
         return;
       }
 
       // Generate a default password (can be changed on first login)
-      // Using a combination of license number for security
-      const defaultPassword = `Doctor${doc.licenseNumber.slice(-4)}!`;
+      const defaultPassword = `Recep${doc.employeeId?.slice(-4) || doc.phone.slice(-4)}!`;
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
       // Create the user
@@ -205,30 +226,28 @@ DoctorSchema.post('save', async function (doc: IDoctor) {
         name: `${doc.firstName} ${doc.lastName}`.trim(),
         email: doc.email.toLowerCase().trim(),
         password: hashedPassword,
-        role: doctorRole._id,
-        doctorProfile: doc._id,
+        role: receptionistRole._id,
+        receptionistProfile: doc._id,
         status: doc.status === 'active' ? 'active' : 'inactive',
       });
 
-      console.log(`✅ Created user account for doctor: ${doc.email} (default password: ${defaultPassword})`);
+      console.log(`✅ Created user account for receptionist: ${doc.email} (default password: ${defaultPassword})`);
     } else {
-      // User exists, but update the doctorProfile reference if not set
-      if (!existingUserByEmail.doctorProfile) {
-        existingUserByEmail.doctorProfile = doc._id;
+      // User exists, but update the receptionistProfile reference if not set
+      if (!existingUserByEmail.receptionistProfile) {
+        existingUserByEmail.receptionistProfile = doc._id;
         await existingUserByEmail.save();
-        console.log(`✅ Linked existing user to doctor: ${doc.email}`);
+        console.log(`✅ Linked existing user to receptionist: ${doc.email}`);
       }
     }
   } catch (error: any) {
-    // Log error but don't throw - we don't want to prevent doctor creation if user creation fails
-    console.error(`⚠️  Error creating user for doctor ${doc.email}:`, error.message);
+    // Log error but don't throw - we don't want to prevent receptionist creation if user creation fails
+    console.error(`⚠️  Error creating user for receptionist ${doc.email}:`, error.message);
   }
 });
 
-// Register Doctor model immediately to ensure it's available when other models reference it
-// This prevents "Schema hasn't been registered" errors when User or other models
-// try to reference Doctor via ref: 'Doctor'
-const DoctorModel = mongoose.models.Doctor || mongoose.model<IDoctor>('Doctor', DoctorSchema);
+// Register Receptionist model immediately to ensure it's available when other models reference it
+const ReceptionistModel = mongoose.models.Receptionist || mongoose.model<IReceptionist>('Receptionist', ReceptionistSchema);
 
-export default DoctorModel;
+export default ReceptionistModel;
 

@@ -135,9 +135,14 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
       const data = await res.json();
       if (data.success) {
         setVisit(data.data);
+      } else {
+        // Visit not found or error
+        console.error('Failed to fetch visit:', data.error);
+        setVisit(null);
       }
     } catch (error) {
       console.error('Failed to fetch visit:', error);
+      setVisit(null);
     } finally {
       setLoading(false);
     }

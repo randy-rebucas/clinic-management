@@ -87,7 +87,7 @@ export async function PUT(
     }
 
     // Validate role name if provided
-    const validRoleNames = ['admin', 'doctor', 'nurse', 'receptionist', 'accountant'];
+    const validRoleNames = ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'];
     if (body.name && !validRoleNames.includes(body.name)) {
       return NextResponse.json(
         { success: false, error: `Role name must be one of: ${validRoleNames.join(', ')}` },
