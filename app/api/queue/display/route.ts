@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
+import Room from '@/models/Room';
 import { verifySession } from '@/app/lib/dal';
 
 /**

@@ -4,6 +4,7 @@ import Patient from '@/models/Patient';
 import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getSettings } from '@/lib/settings';
 
 export async function GET(
   request: NextRequest,
@@ -78,10 +79,19 @@ export async function GET(
       }, 0);
 
       if (totalUnpaid > 0) {
+        const settings = await getSettings();
+        const currency = settings.billingSettings?.currency || 'PHP';
+        const formattedAmount = new Intl.NumberFormat('en-PH', {
+          style: 'currency',
+          currency: currency,
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(totalUnpaid);
+
         alerts.push({
           type: 'unpaid_balance',
           severity: totalUnpaid > 10000 ? 'high' : 'medium',
-          message: `Patient has unpaid balance: ₱${totalUnpaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          message: `Patient has unpaid balance: ${formattedAmount}`,
           details: {
             totalUnpaid,
             invoiceCount: unpaidInvoices.length,

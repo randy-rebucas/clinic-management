@@ -196,8 +196,18 @@ DocumentSchema.index({ lastModifiedBy: 1 });
 // Pre-save hook to generate document code
 DocumentSchema.pre('save', async function (next) {
   if (!this.documentCode) {
-    const count = await mongoose.models.Document?.countDocuments() || 0;
-    this.documentCode = `DOC-${Date.now()}-${count + 1}`;
+    try {
+      // Use the model directly from mongoose.models or this.constructor
+      const DocumentModel = mongoose.models.Document || this.constructor;
+      const count = await DocumentModel.countDocuments();
+      // Generate unique code using timestamp and random string to avoid collisions
+      const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
+      this.documentCode = `DOC-${Date.now()}-${randomSuffix}`;
+    } catch (error) {
+      // Fallback if countDocuments fails - use timestamp and random
+      const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
+      this.documentCode = `DOC-${Date.now()}-${randomSuffix}`;
+    }
   }
   next();
 });

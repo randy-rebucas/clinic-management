@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useSetting } from './SettingsContext';
 
 interface InventoryItem {
   _id: string;
@@ -26,6 +27,16 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
   const [supplier, setSupplier] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const router = useRouter();
+  const currency = useSetting('billingSettings.currency', 'PHP');
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
 
   useEffect(() => {
     fetchItem();
@@ -293,19 +304,19 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
                     Unit Cost (Optional)
                   </label>
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
+                    <span className="text-gray-500">{new Intl.NumberFormat('en-PH', { style: 'currency', currency: currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(0).replace(/[\d.,]/g, '').trim()}</span>
                     <input
                       type="number"
                       min="0"
                       step="0.01"
                       value={unitCost}
                       onChange={(e) => setUnitCost(e.target.value)}
-                      placeholder={`Current: $${item.unitCost.toFixed(2)}`}
+                      placeholder={`Current: ${formatCurrency(item.unitCost)}`}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
-                    Current unit cost: ${item.unitCost.toFixed(2)}. Leave blank to keep current.
+                    Current unit cost: {formatCurrency(item.unitCost)}. Leave blank to keep current.
                   </p>
                 </div>
 
@@ -353,11 +364,11 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
                       </div>
                       <div>
                         <span className="text-blue-700">Unit Cost:</span>
-                        <span className="font-medium ml-2">${parseFloat(unitCost).toFixed(2)}</span>
+                        <span className="font-medium ml-2">{formatCurrency(parseFloat(unitCost))}</span>
                       </div>
                       <div className="col-span-2 pt-2 border-t border-blue-200">
                         <span className="text-blue-900 font-semibold">Total Cost:</span>
-                        <span className="font-bold text-lg ml-2">${totalCost.toFixed(2)}</span>
+                        <span className="font-bold text-lg ml-2">{formatCurrency(totalCost)}</span>
                       </div>
                     </div>
                   </div>

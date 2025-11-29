@@ -71,7 +71,7 @@ interface VisitFormData {
 
 interface VisitFormProps {
   initialData?: Partial<VisitFormData>;
-  patients: Array<{ _id: string; firstName: string; lastName: string }>;
+  patients: Array<{ _id: string; firstName: string; lastName: string; email?: string; phone?: string; patientCode?: string }>;
   onSubmit: (data: VisitFormData) => void;
   onCancel?: () => void;
   providerName: string;
@@ -103,7 +103,8 @@ export default function VisitForm({
   const [showIcd10Search, setShowIcd10Search] = useState(false);
   const [patientSearch, setPatientSearch] = useState('');
   const [showPatientSearch, setShowPatientSearch] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<{ _id: string; firstName: string; lastName: string } | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<{ _id: string; firstName: string; lastName: string; email?: string; phone?: string; patientCode?: string } | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [activeTab, setActiveTab] = useState<'soap' | 'traditional' | 'treatment'>('soap');
 
@@ -152,6 +153,7 @@ export default function VisitForm({
       const target = event.target as HTMLElement;
       if (!target.closest('.patient-search-container')) {
         setShowPatientSearch(false);
+        setHighlightedIndex(-1);
       }
     };
 
@@ -175,14 +177,18 @@ export default function VisitForm({
     if (!patientSearch.trim()) return true;
     const searchLower = patientSearch.toLowerCase();
     const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
-    return fullName.includes(searchLower);
+    const email = (patient.email || '').toLowerCase();
+    const phone = (patient.phone || '').toLowerCase();
+    const patientCode = (patient.patientCode || '').toLowerCase();
+    return fullName.includes(searchLower) || email.includes(searchLower) || phone.includes(searchLower) || patientCode.includes(searchLower);
   });
 
-  const selectPatient = (patient: { _id: string; firstName: string; lastName: string }) => {
+  const selectPatient = (patient: { _id: string; firstName: string; lastName: string; email?: string; phone?: string; patientCode?: string }) => {
     setFormData({ ...formData, patient: patient._id });
     setSelectedPatient(patient);
     setPatientSearch(`${patient.firstName} ${patient.lastName}`);
     setShowPatientSearch(false);
+    setHighlightedIndex(-1);
   };
 
   const addDiagnosis = () => {
@@ -252,8 +258,7 @@ export default function VisitForm({
 
   return (
     <form onSubmit={handleSubmit}>
-      <div className="max-h-[80vh] overflow-y-auto">
-        <div className="flex flex-col gap-4 p-4">
+      <div className="flex flex-col gap-4">
           {/* Basic Information */}
           <div>
             <h2 className="text-lg font-semibold mb-3">Basic Information</h2>
@@ -262,6 +267,7 @@ export default function VisitForm({
                 <label className="block text-sm font-medium mb-2">
                   Patient <span className="text-red-500">*</span>
                 </label>
+                <p className="text-xs text-gray-500 mb-2">Search by name, email, phone, or patient code</p>
                 <div className="relative patient-search-container">
               <input
                 type="text"
@@ -270,20 +276,43 @@ export default function VisitForm({
                 onChange={(e) => {
                   setPatientSearch(e.target.value);
                   setShowPatientSearch(true);
+                  setHighlightedIndex(-1);
                   if (!e.target.value) {
                     setFormData({ ...formData, patient: '' });
                     setSelectedPatient(null);
                   }
                 }}
-                onFocus={() => setShowPatientSearch(true)}
+                onFocus={() => {
+                  setShowPatientSearch(true);
+                  setHighlightedIndex(-1);
+                }}
+                onKeyDown={(e) => {
+                  if (!showPatientSearch || filteredPatients.length === 0) return;
+                  
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setHighlightedIndex(prev => 
+                      prev < filteredPatients.length - 1 ? prev + 1 : prev
+                    );
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setHighlightedIndex(prev => prev > 0 ? prev - 1 : -1);
+                  } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+                    e.preventDefault();
+                    selectPatient(filteredPatients[highlightedIndex]);
+                  } else if (e.key === 'Escape') {
+                    setShowPatientSearch(false);
+                    setHighlightedIndex(-1);
+                  }
+                }}
                 placeholder="Type to search patients..."
                 className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
-              {showPatientSearch && filteredPatients.length > 0 && (
+              {showPatientSearch && (
               <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
                 {filteredPatients.length > 0 ? (
                   <div className="flex flex-col gap-1">
-                    {filteredPatients.map((patient) => (
+                    {filteredPatients.map((patient, index) => (
                       <button
                         key={patient._id}
                         type="button"
@@ -291,16 +320,35 @@ export default function VisitForm({
                           selectPatient(patient);
                           setShowPatientSearch(false);
                         }}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded transition-colors"
+                        onMouseEnter={() => setHighlightedIndex(index)}
+                        className={`w-full text-left px-3 py-2 rounded transition-colors ${
+                          highlightedIndex === index 
+                            ? 'bg-blue-50 hover:bg-blue-100' 
+                            : 'hover:bg-gray-100'
+                        }`}
                       >
-                        <span className="font-medium">{patient.firstName} {patient.lastName}</span>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-sm">{patient.firstName} {patient.lastName}</span>
+                          {(patient.email || patient.phone) && (
+                            <span className="text-xs text-gray-500 mt-0.5">
+                              {patient.email && patient.phone 
+                                ? `${patient.email} • ${patient.phone}`
+                                : patient.email || patient.phone}
+                              {patient.patientCode && ` • ${patient.patientCode}`}
+                            </span>
+                          )}
+                        </div>
                       </button>
                     ))}
                   </div>
-                ) : patientSearch ? (
-                  <span className="text-sm text-gray-500 p-2">No patients found</span>
+                ) : patientSearch.trim() ? (
+                  <div className="p-2">
+                    <p className="text-sm text-gray-500">No patients found</p>
+                  </div>
                 ) : (
-                  <span className="text-sm text-gray-500 p-2">Start typing to search...</span>
+                  <div className="p-2">
+                    <p className="text-sm text-gray-500">All patients ({patients.length})</p>
+                  </div>
                 )}
               </div>
               )}
@@ -313,6 +361,7 @@ export default function VisitForm({
             <label className="block text-sm font-medium mb-2">
               Visit Type <span className="text-red-500">*</span>
             </label>
+            <p className="text-xs text-gray-500 mb-2">Select the type of visit being documented</p>
             <select
               value={formData.visitType}
               onChange={(e) => setFormData({ ...formData, visitType: e.target.value as any })}
@@ -327,6 +376,7 @@ export default function VisitForm({
           </div>
           <div className="w-full">
             <label className="block text-sm font-medium mb-2">Chief Complaint</label>
+            <p className="text-xs text-gray-500 mb-2">Primary reason for the visit in the patient&apos;s own words</p>
             <input
               type="text"
               value={formData.chiefComplaint}
@@ -381,8 +431,9 @@ export default function VisitForm({
             <div className="flex flex-col gap-3">
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  S - Subjective (Patient&apos;s description of symptoms)
+                  S - Subjective
                 </label>
+                <p className="text-xs text-gray-500 mb-2">Patient&apos;s description of symptoms, history, and concerns</p>
                 <textarea
                   value={formData.soapNotes?.subjective || ''}
                   onChange={(e) =>
@@ -393,12 +444,14 @@ export default function VisitForm({
                   }
                   rows={4}
                   placeholder="Patient reports..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-y"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  O - Objective (Measurable observations, vitals, physical exam)
+                  O - Objective
                 </label>
+                <p className="text-xs text-gray-500 mb-2">Measurable observations, vital signs, and physical examination findings</p>
                 <textarea
                   value={formData.soapNotes?.objective || ''}
                   onChange={(e) =>
@@ -409,12 +462,14 @@ export default function VisitForm({
                   }
                   rows={4}
                   placeholder="Vitals: BP 120/80, HR 72, Temp 37°C. Physical exam findings..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-y"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  A - Assessment (Clinical impression/diagnosis)
+                  A - Assessment
                 </label>
+                <p className="text-xs text-gray-500 mb-2">Clinical impression, diagnosis, or differential diagnosis</p>
                 <textarea
                   value={formData.soapNotes?.assessment || ''}
                   onChange={(e) =>
@@ -425,12 +480,14 @@ export default function VisitForm({
                   }
                   rows={3}
                   placeholder="Clinical impression..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-y"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  P - Plan (Treatment plan and follow-up)
+                  P - Plan
                 </label>
+                <p className="text-xs text-gray-500 mb-2">Treatment plan, medications, procedures, and follow-up instructions</p>
                 <textarea
                   value={formData.soapNotes?.plan || ''}
                   onChange={(e) =>
@@ -441,6 +498,7 @@ export default function VisitForm({
                   }
                   rows={4}
                   placeholder="Plan: Medications, procedures, follow-up..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-y"
                 />
               </div>
             </div>
@@ -451,17 +509,22 @@ export default function VisitForm({
             <div className="flex flex-col gap-3">
               <div>
                 <label className="block text-sm font-medium mb-2">History of Present Illness</label>
+                <p className="text-xs text-gray-500 mb-2">Detailed chronological description of the current illness or problem</p>
                 <textarea
                   value={formData.historyOfPresentIllness}
                   onChange={(e) => setFormData({ ...formData, historyOfPresentIllness: e.target.value })}
                   rows={4}
+                  placeholder="Describe the onset, progression, and characteristics of the current problem..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-y"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Vitals</label>
+                <p className="text-xs text-gray-500 mb-2">Record patient&apos;s vital signs during the visit</p>
                 <div className="flex gap-3 flex-wrap">
                   <div className="min-w-[120px]">
-                    <label className="block text-xs text-gray-500 mb-2">BP</label>
+                    <label className="block text-xs text-gray-500 mb-2">BP (Blood Pressure)</label>
+                    <p className="text-xs text-gray-400 mb-1">Format: 120/80</p>
                     <input
                         type="text"
                         value={formData.vitals?.bp || ''}
@@ -476,7 +539,8 @@ export default function VisitForm({
                       />
                   </div>
                   <div className="min-w-[120px]">
-                    <label className="block text-xs text-gray-500 mb-2">HR</label>
+                    <label className="block text-xs text-gray-500 mb-2">HR (Heart Rate)</label>
+                    <p className="text-xs text-gray-400 mb-1">Beats per minute</p>
                     <input
                         type="number"
                         value={formData.vitals?.hr || ''}
@@ -492,6 +556,7 @@ export default function VisitForm({
                   </div>
                   <div className="min-w-[120px]">
                     <label className="block text-xs text-gray-500 mb-2">Temp (°C)</label>
+                    <p className="text-xs text-gray-400 mb-1">Temperature in Celsius</p>
                     <input
                         type="number"
                         step="0.1"
@@ -508,6 +573,7 @@ export default function VisitForm({
                   </div>
                   <div className="min-w-[120px]">
                     <label className="block text-xs text-gray-500 mb-2">SpO2 (%)</label>
+                    <p className="text-xs text-gray-400 mb-1">Oxygen saturation</p>
                     <input
                         type="number"
                         value={formData.vitals?.spo2 || ''}
@@ -525,9 +591,11 @@ export default function VisitForm({
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Physical Examination</label>
+                <p className="text-xs text-gray-500 mb-2">Document findings for each body system examined</p>
                 <div className="flex gap-3 flex-wrap">
                   <div className="flex-1 min-w-[200px]">
                     <label className="block text-xs text-gray-500 mb-2">General</label>
+                    <p className="text-xs text-gray-400 mb-1">Overall appearance, alertness, distress level</p>
                     <textarea
                       value={formData.physicalExam?.general || ''}
                       onChange={(e) =>
@@ -537,10 +605,13 @@ export default function VisitForm({
                         })
                       }
                       rows={2}
+                      placeholder="General appearance..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-y"
                     />
                   </div>
                   <div className="flex-1 min-w-[200px]">
                     <label className="block text-xs text-gray-500 mb-2">HEENT</label>
+                    <p className="text-xs text-gray-400 mb-1">Head, Eyes, Ears, Nose, Throat</p>
                     <textarea
                       value={formData.physicalExam?.heent || ''}
                       onChange={(e) =>
@@ -550,10 +621,13 @@ export default function VisitForm({
                         })
                       }
                       rows={2}
+                      placeholder="HEENT findings..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-y"
                     />
                   </div>
                   <div className="flex-1 min-w-[200px]">
                     <label className="block text-xs text-gray-500 mb-2">Cardiovascular</label>
+                    <p className="text-xs text-gray-400 mb-1">Heart sounds, pulses, peripheral circulation</p>
                     <textarea
                       value={formData.physicalExam?.cardiovascular || ''}
                       onChange={(e) =>
@@ -563,10 +637,13 @@ export default function VisitForm({
                         })
                       }
                       rows={2}
+                      placeholder="Cardiovascular findings..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-y"
                     />
                   </div>
                   <div className="flex-1 min-w-[200px]">
                     <label className="block text-xs text-gray-500 mb-2">Abdomen</label>
+                    <p className="text-xs text-gray-400 mb-1">Inspection, auscultation, palpation, percussion</p>
                     <textarea
                       value={formData.physicalExam?.abdomen || ''}
                       onChange={(e) =>
@@ -576,6 +653,8 @@ export default function VisitForm({
                         })
                       }
                       rows={2}
+                      placeholder="Abdominal findings..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-y"
                     />
                   </div>
                 </div>
@@ -586,7 +665,10 @@ export default function VisitForm({
           {/* Diagnoses Section */}
           <div>
             <div className="flex justify-between items-center mb-3">
-              <h2 className="text-lg font-semibold">Diagnoses (ICD-10)</h2>
+              <div>
+                <h2 className="text-lg font-semibold">Diagnoses (ICD-10)</h2>
+                <p className="text-xs text-gray-500 mt-1">Add ICD-10 coded diagnoses for this visit. Mark the primary diagnosis.</p>
+              </div>
               <button
                 type="button"
                 className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm"
@@ -605,6 +687,7 @@ export default function VisitForm({
                       <div className="flex flex-col md:flex-row gap-3 flex-wrap">
                         <div className="flex-1 relative" style={{ minWidth: '200px' }}>
                           <label className="block text-xs font-medium text-gray-500 mb-2">ICD-10 Code</label>
+                          <p className="text-xs text-gray-400 mb-1">Start typing to search ICD-10 codes</p>
                           <input
                               type="text"
                               value={diagnosis.code || ''}
@@ -616,7 +699,7 @@ export default function VisitForm({
                                 }
                               }}
                               placeholder="E.g., E11.9"
-                              style={{ all: 'unset', flex: 1 }}
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                             />
                           {showIcd10Search && icd10Results.length > 0 && (
                             <div
@@ -651,6 +734,7 @@ export default function VisitForm({
                         </div>
                         <div className="flex-1 min-w-[200px]">
                           <label className="block text-xs font-medium text-gray-500 mb-2">Description</label>
+                          <p className="text-xs text-gray-400 mb-1">Full diagnosis description</p>
                           <input
                               type="text"
                               value={diagnosis.description || ''}
@@ -688,7 +772,10 @@ export default function VisitForm({
             <div className="flex flex-col gap-3">
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <label className="block text-sm font-medium">Medications</label>
+                  <div>
+                    <label className="block text-sm font-medium">Medications</label>
+                    <p className="text-xs text-gray-500 mt-1">Prescribed medications with dosage, frequency, and duration</p>
+                  </div>
                   <button
                     type="button"
                     className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm"
@@ -704,9 +791,10 @@ export default function VisitForm({
                         <div className="p-2">
                           <div className="flex gap-2 flex-wrap">
                             <div className="flex-1 min-w-[150px]">
+                              <label className="block text-xs text-gray-500 mb-1">Medication Name</label>
                               <input
                                   type="text"
-                                  placeholder="Medication name"
+                                  placeholder="e.g., Amoxicillin"
                                   value={med.name}
                                   onChange={(e) => {
                                     const medications = [...(formData.treatmentPlan?.medications || [])];
@@ -716,13 +804,14 @@ export default function VisitForm({
                                       treatmentPlan: { ...formData.treatmentPlan, medications },
                                     });
                                   }}
-                                  style={{ all: 'unset', flex: 1 }}
+                                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                                 />
                             </div>
                             <div className="min-w-[100px]">
+                              <label className="block text-xs text-gray-500 mb-1">Dosage</label>
                               <input
                                   type="text"
-                                  placeholder="Dosage"
+                                  placeholder="e.g., 500mg"
                                   value={med.dosage}
                                   onChange={(e) => {
                                     const medications = [...(formData.treatmentPlan?.medications || [])];
@@ -732,13 +821,14 @@ export default function VisitForm({
                                       treatmentPlan: { ...formData.treatmentPlan, medications },
                                     });
                                   }}
-                                  style={{ all: 'unset', flex: 1 }}
+                                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                                 />
                             </div>
                             <div className="min-w-[100px]">
+                              <label className="block text-xs text-gray-500 mb-1">Frequency</label>
                               <input
                                   type="text"
-                                  placeholder="Frequency"
+                                  placeholder="e.g., 3x daily"
                                   value={med.frequency}
                                   onChange={(e) => {
                                     const medications = [...(formData.treatmentPlan?.medications || [])];
@@ -748,13 +838,14 @@ export default function VisitForm({
                                       treatmentPlan: { ...formData.treatmentPlan, medications },
                                     });
                                   }}
-                                  style={{ all: 'unset', flex: 1 }}
+                                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                                 />
                             </div>
                             <div className="min-w-[100px]">
+                              <label className="block text-xs text-gray-500 mb-1">Duration</label>
                               <input
                                   type="text"
-                                  placeholder="Duration"
+                                  placeholder="e.g., 7 days"
                                   value={med.duration}
                                   onChange={(e) => {
                                     const medications = [...(formData.treatmentPlan?.medications || [])];
@@ -764,7 +855,7 @@ export default function VisitForm({
                                       treatmentPlan: { ...formData.treatmentPlan, medications },
                                     });
                                   }}
-                                  style={{ all: 'unset', flex: 1 }}
+                                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                                 />
                             </div>
                             <button
@@ -785,15 +876,17 @@ export default function VisitForm({
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Follow-up Date</label>
+                <p className="text-xs text-gray-500 mb-2">Schedule the next appointment or follow-up date</p>
                 <input
                     type="date"
                     value={formData.followUpDate}
                     onChange={(e) => setFormData({ ...formData, followUpDate: e.target.value })}
-                    style={{ all: 'unset', flex: 1 }}
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Follow-up Instructions</label>
+                <p className="text-xs text-gray-500 mb-2">Instructions for the patient regarding follow-up care</p>
                 <textarea
                   value={formData.treatmentPlan?.followUp?.instructions || ''}
                   onChange={(e) =>
@@ -811,6 +904,7 @@ export default function VisitForm({
                   }
                   rows={3}
                   placeholder="Follow-up instructions..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-y"
                 />
               </div>
             </div>
@@ -923,10 +1017,13 @@ export default function VisitForm({
           {/* Additional Notes */}
           <div>
             <label className="block text-sm font-medium mb-2">Additional Notes</label>
+            <p className="text-xs text-gray-500 mb-2">Any additional information, observations, or comments about this visit</p>
             <textarea
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               rows={3}
+              placeholder="Additional notes..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-y"
             />
           </div>
 
@@ -943,7 +1040,6 @@ export default function VisitForm({
             </button>
           </div>
         </div>
-      </div>
     </form>
   );
 }

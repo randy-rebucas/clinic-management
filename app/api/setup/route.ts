@@ -400,7 +400,7 @@ async function createDefaultSettings(clinicName: string, clinicEmail: string) {
         invoiceReminders: true,
       },
       billingSettings: {
-        currency: 'USD',
+        currency: 'PHP',
         taxRate: 0,
         paymentTerms: 30,
         lateFeePercentage: 0,

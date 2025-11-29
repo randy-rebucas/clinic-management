@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
 import Appointment from '@/models/Appointment';
+import Room from '@/models/Room';
+import Patient from '@/models/Patient';
+import Doctor from '@/models/Doctor';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
@@ -21,13 +25,34 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Ensure all models are registered (imports ensure this, but double-check)
+    if (!mongoose.models.Patient) {
+      await import('@/models/Patient');
+    }
+    if (!mongoose.models.Doctor) {
+      await import('@/models/Doctor');
+    }
+    if (!mongoose.models.Room) {
+      await import('@/models/Room');
+    }
+    
     const searchParams = request.nextUrl.searchParams;
     const doctorId = searchParams.get('doctorId');
     const roomId = searchParams.get('roomId');
     const status = searchParams.get('status') || 'waiting';
     const display = searchParams.get('display') === 'true'; // For TV display
 
-    let query: any = { status: { $in: ['waiting', 'in-progress'] } };
+    let query: any = {};
+    
+    // Handle status filter - support comma-separated values
+    if (status && status !== 'all') {
+      const statusArray = status.includes(',') ? status.split(',') : [status];
+      query.status = { $in: statusArray };
+    } else {
+      // Default to active statuses if not specified
+      query.status = { $in: ['waiting', 'in-progress'] };
+    }
     
     if (doctorId) {
       query.doctor = doctorId;
@@ -35,10 +60,8 @@ export async function GET(request: NextRequest) {
     if (roomId) {
       query.room = roomId;
     }
-    if (status && status !== 'all') {
-      query.status = status;
-    }
 
+    // Find queues - populate will work if models are registered
     const queues = await Queue.find(query)
       .populate('patient', 'firstName lastName patientCode')
       .populate('doctor', 'firstName lastName')
@@ -62,8 +85,18 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Error fetching queue:', error);
+    console.error('Error stack:', error?.stack);
+    console.error('Error name:', error?.name);
+    const errorMessage = error?.message || error?.toString() || 'Failed to fetch queue';
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch queue' },
+      { 
+        success: false, 
+        error: process.env.NODE_ENV === 'development' ? errorMessage : 'Failed to fetch queue',
+        ...(process.env.NODE_ENV === 'development' && { 
+          details: error?.stack,
+          errorName: error?.name 
+        })
+      },
       { status: 500 }
     );
   }

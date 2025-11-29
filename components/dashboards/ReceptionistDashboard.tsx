@@ -45,7 +45,7 @@ export default function ReceptionistDashboard() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<'today' | 'week' | 'month'>('today');
   const router = useRouter();
-  const currency = useSetting('billingSettings.currency', 'USD');
+  const currency = useSetting('billingSettings.currency', 'PHP');
 
   useEffect(() => {
     async function fetchDashboardData() {
@@ -92,7 +92,7 @@ export default function ReceptionistDashboard() {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-PH', {
       style: 'currency',
       currency: currency,
       minimumFractionDigits: 2,

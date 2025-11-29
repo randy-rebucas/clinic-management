@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Modal } from './ui/Modal';
+import { useSetting } from './SettingsContext';
 
 interface Invoice {
   _id: string;
@@ -24,6 +25,16 @@ export default function InvoicesPageClient() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const router = useRouter();
+  const currency = useSetting('billingSettings.currency', 'PHP');
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
 
   useEffect(() => {
     fetchInvoices();
@@ -253,7 +264,7 @@ export default function InvoicesPageClient() {
                           </td>
                           <td className="py-2 px-3">
                             <p className="text-sm font-medium">
-                              ₱{invoice.total?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                              {formatCurrency(invoice.total || 0)}
                             </p>
                           </td>
                           <td className="py-2 px-3">

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useSetting } from './SettingsContext';
 
 interface InventoryItem {
   _id: string;
@@ -52,6 +53,16 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview');
   const router = useRouter();
+  const currency = useSetting('billingSettings.currency', 'PHP');
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
 
   useEffect(() => {
     fetchItem();
@@ -245,13 +256,13 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[150px]">
                 <div className="p-2">
                   <p className="text-xs text-gray-500 mb-1">Unit Cost</p>
-                  <p className="text-2xl font-bold">${item.unitCost.toFixed(2)}</p>
+                  <p className="text-2xl font-bold">{formatCurrency(item.unitCost)}</p>
                 </div>
               </div>
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[150px]">
                 <div className="p-2">
                   <p className="text-xs text-gray-500 mb-1">Total Value</p>
-                  <p className="text-2xl font-bold text-blue-600">${totalValue.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-blue-600">{formatCurrency(totalValue)}</p>
                 </div>
               </div>
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-w-[150px]">
@@ -422,11 +433,11 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                       <dl className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
                           <dt className="text-xs font-medium text-gray-500">Unit Cost</dt>
-                          <dd className="text-sm text-gray-900 font-semibold">${item.unitCost.toFixed(2)}</dd>
+                          <dd className="text-sm text-gray-900 font-semibold">{formatCurrency(item.unitCost)}</dd>
                         </div>
                         <div>
                           <dt className="text-xs font-medium text-gray-500">Total Value</dt>
-                          <dd className="text-sm text-gray-900 font-semibold text-blue-600">${totalValue.toFixed(2)}</dd>
+                          <dd className="text-sm text-gray-900 font-semibold text-blue-600">{formatCurrency(totalValue)}</dd>
                         </div>
                         {item.supplier && (
                           <div>

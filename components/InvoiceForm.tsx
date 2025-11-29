@@ -69,11 +69,11 @@ export default function InvoiceForm({
   onSubmit,
   onCancel,
 }: InvoiceFormProps) {
-  const currency = useSetting('billingSettings.currency', 'USD');
+  const currency = useSetting('billingSettings.currency', 'PHP');
   const defaultTaxRate = useSetting('billingSettings.taxRate', 0);
   
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-PH', {
       style: 'currency',
       currency: currency,
       minimumFractionDigits: 2,
