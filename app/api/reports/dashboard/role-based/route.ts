@@ -222,9 +222,9 @@ export async function GET(request: NextRequest) {
     if (session.role === 'doctor') {
       // Doctor-specific: My appointments, my visits, my prescriptions
       const doctorUser = await import('@/models/User').then(m => m.default);
-      const user = await doctorUser.findById(session.userId).populate('staff').lean();
+      const user = await doctorUser.findById(session.userId).lean();
       const staffId = (user as any)?.staff?._id;
-      
+
       if (staffId) {
         const myAppointments = await Appointment.find({
           doctor: staffId,
@@ -259,6 +259,11 @@ export async function GET(request: NextRequest) {
           date: visit.date,
           diagnosis: visit.diagnosis || 'N/A',
         }));
+      } else {
+        // Fallback: log missing staff reference and prevent crash
+        console.warn(`Doctor user ${session.userId} is missing staff reference. Dashboard will not show personal appointments/visits.`);
+        data.myAppointments = [];
+        data.myVisits = [];
       }
     }
 
@@ -289,9 +294,14 @@ export async function GET(request: NextRequest) {
       data,
     });
   } catch (error: any) {
+    // Improved error logging and reporting
     console.error('Error generating role-based dashboard data:', error);
+    let errorMessage = 'Failed to generate dashboard data';
+    if (error && error.message) {
+      errorMessage += `: ${error.message}`;
+    }
     return NextResponse.json(
-      { success: false, error: 'Failed to generate dashboard data' },
+      { success: false, error: errorMessage, details: error?.stack || error },
       { status: 500 }
     );
   }

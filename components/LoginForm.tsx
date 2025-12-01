@@ -99,12 +99,7 @@ export default function LoginForm() {
       <div>
         <p className="text-sm text-gray-600">
           Don&apos;t have an account?{' '}
-          <Link
-            href="/signup"
-            className="font-semibold text-blue-600 hover:text-blue-700 transition-colors underline-offset-2 hover:underline"
-          >
-            Sign up
-          </Link>
+          {/* Signup link removed */}
         </p>
       </div>
     </form>

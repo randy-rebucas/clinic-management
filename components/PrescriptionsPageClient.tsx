@@ -367,19 +367,24 @@ export default function PrescriptionsPageClient() {
                       0
                     ) || 0;
 
+                    const patient = prescription.patient;
                     return (
                       <tr key={prescription._id} className="hover:bg-gray-50">
                         <td className="px-4 py-3">
                           <div className="text-sm font-medium">{prescription.prescriptionCode}</div>
                         </td>
                         <td className="px-4 py-3">
-                          <Link href={`/patients/${prescription.patient._id}`}>
-                            <div className="text-sm font-medium text-blue-600 hover:underline">
-                              {prescription.patient.firstName} {prescription.patient.lastName}
-                            </div>
-                          </Link>
-                          {prescription.patient.patientCode && (
-                            <div className="text-xs text-gray-500">{prescription.patient.patientCode}</div>
+                          {patient ? (
+                            <Link href={`/patients/${patient._id}`}>
+                              <div className="text-sm font-medium text-blue-600 hover:underline">
+                                {patient.firstName} {patient.lastName}
+                              </div>
+                            </Link>
+                          ) : (
+                            <div className="text-sm text-gray-500 italic">Unknown Patient</div>
+                          )}
+                          {patient?.patientCode && (
+                            <div className="text-xs text-gray-500">{patient.patientCode}</div>
                           )}
                         </td>
                         <td className="px-4 py-3">

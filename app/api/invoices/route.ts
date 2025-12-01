@@ -44,9 +44,14 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: invoices });
   } catch (error: any) {
+    // Improved error logging and reporting
     console.error('Error fetching invoices:', error);
+    let errorMessage = 'Failed to fetch invoices';
+    if (error && error.message) {
+      errorMessage += `: ${error.message}`;
+    }
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch invoices' },
+      { success: false, error: errorMessage, details: error?.stack || error },
       { status: 500 }
     );
   }

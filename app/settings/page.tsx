@@ -9,6 +9,8 @@ export default async function SettingsPage() {
     redirect('/login');
   }
 
-  return <SettingsPageClient user={user as { role: string; [key: string]: any }} />;
+  // Ensure user is a plain object before passing to Client Component
+  const safeUser = user ? JSON.parse(JSON.stringify(user)) : null;
+  return <SettingsPageClient user={safeUser as { role: string; [key: string]: any }} />;
 }
 

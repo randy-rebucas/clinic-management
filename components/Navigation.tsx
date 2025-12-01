@@ -181,5 +181,7 @@ export default async function Navigation() {
     filteredNavItems.push(navItems[0]);
   }
 
-  return <Sidebar navItems={filteredNavItems} user={user} />;
+  // Ensure user is a plain object before passing to Sidebar
+  const safeUser = user ? JSON.parse(JSON.stringify(user)) : null;
+  return <Sidebar navItems={filteredNavItems} user={safeUser} />;
 }
