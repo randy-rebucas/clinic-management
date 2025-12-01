@@ -1,19 +1,19 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import InvoiceDetailClient from '@/components/InvoiceDetailClient';
+import ReferralDetailClient from '@/components/ReferralDetailClient';
 
-export default async function InvoiceDetailPage({
+export default async function ReferralDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const session = await verifySession();
-  
+
   if (!session) {
     redirect('/login');
   }
 
   const { id } = await params;
-  return <InvoiceDetailClient invoiceId={id} />;
+  return <ReferralDetailClient referralId={id} />;
 }
 

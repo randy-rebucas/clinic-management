@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     // Validate role name
-    const validRoleNames = ['admin', 'doctor', 'nurse', 'receptionist', 'accountant'];
+    const validRoleNames = ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'];
     if (body.name && !validRoleNames.includes(body.name)) {
       return NextResponse.json(
         { success: false, error: `Role name must be one of: ${validRoleNames.join(', ')}` },

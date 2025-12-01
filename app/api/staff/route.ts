@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
+import mongoose from 'mongoose';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 
@@ -27,9 +28,21 @@ export async function GET(request: NextRequest) {
     const department = searchParams.get('department');
 
     let query: any = {};
+    
+    // Handle role filter - if role is provided as string (role name), find the Role document
     if (role) {
-      query.role = role;
+      const Role = (await import('@/models/Role')).default;
+      // First try to find by role name
+      const roleDoc = await Role.findOne({ name: role });
+      if (roleDoc) {
+        query.role = roleDoc._id;
+      } else if (mongoose.Types.ObjectId.isValid(role)) {
+        // If not found by name, try as ObjectId
+        query.role = new mongoose.Types.ObjectId(role);
+      }
+      // If neither works, skip the role filter
     }
+    
     if (status) {
       query.status = status;
     }
@@ -39,14 +52,16 @@ export async function GET(request: NextRequest) {
 
     const staff = await User.find(query)
       .select('-password')
+      .populate('role', 'name displayName')
       .populate('doctorProfile', 'firstName lastName specialization')
+      .populate('staffInfo', 'employeeId department position')
       .sort({ createdAt: -1 });
 
     return NextResponse.json({ success: true, data: staff });
   } catch (error: any) {
     console.error('Error fetching staff:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch staff' },
+      { success: false, error: error.message || 'Failed to fetch staff' },
       { status: 500 }
     );
   }

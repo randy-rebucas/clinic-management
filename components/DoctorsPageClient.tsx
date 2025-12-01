@@ -40,6 +40,12 @@ export default function DoctorsPageClient() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; doctorId: string | null; doctorName: string }>({
+    show: false,
+    doctorId: null,
+    doctorName: '',
+  });
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -56,7 +62,23 @@ export default function DoctorsPageClient() {
 
   useEffect(() => {
     fetchDoctors();
+    fetchCurrentUser();
   }, []);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const res = await fetch('/api/user/me');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.user) {
+          console.log(data.user.role);
+          setCurrentUserRole(data.user.role);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch current user:', error);
+    }
+  };
 
   const fetchDoctors = async () => {
     try {
@@ -154,6 +176,36 @@ export default function DoctorsPageClient() {
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
+  const handleDelete = async (doctorId: string) => {
+    try {
+      const res = await fetch(`/api/doctors/${doctorId}`, {
+        method: 'DELETE',
+      });
+
+      if (res.status === 401) {
+        router.push('/login');
+        return;
+      }
+
+      const data = await res.json();
+      if (data.success) {
+        setDeleteConfirm({ show: false, doctorId: null, doctorName: '' });
+        setSuccess('Doctor deleted successfully!');
+        setTimeout(() => setSuccess(null), 3000);
+        fetchDoctors();
+      } else {
+        setError('Error: ' + data.error);
+        setTimeout(() => setError(null), 5000);
+      }
+    } catch (error) {
+      console.error('Failed to delete doctor:', error);
+      setError('Failed to delete doctor');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  const canDelete = currentUserRole === 'doctor' || currentUserRole === 'admin';
+
 
   if (loading) {
     return (
@@ -245,6 +297,34 @@ export default function DoctorsPageClient() {
               </button>
             </div>
           </div>
+
+      {/* Delete Confirmation Modal */}
+      <Modal open={deleteConfirm.show} onOpenChange={(open) => {
+        if (!open) setDeleteConfirm({ show: false, doctorId: null, doctorName: '' });
+      }} className="max-w-md">
+        <div className="p-6">
+          <h2 className="text-xl font-semibold mb-4 text-red-600">Delete Doctor</h2>
+          <p className="text-sm text-gray-700 mb-4">
+            Are you sure you want to delete <strong>{deleteConfirm.doctorName}</strong>? This action cannot be undone and will also delete the associated user account.
+          </p>
+          <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
+            <button 
+              type="button" 
+              onClick={() => setDeleteConfirm({ show: false, doctorId: null, doctorName: '' })}
+              className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button 
+              type="button"
+              onClick={() => deleteConfirm.doctorId && handleDelete(deleteConfirm.doctorId)}
+              className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Form Modal */}
       <Modal open={showForm} onOpenChange={(open) => {
@@ -497,12 +577,26 @@ export default function DoctorsPageClient() {
                           </div>
                         </div>
                       </div>
-                      <Link 
-                        href={`/doctors/${doctor._id}`}
-                        className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors text-xs font-medium"
-                      >
-                        View →
-                      </Link>
+                      <div className="flex gap-2">
+                        <Link 
+                          href={`/doctors/${doctor._id}`}
+                          className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors text-xs font-medium"
+                        >
+                          View →
+                        </Link>
+                        {canDelete && (
+                          <button
+                            onClick={() => setDeleteConfirm({
+                              show: true,
+                              doctorId: doctor._id,
+                              doctorName: `${doctor.firstName} ${doctor.lastName}`,
+                            })}
+                            className="px-2.5 py-1 bg-red-50 text-red-700 rounded hover:bg-red-100 transition-colors text-xs font-medium"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -578,12 +672,26 @@ export default function DoctorsPageClient() {
                     </h3>
                     <p className="text-sm text-gray-600">{doctor.specialization}</p>
                   </div>
-                  <Link 
-                    href={`/doctors/${doctor._id}`}
-                    className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors text-xs font-medium"
-                  >
-                    View →
-                  </Link>
+                  <div className="flex gap-2">
+                    <Link 
+                      href={`/doctors/${doctor._id}`}
+                      className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors text-xs font-medium"
+                    >
+                      View →
+                    </Link>
+                    {canDelete && (
+                      <button
+                        onClick={() => setDeleteConfirm({
+                          show: true,
+                          doctorId: doctor._id,
+                          doctorName: `${doctor.firstName} ${doctor.lastName}`,
+                        })}
+                        className="px-2.5 py-1 bg-red-50 text-red-700 rounded hover:bg-red-100 transition-colors text-xs font-medium"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <div>

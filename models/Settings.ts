@@ -141,7 +141,7 @@ const SettingsSchema = new Schema<ISettings>(
     },
 
     billingSettings: {
-      currency: { type: String, default: 'USD' },
+      currency: { type: String, default: 'PHP' },
       taxRate: { type: Number, default: 0 },
       paymentTerms: { type: Number, default: 30 },
       lateFeePercentage: { type: Number, default: 0 },

@@ -158,8 +158,13 @@ export async function POST(request: NextRequest) {
       fileUrl = `data:${file.type};base64,${base64}`;
     }
 
+    // Generate unique document code
+    const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const documentCode = `DOC-${Date.now()}-${randomSuffix}`;
+
     // Build document object
     const documentData: any = {
+      documentCode,
       title: title || file.name,
       description: description || undefined,
       category: finalCategory,

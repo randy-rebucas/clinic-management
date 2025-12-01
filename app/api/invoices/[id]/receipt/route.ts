@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import mongoose from 'mongoose';
 import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
@@ -18,11 +19,18 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    const invoice = await Invoice.findById(id)
+    
+    if (!id || id === 'undefined') {
+      return NextResponse.json(
+        { success: false, error: 'Invalid invoice ID' },
+        { status: 400 }
+      );
+    }
+
+    let invoice = await Invoice.findById(id)
       .populate('patient', 'firstName lastName patientCode email phone dateOfBirth address')
       .populate('visit', 'visitCode date')
-      .populate('createdBy', 'name email')
-      .populate('items.serviceId', 'name code category unitPrice');
+      .populate('createdBy', 'name email');
 
     if (!invoice) {
       return NextResponse.json(
@@ -31,8 +39,40 @@ export async function GET(
       );
     }
 
+    // Manually populate items.serviceId if needed (convert to plain object first)
+    const invoiceData = invoice.toObject ? invoice.toObject() : invoice;
+    
+    // Populate serviceId for each item if it exists
+    if (invoiceData.items && Array.isArray(invoiceData.items)) {
+      const Service = mongoose.models.Service;
+      if (Service) {
+        const populatedItems = await Promise.all(
+          invoiceData.items.map(async (item: any) => {
+            if (item.serviceId && typeof item.serviceId === 'object' && item.serviceId._id) {
+              // Already populated
+              return item;
+            }
+            if (item.serviceId && typeof item.serviceId === 'string') {
+              try {
+                const service = await Service.findById(item.serviceId)
+                  .select('name code category unitPrice')
+                  .lean();
+                if (service) {
+                  item.serviceId = service;
+                }
+              } catch (err) {
+                // Silently skip if service not found
+              }
+            }
+            return item;
+          })
+        );
+        invoiceData.items = populatedItems;
+      }
+    }
+
     // Generate HTML for printable receipt (EOR - Electronic Official Receipt)
-    const html = await generateReceiptHTML(invoice);
+    const html = await generateReceiptHTML(invoiceData);
 
     return new NextResponse(html, {
       headers: {
@@ -50,7 +90,7 @@ export async function GET(
 
 async function generateReceiptHTML(invoice: any): Promise<string> {
   const settings = await getSettings();
-  const currency = settings.billingSettings?.currency || 'USD';
+  const currency = settings.billingSettings?.currency || 'PHP';
   const clinicName = settings.clinicName || 'Clinic Management System';
   const clinicAddress = settings.clinicAddress || '';
   const clinicPhone = settings.clinicPhone || '';
@@ -62,7 +102,7 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
   const totalPaid = invoice.payments?.reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-PH', {
       style: 'currency',
       currency: currency,
     }).format(amount);
@@ -285,15 +325,20 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
       </tr>
     </thead>
     <tbody>
-      ${invoice.items.map((item: any, index: number) => `
+      ${invoice.items.map((item: any, index: number) => {
+        const serviceName = typeof item.serviceId === 'object' && item.serviceId?.name 
+          ? item.serviceId.name 
+          : item.description || 'Service';
+        return `
         <tr>
           <td>${item.code || `Item ${index + 1}`}</td>
-          <td>${item.description || 'Service'}</td>
-          <td class="text-right">${item.quantity}</td>
-          <td class="text-right">${formatCurrency(item.unitPrice)}</td>
-          <td class="text-right">${formatCurrency(item.total)}</td>
+          <td>${serviceName}</td>
+          <td class="text-right">${item.quantity || 1}</td>
+          <td class="text-right">${formatCurrency(item.unitPrice || 0)}</td>
+          <td class="text-right">${formatCurrency(item.total || 0)}</td>
         </tr>
-      `).join('')}
+      `;
+      }).join('')}
     </tbody>
   </table>
 

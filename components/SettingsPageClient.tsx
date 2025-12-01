@@ -173,7 +173,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             invoiceReminders: data.communicationSettings?.invoiceReminders ?? true,
           },
           billingSettings: {
-            currency: (data.billingSettings?.currency && data.billingSettings.currency.trim()) || 'USD',
+            currency: (data.billingSettings?.currency && data.billingSettings.currency.trim()) || 'PHP',
             taxRate: data.billingSettings?.taxRate ?? 0,
             paymentTerms: data.billingSettings?.paymentTerms ?? 30,
             lateFeePercentage: data.billingSettings?.lateFeePercentage ?? 0,
@@ -241,7 +241,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             invoiceReminders: true,
           },
           billingSettings: {
-            currency: 'USD',
+            currency: 'PHP',
             taxRate: 0,
             paymentTerms: 30,
             lateFeePercentage: 0,
@@ -312,7 +312,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
           invoiceReminders: true,
         },
         billingSettings: {
-          currency: 'USD',
+          currency: 'PHP',
           taxRate: 0,
           paymentTerms: 30,
           lateFeePercentage: 0,
@@ -753,10 +753,10 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                   <h3 className="text-xl font-semibold">Billing Settings</h3>
                   <LabeledTextField
                     label="Currency"
-                    value={settings.billingSettings.currency || 'USD'}
+                    value={settings.billingSettings.currency || 'PHP'}
                     onChange={(e) => updateSettings('billingSettings.currency', e.target.value)}
                     disabled={!isAdmin}
-                    placeholder="USD"
+                    placeholder="PHP"
                   />
                   <LabeledTextField
                     label="Tax Rate (%)"

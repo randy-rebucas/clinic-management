@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-export type RoleName = 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant';
+export type RoleName = 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
 
 export interface IRole extends Document {
   name: RoleName; // Unique role identifier
@@ -22,7 +22,7 @@ const RoleSchema: Schema = new Schema(
   {
     name: {
       type: String,
-      enum: ['admin', 'doctor', 'nurse', 'receptionist', 'accountant'],
+      enum: ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'],
       required: [true, 'Role name is required'],
       unique: true,
       index: true,

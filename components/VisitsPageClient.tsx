@@ -3,8 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import VisitForm from './VisitForm';
-import { Modal } from './ui/Modal';
 
 interface Visit {
   _id: string;
@@ -35,18 +33,9 @@ interface Visit {
   };
 }
 
-interface Patient {
-  _id: string;
-  firstName: string;
-  lastName: string;
-}
-
 export default function VisitsPageClient() {
   const [visits, setVisits] = useState<Visit[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [providerName, setProviderName] = useState('Dr. Provider');
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [error, setError] = useState<string | null>(null);
@@ -55,76 +44,20 @@ export default function VisitsPageClient() {
 
   useEffect(() => {
     fetchData();
-    fetchUser();
-  }, []);
-
-  const fetchUser = async () => {
-    try {
-      const res = await fetch('/api/user/me');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.data) {
-          setProviderName(data.data.name || 'Dr. Provider');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch user:', error);
+    
+    // Check for success message from query params (when redirected from new visit page)
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'true') {
+      setSuccess('Visit created successfully!');
+      setTimeout(() => setSuccess(null), 3000);
+      // Clean up URL
+      window.history.replaceState({}, '', '/visits');
     }
-  };
+  }, []);
 
   const fetchData = async () => {
     try {
-      const [visitsRes, patientsRes] = await Promise.all([
-        fetch('/api/visits'),
-        fetch('/api/patients'),
-      ]);
-
-      if (visitsRes.status === 401 || patientsRes.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const parseResponse = async (res: Response) => {
-        const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          return await res.json();
-        }
-        return { success: false };
-      };
-
-      const visitsData = await parseResponse(visitsRes);
-      const patientsData = await parseResponse(patientsRes);
-
-      if (visitsData.success) setVisits(visitsData.data);
-      if (patientsData.success) setPatients(patientsData.data);
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const showNotification = (message: string, type: 'error' | 'success') => {
-    if (type === 'error') {
-      setError(message);
-      setTimeout(() => setError(null), 5000);
-    } else {
-      setSuccess(message);
-      setTimeout(() => setSuccess(null), 3000);
-    }
-  };
-
-  const handleSubmit = async (formData: any) => {
-    try {
-      const res = await fetch('/api/visits', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          date: new Date(),
-          followUpDate: formData.followUpDate ? new Date(formData.followUpDate) : undefined,
-        }),
-      });
+      const res = await fetch('/api/visits');
 
       if (res.status === 401) {
         router.push('/login');
@@ -132,24 +65,14 @@ export default function VisitsPageClient() {
       }
 
       const contentType = res.headers.get('content-type');
-      let data;
       if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        showNotification('Failed to create visit: API error', 'error');
-        return;
-      }
-
-      if (data.success) {
-        setShowForm(false);
-        fetchData();
-        showNotification('Visit created successfully!', 'success');
-      } else {
-        showNotification('Error: ' + data.error, 'error');
+        const data = await res.json();
+        if (data.success) setVisits(data.data);
       }
     } catch (error) {
-      console.error('Failed to create visit:', error);
-      showNotification('Failed to create visit', 'error');
+      console.error('Failed to fetch data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -217,15 +140,15 @@ export default function VisitsPageClient() {
               <h1 className="text-3xl font-bold mb-1">Clinical Visits</h1>
               <p className="text-sm text-gray-500">Manage consultations and clinical notes</p>
             </div>
-        <button
-          onClick={() => setShowForm(true)}
+        <Link
+          href="/visits/new"
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
         >
           <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           New Visit
-        </button>
+        </Link>
       </div>
 
           {/* Search and Filters */}
@@ -284,25 +207,6 @@ export default function VisitsPageClient() {
         </div>
       </div>
 
-      {/* Form Modal */}
-      <Modal open={showForm} onOpenChange={(open) => {
-        if (!open) {
-          setShowForm(false);
-        }
-      }} className="max-w-4xl">
-        <div className="p-6">
-          <h2 className="text-xl font-semibold mb-4">New Clinical Visit</h2>
-          <div className="py-4">
-            <VisitForm
-              patients={patients}
-              onSubmit={handleSubmit}
-              onCancel={() => setShowForm(false)}
-              providerName={providerName}
-            />
-          </div>
-        </div>
-      </Modal>
-
       {/* Visits List */}
       <div className="bg-white border border-gray-200 rounded-lg">
         <div className="p-3">
@@ -326,12 +230,12 @@ export default function VisitsPageClient() {
                 {searchQuery || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Create your first clinical visit to get started'}
               </p>
               {!searchQuery && filterStatus === 'all' && (
-                <button onClick={() => setShowForm(true)} className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center mx-auto">
+                <Link href="/visits/new" className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center mx-auto">
                   <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                   New Visit
-                </button>
+                </Link>
               )}
             </div>
           ) : (

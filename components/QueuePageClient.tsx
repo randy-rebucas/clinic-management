@@ -70,6 +70,7 @@ export default function QueuePageClient() {
   const [patientSearch, setPatientSearch] = useState('');
   const [showPatientSearch, setShowPatientSearch] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const router = useRouter();
 
   useEffect(() => {
@@ -95,6 +96,7 @@ export default function QueuePageClient() {
       const target = event.target as HTMLElement;
       if (!target.closest('.patient-search-container')) {
         setShowPatientSearch(false);
+        setHighlightedIndex(-1);
       }
     };
 
@@ -160,16 +162,23 @@ export default function QueuePageClient() {
       }
       
       if (data.success) {
-        let filteredData = data.data;
+        let filteredData = data.data || [];
         if (filterType) {
           filteredData = filteredData.filter((q: Queue) => q.queueType === filterType);
         }
         setQueue(filteredData);
+        setError(null); // Clear any previous errors
       } else {
-        console.error('Failed to fetch queue:', data.error);
+        const errorMessage = data.error || 'Failed to fetch queue';
+        console.error('Failed to fetch queue:', errorMessage);
+        setError(errorMessage);
+        setQueue([]); // Clear queue on error
       }
     } catch (error) {
       console.error('Failed to fetch queue:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch queue';
+      setError(errorMessage);
+      setQueue([]); // Clear queue on error
     } finally {
       setLoading(false);
       if (showRefreshing) setRefreshing(false);
@@ -251,8 +260,10 @@ export default function QueuePageClient() {
   const filteredPatients = patients.filter((patient) => {
     if (!patientSearch.trim()) return true;
     const searchLower = patientSearch.toLowerCase();
-    const fullName = `${patient.firstName} ${patient.lastName} ${patient.patientCode || ''}`.toLowerCase();
-    return fullName.includes(searchLower);
+    const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
+    const patientCode = (patient.patientCode || '').toLowerCase();
+    // Note: Patient interface doesn't include email/phone, but we can add if needed
+    return fullName.includes(searchLower) || patientCode.includes(searchLower);
   });
 
   const selectPatient = (patient: Patient) => {
@@ -260,6 +271,7 @@ export default function QueuePageClient() {
     setSelectedPatient(patient);
     setPatientSearch(`${patient.firstName} ${patient.lastName}${patient.patientCode ? ` (${patient.patientCode})` : ''}`);
     setShowPatientSearch(false);
+    setHighlightedIndex(-1);
   };
 
   const handleAddToQueue = async (e: React.FormEvent) => {
@@ -745,6 +757,7 @@ export default function QueuePageClient() {
         if (!open) {
           setPatientSearch('');
           setSelectedPatient(null);
+          setHighlightedIndex(-1);
           setFormData({ ...formData, patientId: '' });
         }
       }} className="max-w-lg">
@@ -757,7 +770,7 @@ export default function QueuePageClient() {
             <div className="flex flex-col gap-3">
               <div>
                 <label className="block text-sm font-medium mb-1">Patient <span className="text-red-500">*</span></label>
-                <div className="relative">
+                <div className="relative patient-search-container">
                   <input
                     type="text"
                     required
@@ -765,12 +778,35 @@ export default function QueuePageClient() {
                     onChange={(e) => {
                       setPatientSearch(e.target.value);
                       setShowPatientSearch(true);
+                      setHighlightedIndex(-1);
                       if (!e.target.value) {
                         setFormData({ ...formData, patientId: '' });
                         setSelectedPatient(null);
                       }
                     }}
-                    onFocus={() => setShowPatientSearch(true)}
+                    onFocus={() => {
+                      setShowPatientSearch(true);
+                      setHighlightedIndex(-1);
+                    }}
+                    onKeyDown={(e) => {
+                      if (!showPatientSearch || filteredPatients.length === 0) return;
+                      
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setHighlightedIndex(prev => 
+                          prev < filteredPatients.length - 1 ? prev + 1 : prev
+                        );
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setHighlightedIndex(prev => prev > 0 ? prev - 1 : -1);
+                      } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+                        e.preventDefault();
+                        selectPatient(filteredPatients[highlightedIndex]);
+                      } else if (e.key === 'Escape') {
+                        setShowPatientSearch(false);
+                        setHighlightedIndex(-1);
+                      }
+                    }}
                     placeholder="Type to search patients..."
                     className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
@@ -778,7 +814,7 @@ export default function QueuePageClient() {
                     <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
                       {filteredPatients.length > 0 ? (
                         <div className="flex flex-col gap-1">
-                          {filteredPatients.map((patient) => (
+                          {filteredPatients.map((patient, index) => (
                             <button
                               key={patient._id}
                               type="button"
@@ -786,19 +822,28 @@ export default function QueuePageClient() {
                                 selectPatient(patient);
                                 setShowPatientSearch(false);
                               }}
-                              className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded transition-colors flex flex-col items-start"
+                              onMouseEnter={() => setHighlightedIndex(index)}
+                              className={`w-full text-left px-3 py-2 rounded transition-colors flex flex-col items-start ${
+                                highlightedIndex === index 
+                                  ? 'bg-blue-50 hover:bg-blue-100' 
+                                  : 'hover:bg-gray-100'
+                              }`}
                             >
                               <span className="font-medium text-sm">{patient.firstName} {patient.lastName}</span>
                               {patient.patientCode && (
-                                <span className="text-xs text-gray-500">{patient.patientCode}</span>
+                                <span className="text-xs text-gray-500 mt-0.5">{patient.patientCode}</span>
                               )}
                             </button>
                           ))}
                         </div>
-                      ) : patientSearch ? (
-                        <p className="text-sm text-gray-500 p-2">No patients found</p>
+                      ) : patientSearch.trim() ? (
+                        <div className="p-2">
+                          <p className="text-sm text-gray-500">No patients found</p>
+                        </div>
                       ) : (
-                        <p className="text-sm text-gray-500 p-2">Start typing to search...</p>
+                        <div className="p-2">
+                          <p className="text-sm text-gray-500">All patients ({patients.length})</p>
+                        </div>
                       )}
                     </div>
                   )}
@@ -853,6 +898,7 @@ export default function QueuePageClient() {
                   onClick={() => {
                     setPatientSearch('');
                     setSelectedPatient(null);
+                    setHighlightedIndex(-1);
                     setFormData({ ...formData, patientId: '' });
                   }}
                   className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"

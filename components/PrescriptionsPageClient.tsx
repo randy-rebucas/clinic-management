@@ -14,7 +14,7 @@ interface Prescription {
     firstName: string;
     lastName: string;
     patientCode?: string;
-  };
+  } | null;
   prescribedBy?: {
     _id: string;
     name: string;
@@ -158,7 +158,9 @@ export default function PrescriptionsPageClient() {
   const filteredPrescriptions = prescriptions.filter(prescription => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      const patientName = `${prescription.patient.firstName} ${prescription.patient.lastName}`.toLowerCase();
+      const patientName = prescription.patient 
+        ? `${prescription.patient.firstName} ${prescription.patient.lastName}`.toLowerCase()
+        : '';
       const prescriptionCode = prescription.prescriptionCode.toLowerCase();
       const medications = prescription.medications.map(m => m.name.toLowerCase()).join(' ');
       if (!patientName.includes(query) && !prescriptionCode.includes(query) && !medications.includes(query)) return false;
@@ -374,17 +376,19 @@ export default function PrescriptionsPageClient() {
                           <div className="text-sm font-medium">{prescription.prescriptionCode}</div>
                         </td>
                         <td className="px-4 py-3">
-                          {patient ? (
-                            <Link href={`/patients/${patient._id}`}>
-                              <div className="text-sm font-medium text-blue-600 hover:underline">
-                                {patient.firstName} {patient.lastName}
-                              </div>
-                            </Link>
+                          {prescription.patient ? (
+                            <>
+                              <Link href={`/patients/${prescription.patient._id}`}>
+                                <div className="text-sm font-medium text-blue-600 hover:underline">
+                                  {prescription.patient.firstName} {prescription.patient.lastName}
+                                </div>
+                              </Link>
+                              {prescription.patient.patientCode && (
+                                <div className="text-xs text-gray-500">{prescription.patient.patientCode}</div>
+                              )}
+                            </>
                           ) : (
-                            <div className="text-sm text-gray-500 italic">Unknown Patient</div>
-                          )}
-                          {patient?.patientCode && (
-                            <div className="text-xs text-gray-500">{patient.patientCode}</div>
+                            <div className="text-sm text-gray-500">Patient not found</div>
                           )}
                         </td>
                         <td className="px-4 py-3">

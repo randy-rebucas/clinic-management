@@ -20,7 +20,7 @@ export async function requireAuth() {
  * @param allowedRoles - Array of roles that are allowed
  * @returns SessionPayload if authenticated and authorized
  */
-export async function requireRole(allowedRoles: ('admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant')[]) {
+export async function requireRole(allowedRoles: ('admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative')[]) {
   const session = await requireAuth();
   
   if (!allowedRoles.includes(session.role)) {
@@ -62,8 +62,8 @@ export async function requirePagePermission(resource: string, action: string = '
  * @returns true if user has required role
  */
 export function hasRole(
-  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' } | null,
-  allowedRoles: ('admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant')[]
+  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative' } | null,
+  allowedRoles: ('admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative')[]
 ): boolean {
   if (!session) return false;
   return allowedRoles.includes(session.role);
@@ -74,7 +74,7 @@ export function hasRole(
  * @param session - Current session
  * @returns true if user is admin
  */
-export function isAdmin(session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' } | null): boolean {
+export function isAdmin(session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative' } | null): boolean {
   return hasRole(session, ['admin']);
 }
 
@@ -86,7 +86,7 @@ export function isAdmin(session: { role: 'admin' | 'doctor' | 'nurse' | 'recepti
  * @returns true if user has permission
  */
 export async function hasPermission(
-  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant'; userId: string; roleId?: string } | null,
+  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative'; userId: string; roleId?: string } | null,
   resource: string,
   action: string
 ): Promise<boolean> {
@@ -132,7 +132,7 @@ export function forbiddenResponse(message = 'Forbidden') {
  * @returns null if authorized, forbidden response if not
  */
 export async function requirePermission(
-  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant'; userId: string; roleId?: string } | null,
+  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative'; userId: string; roleId?: string } | null,
   resource: string,
   action: string
 ): Promise<NextResponse | null> {

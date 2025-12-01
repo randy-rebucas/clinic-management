@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import InvoiceDetailClient from '@/components/InvoiceDetailClient';
+import DocumentDetailClient from '@/components/DocumentDetailClient';
 
-export default async function InvoiceDetailPage({
+export default async function DocumentDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -14,6 +14,6 @@ export default async function InvoiceDetailPage({
   }
 
   const { id } = await params;
-  return <InvoiceDetailClient invoiceId={id} />;
+  return <DocumentDetailClient documentId={id} />;
 }
 

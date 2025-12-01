@@ -73,7 +73,7 @@ export function getDefaultSettings() {
       invoiceReminders: true,
     },
     billingSettings: {
-      currency: 'USD',
+      currency: 'PHP',
       taxRate: 0,
       paymentTerms: 30,
       lateFeePercentage: 0,

@@ -137,7 +137,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
   const router = useRouter();
   
   // Call hooks before any conditional returns
-  const currency = useSetting('billingSettings.currency', 'USD');
+  const currency = useSetting('billingSettings.currency', 'PHP');
 
   useEffect(() => {
     fetchPatient();
@@ -356,7 +356,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     .join(' ');
   
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-PH', {
       style: 'currency',
       currency: currency,
       minimumFractionDigits: 2,

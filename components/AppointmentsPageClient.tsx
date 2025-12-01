@@ -80,6 +80,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   const [patientSearch, setPatientSearch] = useState('');
   const [showPatientSearch, setShowPatientSearch] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [filterDoctor, setFilterDoctor] = useState<string>('');
   const [filterRoom, setFilterRoom] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
@@ -128,6 +129,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
       const target = event.target as HTMLElement;
       if (!target.closest('.patient-search-container')) {
         setShowPatientSearch(false);
+        setHighlightedIndex(-1);
       }
     };
 
@@ -207,7 +209,9 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
     if (!patientSearch.trim()) return true;
     const searchLower = patientSearch.toLowerCase();
     const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
-    return fullName.includes(searchLower);
+    const email = (patient.email || '').toLowerCase();
+    const phone = (patient.phone || '').toLowerCase();
+    return fullName.includes(searchLower) || email.includes(searchLower) || phone.includes(searchLower);
   });
 
   const selectPatient = (patient: Patient) => {
@@ -215,6 +219,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
     setSelectedPatient(patient);
     setPatientSearch(`${patient.firstName} ${patient.lastName}`);
     setShowPatientSearch(false);
+    setHighlightedIndex(-1);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -289,6 +294,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         });
         setPatientSearch('');
         setSelectedPatient(null);
+        setHighlightedIndex(-1);
         fetchAppointmentsForDate(selectedDate);
         setSuccess(isWalkIn ? `Walk-in appointment created! Queue number: ${queueNumber}` : 'Appointment scheduled successfully!');
         setTimeout(() => setSuccess(null), 5000);
@@ -862,12 +868,13 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
           )}
 
           {/* Appointment Form Modal */}
-          <Modal open={showForm || showWalkInForm} onOpenChange={(open) => {
+          <Modal open={showForm || showWalkInForm}           onOpenChange={(open) => {
         if (!open) {
           setShowForm(false);
           setShowWalkInForm(false);
           setPatientSearch('');
           setSelectedPatient(null);
+          setHighlightedIndex(-1);
           setFormData({ ...formData, patient: '' });
         }
       }} className="max-w-3xl">
@@ -880,7 +887,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
               <div className="flex flex-col md:flex-row gap-3">
                 <div className="flex-1">
                   <label className="block text-sm font-medium mb-1">Patient <span className="text-red-500">*</span></label>
-                  <div className="relative">
+                  <div className="relative patient-search-container">
                     <input
                       type="text"
                       required
@@ -888,12 +895,35 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                       onChange={(e) => {
                         setPatientSearch(e.target.value);
                         setShowPatientSearch(true);
+                        setHighlightedIndex(-1);
                         if (!e.target.value) {
                           setFormData({ ...formData, patient: '' });
                           setSelectedPatient(null);
                         }
                       }}
-                      onFocus={() => setShowPatientSearch(true)}
+                      onFocus={() => {
+                        setShowPatientSearch(true);
+                        setHighlightedIndex(-1);
+                      }}
+                      onKeyDown={(e) => {
+                        if (!showPatientSearch || filteredPatients.length === 0) return;
+                        
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setHighlightedIndex(prev => 
+                            prev < filteredPatients.length - 1 ? prev + 1 : prev
+                          );
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setHighlightedIndex(prev => prev > 0 ? prev - 1 : -1);
+                        } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+                          e.preventDefault();
+                          selectPatient(filteredPatients[highlightedIndex]);
+                        } else if (e.key === 'Escape') {
+                          setShowPatientSearch(false);
+                          setHighlightedIndex(-1);
+                        }
+                      }}
                       placeholder="Type to search patients..."
                       className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
@@ -903,7 +933,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                       >
                       {filteredPatients.length > 0 ? (
                         <div className="flex flex-col gap-1">
-                          {filteredPatients.map((patient) => (
+                          {filteredPatients.map((patient, index) => (
                             <button
                               key={patient._id}
                               type="button"
@@ -911,19 +941,33 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                 selectPatient(patient);
                                 setShowPatientSearch(false);
                               }}
-                              className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded transition-colors"
+                              onMouseEnter={() => setHighlightedIndex(index)}
+                              className={`w-full text-left px-3 py-2 rounded transition-colors ${
+                                highlightedIndex === index 
+                                  ? 'bg-blue-50 hover:bg-blue-100' 
+                                  : 'hover:bg-gray-100'
+                              }`}
                             >
-                              <span className="font-medium text-sm">{patient.firstName} {patient.lastName}</span>
+                              <div className="flex flex-col">
+                                <span className="font-medium text-sm">{patient.firstName} {patient.lastName}</span>
+                                {(patient.email || patient.phone) && (
+                                  <span className="text-xs text-gray-500 mt-0.5">
+                                    {patient.email && patient.phone 
+                                      ? `${patient.email} • ${patient.phone}`
+                                      : patient.email || patient.phone}
+                                  </span>
+                                )}
+                              </div>
                             </button>
                           ))}
                         </div>
-                      ) : patientSearch ? (
+                      ) : patientSearch.trim() ? (
                         <div className="p-2">
                           <p className="text-sm text-gray-500">No patients found</p>
                         </div>
                       ) : (
                         <div className="p-2">
-                          <p className="text-sm text-gray-500">Start typing to search...</p>
+                          <p className="text-sm text-gray-500">All patients ({patients.length})</p>
                         </div>
                       )}
                       </div>
@@ -1036,6 +1080,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                     setShowWalkInForm(false);
                     setPatientSearch('');
                     setSelectedPatient(null);
+                    setHighlightedIndex(-1);
                     setFormData({ ...formData, patient: '' });
                   }}
                   className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"

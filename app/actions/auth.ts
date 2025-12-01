@@ -85,7 +85,7 @@ export async function signup(
     await createSession(
       user._id.toString(), 
       user.email, 
-      roleDoc.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant',
+      roleDoc.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative',
       roleDoc._id.toString()
     );
 
@@ -162,18 +162,18 @@ export async function login(
 
     // Get role name from populated role or fallback
     const Role = (await import('@/models/Role')).default;
-    let roleName: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' = 'receptionist';
+    let roleName: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative' = 'receptionist';
     let roleId: string | undefined;
     
     if (user.role) {
       if (typeof user.role === 'object' && 'name' in user.role) {
-        roleName = (user.role as any).name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant';
+        roleName = (user.role as any).name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
         roleId = (user.role as any)._id?.toString();
       } else {
         // Role is ObjectId, fetch it
         const roleDoc = await Role.findById(user.role);
         if (roleDoc) {
-          roleName = roleDoc.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant';
+          roleName = roleDoc.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
           roleId = roleDoc._id.toString();
         }
       }

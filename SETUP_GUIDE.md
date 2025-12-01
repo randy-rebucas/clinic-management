@@ -109,7 +109,7 @@ All default system settings are created with sensible defaults:
 - Invoice reminders: Enabled
 
 **Billing Settings:**
-- Currency: USD
+- Currency: PHP
 - Tax rate: 0%
 - Payment terms: 30 days
 - Late fee: 0%

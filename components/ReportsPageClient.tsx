@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from './ui/Modal';
+import { useSetting } from './SettingsContext';
 
 interface ReportData {
   totalConsultations?: number;
@@ -19,6 +20,15 @@ export default function ReportsPageClient() {
   const [reportLoading, setReportLoading] = useState(false);
   const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   const router = useRouter();
+  const currency = useSetting('billingSettings.currency', 'PHP');
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+    }).format(amount);
+  };
 
   useEffect(() => {
     fetchReports();
@@ -137,21 +147,21 @@ export default function ReportsPageClient() {
                 <div className="flex flex-col gap-1 p-2">
                   <p className="text-xs text-gray-600">Total Paid</p>
                   <p className="text-xl font-bold text-green-700">
-                    ₱{(data.summary?.totalPaid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    {formatCurrency(data.summary?.totalPaid || 0)}
                   </p>
                 </div>
               </div>
               <div className="bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex flex-col gap-1 p-2">
                   <p className="text-xs text-gray-600">Total Billed</p>
-                  <p className="text-xl font-bold">₱{(data.summary?.totalBilled || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                  <p className="text-xl font-bold">{formatCurrency(data.summary?.totalBilled || 0)}</p>
                 </div>
               </div>
               <div className="bg-yellow-50 rounded-lg border border-yellow-200">
                 <div className="flex flex-col gap-1 p-2">
                   <p className="text-xs text-gray-600">Outstanding</p>
                   <p className="text-xl font-bold text-yellow-700">
-                    ₱{(data.summary?.totalOutstanding || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    {formatCurrency(data.summary?.totalOutstanding || 0)}
                   </p>
                 </div>
               </div>
@@ -163,7 +173,7 @@ export default function ReportsPageClient() {
                   {Object.entries(data.breakdowns.byPaymentMethod).map(([method, amount]: [string, any]) => (
                     <div key={method} className="flex justify-between py-1">
                       <p className="text-sm text-gray-600 capitalize">{method.replace('_', ' ')}</p>
-                      <p className="text-sm font-medium">₱{amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                      <p className="text-sm font-medium">{formatCurrency(amount)}</p>
                     </div>
                   ))}
                 </div>
@@ -248,7 +258,7 @@ export default function ReportsPageClient() {
             <div className="bg-gray-50 rounded-lg border border-gray-200">
               <div className="flex flex-col gap-1 p-2">
                 <p className="text-xs text-gray-600">Backlog Amount</p>
-                <p className="text-xl font-bold">₱{(data.summary?.backlogAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                <p className="text-xl font-bold">{formatCurrency(data.summary?.backlogAmount || 0)}</p>
               </div>
             </div>
           </div>
@@ -308,7 +318,7 @@ export default function ReportsPageClient() {
                 <div>
                   <p className="text-xs text-gray-600 mb-1">Total Income</p>
                   <p className="text-3xl font-bold">
-                    ₱{(dashboardData.periodRevenue || dashboardData.totalIncome || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatCurrency(dashboardData.periodRevenue || dashboardData.totalIncome || 0)}
                   </p>
                 </div>
                 <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">

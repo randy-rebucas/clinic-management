@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import mongoose from 'mongoose';
 import Visit from '@/models/Visit';
+import Prescription from '@/models/Prescription';
+import LabResult from '@/models/LabResult';
+import Imaging from '@/models/Imaging';
+import Procedure from '@/models/Procedure';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 
@@ -22,7 +27,30 @@ export async function GET(
 
   try {
     await connectDB();
+    
+    // Ensure all models are registered before populate
+    if (!mongoose.models.Prescription) {
+      const _ = Prescription;
+    }
+    if (!mongoose.models.LabResult) {
+      const _ = LabResult;
+    }
+    if (!mongoose.models.Imaging) {
+      const _ = Imaging;
+    }
+    if (!mongoose.models.Procedure) {
+      const _ = Procedure;
+    }
+    
     const { id } = await params;
+    
+    if (!id || id === 'undefined') {
+      return NextResponse.json(
+        { success: false, error: 'Invalid visit ID' },
+        { status: 400 }
+      );
+    }
+
     const visit = await Visit.findById(id)
       .populate('patient', 'firstName lastName patientCode email phone')
       .populate('provider', 'name email')
@@ -38,10 +66,10 @@ export async function GET(
       );
     }
     return NextResponse.json({ success: true, data: visit });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching visit:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch visit' },
+      { success: false, error: error.message || 'Failed to fetch visit' },
       { status: 500 }
     );
   }

@@ -27,7 +27,7 @@ function validateSecret() {
 export interface SessionPayload extends JWTPayload {
   userId: string;
   email: string;
-  role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant'; // Role name for backward compatibility
+  role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative'; // Role name for backward compatibility
   roleId?: string; // Role ObjectId from database
   expiresAt: number | Date;
 }
@@ -86,7 +86,7 @@ export async function decrypt(session: string | undefined = ''): Promise<Session
 export async function createSession(
   userId: string, 
   email: string, 
-  role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant',
+  role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative',
   roleId?: string
 ) {
   try {
