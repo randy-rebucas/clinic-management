@@ -414,6 +414,13 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                   </svg>
                   QR Code
                 </button>
+                {showQR && patient && (
+                  <div className="absolute z-50 bg-white border border-gray-300 rounded-lg shadow-lg p-4 flex flex-col items-center" style={{ top: '60px', right: '20px' }}>
+                    <QRCode value={patient._id} size={180} />
+                    <p className="text-xs text-gray-500 mt-2">Scan to search/filter this patient</p>
+                    <button className="mt-2 px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-xs" onClick={() => setShowQR(false)}>Close</button>
+                  </div>
+                )}
                 <Link 
                   href={`/patients/${patient._id}/edit`}
                   className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium flex items-center gap-1.5"

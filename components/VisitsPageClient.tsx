@@ -63,6 +63,14 @@ export default function VisitsPageClient() {
       const res = await fetch('/api/user/me');
       if (res.ok) {
         const data = await res.json();
+  import {
+    TypographyH1,
+    TypographyH2,
+    TypographyH3,
+    TypographyP
+  } from './ui/typography';
+  import { Table } from './ui/table';
+  import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
         if (data.success && data.data) {
           setProviderName(data.data.name || 'Dr. Provider');
         }
@@ -72,7 +80,7 @@ export default function VisitsPageClient() {
     }
   };
 
-  const fetchData = async () => {
+              <TypographyP>Loading visits...</TypographyP>
     try {
       const [visitsRes, patientsRes] = await Promise.all([
         fetch('/api/visits'),
@@ -86,20 +94,20 @@ export default function VisitsPageClient() {
 
       const parseResponse = async (res: Response) => {
         const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
+                <TypographyP>{error}</TypographyP>
           return await res.json();
         }
         return { success: false };
       };
-
+                <TypographyP>{success}</TypographyP>
       const visitsData = await parseResponse(visitsRes);
       const patientsData = await parseResponse(patientsRes);
 
       if (visitsData.success) setVisits(visitsData.data);
       if (patientsData.success) setPatients(patientsData.data);
     } catch (error) {
-      console.error('Failed to fetch data:', error);
-    } finally {
+                <TypographyH1 className="mb-1">Clinical Visits</TypographyH1>
+                <TypographyP className="text-sm text-gray-500">Manage consultations and clinical notes</TypographyP>
       setLoading(false);
     }
   };
@@ -142,16 +150,17 @@ export default function VisitsPageClient() {
 
       if (data.success) {
         setShowForm(false);
-        fetchData();
-        showNotification('Visit created successfully!', 'success');
-      } else {
-        showNotification('Error: ' + data.error, 'error');
-      }
-    } catch (error) {
-      console.error('Failed to create visit:', error);
-      showNotification('Failed to create visit', 'error');
-    }
-  };
+                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                      <SelectTrigger className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        <SelectValue placeholder="All Statuses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Statuses</SelectItem>
+                        <SelectItem value="open">Open</SelectItem>
+                        <SelectItem value="closed">Closed</SelectItem>
+                        <SelectItem value="cancelled">Cancelled</SelectItem>
+                      </SelectContent>
+                    </Select>
 
   const filteredVisits = visits.filter(visit => {
     if (searchQuery) {
@@ -191,10 +200,10 @@ export default function VisitsPageClient() {
             <p>Loading visits...</p>
           </div>
         </div>
-      </section>
-    );
-  }
-
+                  <TypographyH3>Visits</TypographyH3>
+                  <TypographyP className="text-sm text-gray-500">
+                    {filteredVisits.length} {filteredVisits.length === 1 ? 'visit' : 'visits'}
+                  </TypographyP>
   return (
     <section className="py-12 px-4">
       <div className="max-w-7xl mx-auto">
@@ -220,7 +229,7 @@ export default function VisitsPageClient() {
         <button
           onClick={() => setShowForm(true)}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
-        >
+                    <Table className="w-full">
           <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
@@ -302,7 +311,7 @@ export default function VisitsPageClient() {
           </div>
         </div>
       </Modal>
-
+                    </Table>
       {/* Visits List */}
       <div className="bg-white border border-gray-200 rounded-lg">
         <div className="p-3">

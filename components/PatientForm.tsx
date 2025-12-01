@@ -1,4 +1,7 @@
 'use client';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Button } from './ui/button';
 
 import { useState, FormEvent } from 'react';
 
@@ -180,97 +183,49 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
             {/* Name Fields */}
             <div className="flex flex-col md:flex-row gap-2 flex-wrap">
               <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">
-                  First Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  required
-                  value={formData.firstName}
-                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
+                <Label className="block text-xs font-medium mb-1" htmlFor="firstName">First Name <span className="text-red-500">*</span></Label>
+                <Input id="firstName" required value={formData.firstName} onChange={e => setFormData({ ...formData, firstName: e.target.value })} />
               </div>
               <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">Middle Name</label>
-                <input
-                  value={formData.middleName}
-                  onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
+                <Label className="block text-xs font-medium mb-1" htmlFor="middleName">Middle Name</Label>
+                <Input id="middleName" value={formData.middleName} onChange={e => setFormData({ ...formData, middleName: e.target.value })} />
               </div>
               <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">
-                  Last Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  required
-                  value={formData.lastName}
-                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
+                <Label className="block text-xs font-medium mb-1" htmlFor="lastName">Last Name <span className="text-red-500">*</span></Label>
+                <Input id="lastName" required value={formData.lastName} onChange={e => setFormData({ ...formData, lastName: e.target.value })} />
               </div>
               <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">Suffix</label>
-                <input
-                  value={formData.suffix}
-                  onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
-                  placeholder="Jr., Sr., III"
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
+                <Label className="block text-xs font-medium mb-1" htmlFor="suffix">Suffix</Label>
+                <Input id="suffix" value={formData.suffix} onChange={e => setFormData({ ...formData, suffix: e.target.value })} placeholder="Jr., Sr., III" />
               </div>
             </div>
             
             {/* Demographics */}
             <div className="flex flex-col md:flex-row gap-2 flex-wrap">
               <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">
-                  Date of Birth <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={formData.dateOfBirth}
-                  onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
+                <Label className="block text-xs font-medium mb-1" htmlFor="dateOfBirth">Date of Birth <span className="text-red-500">*</span></Label>
+                <Input id="dateOfBirth" type="date" required value={formData.dateOfBirth} onChange={e => setFormData({ ...formData, dateOfBirth: e.target.value })} />
               </div>
               <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">Sex</label>
-                <select
-                  value={formData.sex}
-                  onChange={(e) => setFormData({ ...formData, sex: e.target.value as any })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                >
-                  <option value="unknown">Unknown</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
-                </select>
+                <Label className="block text-xs font-medium mb-1" htmlFor="sex">Sex</Label>
+                <Select value={formData.sex} onValueChange={value => setFormData({ ...formData, sex: value as any })}>
+                  <SelectItem value="unknown">Unknown</SelectItem>
+                  <SelectItem value="male">Male</SelectItem>
+                  <SelectItem value="female">Female</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </Select>
               </div>
               <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">Civil Status</label>
-                <input
-                  value={formData.civilStatus}
-                  onChange={(e) => setFormData({ ...formData, civilStatus: e.target.value })}
-                  placeholder="Single, Married, Divorced, etc."
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
+                <Label className="block text-xs font-medium mb-1" htmlFor="civilStatus">Civil Status</Label>
+                <Input id="civilStatus" value={formData.civilStatus} onChange={e => setFormData({ ...formData, civilStatus: e.target.value })} placeholder="Single, Married, Divorced, etc." />
               </div>
               <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">Nationality</label>
-                <input
-                  value={formData.nationality}
-                  onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
+                <Label className="block text-xs font-medium mb-1" htmlFor="nationality">Nationality</Label>
+                <Input id="nationality" value={formData.nationality} onChange={e => setFormData({ ...formData, nationality: e.target.value })} />
               </div>
               <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">Occupation</label>
-                <input
-                  value={formData.occupation}
-                  onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
+                <Label className="block text-xs font-medium mb-1" htmlFor="occupation">Occupation</Label>
+                <Input id="occupation" value={formData.occupation} onChange={e => setFormData({ ...formData, occupation: e.target.value })} />
               </div>
             </div>
           </div>
@@ -285,28 +240,12 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
             {/* Contact Info */}
             <div className="flex flex-col md:flex-row gap-2">
               <div className="flex-1">
-                <label className="block text-xs font-medium mb-1">
-                  Email <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
+                <Label className="block text-xs font-medium mb-1" htmlFor="email">Email <span className="text-red-500">*</span></Label>
+                <Input id="email" type="email" required value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
               </div>
               <div className="flex-1">
-                <label className="block text-xs font-medium mb-1">
-                  Phone <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="tel"
-                  required
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
+                <Label className="block text-xs font-medium mb-1" htmlFor="phone">Phone <span className="text-red-500">*</span></Label>
+                <Input id="phone" type="tel" required value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
               </div>
             </div>
 
@@ -315,69 +254,21 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               <span className="font-medium mb-2 block">Address</span>
               <div className="flex flex-col gap-2">
                 <div>
-                  <span className="font-medium mb-1 block">
-                    Street Address <span className="text-red-500">*</span>
-                  </span>
-                  <input
-                    required
-                    value={formData.address.street}
-                    onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          address: { ...formData.address, street: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    />
+                  <Label className="font-medium mb-1 block" htmlFor="street">Street Address <span className="text-red-500">*</span></Label>
+                  <Input id="street" required value={formData.address.street} onChange={e => setFormData({ ...formData, address: { ...formData.address, street: e.target.value } })} />
                 </div>
                 <div className="flex flex-col md:flex-row gap-2">
                   <div className="flex-1">
-                    <span className="font-medium mb-1 block">
-                      City <span className="text-red-500">*</span>
-                    </span>
-                    <input
-                      required
-                      value={formData.address.city}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          address: { ...formData.address, city: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    />
+                    <Label className="font-medium mb-1 block" htmlFor="city">City <span className="text-red-500">*</span></Label>
+                    <Input id="city" required value={formData.address.city} onChange={e => setFormData({ ...formData, address: { ...formData.address, city: e.target.value } })} />
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium mb-1 block">
-                      State <span className="text-red-500">*</span>
-                    </span>
-                    <input
-                      required
-                      value={formData.address.state}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          address: { ...formData.address, state: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    />
+                    <Label className="font-medium mb-1 block" htmlFor="state">State <span className="text-red-500">*</span></Label>
+                    <Input id="state" required value={formData.address.state} onChange={e => setFormData({ ...formData, address: { ...formData.address, state: e.target.value } })} />
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium mb-1 block">
-                      Zip Code <span className="text-red-500">*</span>
-                    </span>
-                    <input
-                      required
-                      value={formData.address.zipCode}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          address: { ...formData.address, zipCode: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    />
+                    <Label className="font-medium mb-1 block" htmlFor="zipCode">Zip Code <span className="text-red-500">*</span></Label>
+                    <Input id="zipCode" required value={formData.address.zipCode} onChange={e => setFormData({ ...formData, address: { ...formData.address, zipCode: e.target.value } })} />
                   </div>
                 </div>
               </div>
@@ -396,56 +287,16 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               <span className="font-medium mb-2 block">Emergency Contact</span>
               <div className="flex flex-col md:flex-row gap-2">
                 <div className="flex-1">
-                  <span className="font-medium mb-1 block">
-                    Name <span className="text-red-500">*</span>
-                  </span>
-                  <input
-                    required
-                    value={formData.emergencyContact.name}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        emergencyContact: { ...formData.emergencyContact, name: e.target.value },
-                      })
-                    }
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  />
+                    <Label className="font-medium mb-1 block" htmlFor="emergencyName">Name <span className="text-red-500">*</span></Label>
+                    <Input id="emergencyName" required value={formData.emergencyContact.name} onChange={e => setFormData({ ...formData, emergencyContact: { ...formData.emergencyContact, name: e.target.value } })} />
                 </div>
                 <div className="flex-1">
-                  <span className="font-medium mb-1 block">
-                    Phone <span className="text-red-500">*</span>
-                  </span>
-                  <input
-                    type="tel"
-                    required
-                    value={formData.emergencyContact.phone}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        emergencyContact: { ...formData.emergencyContact, phone: e.target.value },
-                      })
-                    }
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  />
+                    <Label className="font-medium mb-1 block" htmlFor="emergencyPhone">Phone <span className="text-red-500">*</span></Label>
+                    <Input id="emergencyPhone" type="tel" required value={formData.emergencyContact.phone} onChange={e => setFormData({ ...formData, emergencyContact: { ...formData.emergencyContact, phone: e.target.value } })} />
                 </div>
                 <div className="flex-1">
-                  <span className="font-medium mb-1 block">
-                    Relationship <span className="text-red-500">*</span>
-                  </span>
-                  <input
-                    required
-                    value={formData.emergencyContact.relationship}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        emergencyContact: {
-                          ...formData.emergencyContact,
-                          relationship: e.target.value,
-                        },
-                      })
-                    }
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  />
+                    <Label className="font-medium mb-1 block" htmlFor="emergencyRelationship">Relationship <span className="text-red-500">*</span></Label>
+                    <Input id="emergencyRelationship" required value={formData.emergencyContact.relationship} onChange={e => setFormData({ ...formData, emergencyContact: { ...formData.emergencyContact, relationship: e.target.value } })} />
                 </div>
               </div>
             </div>
@@ -455,30 +306,12 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               <span className="font-medium mb-2 block">Identifiers</span>
               <div className="flex flex-col md:flex-row gap-2">
                 <div className="flex-1">
-                  <span className="font-medium mb-1 block">PhilHealth ID</span>
-                  <input
-                    value={formData.identifiers?.philHealth || ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        identifiers: { ...formData.identifiers, philHealth: e.target.value },
-                      })
-                    }
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  />
+                  <Label className="font-medium mb-1 block" htmlFor="philHealth">PhilHealth ID</Label>
+                  <Input id="philHealth" value={formData.identifiers?.philHealth || ''} onChange={e => setFormData({ ...formData, identifiers: { ...formData.identifiers, philHealth: e.target.value } })} />
                 </div>
                 <div className="flex-1">
-                  <span className="font-medium mb-1 block">Government ID</span>
-                  <input
-                    value={formData.identifiers?.govId || ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        identifiers: { ...formData.identifiers, govId: e.target.value },
-                      })
-                    }
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  />
+                  <Label className="font-medium mb-1 block" htmlFor="govId">Government ID</Label>
+                  <Input id="govId" value={formData.identifiers?.govId || ''} onChange={e => setFormData({ ...formData, identifiers: { ...formData.identifiers, govId: e.target.value } })} />
                 </div>
               </div>
             </div>
@@ -663,25 +496,19 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
             <div>
               <div className="flex justify-between items-center mb-2">
                           <span className="text-xs font-medium">Family History</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const condition = prompt('Enter condition (e.g., Diabetes):');
-                    if (condition && condition.trim()) {
-                      const relation = prompt('Enter family relation (e.g., Father, Mother):') || '';
-                      setFormData({
-                        ...formData,
-                        familyHistory: {
-                          ...formData.familyHistory,
-                          [condition.trim()]: relation.trim(),
-                        },
-                      });
-                    }
-                  }}
-                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md font-medium transition-colors"
-                >
-                  Add
-                </button>
+                <Button type="button" variant="outline" onClick={() => {
+                  const condition = prompt('Enter condition (e.g., Diabetes):');
+                  if (condition && condition.trim()) {
+                    const relation = prompt('Enter family relation (e.g., Father, Mother):') || '';
+                    setFormData({
+                      ...formData,
+                      familyHistory: {
+                        ...formData.familyHistory,
+                        [condition.trim()]: relation.trim(),
+                      },
+                    });
+                  }
+                }}>Add</Button>
               </div>
               {Object.keys(formData.familyHistory).length === 0 ? (
                 <div className="p-3" style={{ textAlign: 'center', border: '1px dashed var(--gray-6)', borderRadius: 'var(--radius-2)' }}>
@@ -696,17 +523,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                           <span className="font-medium">{condition}</span>
                           {relation && <span className="text-gray-500 ml-2">({relation})</span>}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = { ...formData.familyHistory };
-                            delete updated[condition];
-                            setFormData({ ...formData, familyHistory: updated });
-                          }}
-                          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition-colors text-red-500"
-                        >
-                          Remove
-                        </button>
+                        <Button type="button" variant="destructive" onClick={() => {
+                          const updated = { ...formData.familyHistory };
+                          delete updated[condition];
+                          setFormData({ ...formData, familyHistory: updated });
+                        }}>Remove</Button>
                       </div>
                     </div>
                   ))}
@@ -720,13 +541,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
           {/* Form Actions */}
           <div className="flex justify-end gap-2 pt-3" style={{ borderTop: '1px solid var(--gray-6)' }}>
             {onCancel && (
-              <button type="button" onClick={onCancel} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition-colors">
-                Cancel
-              </button>
+              <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
             )}
-            <button type="submit" className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors">
-              Save Patient
-            </button>
+            <Button type="submit" variant="default">Save Patient</Button>
           </div>
         </div>
       </form>

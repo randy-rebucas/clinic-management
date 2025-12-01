@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 
 interface InventoryFormProps {
   initialData?: {
@@ -101,170 +104,168 @@ export default function InventoryForm({
         <div className="flex flex-col md:flex-row gap-3 flex-wrap">
           {/* Item Name */}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium mb-2">
-              Item Name <span className="text-red-500">*</span>
-            </label>
-            <input
+            <Label htmlFor="itemName">Item Name <span className="text-red-500">*</span></Label>
+            <Input
+              id="itemName"
               type="text"
               required
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
               placeholder="Enter item name"
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              style={{ all: 'unset', width: '100%' }}
             />
           </div>
 
           {/* Category */}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium mb-2">
-              Category <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            >
-              <option value="medicine">Medicine</option>
-              <option value="supply">Supply</option>
-              <option value="equipment">Equipment</option>
-              <option value="other">Other</option>
-            </select>
+            <Label htmlFor="category">Category <span className="text-red-500">*</span></Label>
+            <Select value={formData.category} onValueChange={value => setFormData({ ...formData, category: value as any })}>
+              <SelectItem value="medicine">Medicine</SelectItem>
+              <SelectItem value="supply">Supply</SelectItem>
+              <SelectItem value="equipment">Equipment</SelectItem>
+              <SelectItem value="other">Other</SelectItem>
+            </Select>
           </div>
 
           {/* SKU */}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium mb-2">SKU (Stock Keeping Unit)</label>
-            <input
+            <Label htmlFor="sku">SKU (Stock Keeping Unit)</Label>
+            <Input
+              id="sku"
               type="text"
               value={formData.sku}
-              onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+              onChange={e => setFormData({ ...formData, sku: e.target.value })}
               placeholder="Enter SKU"
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              style={{ all: 'unset', width: '100%' }}
             />
           </div>
 
           {/* Quantity */}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium mb-2">
-              Quantity <span className="text-red-500">*</span>
-            </label>
-            <input
+            <Label htmlFor="quantity">Quantity <span className="text-red-500">*</span></Label>
+            <Input
+              id="quantity"
               type="number"
               required
-              min="0"
+              min={0}
               value={formData.quantity}
-              onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
+              onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
               placeholder="0"
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              style={{ all: 'unset', width: '100%' }}
             />
           </div>
 
           {/* Unit */}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium mb-2">
-              Unit <span className="text-red-500">*</span>
-            </label>
-            <input
+            <Label htmlFor="unit">Unit <span className="text-red-500">*</span></Label>
+            <Input
+              id="unit"
               type="text"
               required
               value={formData.unit}
-              onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+              onChange={e => setFormData({ ...formData, unit: e.target.value })}
               placeholder="pieces, boxes, bottles, etc."
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              style={{ all: 'unset', width: '100%' }}
             />
           </div>
 
           {/* Unit Cost */}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium mb-2">Unit Cost</label>
-            <input
+            <Label htmlFor="unitCost">Unit Cost</Label>
+            <Input
+              id="unitCost"
               type="number"
-              min="0"
-              step="0.01"
+              min={0}
+              step={0.01}
               value={formData.unitCost}
-              onChange={(e) => setFormData({ ...formData, unitCost: parseFloat(e.target.value) || 0 })}
+              onChange={e => setFormData({ ...formData, unitCost: parseFloat(e.target.value) || 0 })}
               placeholder="0.00"
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              style={{ all: 'unset', width: '100%' }}
             />
           </div>
 
           {/* Reorder Level */}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium mb-2">
-              Reorder Level <span className="text-red-500">*</span>
-            </label>
-            <input
+            <Label htmlFor="reorderLevel">Reorder Level <span className="text-red-500">*</span></Label>
+            <Input
+              id="reorderLevel"
               type="number"
               required
-              min="0"
+              min={0}
               value={formData.reorderLevel}
-              onChange={(e) => setFormData({ ...formData, reorderLevel: parseInt(e.target.value) || 0 })}
+              onChange={e => setFormData({ ...formData, reorderLevel: parseInt(e.target.value) || 0 })}
               placeholder="10"
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              style={{ all: 'unset', width: '100%' }}
             />
             <p className="text-xs text-gray-500 mt-1">Minimum quantity before reordering</p>
           </div>
 
           {/* Reorder Quantity */}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium mb-2">Reorder Quantity</label>
-            <input
+            <Label htmlFor="reorderQuantity">Reorder Quantity</Label>
+            <Input
+              id="reorderQuantity"
               type="number"
-              min="0"
+              min={0}
               value={formData.reorderQuantity}
-              onChange={(e) => setFormData({ ...formData, reorderQuantity: parseInt(e.target.value) || 0 })}
+              onChange={e => setFormData({ ...formData, reorderQuantity: parseInt(e.target.value) || 0 })}
               placeholder="50"
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              style={{ all: 'unset', width: '100%' }}
             />
             <p className="text-xs text-gray-500 mt-1">Quantity to order when reordering</p>
           </div>
 
           {/* Supplier */}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium mb-2">Supplier</label>
-            <input
+            <Label htmlFor="supplier">Supplier</Label>
+            <Input
+              id="supplier"
               type="text"
               value={formData.supplier}
-              onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
+              onChange={e => setFormData({ ...formData, supplier: e.target.value })}
               placeholder="Enter supplier name"
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              style={{ all: 'unset', width: '100%' }}
             />
           </div>
 
           {/* Expiry Date */}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium mb-2">Expiry Date</label>
-            <input
+            <Label htmlFor="expiryDate">Expiry Date</Label>
+            <Input
+              id="expiryDate"
               type="date"
               value={formData.expiryDate}
-              onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              onChange={e => setFormData({ ...formData, expiryDate: e.target.value })}
+              style={{ all: 'unset', width: '100%' }}
             />
             <p className="text-xs text-gray-500 mt-1">For medicines with expiry dates</p>
           </div>
 
           {/* Location */}
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium mb-2">Storage Location</label>
-            <input
+            <Label htmlFor="location">Storage Location</Label>
+            <Input
+              id="location"
               type="text"
               value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              onChange={e => setFormData({ ...formData, location: e.target.value })}
               placeholder="e.g., Room A, Shelf 3"
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              style={{ all: 'unset', width: '100%' }}
             />
           </div>
         </div>
 
         {/* Notes */}
         <div>
-          <label className="block text-xs font-medium mb-2">Notes</label>
-          <textarea
+          <Label htmlFor="notes">Notes</Label>
+          <Input
+            id="notes"
+            as="textarea"
             rows={3}
             value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+            onChange={e => setFormData({ ...formData, notes: e.target.value })}
             placeholder="Additional notes about this item"
-            className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
+            style={{ all: 'unset', width: '100%' }}
           />
         </div>
 
@@ -272,20 +273,13 @@ export default function InventoryForm({
         <hr className="border-gray-300" />
         <div className="flex justify-end gap-2">
           {onCancel && (
-            <button
-              type="button"
-              onClick={onCancel}
-              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition-colors"
-            >
+            <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
-            </button>
+            </Button>
           )}
-          <button
-            type="submit"
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors"
-          >
+          <Button type="submit" variant="default">
             {isEdit ? 'Update Item' : 'Add Item'}
-          </button>
+          </Button>
         </div>
       </div>
     </form>

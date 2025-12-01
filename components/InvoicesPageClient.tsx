@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { formatPeso } from '../lib/currency';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Modal } from './ui/Modal';
@@ -253,7 +254,7 @@ export default function InvoicesPageClient() {
                           </td>
                           <td className="py-2 px-3">
                             <p className="text-sm font-medium">
-                              ₱{invoice.total?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                              {formatPeso(invoice.total ?? 0)}
                             </p>
                           </td>
                           <td className="py-2 px-3">

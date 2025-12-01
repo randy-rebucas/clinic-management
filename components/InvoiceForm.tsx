@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-import { useSetting } from './SettingsContext';
+import { formatPeso } from '../lib/currency';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 
 interface Patient {
   _id: string;
@@ -69,17 +72,8 @@ export default function InvoiceForm({
   onSubmit,
   onCancel,
 }: InvoiceFormProps) {
-  const currency = useSetting('billingSettings.currency', 'USD');
-  const defaultTaxRate = useSetting('billingSettings.taxRate', 0);
-  
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  };
+  const defaultTaxRate = 0;
+  const formatCurrency = formatPeso;
   
   const [formData, setFormData] = useState({
     patient: initialData?.patient || '',
@@ -315,11 +309,12 @@ export default function InvoiceForm({
               Patient <span className="text-red-500">*</span>
             </div>
             <div className="relative patient-search-container">
-              <input
+              <Input
+                id="patientSearch"
                 type="text"
                 required
                 value={patientSearch}
-                onChange={(e) => {
+                onChange={e => {
                   setPatientSearch(e.target.value);
                   setShowPatientSearch(true);
                   if (!e.target.value) {
@@ -329,7 +324,7 @@ export default function InvoiceForm({
                 }}
                 onFocus={() => setShowPatientSearch(true)}
                 placeholder="Type to search patients..."
-                className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                style={{ all: 'unset', width: '100%' }}
               />
               {showPatientSearch && filteredPatients.length > 0 && (
                 <div
@@ -348,18 +343,18 @@ export default function InvoiceForm({
                           <span className="text-xs text-gray-500">{patient.patientCode}</span>
                         )}
                       </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
+                    <Button type="button" onClick={addItem} size="sm">
+                      Add Item
+                    </Button>
           {/* Visit Selection (Optional) */}
           {formData.patient && visits.length > 0 && (
             <div>
               <div className="text-sm font-medium mb-2">Visit (Optional)</div>
-              <select
+              <Select value={item.serviceId} onValueChange={value => handleServiceChange(index, value)}>
+                {services.map(service => (
+                  <SelectItem key={service._id} value={service._id}>{service.name}</SelectItem>
+                ))}
+              </Select>
                 value={formData.visit}
                 onChange={(e) => setFormData({ ...formData, visit: e.target.value })}
                 className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
@@ -397,7 +392,7 @@ export default function InvoiceForm({
                     className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto"
                   >
                     {filteredServices.map((service) => (
-                      <button
+                      <Button
                         key={service._id}
                         type="button"
                         onClick={() => addItem(service)}
@@ -409,13 +404,9 @@ export default function InvoiceForm({
                             {service.code && `${service.code} • `}{formatCurrency(service.unitPrice)}
                           </span>
                         </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
+                      <Button type="button" variant="destructive" size="sm" onClick={() => removeItem(index)}>
+                        ×
+                      </Button>
             {formData.items.length === 0 ? (
               <div className="p-2 text-center border border-gray-300 rounded-md bg-gray-50">
                 <span className="text-xs text-gray-500">No items added. Search and select services above.</span>
@@ -466,19 +457,15 @@ export default function InvoiceForm({
                           </span>
                         </div>
                       </div>
-                      <button
+                      <Button
                         type="button"
                         onClick={() => removeItem(index)}
                         className="px-2 py-1 text-red-500 hover:bg-red-50 rounded"
                       >
                         ×
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                      <Button type="button" onClick={addDiscount} size="sm">
+                        Add Discount
+                      </Button>
 
           {/* Discounts */}
           <div>
@@ -486,40 +473,33 @@ export default function InvoiceForm({
               <div className="text-sm font-medium">Discounts</div>
               <div className="flex gap-1">
                 {selectedPatient?.discountEligibility?.pwd?.eligible && (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => addDiscount('pwd')}
                     className="px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
                   >
                     PWD
-                  </button>
-                )}
-                {selectedPatient?.discountEligibility?.senior?.eligible && (
-                  <button
-                    type="button"
-                    onClick={() => addDiscount('senior')}
-                    className="px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
+                  <Button type="button" variant="destructive" size="sm" onClick={() => removeDiscount(index)}>
+                    ×
+                  </Button>
                   >
                     Senior
-                  </button>
-                )}
-                {selectedPatient?.discountEligibility?.membership?.eligible && (
-                  <button
-                    type="button"
-                    onClick={() => addDiscount('membership')}
+                  <Button type="submit" variant="default">
+                    Save Invoice
+                  </Button>
                     className="px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
                   >
                     Membership
                   </button>
                 )}
-                <button
+                <Button
                   type="button"
                   onClick={() => addDiscount('promotional')}
                   className="px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
                 >
                   Promo
                 </button>
-                <button
+                <Button
                   type="button"
                   onClick={() => addDiscount('other')}
                   className="px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
@@ -536,7 +516,13 @@ export default function InvoiceForm({
                     <div className="flex gap-2 items-end flex-wrap">
                       <div style={{ width: '120px' }}>
                         <div className="text-xs font-medium text-gray-500 mb-1">Type</div>
-                        <select
+                        <Select value={discount.type} onValueChange={value => handleDiscountTypeChange(index, value)}>
+                          <SelectItem value="pwd">PWD</SelectItem>
+                          <SelectItem value="senior">Senior</SelectItem>
+                          <SelectItem value="membership">Membership</SelectItem>
+                          <SelectItem value="promotional">Promotional</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </Select>
                           value={discount.type}
                           onChange={(e) => updateDiscount(index, 'type', e.target.value)}
                           className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
@@ -580,7 +566,7 @@ export default function InvoiceForm({
                           className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                         />
                       </div>
-                      <button
+                      <Button
                         type="button"
                         onClick={() => removeDiscount(index)}
                         className="px-2 py-1 text-red-500 hover:bg-red-50 rounded"
@@ -661,7 +647,11 @@ export default function InvoiceForm({
                 </div>
                 <div className="flex-grow" style={{ minWidth: '200px' }}>
                   <div className="text-xs font-medium text-gray-500 mb-2">Coverage Type</div>
-                  <select
+                  <Select value={formData.patient} onValueChange={value => setFormData({ ...formData, patient: value })}>
+                    {patients.map(patient => (
+                      <SelectItem key={patient._id} value={patient._id}>{patient.firstName} {patient.lastName}</SelectItem>
+                    ))}
+                  </Select>
                     value={formData.insurance.coverageType}
                     onChange={(e) =>
                       setFormData({
@@ -713,11 +703,11 @@ export default function InvoiceForm({
           <hr className="my-4" />
           <div className="flex justify-end gap-2">
             {onCancel && (
-              <button type="button" onClick={onCancel} className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
+              <Button type="button" onClick={onCancel} variant="outline" size="sm">
                 Cancel
               </button>
             )}
-            <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">
+            <Button type="submit" variant="default" size="sm">
               Create Invoice
             </button>
           </div>

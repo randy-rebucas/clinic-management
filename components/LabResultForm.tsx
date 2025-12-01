@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 
 interface Patient {
   _id: string;
@@ -136,26 +139,25 @@ export default function LabResultForm({
         <div className="flex flex-col gap-3 p-4">
           {/* Patient Selection */}
           <div>
-            <label className="block text-xs font-medium mb-2">
-              Patient <span className="text-red-500">*</span>
-            </label>
-        <div className="relative patient-search-container">
-          <input
-            type="text"
-            required
-            value={patientSearch}
-            onChange={(e) => {
-              setPatientSearch(e.target.value);
-              setShowPatientSearch(true);
-              if (!e.target.value) {
-                setFormData({ ...formData, patient: '' });
-                setSelectedPatient(null);
-              }
-            }}
-            onFocus={() => setShowPatientSearch(true)}
-            placeholder="Type to search patients..."
-            className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          />
+            <Label htmlFor="patientSearch">Patient <span className="text-red-500">*</span></Label>
+            <div className="relative patient-search-container">
+              <Input
+                id="patientSearch"
+                type="text"
+                required
+                value={patientSearch}
+                onChange={e => {
+                  setPatientSearch(e.target.value);
+                  setShowPatientSearch(true);
+                  if (!e.target.value) {
+                    setFormData({ ...formData, patient: '' });
+                    setSelectedPatient(null);
+                  }
+                }}
+                onFocus={() => setShowPatientSearch(true)}
+                placeholder="Type to search patients..."
+                style={{ all: 'unset', width: '100%' }}
+              />
           {showPatientSearch && filteredPatients.length > 0 && (
             <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
               {filteredPatients.map((patient) => {
@@ -195,100 +197,98 @@ export default function LabResultForm({
 
           {/* Test Type */}
           <div>
-            <label className="block text-xs font-medium mb-2">
-              Test Type <span className="text-red-500">*</span>
-            </label>
-            <input
+            <Label htmlFor="testType">Test Type <span className="text-red-500">*</span></Label>
+            <Input
+              id="testType"
               type="text"
               required
               value={formData.request.testType}
-              onChange={(e) => setFormData({
+              onChange={e => setFormData({
                 ...formData,
                 request: { ...formData.request, testType: e.target.value }
               })}
               placeholder="e.g., CBC, Urinalysis, Blood Glucose"
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              style={{ all: 'unset', width: '100%' }}
             />
           </div>
 
           {/* Test Code (Optional) */}
           <div>
-            <label className="block text-xs font-medium mb-2">Test Code (Optional)</label>
-            <input
+            <Label htmlFor="testCode">Test Code (Optional)</Label>
+            <Input
+              id="testCode"
               type="text"
               value={formData.request.testCode}
-              onChange={(e) => setFormData({
+              onChange={e => setFormData({
                 ...formData,
                 request: { ...formData.request, testCode: e.target.value }
               })}
               placeholder="e.g., LOINC code"
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              style={{ all: 'unset', width: '100%' }}
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-medium mb-2">Description (Optional)</label>
-            <textarea
+            <Label htmlFor="description">Description (Optional)</Label>
+            <Input
+              id="description"
+              as="textarea"
               value={formData.request.description}
-              onChange={(e) => setFormData({
+              onChange={e => setFormData({
                 ...formData,
                 request: { ...formData.request, description: e.target.value }
               })}
               placeholder="Additional test description or notes"
+              style={{ all: 'unset', width: '100%' }}
               rows={2}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
             />
           </div>
 
           {/* Urgency */}
           <div>
-            <label className="block text-xs font-medium mb-2">
-              Urgency <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={formData.request.urgency}
-              onChange={(e) => setFormData({
-                ...formData,
-                request: { ...formData.request, urgency: e.target.value as 'routine' | 'urgent' | 'stat' }
-              })}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            >
-              <option value="routine">Routine</option>
-              <option value="urgent">Urgent</option>
-              <option value="stat">STAT</option>
-            </select>
+            <Label htmlFor="urgency">Urgency <span className="text-red-500">*</span></Label>
+            <Select value={formData.request.urgency} onValueChange={value => setFormData({
+              ...formData,
+              request: { ...formData.request, urgency: value as 'routine' | 'urgent' | 'stat' }
+            })}>
+              <SelectItem value="routine">Routine</SelectItem>
+              <SelectItem value="urgent">Urgent</SelectItem>
+              <SelectItem value="stat">STAT</SelectItem>
+            </Select>
           </div>
 
       {/* Fasting Required */}
       <div className="flex items-center gap-2">
-        <input
+        <Input
           type="checkbox"
           id="fastingRequired"
           checked={formData.request.fastingRequired}
-          onChange={(e) => setFormData({
+          onChange={e => setFormData({
             ...formData,
             request: { ...formData.request, fastingRequired: e.target.checked }
           })}
-          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          style={{ width: '1.25rem', height: '1.25rem' }}
         />
-        <label htmlFor="fastingRequired" className="text-xs cursor-pointer">
+        <Label htmlFor="fastingRequired" className="text-xs cursor-pointer">
           Fasting Required
-        </label>
+        </Label>
       </div>
 
           {/* Special Instructions */}
           <div>
-            <label className="block text-xs font-medium mb-2">Special Instructions (Optional)</label>
-            <textarea
+            <Label htmlFor="specialInstructions">Special Instructions (Optional)</Label>
+            <Input
+              id="specialInstructions"
+              as="textarea"
               value={formData.request.specialInstructions}
-              onChange={(e) => setFormData({
+              onChange={e => setFormData({
                 ...formData,
                 request: { ...formData.request, specialInstructions: e.target.value }
               })}
               placeholder="Any special instructions for the lab"
+              style={{ all: 'unset', width: '100%' }}
               rows={2}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
             />
           </div>
 
@@ -304,19 +304,21 @@ export default function LabResultForm({
               placeholder="Patient preparation instructions"
               rows={2}
               className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
-            />
-          </div>
-
-          {/* Form Actions */}
-          <hr className="border-gray-300" />
-          <div className="flex justify-end gap-2">
-            {onCancel && (
-              <button
-                type="button"
-                onClick={onCancel}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition-colors"
-              >
-                Cancel
+            <div>
+              <Label htmlFor="preparationNotes">Preparation Notes (Optional)</Label>
+              <Input
+                id="preparationNotes"
+                as="textarea"
+                value={formData.request.preparationNotes}
+                onChange={e => setFormData({
+                  ...formData,
+                  request: { ...formData.request, preparationNotes: e.target.value }
+                })}
+                placeholder="Preparation notes for the patient"
+                style={{ all: 'unset', width: '100%' }}
+                rows={2}
+              />
+            </div>
               </button>
             )}
             <button

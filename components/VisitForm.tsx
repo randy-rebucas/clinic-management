@@ -1,4 +1,14 @@
 'use client';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Button } from './ui/button';
+import {
+  TypographyH2,
+  TypographyP
+} from './ui/typography';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
+import { Textarea } from './ui/textarea';
+import { Checkbox } from './ui/checkbox';
 
 import { useState, useEffect, FormEvent } from 'react';
 import SignaturePad from './SignaturePad';
@@ -253,26 +263,25 @@ export default function VisitForm({
   return (
     <form onSubmit={handleSubmit}>
       <div className="max-h-[80vh] overflow-y-auto">
-        <div className="flex flex-col gap-4 p-4">
-          {/* Basic Information */}
-          <div>
-            <h2 className="text-lg font-semibold mb-3">Basic Information</h2>
-            <div className="flex flex-col md:flex-row gap-3 flex-wrap">
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium mb-2">
-                  Patient <span className="text-red-500">*</span>
-                </label>
-                <div className="relative patient-search-container">
-              <input
+                <Label className="block text-sm font-medium mb-2" htmlFor="patient">Patient <span className="text-red-500">*</span></Label>
+            <TypographyH2 className="mb-3">Basic Information</TypographyH2>
+              <Input
+                id="patient"
                 type="text"
                 required
                 value={patientSearch}
-                onChange={(e) => {
+                onChange={e => {
                   setPatientSearch(e.target.value);
                   setShowPatientSearch(true);
                   if (!e.target.value) {
                     setFormData({ ...formData, patient: '' });
                     setSelectedPatient(null);
+                  }
+                }}
+                onFocus={() => setShowPatientSearch(true)}
+                placeholder="Type to search patients..."
+                className="w-full px-3 py-1.5"
+              />
                   }
                 }}
                 onFocus={() => setShowPatientSearch(true)}
@@ -303,9 +312,7 @@ export default function VisitForm({
                   <span className="text-sm text-gray-500 p-2">Start typing to search...</span>
                 )}
               </div>
-              )}
-            </div>
-            {formData.patient && !selectedPatient && (
+            <Label className="block text-sm font-medium mb-2" htmlFor="visitType">Visit Type <span className="text-red-500">*</span></Label>
               <p className="text-xs text-red-600 mt-1">Please select a valid patient from the list</p>
             )}
           </div>
@@ -313,26 +320,22 @@ export default function VisitForm({
             <label className="block text-sm font-medium mb-2">
               Visit Type <span className="text-red-500">*</span>
             </label>
-            <select
-              value={formData.visitType}
-              onChange={(e) => setFormData({ ...formData, visitType: e.target.value as any })}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            >
-              <option value="consultation">Consultation</option>
-              <option value="follow-up">Follow-up</option>
-              <option value="checkup">Checkup</option>
-              <option value="emergency">Emergency</option>
-              <option value="teleconsult">Teleconsult</option>
-            </select>
-          </div>
-          <div className="w-full">
-            <label className="block text-sm font-medium mb-2">Chief Complaint</label>
-            <input
-              type="text"
-              value={formData.chiefComplaint}
-              onChange={(e) => setFormData({ ...formData, chiefComplaint: e.target.value })}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            />
+            <Select value={formData.visitType} onValueChange={value => setFormData({ ...formData, visitType: value as any })}>
+              <SelectTrigger className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                <SelectValue placeholder="Select visit type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="consultation">Consultation</SelectItem>
+                <SelectItem value="follow-up">Follow-up</SelectItem>
+                <SelectItem value="checkup">Checkup</SelectItem>
+                <SelectItem value="emergency">Emergency</SelectItem>
+                <SelectItem value="teleconsult">Teleconsult</SelectItem>
+              </SelectContent>
+            </Select>
+            <Label className="block text-sm font-medium mb-2" htmlFor="chiefComplaint">Chief Complaint</Label>
+            <Input id="chiefComplaint" type="text" value={formData.chiefComplaint} onChange={e => setFormData({ ...formData, chiefComplaint: e.target.value })} className="w-full px-3 py-1.5" />
+            <Label className="block text-sm font-medium mb-2" htmlFor="chiefComplaint">Chief Complaint</Label>
+            <Input id="chiefComplaint" type="text" value={formData.chiefComplaint} onChange={e => setFormData({ ...formData, chiefComplaint: e.target.value })} className="w-full px-3 py-1.5" />
           </div>
         </div>
       </div>
@@ -380,65 +383,49 @@ export default function VisitForm({
           {activeTab === 'soap' && (
             <div className="flex flex-col gap-3">
               <div>
-                <label className="block text-sm font-medium mb-2">
-                  S - Subjective (Patient&apos;s description of symptoms)
-                </label>
-                <textarea
+                <Label className="block text-sm font-medium mb-2">S - Subjective (Patient's description of symptoms)</Label>
+                <Textarea
                   value={formData.soapNotes?.subjective || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      soapNotes: { ...formData.soapNotes, subjective: e.target.value },
-                    })
-                  }
+                  onChange={e => setFormData({
+                    ...formData,
+                    soapNotes: { ...formData.soapNotes, subjective: e.target.value },
+                  })}
                   rows={4}
                   placeholder="Patient reports..."
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">
-                  O - Objective (Measurable observations, vitals, physical exam)
-                </label>
-                <textarea
+                <Label className="block text-sm font-medium mb-2">O - Objective (Measurable observations, vitals, physical exam)</Label>
+                <Textarea
                   value={formData.soapNotes?.objective || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      soapNotes: { ...formData.soapNotes, objective: e.target.value },
-                    })
-                  }
+                  onChange={e => setFormData({
+                    ...formData,
+                    soapNotes: { ...formData.soapNotes, objective: e.target.value },
+                  })}
                   rows={4}
                   placeholder="Vitals: BP 120/80, HR 72, Temp 37°C. Physical exam findings..."
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">
-                  A - Assessment (Clinical impression/diagnosis)
-                </label>
-                <textarea
+                <Label className="block text-sm font-medium mb-2">A - Assessment (Clinical impression/diagnosis)</Label>
+                <Textarea
                   value={formData.soapNotes?.assessment || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      soapNotes: { ...formData.soapNotes, assessment: e.target.value },
-                    })
-                  }
+                  onChange={e => setFormData({
+                    ...formData,
+                    soapNotes: { ...formData.soapNotes, assessment: e.target.value },
+                  })}
                   rows={3}
                   placeholder="Clinical impression..."
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">
-                  P - Plan (Treatment plan and follow-up)
-                </label>
-                <textarea
+                <Label className="block text-sm font-medium mb-2">P - Plan (Treatment plan and follow-up)</Label>
+                <Textarea
                   value={formData.soapNotes?.plan || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      soapNotes: { ...formData.soapNotes, plan: e.target.value },
-                    })
-                  }
+                  onChange={e => setFormData({
+                    ...formData,
+                    soapNotes: { ...formData.soapNotes, plan: e.target.value },
+                  })}
                   rows={4}
                   placeholder="Plan: Medications, procedures, follow-up..."
                 />
@@ -450,10 +437,10 @@ export default function VisitForm({
           {activeTab === 'traditional' && (
             <div className="flex flex-col gap-3">
               <div>
-                <label className="block text-sm font-medium mb-2">History of Present Illness</label>
-                <textarea
+                <Label className="block text-sm font-medium mb-2">History of Present Illness</Label>
+                <Textarea
                   value={formData.historyOfPresentIllness}
-                  onChange={(e) => setFormData({ ...formData, historyOfPresentIllness: e.target.value })}
+                  onChange={e => setFormData({ ...formData, historyOfPresentIllness: e.target.value })}
                   rows={4}
                 />
               </div>
@@ -527,54 +514,46 @@ export default function VisitForm({
                 <label className="block text-sm font-medium mb-2">Physical Examination</label>
                 <div className="flex gap-3 flex-wrap">
                   <div className="flex-1 min-w-[200px]">
-                    <label className="block text-xs text-gray-500 mb-2">General</label>
-                    <textarea
+                    <Label className="block text-xs text-gray-500 mb-2">General</Label>
+                    <Textarea
                       value={formData.physicalExam?.general || ''}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          physicalExam: { ...formData.physicalExam, general: e.target.value },
-                        })
-                      }
+                      onChange={e => setFormData({
+                        ...formData,
+                        physicalExam: { ...formData.physicalExam, general: e.target.value },
+                      })}
                       rows={2}
                     />
                   </div>
                   <div className="flex-1 min-w-[200px]">
-                    <label className="block text-xs text-gray-500 mb-2">HEENT</label>
-                    <textarea
+                    <Label className="block text-xs text-gray-500 mb-2">HEENT</Label>
+                    <Textarea
                       value={formData.physicalExam?.heent || ''}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          physicalExam: { ...formData.physicalExam, heent: e.target.value },
-                        })
-                      }
+                      onChange={e => setFormData({
+                        ...formData,
+                        physicalExam: { ...formData.physicalExam, heent: e.target.value },
+                      })}
                       rows={2}
                     />
                   </div>
                   <div className="flex-1 min-w-[200px]">
-                    <label className="block text-xs text-gray-500 mb-2">Cardiovascular</label>
-                    <textarea
+                    <Label className="block text-xs text-gray-500 mb-2">Cardiovascular</Label>
+                    <Textarea
                       value={formData.physicalExam?.cardiovascular || ''}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          physicalExam: { ...formData.physicalExam, cardiovascular: e.target.value },
-                        })
-                      }
+                      onChange={e => setFormData({
+                        ...formData,
+                        physicalExam: { ...formData.physicalExam, cardiovascular: e.target.value },
+                      })}
                       rows={2}
                     />
                   </div>
                   <div className="flex-1 min-w-[200px]">
-                    <label className="block text-xs text-gray-500 mb-2">Abdomen</label>
-                    <textarea
+                    <Label className="block text-xs text-gray-500 mb-2">Abdomen</Label>
+                    <Textarea
                       value={formData.physicalExam?.abdomen || ''}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          physicalExam: { ...formData.physicalExam, abdomen: e.target.value },
-                        })
-                      }
+                      onChange={e => setFormData({
+                        ...formData,
+                        physicalExam: { ...formData.physicalExam, abdomen: e.target.value },
+                      })}
                       rows={2}
                     />
                   </div>
@@ -586,7 +565,7 @@ export default function VisitForm({
           {/* Diagnoses Section */}
           <div>
             <div className="flex justify-between items-center mb-3">
-              <h2 className="text-lg font-semibold">Diagnoses (ICD-10)</h2>
+              <TypographyH2>Diagnoses (ICD-10)</TypographyH2>
               <button
                 type="button"
                 className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm"
@@ -596,7 +575,7 @@ export default function VisitForm({
               </button>
             </div>
             {formData.diagnoses.length === 0 ? (
-              <p className="text-sm text-gray-500">No diagnoses added. Click "Add Diagnosis" to add one.</p>
+              <TypographyP className="text-sm text-gray-500">No diagnoses added. Click "Add Diagnosis" to add one.</TypographyP>
             ) : (
               <div className="flex flex-col gap-2">
                 {formData.diagnoses.map((diagnosis, index) => (
@@ -604,20 +583,14 @@ export default function VisitForm({
                     <div className="p-3">
                       <div className="flex flex-col md:flex-row gap-3 flex-wrap">
                         <div className="flex-1 relative" style={{ minWidth: '200px' }}>
-                          <label className="block text-xs font-medium text-gray-500 mb-2">ICD-10 Code</label>
-                          <input
-                              type="text"
-                              value={diagnosis.code || ''}
-                              onChange={(e) => {
-                                updateDiagnosis(index, 'code', e.target.value);
-                                if (e.target.value.length >= 2) {
-                                  setIcd10Search(e.target.value);
-                                  setShowIcd10Search(true);
-                                }
-                              }}
-                              placeholder="E.g., E11.9"
-                              style={{ all: 'unset', flex: 1 }}
-                            />
+                          <Label className="block text-xs font-medium text-gray-500 mb-2" htmlFor={`diagnosis-code-${index}`}>ICD-10 Code</Label>
+                          <Input id={`diagnosis-code-${index}`} type="text" value={diagnosis.code || ''} onChange={e => {
+                            updateDiagnosis(index, 'code', e.target.value);
+                            if (e.target.value.length >= 2) {
+                              setIcd10Search(e.target.value);
+                              setShowIcd10Search(true);
+                            }
+                          }} placeholder="E.g., E11.9" style={{ all: 'unset', flex: 1 }} />
                           {showIcd10Search && icd10Results.length > 0 && (
                             <div
                               className="absolute"
@@ -650,30 +623,18 @@ export default function VisitForm({
                           )}
                         </div>
                         <div className="flex-1 min-w-[200px]">
-                          <label className="block text-xs font-medium text-gray-500 mb-2">Description</label>
-                          <input
-                              type="text"
-                              value={diagnosis.description || ''}
-                              onChange={(e) => updateDiagnosis(index, 'description', e.target.value)}
-                              placeholder="Diagnosis description"
-                              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                            />
+                          <Label className="block text-xs font-medium text-gray-500 mb-2" htmlFor={`diagnosis-description-${index}`}>Description</Label>
+                          <Input id={`diagnosis-description-${index}`} type="text" value={diagnosis.description || ''} onChange={e => updateDiagnosis(index, 'description', e.target.value)} placeholder="Diagnosis description" className="w-full px-3 py-1.5" />
                         </div>
                         <div className="flex items-end gap-2">
                           <div className="flex items-center gap-2">
-                            <input type="checkbox"
+                            <Checkbox
                               checked={diagnosis.primary || false}
-                              onChange={(e) => updateDiagnosis(index, 'primary', e.target.checked)}
+                              onCheckedChange={checked => updateDiagnosis(index, 'primary', !!checked)}
                             />
                             <span className="text-xs">Primary</span>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => removeDiagnosis(index)}
-                            className="px-3 py-1.5 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors text-sm"
-                          >
-                            Remove
-                          </button>
+                          <Button type="button" variant="destructive" size="sm" onClick={() => removeDiagnosis(index)}>Remove</Button>
                         </div>
                       </div>
                     </div>
@@ -720,77 +681,48 @@ export default function VisitForm({
                                 />
                             </div>
                             <div className="min-w-[100px]">
-                              <input
-                                  type="text"
-                                  placeholder="Dosage"
-                                  value={med.dosage}
-                                  onChange={(e) => {
-                                    const medications = [...(formData.treatmentPlan?.medications || [])];
-                                    medications[index] = { ...med, dosage: e.target.value };
-                                    setFormData({
-                                      ...formData,
-                                      treatmentPlan: { ...formData.treatmentPlan, medications },
-                                    });
-                                  }}
-                                  style={{ all: 'unset', flex: 1 }}
-                                />
+                              <Input type="text" placeholder="Dosage" value={med.dosage} onChange={e => {
+                                const medications = [...(formData.treatmentPlan?.medications || [])];
+                                medications[index] = { ...med, dosage: e.target.value };
+                                setFormData({
+                                  ...formData,
+                                  treatmentPlan: { ...formData.treatmentPlan, medications },
+                                });
+                              }} style={{ all: 'unset', flex: 1 }} />
                             </div>
                             <div className="min-w-[100px]">
-                              <input
-                                  type="text"
-                                  placeholder="Frequency"
-                                  value={med.frequency}
-                                  onChange={(e) => {
-                                    const medications = [...(formData.treatmentPlan?.medications || [])];
-                                    medications[index] = { ...med, frequency: e.target.value };
-                                    setFormData({
-                                      ...formData,
-                                      treatmentPlan: { ...formData.treatmentPlan, medications },
-                                    });
-                                  }}
-                                  style={{ all: 'unset', flex: 1 }}
-                                />
+                              <Input type="text" placeholder="Frequency" value={med.frequency} onChange={e => {
+                                const medications = [...(formData.treatmentPlan?.medications || [])];
+                                medications[index] = { ...med, frequency: e.target.value };
+                                setFormData({
+                                  ...formData,
+                                  treatmentPlan: { ...formData.treatmentPlan, medications },
+                                });
+                              }} style={{ all: 'unset', flex: 1 }} />
                             </div>
                             <div className="min-w-[100px]">
-                              <input
-                                  type="text"
-                                  placeholder="Duration"
-                                  value={med.duration}
-                                  onChange={(e) => {
-                                    const medications = [...(formData.treatmentPlan?.medications || [])];
-                                    medications[index] = { ...med, duration: e.target.value };
-                                    setFormData({
-                                      ...formData,
-                                      treatmentPlan: { ...formData.treatmentPlan, medications },
-                                    });
-                                  }}
-                                  style={{ all: 'unset', flex: 1 }}
-                                />
+                              <Input type="text" placeholder="Duration" value={med.duration} onChange={e => {
+                                const medications = [...(formData.treatmentPlan?.medications || [])];
+                                medications[index] = { ...med, duration: e.target.value };
+                                setFormData({
+                                  ...formData,
+                                  treatmentPlan: { ...formData.treatmentPlan, medications },
+                                });
+                              }} style={{ all: 'unset', flex: 1 }} />
                             </div>
-                            <button
-                              type="button"
-                              className="px-3 py-1.5 text-red-600 hover:bg-red-50 rounded transition-colors text-sm"
-                              onClick={() => removeMedication(index)}
-                            >
-                              Remove
-                            </button>
+                            <Button type="button" variant="destructive" size="sm" onClick={() => removeMedication(index)}>Remove</Button>
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">No medications added</p>
+                  <TypographyP className="text-sm text-gray-500">No medications added</TypographyP>
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Follow-up Date</label>
-                <input
-                    type="date"
-                    value={formData.followUpDate}
-                    onChange={(e) => setFormData({ ...formData, followUpDate: e.target.value })}
-                    style={{ all: 'unset', flex: 1 }}
-                  />
+                <Label className="block text-sm font-medium mb-2" htmlFor="followUpDate">Follow-up Date</Label>
+                <Input id="followUpDate" type="date" value={formData.followUpDate} onChange={e => setFormData({ ...formData, followUpDate: e.target.value })} style={{ all: 'unset', flex: 1 }} />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Follow-up Instructions</label>
@@ -822,8 +754,8 @@ export default function VisitForm({
               <div className="bg-green-50 border border-green-300 rounded-lg p-3">
                 <div className="flex justify-between items-center p-3">
                   <div>
-                    <p className="text-sm font-medium text-green-700">Digital Signature Added</p>
-                    <p className="text-xs text-green-600">Signed by: {formData.digitalSignature.providerName}</p>
+                    <TypographyP className="text-sm font-medium text-green-700">Digital Signature Added</TypographyP>
+                    <TypographyP className="text-xs text-green-600">Signed by: {formData.digitalSignature.providerName}</TypographyP>
                   </div>
                   <button
                     type="button"
@@ -893,13 +825,14 @@ export default function VisitForm({
 
           {/* Clinical Images Upload */}
           <div>
-            <label className="block text-sm font-medium mb-2">Clinical Images & Attachments</label>
-            <p className="text-xs text-gray-500 mb-3">
+            <Label className="block text-sm font-medium mb-2" htmlFor="clinicalImages">Clinical Images & Attachments</Label>
+            <TypographyP className="text-xs text-gray-500 mb-3">
               Upload clinical images, X-rays, or other documents related to this visit
-            </p>
+            </TypographyP>
             <div className="bg-white border border-gray-200 rounded-lg">
               <div className="p-3">
-                <input
+                <Input
+                  id="clinicalImages"
                   type="file"
                   accept="image/*,.pdf,.doc,.docx"
                   multiple
@@ -908,25 +841,24 @@ export default function VisitForm({
                     // This is just a placeholder - actual upload should be done after visit creation
                     console.log('Files selected:', e.target.files);
                   }}
-                  style={{
-                    width: '100%',
-                    fontSize: 'var(--font-size-2)',
-                  }}
+                  style={{ all: 'unset', width: '100%' }}
                 />
-                <p className="text-xs text-gray-500 mt-2">
+                <TypographyP className="text-xs text-gray-500 mt-2">
                   Note: Files can be uploaded after saving the visit from the visit detail page.
-                </p>
+                </TypographyP>
               </div>
             </div>
           </div>
 
           {/* Additional Notes */}
           <div>
-            <label className="block text-sm font-medium mb-2">Additional Notes</label>
-            <textarea
+            <Label className="block text-sm font-medium mb-2" htmlFor="additionalNotes">Additional Notes</Label>
+            <Textarea
+              id="additionalNotes"
               value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              onChange={e => setFormData({ ...formData, notes: e.target.value })}
               rows={3}
+              placeholder="Enter any additional notes..."
             />
           </div>
 
@@ -934,13 +866,13 @@ export default function VisitForm({
           <hr />
           <div className="flex justify-end gap-2">
             {onCancel && (
-              <button type="button" className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors" onClick={onCancel}>
+              <Button type="button" variant="outline" onClick={onCancel}>
                 Cancel
-              </button>
+              </Button>
             )}
-            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+            <Button type="submit" variant="default">
               Save Visit
-            </button>
+            </Button>
           </div>
         </div>
       </div>

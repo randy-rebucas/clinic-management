@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Checkbox } from './ui/checkbox';
 
 interface Settings {
   _id?: string;
@@ -588,10 +589,9 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                         </div>
                         <div className="flex gap-2 items-center">
                           <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               checked={!hours.closed}
-                              onChange={(e) => updateBusinessHours(day.value, 'closed', !e.target.checked)}
+                              onCheckedChange={checked => updateBusinessHours(day.value, 'closed', !checked)}
                               disabled={!isAdmin}
                               className="sr-only peer"
                             />
@@ -650,20 +650,18 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     placeholder="24, 2"
                   />
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={settings.appointmentSettings.allowOnlineBooking}
-                      onChange={(e) => updateSettings('appointmentSettings.allowOnlineBooking', e.target.checked)}
+                      onCheckedChange={checked => updateSettings('appointmentSettings.allowOnlineBooking', !!checked)}
                       disabled={!isAdmin}
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Allow Online Booking</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={settings.appointmentSettings.requireConfirmation}
-                      onChange={(e) => updateSettings('appointmentSettings.requireConfirmation', e.target.checked)}
+                      onCheckedChange={checked => updateSettings('appointmentSettings.requireConfirmation', !!checked)}
                       disabled={!isAdmin}
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
@@ -694,50 +692,45 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 <div className="flex flex-col gap-4 p-4">
                   <h3 className="text-xl font-semibold">Communication Settings</h3>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={settings.communicationSettings.smsEnabled}
-                      onChange={(e) => updateSettings('communicationSettings.smsEnabled', e.target.checked)}
+                      onCheckedChange={checked => updateSettings('communicationSettings.smsEnabled', !!checked)}
                       disabled={!isAdmin}
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">SMS Enabled</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={settings.communicationSettings.emailEnabled}
-                      onChange={(e) => updateSettings('communicationSettings.emailEnabled', e.target.checked)}
+                      onCheckedChange={checked => updateSettings('communicationSettings.emailEnabled', !!checked)}
                       disabled={!isAdmin}
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Email Enabled</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={settings.communicationSettings.appointmentReminders}
-                      onChange={(e) => updateSettings('communicationSettings.appointmentReminders', e.target.checked)}
+                      onCheckedChange={checked => updateSettings('communicationSettings.appointmentReminders', !!checked)}
                       disabled={!isAdmin}
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Appointment Reminders</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={settings.communicationSettings.labResultNotifications}
-                      onChange={(e) => updateSettings('communicationSettings.labResultNotifications', e.target.checked)}
+                      onCheckedChange={checked => updateSettings('communicationSettings.labResultNotifications', !!checked)}
                       disabled={!isAdmin}
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Lab Result Notifications</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={settings.communicationSettings.invoiceReminders}
-                      onChange={(e) => updateSettings('communicationSettings.invoiceReminders', e.target.checked)}
+                      onCheckedChange={checked => updateSettings('communicationSettings.invoiceReminders', !!checked)}
                       disabled={!isAdmin}
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />

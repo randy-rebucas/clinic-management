@@ -1,4 +1,8 @@
+
 'use client';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Button } from './ui/button';
 
 import { login } from '@/app/actions/auth';
 import { useActionState } from 'react';
@@ -11,9 +15,7 @@ export default function LoginForm() {
     <form action={action} className="space-y-6">
       {/* Email Field */}
       <div>
-        <label htmlFor="email" className="block text-sm font-medium mb-2">
-          Email Address <span className="text-red-500">*</span>
-        </label>
+        <Label htmlFor="email" className="block text-sm font-medium mb-2">Email Address <span className="text-red-500">*</span></Label>
         <div className="relative">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-gray-400">
@@ -21,7 +23,7 @@ export default function LoginForm() {
               <path d="M2.5 5.5L8 9.5L13.5 5.5" stroke="currentColor" strokeWidth="1.2" />
             </svg>
           </div>
-          <input
+          <Input
             id="email"
             name="email"
             type="email"
@@ -29,7 +31,7 @@ export default function LoginForm() {
             autoComplete="email"
             autoFocus
             placeholder="you@example.com"
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+            className="w-full pl-10 pr-4 py-2.5"
           />
         </div>
         {state?.errors?.email && (
@@ -40,9 +42,7 @@ export default function LoginForm() {
       </div>
       {/* Password Field */}
       <div>
-        <label htmlFor="password" className="block text-sm font-medium mb-2">
-          Password <span className="text-red-500">*</span>
-        </label>
+        <Label htmlFor="password" className="block text-sm font-medium mb-2">Password <span className="text-red-500">*</span></Label>
         <div className="relative">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-gray-400">
@@ -50,14 +50,14 @@ export default function LoginForm() {
               <rect x="7.5" y="9.5" width="1" height="1" fill="currentColor" />
             </svg>
           </div>
-          <input
+          <Input
             id="password"
             name="password"
             type="password"
             required
             autoComplete="current-password"
             placeholder="Enter your password"
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+            className="w-full pl-10 pr-4 py-2.5"
           />
         </div>
         {state?.errors?.password && (
@@ -76,10 +76,10 @@ export default function LoginForm() {
 
       {/* Submit Button */}
       <div>
-        <button
+        <Button
           type="submit"
           disabled={pending}
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+          className="w-full flex items-center justify-center gap-2"
         >
           {pending ? (
             <>
@@ -92,7 +92,7 @@ export default function LoginForm() {
           ) : (
             'Sign In'
           )}
-        </button>
+        </Button>
       </div>
 
       {/* Sign Up Link */}

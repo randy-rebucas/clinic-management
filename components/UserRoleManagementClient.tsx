@@ -146,7 +146,7 @@ export default function UserRoleManagementClient() {
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-3 min-h-[50vh] justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="text-gray-500">Loading users...</p>
+            <TypographyP className="text-gray-500">Loading users...</TypographyP>
           </div>
         </div>
       </section>
@@ -160,12 +160,12 @@ export default function UserRoleManagementClient() {
           {/* Error/Success Messages */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-md p-3">
-              <p className="text-red-800 text-sm">{error}</p>
+              <TypographyP className="text-red-800 text-sm">{error}</TypographyP>
             </div>
           )}
           {success && (
             <div className="bg-green-50 border border-green-200 rounded-md p-3">
-              <p className="text-green-800 text-sm">{success}</p>
+              <TypographyP className="text-green-800 text-sm">{success}</TypographyP>
             </div>
           )}
 
@@ -173,8 +173,8 @@ export default function UserRoleManagementClient() {
           <div>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
               <div>
-                <h1 className="text-3xl font-bold mb-1">User Role Management</h1>
-                <p className="text-sm text-gray-500">Assign and manage roles for system users</p>
+                <TypographyH1 className="mb-1">User Role Management</TypographyH1>
+                <TypographyP className="text-sm text-gray-500">Assign and manage roles for system users</TypographyP>
               </div>
             </div>
           </div>
@@ -186,12 +186,12 @@ export default function UserRoleManagementClient() {
                 <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No users found</h3>
-                <p className="mt-1 text-sm text-gray-500">No users are available to manage.</p>
+                <TypographyH3 className="mt-2 text-sm font-medium text-gray-900">No users found</TypographyH3>
+                <TypographyP className="mt-1 text-sm text-gray-500">No users are available to manage.</TypographyP>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <Table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Name</th>
@@ -223,7 +223,7 @@ export default function UserRoleManagementClient() {
                           </span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <button
+                          <Button
                             onClick={() => handleEditRole(user)}
                             className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors flex items-center gap-1"
                           >
@@ -244,19 +244,23 @@ export default function UserRoleManagementClient() {
         {/* Edit Role Dialog */}
         <Modal open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
           <div className="p-6 max-w-[400px]">
-            <h2 className="text-xl font-semibold mb-4">Change User Role</h2>
+            <TypographyH2 className="mb-4">Change User Role</TypographyH2>
             <hr className="border-gray-200 my-3" />
             
             {editingUser && (
               <div className="flex flex-col gap-3">
                 <div>
-                  <label className="block text-sm font-medium mb-1">User</label>
-                  <p className="text-sm text-gray-700">{editingUser.name} ({editingUser.email})</p>
+                  <Label className="block text-sm font-medium mb-1">User</Label>
+                  <TypographyP className="text-sm text-gray-700">{editingUser.name} ({editingUser.email})</TypographyP>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Select Role</label>
-                  <select
+                  <Label className="block text-sm font-medium mb-1">Select Role</Label>
+                  <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
+                    {roles.map((role) => (
+                      <SelectItem key={role._id} value={role._id}>{role.displayName}</SelectItem>
+                    ))}
+                  </Select>
                     value={selectedRoleId}
                     onChange={(e) => setSelectedRoleId(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
@@ -273,13 +277,13 @@ export default function UserRoleManagementClient() {
             )}
 
             <div className="flex gap-3 mt-4 justify-end">
-              <button
+              <Button
                 onClick={() => setEditingUser(null)}
                 className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
               >
                 Cancel
               </button>
-              <button
+              <Button
                 onClick={handleSaveRole}
                 disabled={!selectedRoleId}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors text-sm font-medium"

@@ -335,11 +335,12 @@ export default function DoctorsPageClient() {
                   />
                 </div>
                 <div className="flex-1 min-w-[200px]">
-                  <label className="block text-xs font-medium mb-1">Status</label>
+                  <Label htmlFor="status">Status</Label>
                   <select
+                    id="status"
                     value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
+                    onChange={e => setFormData({ ...formData, status: e.target.value as any })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
                   >
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
@@ -348,19 +349,12 @@ export default function DoctorsPageClient() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
-                <button 
-                  type="button" 
-                  onClick={() => setShowForm(false)}
-                  className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
-                >
+                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
                   Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                >
+                </Button>
+                <Button type="submit" variant="default">
                   Add Doctor
-                </button>
+                </Button>
               </div>
             </div>
           </form>

@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import AppointmentCalendar from './AppointmentCalendar';
 import { Modal } from './ui/Modal';
 import { useSetting } from './SettingsContext';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 
 interface Appointment {
   _id: string;
@@ -445,32 +448,34 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
               <p className="text-sm text-gray-500">Manage appointments and walk-in queue</p>
             </div>
         <div className="flex gap-2 flex-wrap">
-          <button
+          <Button
             onClick={() => {
               setFormData({ ...formData, isWalkIn: false, appointmentDate: selectedDate.toISOString().split('T')[0] });
               setShowWalkInForm(false);
               setShowForm(true);
             }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
+            variant="default"
+            className="flex items-center"
           >
             <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             Schedule Appointment
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => {
               setFormData({ ...formData, isWalkIn: true, appointmentDate: new Date().toISOString().split('T')[0] });
               setShowForm(false);
               setShowWalkInForm(true);
             }}
-            className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors flex items-center"
+            variant="secondary"
+            className="flex items-center"
           >
             <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Add Walk-In
-          </button>
+          </Button>
         </div>
       </div>
 

@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
+const PatientQRSearch = dynamic(() => import('./PatientQRSearch'), { ssr: false });
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AlertDialog } from './ui/Modal';
@@ -228,6 +230,9 @@ export default function PatientsPageClient() {
               <p className="text-green-800 text-sm">{success}</p>
             </div>
           )}
+
+          {/* QR Search */}
+          <PatientQRSearch />
 
           {/* Header */}
           <div>

@@ -4,6 +4,9 @@ import { useState, useEffect, FormEvent } from 'react';
 import SignaturePad from './SignaturePad';
 import { calculateDosage, calculateQuantity, formatDosageInstructions } from '@/lib/dosage-calculator';
 import { AlertDialog } from './ui/Modal';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 
 interface Medicine {
   _id: string;
@@ -353,22 +356,23 @@ export default function PrescriptionForm({
               Patient <span className="text-red-500">*</span>
             </label>
             <div className="relative patient-search-container">
-          <input
-            type="text"
-            required
-            value={patientSearch}
-            onChange={(e) => {
-              setPatientSearch(e.target.value);
-              setShowPatientSearch(true);
-              if (!e.target.value) {
-                setFormData({ ...formData, patient: '' });
-                setSelectedPatient(null);
-              }
-            }}
-            onFocus={() => setShowPatientSearch(true)}
-            placeholder="Type to search patients..."
-            className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          />
+              <Input
+                id="patientSearch"
+                type="text"
+                required
+                value={patientSearch}
+                onChange={e => {
+                  setPatientSearch(e.target.value);
+                  setShowPatientSearch(true);
+                  if (!e.target.value) {
+                    setFormData({ ...formData, patient: '' });
+                    setSelectedPatient(null);
+                  }
+                }}
+                onFocus={() => setShowPatientSearch(true)}
+                placeholder="Type to search patients..."
+                style={{ all: 'unset', width: '100%' }}
+              />
           {showPatientSearch && filteredPatients.length > 0 && (
           <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
             {filteredPatients.length > 0 ? (
@@ -393,13 +397,9 @@ export default function PrescriptionForm({
                         {age && patient.weight && ' • '}
                         {patient.weight && `${patient.weight} kg`}
                       </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : patientSearch ? (
-              <span className="text-sm text-gray-500 p-2">No patients found</span>
-            ) : (
+                    <Button type="button" onClick={addMedication} size="sm">
+                      Add Medication
+                    </Button>
               <span className="text-sm text-gray-500 p-2">Start typing to search...</span>
             )}
           </div>
@@ -473,19 +473,12 @@ export default function PrescriptionForm({
                   className="px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   🔍 Check Interactions
-                </button>
-                <button
-                  type="button"
-                  onClick={addMedication}
-                  className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
-                >
-                  + Add Medication
-                </button>
-              </div>
-            </div>
-
-            {formData.medications.length === 0 ? (
-              <p className="text-sm text-gray-500">No medications added. Click &quot;Add Medication&quot; to add one.</p>
+                <Button type="button" variant="destructive" size="sm" onClick={() => removeMedication(index)}>
+                  ×
+                </Button>
+                <Button type="submit" variant="default">
+                  Save Prescription
+                </Button>
             ) : (
               <div className="flex flex-col gap-3">
                 {formData.medications.map((medication, index) => (

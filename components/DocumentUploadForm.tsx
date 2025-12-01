@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 
 interface Patient {
   _id: string;
@@ -220,14 +223,13 @@ export default function DocumentUploadForm({
         <div className="flex flex-col gap-3 p-4">
           {/* File Upload */}
           <div>
-            <label className="block text-xs font-medium mb-2">
-              File <span className="text-red-500">*</span>
-            </label>
-            <input
+            <Label htmlFor="file">File <span className="text-red-500">*</span></Label>
+            <Input
+              id="file"
               type="file"
               onChange={handleFileChange}
               required
-              className="w-full text-sm text-gray-700"
+              style={{ all: 'unset', width: '100%' }}
             />
             {filePreview && (
               <div className="mt-2">
@@ -247,39 +249,39 @@ export default function DocumentUploadForm({
 
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium mb-2">
-              Title <span className="text-red-500">*</span>
-            </label>
-            <input
+            <Label htmlFor="title">Title <span className="text-red-500">*</span></Label>
+            <Input
+              id="title"
               type="text"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={e => setFormData({ ...formData, title: e.target.value })}
               required
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              style={{ all: 'unset', width: '100%' }}
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium mb-2">Description</label>
-            <textarea
+            <Label htmlFor="description">Description</Label>
+            <Input
+              id="description"
+              as="textarea"
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={e => setFormData({ ...formData, description: e.target.value })}
+              style={{ all: 'unset', width: '100%' }}
               rows={2}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-vertical min-h-[40px]"
             />
           </div>
 
           {/* Category */}
           <div>
-            <label className="block text-sm font-medium mb-2">
-              Category <span className="text-red-500">*</span>
-            </label>
+            <Label htmlFor="category">Category <span className="text-red-500">*</span></Label>
             <select
+              id="category"
               value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              onChange={e => setFormData({ ...formData, category: e.target.value })}
               required
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              className="w-full border border-gray-300 rounded-md px-3 py-1.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             >
               <option value="">Select category...</option>
               {DOCUMENT_CATEGORIES.map((cat) => (
@@ -291,24 +293,25 @@ export default function DocumentUploadForm({
           </div>
 
       {/* Patient Selection */}
-      <div className="patient-search-container relative">
-        <label className="block text-xs font-medium mb-1">Patient (Optional)</label>
-        <div className="relative">
-          <input
-            type="text"
-            value={patientSearch}
-            onChange={(e) => {
-              setPatientSearch(e.target.value);
-              setShowPatientSearch(true);
-              if (!e.target.value) {
-                setFormData({ ...formData, patient: '' });
-                setSelectedPatient(null);
-              }
-            }}
-            onFocus={() => setShowPatientSearch(true)}
-            placeholder="Type to search patients..."
-            className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          />
+        <div className="patient-search-container relative">
+          <Label htmlFor="patientSearch">Patient (Optional)</Label>
+          <div className="relative">
+            <Input
+              id="patientSearch"
+              type="text"
+              value={patientSearch}
+              onChange={e => {
+                setPatientSearch(e.target.value);
+                setShowPatientSearch(true);
+                if (!e.target.value) {
+                  setFormData({ ...formData, patient: '' });
+                  setSelectedPatient(null);
+                }
+              }}
+              onFocus={() => setShowPatientSearch(true)}
+              placeholder="Type to search patients..."
+              style={{ all: 'unset', width: '100%' }}
+            />
           {showPatientSearch && (
             <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
               {filteredPatients.length > 0 ? (
