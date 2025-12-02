@@ -5,13 +5,18 @@ import InventoryItem from '@/models/Inventory';
 import Medicine from '@/models/Medicine';
 import User from '@/models/User';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission, forbiddenResponse } from '@/app/lib/auth-helpers';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Inventory access - admin only for now (can be extended with inventory permission)
+  if (session.role !== 'admin') {
+    return forbiddenResponse('Admin access required for inventory');
   }
 
   try {
@@ -73,10 +78,7 @@ export async function POST(request: NextRequest) {
 
   // Only admin can add inventory items
   if (session.role !== 'admin') {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    );
+    return forbiddenResponse('Admin access required for inventory management');
   }
 
   try {

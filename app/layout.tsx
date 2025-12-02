@@ -1,11 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Navigation from "@/components/Navigation";
-import LayoutWrapper from "@/components/LayoutWrapper";
-import { SidebarProvider } from "@/components/SidebarContext";
-import { SettingsProvider } from "@/components/SettingsContext";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,6 +17,18 @@ export const metadata: Metadata = {
   description: "Manage patients, appointments, and doctors",
 };
 
+/**
+ * Root Layout
+ * 
+ * This is the top-level layout that wraps all route groups.
+ * Each route group ((public), (auth), (app)) has its own layout
+ * that handles specific UI requirements.
+ * 
+ * Route Groups:
+ * - (public): Public pages with PublicLayout (onboard, book, patient/login)
+ * - (auth): Authentication pages (login, setup)
+ * - (app): Authenticated app pages with sidebar (dashboard, patients, etc.)
+ */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -32,16 +39,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ErrorBoundary>
-          <SettingsProvider>
-            <SidebarProvider>
-              <Navigation />
-              <LayoutWrapper>
-                {children}
-              </LayoutWrapper>
-            </SidebarProvider>
-          </SettingsProvider>
-        </ErrorBoundary>
+        {children}
       </body>
     </html>
   );

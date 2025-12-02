@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Document from '@/models/Document';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getDocumentType, inferDocumentCategory, validateFile } from '@/lib/document-utils';
 import { uploadDocumentToCloudinary, getThumbnailUrl, isCloudinaryConfigured } from '@/lib/cloudinary';
 
@@ -11,6 +11,12 @@ export async function GET(request: NextRequest) {
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to read documents (using patients permission as documents are patient-related)
+  const permissionCheck = await requirePermission(session, 'patients', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {
@@ -77,6 +83,12 @@ export async function POST(request: NextRequest) {
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to write documents (using patients permission as documents are patient-related)
+  const permissionCheck = await requirePermission(session, 'patients', 'write');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {

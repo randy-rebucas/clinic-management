@@ -89,8 +89,8 @@ export async function signup(
       roleDoc._id.toString()
     );
 
-    revalidatePath('/');
-    redirect('/');
+    revalidatePath('/dashboard');
+    redirect('/dashboard');
   } catch (error) {
     console.error('Signup error:', error);
     return {
@@ -197,8 +197,8 @@ export async function login(
       console.error('Error logging login:', error);
     }
 
-    revalidatePath('/');
-    redirect('/');
+    revalidatePath('/dashboard');
+    redirect('/dashboard');
   } catch (error) {
     console.error('Login error:', error);
     return {

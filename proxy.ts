@@ -5,7 +5,7 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/signup', '/setup'];
+  const publicRoutes = ['/login', '/signup', '/setup', '/onboard', '/book', '/patient/login'];
   const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + '/'));
 
   // Static files and API routes are handled separately

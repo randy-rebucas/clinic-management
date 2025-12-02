@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 
 export async function GET(
   request: NextRequest,
@@ -12,6 +12,12 @@ export async function GET(
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to read prescriptions
+  const permissionCheck = await requirePermission(session, 'prescriptions', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {
@@ -93,6 +99,12 @@ export async function PUT(
     return unauthorizedResponse();
   }
 
+  // Check permission to update prescriptions
+  const permissionCheck = await requirePermission(session, 'prescriptions', 'update');
+  if (permissionCheck) {
+    return permissionCheck;
+  }
+
   try {
     await connectDB();
     const { id } = await params;
@@ -148,6 +160,12 @@ export async function DELETE(
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to delete prescriptions
+  const permissionCheck = await requirePermission(session, 'prescriptions', 'delete');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {

@@ -14,7 +14,7 @@ export default async function LoginPage() {
   
   // If user is already logged in, redirect to dashboard
   if (session) {
-    redirect('/');
+    redirect('/dashboard');
   }
 
   return (
@@ -50,3 +50,4 @@ export default async function LoginPage() {
     </div>
   );
 }
+

@@ -3,12 +3,18 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
+interface PermissionRequirement {
+  resource: string;
+  action: string;
+}
+
 interface NavItem {
   href: string;
   label: string;
   icon: string;
   category?: string;
   adminOnly?: boolean;
+  requiresPermission?: PermissionRequirement | null;
 }
 
 interface SidebarProps {
@@ -16,17 +22,39 @@ interface SidebarProps {
   user: {
     name: string;
     role: string;
+    _id?: string;
   } | null;
 }
 
 export default function Sidebar({ navItems, user }: SidebarProps) {
   const pathname = usePathname();
 
-  // Filter items based on user role (admin-only items)
+  /**
+   * Filter navigation items based on permissions
+   * 
+   * Note: The Navigation component (server component) already filters items based on
+   * permissions using server-side permission checks. This client-side filtering is
+   * primarily for defensive programming and handling edge cases.
+   * 
+   * The server-side filtering in Navigation.tsx:
+   * - Checks adminOnly items
+   * - Checks requiresPermission using hasPermission()
+   * - Only passes authorized items to this component
+   */
   const filteredItems = navItems.filter(item => {
+    // Double-check admin-only items (defensive programming)
     if (item.adminOnly && user?.role !== 'admin') {
       return false;
     }
+
+    // If item requires permission but no user is present, hide it
+    // (This should rarely happen as Navigation already filters, but safety first)
+    if (item.requiresPermission && !user) {
+      return false;
+    }
+
+    // All items passed from Navigation are already permission-checked
+    // This filter just adds an extra safety layer
     return true;
   });
 

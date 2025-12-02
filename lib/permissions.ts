@@ -5,7 +5,7 @@ import connectDB from '@/lib/mongodb';
 import Role, { RoleName } from '@/models/Role';
 import Permission from '@/models/Permission';
 import User from '@/models/User';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 
 export interface PermissionData {
   resource: string;
@@ -57,6 +57,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
     { resource: 'reports', actions: ['read'] },
     { resource: 'notifications', actions: ['read', 'update'] },
   ],
+  'medical-representative': [
+    { resource: 'doctors', actions: ['read'] },
+    { resource: 'patients', actions: ['read'] },
+    { resource: 'appointments', actions: ['read'] },
+    { resource: 'notifications', actions: ['read', 'update'] },
+  ],
 };
 
 /**
@@ -66,7 +72,7 @@ async function getRoleName(roleIdOrName: string | Types.ObjectId | undefined | n
   if (!roleIdOrName) return null;
   
   // If it's already a role name string, return it
-  if (typeof roleIdOrName === 'string' && ['admin', 'doctor', 'nurse', 'receptionist', 'accountant'].includes(roleIdOrName)) {
+  if (typeof roleIdOrName === 'string' && ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'].includes(roleIdOrName)) {
     return roleIdOrName as RoleName;
   }
   
@@ -87,6 +93,14 @@ async function getRoleName(roleIdOrName: string | Types.ObjectId | undefined | n
 export async function getUserPermissions(userId: string | Types.ObjectId): Promise<PermissionData[]> {
   try {
     await connectDB();
+    
+    // Ensure Permission model is registered before populate
+    // This is necessary in Next.js to avoid "Schema hasn't been registered" errors
+    // The Permission model is imported at the top, but we ensure it's registered here
+    if (!mongoose.models.Permission) {
+      // Re-import to ensure model registration executes
+      await import('@/models/Permission');
+    }
     
     // Get user with role and permissions
     const user = await User.findById(userId)

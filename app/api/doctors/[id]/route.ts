@@ -15,6 +15,12 @@ export async function GET(
     return unauthorizedResponse();
   }
 
+  // Check permission to read doctors
+  const permissionCheck = await requirePermission(session, 'doctors', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
+  }
+
   try {
     await connectDB();
     const { id } = await params;
@@ -42,6 +48,12 @@ export async function PUT(
 
   if (!session) {
     return unauthorizedResponse();
+  }
+
+  // Check permission to update doctors
+  const permissionCheck = await requirePermission(session, 'doctors', 'update');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {

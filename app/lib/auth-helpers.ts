@@ -24,7 +24,7 @@ export async function requireRole(allowedRoles: ('admin' | 'doctor' | 'nurse' | 
   const session = await requireAuth();
   
   if (!allowedRoles.includes(session.role)) {
-    redirect('/');
+    redirect('/dashboard');
   }
   
   return session;
@@ -49,7 +49,7 @@ export async function requirePagePermission(resource: string, action: string = '
   
   const hasPerm = await hasPermission(session, resource, action);
   if (!hasPerm) {
-    redirect('/'); // Redirect to home if no permission
+    redirect('/dashboard'); // Redirect to home if no permission
   }
   
   return session;

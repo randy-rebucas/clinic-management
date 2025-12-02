@@ -297,8 +297,8 @@ export default function ReceptionistDashboard() {
 
           {/* Stats Grid */}
           <div className="flex gap-3 flex-wrap">
-            {statCards.map((card: any) => (
-              <Link key={card.title} href={card.href} className="flex-1 min-w-[250px]">
+            {statCards.map((card: any, index: number) => (
+              <Link key={`${card.title}-${card.href}-${index}`} href={card.href} className="flex-1 min-w-[250px]">
                 <div className="bg-white border border-gray-200 rounded-lg p-4 relative overflow-hidden hover:shadow-md transition-shadow">
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-grow">
