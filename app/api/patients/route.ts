@@ -156,23 +156,105 @@ export async function POST(request: NextRequest) {
     console.log('Creating patient with data:', JSON.stringify(body, null, 2));
     
     // Auto-generate patientCode if not provided
+    // Use retry mechanism to handle race conditions
     if (!body.patientCode) {
-      const lastPatient = await Patient.findOne({ patientCode: { $exists: true, $ne: null } })
-        .sort({ patientCode: -1 })
-        .exec();
+      let patientCode: string;
+      let attempts = 0;
+      const maxAttempts = 10;
       
-      let nextNumber = 1;
-      if (lastPatient?.patientCode) {
-        const match = lastPatient.patientCode.match(/(\d+)$/);
-        if (match) {
-          nextNumber = parseInt(match[1], 10) + 1;
+      do {
+        attempts++;
+        if (attempts > maxAttempts) {
+          return NextResponse.json(
+            { success: false, error: 'Unable to generate unique patient code. Please try again.' },
+            { status: 500 }
+          );
         }
-      }
+        
+        // Find the highest patient code number
+        const lastPatient = await Patient.findOne({ 
+          patientCode: { $exists: true, $ne: null },
+          patientCode: { $regex: /^CLINIC-\d+$/ }
+        })
+          .sort({ patientCode: -1 })
+          .exec();
+        
+        let nextNumber = 1;
+        if (lastPatient?.patientCode) {
+          const match = lastPatient.patientCode.match(/(\d+)$/);
+          if (match) {
+            nextNumber = parseInt(match[1], 10) + attempts; // Add attempts to avoid collisions
+          }
+        }
+        
+        patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
+        
+        // Check if this code already exists
+        const existing = await Patient.findOne({ patientCode });
+        if (!existing) {
+          break; // Code is available
+        }
+        
+        // If code exists, try next number
+        nextNumber++;
+        patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
+      } while (true);
       
-      body.patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
+      body.patientCode = patientCode;
     }
     
-    const patient = await Patient.create(body);
+    // Create patient with retry on duplicate key error
+    let patient;
+    let createAttempts = 0;
+    const maxCreateAttempts = 5;
+    
+    while (createAttempts < maxCreateAttempts) {
+      try {
+        patient = await Patient.create(body);
+        break; // Success
+      } catch (createError: any) {
+        createAttempts++;
+        
+        // If it's a duplicate key error for patientCode, generate a new one
+        if (createError.code === 11000 && createError.keyPattern?.patientCode) {
+          if (createAttempts >= maxCreateAttempts) {
+            return NextResponse.json(
+              { success: false, error: 'Unable to create patient due to code conflict. Please try again.' },
+              { status: 500 }
+            );
+          }
+          
+          // Generate a new patient code
+          const lastPatient = await Patient.findOne({ 
+            patientCode: { $exists: true, $ne: null },
+            patientCode: { $regex: /^CLINIC-\d+$/ }
+          })
+            .sort({ patientCode: -1 })
+            .exec();
+          
+          let nextNumber = 1;
+          if (lastPatient?.patientCode) {
+            const match = lastPatient.patientCode.match(/(\d+)$/);
+            if (match) {
+              nextNumber = parseInt(match[1], 10) + createAttempts + 1;
+            }
+          }
+          
+          body.patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
+          continue; // Retry with new code
+        }
+        
+        // If it's not a duplicate key error, throw it
+        throw createError;
+      }
+    }
+    
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create patient. Please try again.' },
+        { status: 500 }
+      );
+    }
     return NextResponse.json({ success: true, data: patient }, { status: 201 });
   } catch (error: any) {
     logger.error('Error creating patient', error as Error, {

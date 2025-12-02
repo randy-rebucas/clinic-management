@@ -216,24 +216,69 @@ export default function PublicOnboardingClient() {
         body: JSON.stringify(payload),
       });
 
+      // Check response status first
+      if (!res.ok) {
+        // Try to get error message from response
+        let errorMessage = `Server error (Status: ${res.status})`;
+        try {
+          const contentType = res.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await res.json();
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } else {
+            const text = await res.text();
+            if (text) {
+              errorMessage = text.substring(0, 200);
+            }
+          }
+        } catch (parseError) {
+          // If we can't parse the error, use the status-based message
+          console.error('Failed to parse error response:', parseError);
+        }
+        setError(`Failed to register: ${errorMessage}`);
+        return;
+      }
+
+      // Parse successful response
       const contentType = res.headers.get('content-type');
       let data;
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        console.error('API returned non-JSON response:', text.substring(0, 500));
-        setError(`Failed to register: API error (Status: ${res.status})`);
+      try {
+        if (contentType && contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const text = await res.text();
+          console.error('API returned non-JSON response:', text.substring(0, 500));
+          setError(`Failed to register: Unexpected response format (Status: ${res.status})`);
+          return;
+        }
+      } catch (parseError: any) {
+        console.error('Failed to parse API response:', parseError);
+        setError(`Failed to register: Invalid response from server. Please try again.`);
+        return;
+      }
+
+      // Validate response structure
+      if (!data || typeof data !== 'object') {
+        console.error('Invalid API response structure:', data);
+        setError('Failed to register: Invalid response from server. Please try again.');
         return;
       }
 
       if (data.success) {
-        setSuccess(true);
-        setPatientCode(data.data.patientCode);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (data.data && data.data.patientCode) {
+          setSuccess(true);
+          setPatientCode(data.data.patientCode);
+          setPatientId(data.data._id || null);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+          console.error('API response missing patient data:', data);
+          setError('Registration successful but patient code not received. Please contact support.');
+        }
       } else {
-        console.error('API error response:', data);
-        setError('Error: ' + (data.error || 'Unknown error occurred'));
+        // Handle error response
+        const errorMsg = data.error || data.message || 'Unknown error occurred';
+        console.error('API error response:', { status: res.status, data });
+        setError(`Error: ${errorMsg}`);
       }
     } catch (error: any) {
       console.error('Failed to register patient:', error);

@@ -10,7 +10,26 @@ import logger from '@/lib/logger';
 export async function POST(request: NextRequest) {
   try {
     await connectDB();
-    const body = await request.json();
+    
+    // Parse request body with error handling
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError: any) {
+      logger.error('Failed to parse request body', parseError as Error);
+      return NextResponse.json(
+        { success: false, error: 'Invalid request format. Please check your input and try again.' },
+        { status: 400 }
+      );
+    }
+    
+    // Validate body exists
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json(
+        { success: false, error: 'Invalid request data. Please provide valid patient information.' },
+        { status: 400 }
+      );
+    }
     
     console.log('Public patient registration with data:', JSON.stringify(body, null, 2));
     
@@ -42,27 +61,108 @@ export async function POST(request: NextRequest) {
     }
     
     // Auto-generate patientCode if not provided
+    // Use retry mechanism to handle race conditions
     if (!body.patientCode) {
-      const lastPatient = await Patient.findOne({ patientCode: { $exists: true, $ne: null } })
-        .sort({ patientCode: -1 })
-        .exec();
+      let patientCode: string;
+      let attempts = 0;
+      const maxAttempts = 10;
       
-      let nextNumber = 1;
-      if (lastPatient?.patientCode) {
-        const match = lastPatient.patientCode.match(/(\d+)$/);
-        if (match) {
-          nextNumber = parseInt(match[1], 10) + 1;
+      do {
+        attempts++;
+        if (attempts > maxAttempts) {
+          return NextResponse.json(
+            { success: false, error: 'Unable to generate unique patient code. Please try again or contact the clinic.' },
+            { status: 500 }
+          );
         }
-      }
+        
+        // Find the highest patient code number
+        const lastPatient = await Patient.findOne({ 
+          patientCode: { $exists: true, $ne: null },
+          patientCode: { $regex: /^CLINIC-\d+$/ }
+        })
+          .sort({ patientCode: -1 })
+          .exec();
+        
+        let nextNumber = 1;
+        if (lastPatient?.patientCode) {
+          const match = lastPatient.patientCode.match(/(\d+)$/);
+          if (match) {
+            nextNumber = parseInt(match[1], 10) + attempts; // Add attempts to avoid collisions
+          }
+        }
+        
+        patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
+        
+        // Check if this code already exists
+        const existing = await Patient.findOne({ patientCode });
+        if (!existing) {
+          break; // Code is available
+        }
+        
+        // If code exists, try next number
+        nextNumber++;
+        patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
+      } while (true);
       
-      body.patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
+      body.patientCode = patientCode;
     }
     
     // Set default status for public registrations
     body.active = body.active !== undefined ? body.active : true;
     
-    // Create patient
-    const patient = await Patient.create(body);
+    // Create patient with retry on duplicate key error
+    let patient;
+    let createAttempts = 0;
+    const maxCreateAttempts = 5;
+    
+    while (createAttempts < maxCreateAttempts) {
+      try {
+        patient = await Patient.create(body);
+        break; // Success
+      } catch (createError: any) {
+        createAttempts++;
+        
+        // If it's a duplicate key error for patientCode, generate a new one
+        if (createError.code === 11000 && createError.keyPattern?.patientCode) {
+          if (createAttempts >= maxCreateAttempts) {
+            return NextResponse.json(
+              { success: false, error: 'Unable to create patient due to code conflict. Please try again.' },
+              { status: 500 }
+            );
+          }
+          
+          // Generate a new patient code
+          const lastPatient = await Patient.findOne({ 
+            patientCode: { $exists: true, $ne: null },
+            patientCode: { $regex: /^CLINIC-\d+$/ }
+          })
+            .sort({ patientCode: -1 })
+            .exec();
+          
+          let nextNumber = 1;
+          if (lastPatient?.patientCode) {
+            const match = lastPatient.patientCode.match(/(\d+)$/);
+            if (match) {
+              nextNumber = parseInt(match[1], 10) + createAttempts + 1;
+            }
+          }
+          
+          body.patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
+          continue; // Retry with new code
+        }
+        
+        // If it's not a duplicate key error, throw it
+        throw createError;
+      }
+    }
+    
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create patient. Please try again.' },
+        { status: 500 }
+      );
+    }
     
     logger.info('Public patient registration successful', {
       patientId: patient._id.toString(),
@@ -80,24 +180,41 @@ export async function POST(request: NextRequest) {
       name: error.name,
       code: error.code,
       errors: error.errors,
+      message: error.message,
+      stack: error.stack,
     });
     
+    // Handle validation errors
     if (error.name === 'ValidationError') {
       // Extract validation error messages
       const validationErrors = Object.values(error.errors || {}).map((err: any) => err.message).join(', ');
       return NextResponse.json(
-        { success: false, error: validationErrors || error.message },
+        { success: false, error: validationErrors || error.message || 'Validation error occurred' },
         { status: 400 }
       );
     }
+    
+    // Handle duplicate key errors (MongoDB)
     if (error.code === 11000) {
+      const field = error.keyPattern ? Object.keys(error.keyPattern)[0] : 'field';
       return NextResponse.json(
-        { success: false, error: 'A patient with this email or patient code already exists' },
+        { success: false, error: `A patient with this ${field} already exists. Please use a different value or contact the clinic.` },
         { status: 409 }
       );
     }
+    
+    // Handle connection errors
+    if (error.name === 'MongoServerError' || error.name === 'MongoNetworkError') {
+      return NextResponse.json(
+        { success: false, error: 'Database connection error. Please try again later or contact the clinic.' },
+        { status: 503 }
+      );
+    }
+    
+    // Generic error handler - ensure we always return a proper error message
+    const errorMessage = error.message || 'Failed to register patient. Please try again or contact the clinic.';
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to register patient. Please try again or contact the clinic.' },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }
