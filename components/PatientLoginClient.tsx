@@ -1,17 +1,115 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import QRCode from 'react-qr-code';
+
+type QRInputMethod = 'scan' | 'upload' | 'paste';
 
 export default function PatientLoginClient() {
   const [loginMethod, setLoginMethod] = useState<'code' | 'qr'>('code');
+  const [qrInputMethod, setQrInputMethod] = useState<QRInputMethod>('scan');
   const [patientCode, setPatientCode] = useState('');
   const [qrCode, setQrCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scannerReady, setScannerReady] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const router = useRouter();
+  
+  const scannerRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize scanner when QR tab and scan method are selected
+  useEffect(() => {
+    let html5QrCode: any = null;
+
+    const initScanner = async () => {
+      if (loginMethod === 'qr' && qrInputMethod === 'scan') {
+        try {
+          const { Html5Qrcode } = await import('html5-qrcode');
+          
+          // Small delay to ensure DOM element exists
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const element = document.getElementById('qr-reader');
+          if (!element) return;
+          
+          html5QrCode = new Html5Qrcode('qr-reader');
+          scannerRef.current = html5QrCode;
+          
+          await html5QrCode.start(
+            { facingMode: 'environment' },
+            {
+              fps: 10,
+              qrbox: { width: 250, height: 250 },
+            },
+            (decodedText: string) => {
+              handleQRScanned(decodedText);
+            },
+            () => {} // Ignore errors during scanning
+          );
+          
+          setScannerReady(true);
+          setCameraError(null);
+        } catch (err: any) {
+          console.error('Scanner error:', err);
+          setCameraError(err.message || 'Unable to access camera. Please try uploading an image instead.');
+          setScannerReady(false);
+        }
+      }
+    };
+
+    initScanner();
+
+    return () => {
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().catch(console.error);
+      }
+      scannerRef.current = null;
+      setScannerReady(false);
+    };
+  }, [loginMethod, qrInputMethod]);
+
+  const handleQRScanned = useCallback(async (decodedText: string) => {
+    // Stop scanner after successful scan
+    if (scannerRef.current && scannerRef.current.isScanning) {
+      await scannerRef.current.stop().catch(console.error);
+      setScannerReady(false);
+    }
+    
+    setQrCode(decodedText);
+    // Auto-submit after scanning
+    await performQRLogin(decodedText);
+  }, []);
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { Html5Qrcode } = await import('html5-qrcode');
+      const html5QrCode = new Html5Qrcode('qr-file-reader');
+      
+      const result = await html5QrCode.scanFile(file, true);
+      setQrCode(result);
+      
+      // Auto-submit after successful scan
+      await performQRLogin(result);
+    } catch (err: any) {
+      console.error('File scan error:', err);
+      setError('Could not read QR code from image. Please try a clearer image or use another method.');
+    } finally {
+      setLoading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
 
   const handleCodeLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -19,27 +117,14 @@ export default function PatientLoginClient() {
     setError(null);
 
     try {
-      // Find patient by code first
-      const findRes = await fetch(`/api/patients?patientCode=${patientCode}`);
-      const findData = await findRes.json();
-
-      if (!findData.success || !findData.data || findData.data.length === 0) {
-        setError('Patient code not found. Please check your code and try again.');
-        setLoading(false);
-        return;
-      }
-
-      const patient = findData.data[0];
-
-      // Create QR code data for login
+      // Create QR code data for login directly with patient code
       const qrData = JSON.stringify({
-        patientId: patient._id || patient.id,
-        patientCode: patient.patientCode,
+        patientCode: patientCode,
         type: 'patient_login',
         timestamp: Date.now(),
       });
 
-      // Use QR login endpoint
+      // Use QR login endpoint directly - it supports lookup by patientCode
       const loginRes = await fetch('/api/patients/qr-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -62,8 +147,7 @@ export default function PatientLoginClient() {
     }
   };
 
-  const handleQRLogin = async (e: FormEvent) => {
-    e.preventDefault();
+  const performQRLogin = async (qrData: string) => {
     setLoading(true);
     setError(null);
 
@@ -71,13 +155,12 @@ export default function PatientLoginClient() {
       const res = await fetch('/api/patients/qr-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qrCode }),
+        body: JSON.stringify({ qrCode: qrData }),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        // Redirect to patient portal
         router.push('/patient/portal');
       } else {
         setError(data.error || 'Invalid QR code. Please try again.');
@@ -87,6 +170,18 @@ export default function PatientLoginClient() {
       setError(`Login failed: ${error.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleQRLogin = async (e: FormEvent) => {
+    e.preventDefault();
+    await performQRLogin(qrCode);
+  };
+
+  const stopScanner = async () => {
+    if (scannerRef.current && scannerRef.current.isScanning) {
+      await scannerRef.current.stop().catch(console.error);
+      setScannerReady(false);
     }
   };
 
@@ -109,6 +204,7 @@ export default function PatientLoginClient() {
           <div className="flex border-b border-gray-200">
             <button
               onClick={() => {
+                stopScanner();
                 setLoginMethod('code');
                 setError(null);
               }}
@@ -176,33 +272,174 @@ export default function PatientLoginClient() {
 
             {/* QR Code Login */}
             {loginMethod === 'qr' && (
-              <form onSubmit={handleQRLogin} className="space-y-4">
-                <div>
-                  <label htmlFor="qrCode" className="block text-sm font-medium text-gray-700 mb-2">
-                    QR Code Data
-                  </label>
-                  <textarea
-                    id="qrCode"
-                    value={qrCode}
-                    onChange={(e) => setQrCode(e.target.value)}
-                    placeholder="Paste your QR code data here or scan with camera"
-                    rows={4}
-                    required
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono text-sm"
-                    disabled={loading}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Paste the QR code data from your registration confirmation
-                  </p>
+              <div className="space-y-4">
+                {/* QR Input Method Tabs */}
+                <div className="flex bg-gray-100 rounded-lg p-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQrInputMethod('scan');
+                      setError(null);
+                      setCameraError(null);
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
+                      qrInputMethod === 'scan'
+                        ? 'bg-white text-blue-700 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Scan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopScanner();
+                      setQrInputMethod('upload');
+                      setError(null);
+                      setCameraError(null);
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
+                      qrInputMethod === 'upload'
+                        ? 'bg-white text-blue-700 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Upload
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopScanner();
+                      setQrInputMethod('paste');
+                      setError(null);
+                      setCameraError(null);
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
+                      qrInputMethod === 'paste'
+                        ? 'bg-white text-blue-700 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    Paste
+                  </button>
                 </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Logging in...' : 'Login with QR Code'}
-                </button>
-              </form>
+
+                {/* Camera Scanner */}
+                {qrInputMethod === 'scan' && (
+                  <div className="space-y-3">
+                    {cameraError ? (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
+                        <svg className="w-10 h-10 mx-auto text-amber-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <p className="text-sm text-amber-700 mb-3">{cameraError}</p>
+                        <button
+                          type="button"
+                          onClick={() => setQrInputMethod('upload')}
+                          className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          Try uploading an image instead
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div 
+                          id="qr-reader" 
+                          className="w-full rounded-lg overflow-hidden bg-gray-900"
+                          style={{ minHeight: '280px' }}
+                        />
+                        {!scannerReady && !cameraError && (
+                          <div className="flex items-center justify-center py-4">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                            <span className="ml-2 text-sm text-gray-600">Starting camera...</span>
+                          </div>
+                        )}
+                        <p className="text-xs text-gray-500 text-center">
+                          Point your camera at the QR code from your registration
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* File Upload */}
+                {qrInputMethod === 'upload' && (
+                  <div className="space-y-3">
+                    {/* Hidden element for html5-qrcode file scanning */}
+                    <div id="qr-file-reader" style={{ display: 'none' }}></div>
+                    
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                    >
+                      <svg className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <p className="text-sm font-medium text-gray-700 mb-1">
+                        Click to upload QR code image
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        PNG, JPG, or GIF up to 10MB
+                      </p>
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      disabled={loading}
+                    />
+                    {loading && (
+                      <div className="flex items-center justify-center py-2">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                        <span className="ml-2 text-sm text-gray-600">Processing image...</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Manual Paste */}
+                {qrInputMethod === 'paste' && (
+                  <form onSubmit={handleQRLogin} className="space-y-4">
+                    <div>
+                      <label htmlFor="qrCode" className="block text-sm font-medium text-gray-700 mb-2">
+                        QR Code Data
+                      </label>
+                      <textarea
+                        id="qrCode"
+                        value={qrCode}
+                        onChange={(e) => setQrCode(e.target.value)}
+                        placeholder='{"patientId":"...","patientCode":"CLINIC-0001","type":"patient_login"}'
+                        rows={4}
+                        required
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono text-sm"
+                        disabled={loading}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Paste the QR code data from your registration confirmation
+                      </p>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={loading || !qrCode.trim()}
+                      className="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loading ? 'Logging in...' : 'Login with QR Code'}
+                    </button>
+                  </form>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -225,4 +462,3 @@ export default function PatientLoginClient() {
     </div>
   );
 }
-
