@@ -35,7 +35,7 @@ export default function UserRoleManagementClient() {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('/api/staff');
+      const response = await fetch('/api/users');
       
       if (!response.ok) {
         let errorMessage = 'Failed to fetch users';

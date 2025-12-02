@@ -3,31 +3,39 @@ import { resolve } from 'path';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
-// Import all models
-import User from '../models/User';
-import Role from '../models/Role';
-import Permission from '../models/Permission';
+// Import all models from index (ensures proper registration order)
+import {
+  User,
+  Role,
+  Permission,
+  Staff,
+  Admin,
+  Doctor,
+  Nurse,
+  Receptionist,
+  Accountant,
+  MedicalRepresentative,
+  Patient,
+  Service,
+  Medicine,
+  InventoryItem,
+  Room,
+  Appointment,
+  Visit,
+  Prescription,
+  LabResult,
+  Imaging,
+  Procedure,
+  Invoice,
+  Document,
+  Referral,
+  Queue,
+  Notification,
+  Membership,
+  Settings,
+  AuditLog,
+} from '../models';
 import { DEFAULT_ROLE_PERMISSIONS } from '../lib/permissions';
-import Staff from '../models/Staff';
-import Doctor from '../models/Doctor';
-import Patient from '../models/Patient';
-import Service from '../models/Service';
-import Medicine from '../models/Medicine';
-import InventoryItem from '../models/Inventory';
-import Room from '../models/Room';
-import Appointment from '../models/Appointment';
-import Visit from '../models/Visit';
-import Prescription from '../models/Prescription';
-import LabResult from '../models/LabResult';
-import Imaging from '../models/Imaging';
-import Procedure from '../models/Procedure';
-import Invoice from '../models/Invoice';
-import Document from '../models/Document';
-import Referral from '../models/Referral';
-import Queue from '../models/Queue';
-import Notification from '../models/Notification';
-import Membership from '../models/Membership';
-import Settings from '../models/Settings';
 
 // Load environment variables
 config({ path: resolve(process.cwd(), '.env.local') });
@@ -38,7 +46,12 @@ const seedData: {
   roles: any[];
   users: any[];
   staff: any[];
+  admins: any[];
   doctors: any[];
+  nurses: any[];
+  receptionists: any[];
+  accountants: any[];
+  medicalRepresentatives: any[];
   patients: any[];
   services: any[];
   medicines: any[];
@@ -55,11 +68,17 @@ const seedData: {
   referrals: any[];
   queues: any[];
   memberships: any[];
+  auditLogs: any[];
 } = {
   roles: [],
   users: [],
   staff: [],
+  admins: [],
   doctors: [],
+  nurses: [],
+  receptionists: [],
+  accountants: [],
+  medicalRepresentatives: [],
   patients: [],
   services: [],
   medicines: [],
@@ -76,6 +95,7 @@ const seedData: {
   referrals: [],
   queues: [],
   memberships: [],
+  auditLogs: [],
 };
 
 async function seedDataScript() {
@@ -95,25 +115,40 @@ async function seedDataScript() {
     // Clear existing data (optional - comment out if you want to keep existing data)
     console.log('🗑️  Clearing existing data...');
     await Promise.all([
+      // Audit & Notifications
+      AuditLog.deleteMany({}),
       Notification.deleteMany({}),
+      // Queue & Membership
       Queue.deleteMany({}),
+      Membership.deleteMany({}),
+      // Documents & Referrals
       Referral.deleteMany({}),
       Document.deleteMany({}),
+      // Billing
       Invoice.deleteMany({}),
+      // Clinical records
       Procedure.deleteMany({}),
       Imaging.deleteMany({}),
       LabResult.deleteMany({}),
       Prescription.deleteMany({}),
       Visit.deleteMany({}),
       Appointment.deleteMany({}),
-      Membership.deleteMany({}),
+      // Inventory & Catalog
       InventoryItem.deleteMany({}),
       Medicine.deleteMany({}),
       Service.deleteMany({}),
       Room.deleteMany({}),
+      // Patient
       Patient.deleteMany({}),
+      // Profile models (these have post-save hooks that create Users)
+      MedicalRepresentative.deleteMany({}),
+      Accountant.deleteMany({}),
+      Receptionist.deleteMany({}),
+      Nurse.deleteMany({}),
       Doctor.deleteMany({}),
+      Admin.deleteMany({}),
       Staff.deleteMany({}),
+      // Auth
       User.deleteMany({}),
       Permission.deleteMany({}),
       Role.deleteMany({}),
@@ -320,86 +355,89 @@ async function seedDataScript() {
     }
     seedData.roles.push(accountantRole);
 
+    // Medical Representative role
+    const medicalRepRole = await Role.findOneAndUpdate(
+      { name: 'medical-representative' },
+      {
+        name: 'medical-representative',
+        displayName: 'Medical Representative',
+        description: 'External medical representatives with limited access',
+        level: 20,
+        isActive: true,
+        defaultPermissions: DEFAULT_ROLE_PERMISSIONS['medical-representative'] || [
+          { resource: 'appointments', actions: ['read', 'create'] },
+          { resource: 'doctors', actions: ['read'] },
+        ],
+      },
+      { upsert: true, new: true }
+    );
+    
+    // Create Permission documents for medical-representative role
+    await Permission.deleteMany({ role: medicalRepRole._id });
+    
+    const medicalRepPermissions = [];
+    try {
+      for (const perm of medicalRepRole.defaultPermissions || []) {
+        const permission = await Permission.create({
+          role: medicalRepRole._id,
+          resource: perm.resource,
+          actions: perm.actions,
+        });
+        medicalRepPermissions.push(permission._id);
+      }
+      medicalRepRole.permissions = medicalRepPermissions;
+      await medicalRepRole.save();
+      console.log(`   ✓ Created role: ${medicalRepRole.displayName} with ${medicalRepPermissions.length} permission(s)`);
+    } catch (error: any) {
+      console.error('   ⚠️  Error creating permissions for medical-representative role:', error.message);
+      console.log(`   ✓ Created role: ${medicalRepRole.displayName} (permissions creation failed, using defaultPermissions)`);
+    }
+    seedData.roles.push(medicalRepRole);
+
     console.log('✅ Roles created\n');
 
-    // 2. Create Users
-    console.log('👤 Creating users...');
-    const hashedPassword = await bcrypt.hash('Password123!', 10);
-    
-    const usersData = [
-      { name: 'Admin User', email: 'admin@clinic.com', role: 'admin' },
-      { name: 'Dr. John Smith', email: 'doctor1@clinic.com', role: 'doctor' },
-      { name: 'Dr. Sarah Johnson', email: 'doctor2@clinic.com', role: 'doctor' },
-      { name: 'Nurse Mary', email: 'nurse1@clinic.com', role: 'nurse' },
-      { name: 'Nurse James', email: 'nurse2@clinic.com', role: 'nurse' },
-      { name: 'Receptionist Alice', email: 'receptionist@clinic.com', role: 'receptionist' },
-      { name: 'Accountant Bob', email: 'accountant@clinic.com', role: 'accountant' },
+    // 2. Create Admin Profiles (auto-creates User via post-save hook)
+    console.log('👑 Creating admin profiles...');
+    const adminsData = [
+      { firstName: 'Admin', lastName: 'User', email: 'admin@clinic.com', phone: '+1-555-0001' },
     ];
 
-    for (const userData of usersData) {
-      const role = seedData.roles.find(r => r.name === userData.role);
-      const user = await User.create({
-        name: userData.name,
-        email: userData.email,
-        password: hashedPassword,
-        role: role!._id,
+    for (const adminData of adminsData) {
+      const admin = await Admin.create({
+        ...adminData,
+        title: 'Mr.',
+        department: 'Administration',
+        accessLevel: 'full',
         status: 'active',
       });
-      seedData.users.push(user);
-      console.log(`   ✓ Created user: ${user.name} (${user.email})`);
-    }
-    console.log('✅ Users created\n');
-
-    // Store doctor users for later use
-    const doctorUsers = seedData.users.filter(u => 
-      seedData.roles.find(r => r._id.toString() === u.role.toString())?.name === 'doctor'
-    );
-
-    // 3. Create Staff
-    console.log('👔 Creating staff records...');
-    const staffUsers = seedData.users.filter(u => 
-      ['nurse', 'receptionist', 'accountant'].includes(
-        seedData.roles.find(r => r._id.toString() === u.role.toString())?.name || ''
-      )
-    );
-
-    for (let i = 0; i < staffUsers.length; i++) {
-      const user = staffUsers[i];
-      const role = seedData.roles.find(r => r._id.toString() === user.role.toString());
-      const staff = await Staff.create({
-        user: user._id,
-        employeeId: `EMP-${String(i + 1).padStart(4, '0')}`,
-        department: role?.name === 'nurse' ? 'Nursing' : role?.name === 'receptionist' ? 'Reception' : 'Finance',
-        position: role?.displayName || 'Staff',
-        hireDate: new Date(2023, 0, 1),
-        phone: `+1-555-${String(1000 + i).padStart(4, '0')}`,
-        address: `${100 + i} Main Street, City, State 12345`,
-        emergencyContact: {
-          name: `Emergency Contact ${i + 1}`,
-          phone: `+1-555-${String(2000 + i).padStart(4, '0')}`,
-          relationship: 'Spouse',
-        },
-      });
-      seedData.staff.push(staff);
+      seedData.admins.push(admin);
       
-      // Update user with staff reference
-      await User.findByIdAndUpdate(user._id, { staffInfo: staff._id });
-      console.log(`   ✓ Created staff: ${user.name}`);
+      // Get the auto-created user
+      const user = await User.findOne({ adminProfile: admin._id });
+      if (user) {
+        seedData.users.push(user);
+        console.log(`   ✓ Created admin: ${admin.firstName} ${admin.lastName} (user auto-created: ${user.email})`);
+      } else {
+        console.log(`   ✓ Created admin: ${admin.firstName} ${admin.lastName} (user creation pending)`);
+      }
     }
-    console.log('✅ Staff records created\n');
+    console.log('✅ Admin profiles created\n');
 
-    // 4. Create Doctors
-    console.log('🩺 Creating doctors...');
-    const specializations = ['General Medicine', 'Cardiology', 'Pediatrics', 'Dermatology'];
-    
-    for (let i = 0; i < doctorUsers.length; i++) {
-      const user = doctorUsers[i];
+    // 3. Create Doctor Profiles (auto-creates User via post-save hook)
+    console.log('🩺 Creating doctor profiles...');
+    const doctorsData = [
+      { firstName: 'John', lastName: 'Smith', email: 'doctor1@clinic.com', specialization: 'General Medicine' },
+      { firstName: 'Sarah', lastName: 'Johnson', email: 'doctor2@clinic.com', specialization: 'Cardiology' },
+    ];
+
+    for (let i = 0; i < doctorsData.length; i++) {
+      const docData = doctorsData[i];
       const doctor = await Doctor.create({
-        firstName: user.name.split(' ')[1] || 'Doctor',
-        lastName: user.name.split(' ')[2] || user.name.split(' ')[1] || 'Smith',
-        email: user.email,
+        firstName: docData.firstName,
+        lastName: docData.lastName,
+        email: docData.email,
         phone: `+1-555-${String(3000 + i).padStart(4, '0')}`,
-        specialization: specializations[i] || 'General Medicine',
+        specialization: docData.specialization,
         licenseNumber: `LIC-${String(1000 + i).padStart(6, '0')}`,
         schedule: [
           { dayOfWeek: 1, startTime: '09:00', endTime: '17:00', isAvailable: true },
@@ -410,8 +448,8 @@ async function seedDataScript() {
         ],
         title: 'Dr.',
         qualifications: ['MD', 'Board Certified'],
-        bio: `Experienced ${specializations[i] || 'General Medicine'} specialist`,
-        department: specializations[i] || 'General Medicine',
+        bio: `Experienced ${docData.specialization} specialist`,
+        department: docData.specialization,
         status: 'active',
         performanceMetrics: {
           totalAppointments: 0,
@@ -423,13 +461,201 @@ async function seedDataScript() {
       });
       seedData.doctors.push(doctor);
       
-      // Update user with doctor profile reference
-      await User.findByIdAndUpdate(user._id, { doctorProfile: doctor._id });
-      console.log(`   ✓ Created doctor: ${doctor.firstName} ${doctor.lastName}`);
+      // Get the auto-created user
+      const user = await User.findOne({ doctorProfile: doctor._id });
+      if (user) {
+        seedData.users.push(user);
+        console.log(`   ✓ Created doctor: Dr. ${doctor.firstName} ${doctor.lastName} (user auto-created: ${user.email})`);
+      } else {
+        console.log(`   ✓ Created doctor: Dr. ${doctor.firstName} ${doctor.lastName} (user creation pending)`);
+      }
     }
-    console.log('✅ Doctors created\n');
+    console.log('✅ Doctor profiles created\n');
 
-    // 5. Create Patients
+    // 4. Create Nurse Profiles (auto-creates User via post-save hook)
+    console.log('💉 Creating nurse profiles...');
+    const nursesData = [
+      { firstName: 'Mary', lastName: 'Williams', email: 'nurse1@clinic.com', specialization: 'Emergency' },
+      { firstName: 'James', lastName: 'Brown', email: 'nurse2@clinic.com', specialization: 'Pediatrics' },
+    ];
+
+    for (let i = 0; i < nursesData.length; i++) {
+      const nurseData = nursesData[i];
+      const nurse = await Nurse.create({
+        firstName: nurseData.firstName,
+        lastName: nurseData.lastName,
+        email: nurseData.email,
+        phone: `+1-555-${String(4000 + i).padStart(4, '0')}`,
+        employeeId: `NRS-${String(i + 1).padStart(4, '0')}`,
+        licenseNumber: `NL-${String(2000 + i).padStart(6, '0')}`,
+        department: 'Nursing',
+        specialization: nurseData.specialization,
+        hireDate: new Date(2023, 0, 1),
+        address: `${200 + i} Health Avenue, City, State 12345`,
+        schedule: [
+          { dayOfWeek: 1, startTime: '08:00', endTime: '16:00', isAvailable: true },
+          { dayOfWeek: 2, startTime: '08:00', endTime: '16:00', isAvailable: true },
+          { dayOfWeek: 3, startTime: '08:00', endTime: '16:00', isAvailable: true },
+          { dayOfWeek: 4, startTime: '08:00', endTime: '16:00', isAvailable: true },
+          { dayOfWeek: 5, startTime: '08:00', endTime: '16:00', isAvailable: true },
+        ],
+        emergencyContact: {
+          name: `Emergency Contact ${i + 1}`,
+          phone: `+1-555-${String(2000 + i).padStart(4, '0')}`,
+          relationship: 'Spouse',
+        },
+        title: 'RN',
+        qualifications: ['BSN', 'Licensed Nurse'],
+        status: 'active',
+      });
+      seedData.nurses.push(nurse);
+      
+      // Get the auto-created user
+      const user = await User.findOne({ nurseProfile: nurse._id });
+      if (user) {
+        seedData.users.push(user);
+        console.log(`   ✓ Created nurse: ${nurse.firstName} ${nurse.lastName} (user auto-created: ${user.email})`);
+      } else {
+        console.log(`   ✓ Created nurse: ${nurse.firstName} ${nurse.lastName} (user creation pending)`);
+      }
+    }
+    console.log('✅ Nurse profiles created\n');
+
+    // 5. Create Receptionist Profiles (auto-creates User via post-save hook)
+    console.log('📞 Creating receptionist profiles...');
+    const receptionistsData = [
+      { firstName: 'Alice', lastName: 'Davis', email: 'receptionist@clinic.com' },
+    ];
+
+    for (let i = 0; i < receptionistsData.length; i++) {
+      const recepData = receptionistsData[i];
+      const receptionist = await Receptionist.create({
+        firstName: recepData.firstName,
+        lastName: recepData.lastName,
+        email: recepData.email,
+        phone: `+1-555-${String(5000 + i).padStart(4, '0')}`,
+        employeeId: `RCP-${String(i + 1).padStart(4, '0')}`,
+        department: 'Front Desk',
+        hireDate: new Date(2023, 0, 1),
+        address: `${300 + i} Welcome Street, City, State 12345`,
+        schedule: [
+          { dayOfWeek: 1, startTime: '08:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 2, startTime: '08:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 3, startTime: '08:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 4, startTime: '08:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 5, startTime: '08:00', endTime: '17:00', isAvailable: true },
+        ],
+        emergencyContact: {
+          name: 'Emergency Contact',
+          phone: '+1-555-2100',
+          relationship: 'Parent',
+        },
+        status: 'active',
+      });
+      seedData.receptionists.push(receptionist);
+      
+      // Get the auto-created user
+      const user = await User.findOne({ receptionistProfile: receptionist._id });
+      if (user) {
+        seedData.users.push(user);
+        console.log(`   ✓ Created receptionist: ${receptionist.firstName} ${receptionist.lastName} (user auto-created: ${user.email})`);
+      } else {
+        console.log(`   ✓ Created receptionist: ${receptionist.firstName} ${receptionist.lastName} (user creation pending)`);
+      }
+    }
+    console.log('✅ Receptionist profiles created\n');
+
+    // 6. Create Accountant Profiles (auto-creates User via post-save hook)
+    console.log('💼 Creating accountant profiles...');
+    const accountantsData = [
+      { firstName: 'Bob', lastName: 'Wilson', email: 'accountant@clinic.com' },
+    ];
+
+    for (let i = 0; i < accountantsData.length; i++) {
+      const acctData = accountantsData[i];
+      const accountant = await Accountant.create({
+        firstName: acctData.firstName,
+        lastName: acctData.lastName,
+        email: acctData.email,
+        phone: `+1-555-${String(6000 + i).padStart(4, '0')}`,
+        employeeId: `ACC-${String(i + 1).padStart(4, '0')}`,
+        department: 'Finance',
+        certification: 'CPA',
+        licenseNumber: `CPA-${String(3000 + i).padStart(6, '0')}`,
+        hireDate: new Date(2023, 0, 1),
+        address: `${400 + i} Finance Blvd, City, State 12345`,
+        schedule: [
+          { dayOfWeek: 1, startTime: '09:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 2, startTime: '09:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 3, startTime: '09:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 4, startTime: '09:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 5, startTime: '09:00', endTime: '17:00', isAvailable: true },
+        ],
+        emergencyContact: {
+          name: 'Emergency Contact',
+          phone: '+1-555-2200',
+          relationship: 'Spouse',
+        },
+        status: 'active',
+      });
+      seedData.accountants.push(accountant);
+      
+      // Get the auto-created user
+      const user = await User.findOne({ accountantProfile: accountant._id });
+      if (user) {
+        seedData.users.push(user);
+        console.log(`   ✓ Created accountant: ${accountant.firstName} ${accountant.lastName} (user auto-created: ${user.email})`);
+      } else {
+        console.log(`   ✓ Created accountant: ${accountant.firstName} ${accountant.lastName} (user creation pending)`);
+      }
+    }
+    console.log('✅ Accountant profiles created\n');
+
+    // 7. Create Medical Representative Profiles (auto-creates User via post-save hook)
+    console.log('🧬 Creating medical representative profiles...');
+    const medRepsData = [
+      { firstName: 'Mike', lastName: 'Johnson', email: 'medrep1@pharma.com', company: 'Pharma Corp' },
+      { firstName: 'Lisa', lastName: 'Anderson', email: 'medrep2@biotech.com', company: 'BioTech Inc' },
+    ];
+
+    for (let i = 0; i < medRepsData.length; i++) {
+      const medRepData = medRepsData[i];
+      const medRep = await MedicalRepresentative.create({
+        firstName: medRepData.firstName,
+        lastName: medRepData.lastName,
+        email: medRepData.email,
+        phone: `+1-555-${String(7000 + i).padStart(4, '0')}`,
+        company: medRepData.company,
+        territory: 'Metro Area',
+        products: ['Drug A', 'Drug B', 'Drug C'],
+        availability: [
+          { dayOfWeek: 1, startTime: '09:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 2, startTime: '09:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 3, startTime: '09:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 4, startTime: '09:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 5, startTime: '09:00', endTime: '17:00', isAvailable: true },
+        ],
+        title: 'Mr.',
+        bio: `Medical Representative at ${medRepData.company}`,
+        status: 'active',
+      });
+      seedData.medicalRepresentatives.push(medRep);
+      
+      // Get the auto-created user
+      const user = await User.findOne({ medicalRepresentativeProfile: medRep._id });
+      if (user) {
+        seedData.users.push(user);
+        console.log(`   ✓ Created medical rep: ${medRep.firstName} ${medRep.lastName} (user auto-created: ${user.email})`);
+      } else {
+        console.log(`   ✓ Created medical rep: ${medRep.firstName} ${medRep.lastName} (user creation pending)`);
+      }
+    }
+    console.log('✅ Medical representative profiles created\n');
+
+    // Get doctor users for later use
+    const doctorUsers = seedData.users.filter(u => u.doctorProfile);
+
+    // 8. Create Patients
     console.log('🏥 Creating patients...');
     const patientsData = [
       {
@@ -484,7 +710,7 @@ async function seedDataScript() {
     }
     console.log('✅ Patients created\n');
 
-    // 6. Create Services
+    // 9. Create Services
     console.log('💼 Creating services...');
     const servicesData = [
       { code: 'CONSULT-001', name: 'General Consultation', category: 'consultation', unitPrice: 500, requiresDoctor: true },
@@ -508,7 +734,7 @@ async function seedDataScript() {
     }
     console.log('✅ Services created\n');
 
-    // 7. Create Medicines
+    // 10. Create Medicines
     console.log('💊 Creating medicines...');
     const medicinesData = [
       { name: 'Paracetamol', genericName: 'Acetaminophen', form: 'tablet', strength: '500 mg', category: 'Analgesic' },
@@ -534,7 +760,7 @@ async function seedDataScript() {
     }
     console.log('✅ Medicines created\n');
 
-    // 8. Create Inventory Items
+    // 11. Create Inventory Items
     console.log('📦 Creating inventory items...');
     for (let i = 0; i < seedData.medicines.length; i++) {
       const medicine = seedData.medicines[i];
@@ -558,7 +784,7 @@ async function seedDataScript() {
     }
     console.log('✅ Inventory items created\n');
 
-    // 9. Create Rooms
+    // 12. Create Rooms
     console.log('🚪 Creating rooms...');
     const roomsData = [
       { name: 'Room 101', roomNumber: '101', floor: 1, roomType: 'consultation' },
@@ -588,7 +814,7 @@ async function seedDataScript() {
     }
     console.log('✅ Rooms created\n');
 
-    // 10. Create Appointments
+    // 13. Create Appointments
     console.log('📅 Creating appointments...');
     const today = new Date();
     for (let i = 0; i < seedData.patients.length; i++) {
@@ -617,7 +843,7 @@ async function seedDataScript() {
     }
     console.log('✅ Appointments created\n');
 
-    // 11. Create Visits
+    // 14. Create Visits
     console.log('🏥 Creating visits...');
     for (let i = 0; i < seedData.patients.length; i++) {
       const patient = seedData.patients[i];
@@ -672,7 +898,7 @@ async function seedDataScript() {
     }
     console.log('✅ Visits created\n');
 
-    // 12. Create Prescriptions
+    // 15. Create Prescriptions
     console.log('💊 Creating prescriptions...');
     for (let i = 0; i < seedData.visits.length; i++) {
       const visit = seedData.visits[i];
@@ -714,7 +940,7 @@ async function seedDataScript() {
     }
     console.log('✅ Prescriptions created\n');
 
-    // 13. Create Lab Results
+    // 16. Create Lab Results
     console.log('🔬 Creating lab results...');
     for (let i = 0; i < seedData.visits.length; i++) {
       const visit = seedData.visits[i];
@@ -753,7 +979,7 @@ async function seedDataScript() {
     }
     console.log('✅ Lab results created\n');
 
-    // 14. Create Imaging
+    // 17. Create Imaging
     console.log('📸 Creating imaging records...');
     for (let i = 0; i < Math.min(3, seedData.visits.length); i++) {
       const visit = seedData.visits[i];
@@ -784,7 +1010,7 @@ async function seedDataScript() {
     }
     console.log('✅ Imaging records created\n');
 
-    // 15. Create Procedures
+    // 18. Create Procedures
     console.log('⚕️ Creating procedures...');
     for (let i = 0; i < Math.min(2, seedData.visits.length); i++) {
       const visit = seedData.visits[i];
@@ -811,13 +1037,11 @@ async function seedDataScript() {
     }
     console.log('✅ Procedures created\n');
 
-    // 16. Create Invoices
+    // 19. Create Invoices
     console.log('💰 Creating invoices...');
-    // Get admin user (first user is admin based on seed data)
-    const adminUser = seedData.users.find(u => 
-      seedData.roles.find(r => r._id.toString() === u.role.toString())?.name === 'admin'
-    );
-    if (!adminUser) {
+    // Get admin user for invoices (user with adminProfile)
+    const invoiceAdminUser = seedData.users.find(u => u.adminProfile);
+    if (!invoiceAdminUser) {
       throw new Error('Admin user not found. Cannot create invoices.');
     }
 
@@ -833,7 +1057,7 @@ async function seedDataScript() {
           type: 'senior',
           percentage: 20,
           amount: subtotal * 0.2,
-          appliedBy: adminUser._id, // Invoice.discounts[].appliedBy is optional but set for proper reference
+          appliedBy: invoiceAdminUser._id, // Invoice.discounts[].appliedBy is optional but set for proper reference
         });
       }
       const discountAmount = discounts.reduce((sum, d) => sum + d.amount, 0);
@@ -860,13 +1084,13 @@ async function seedDataScript() {
         totalPaid: i < 2 ? total : total * 0.5,
         outstandingBalance: i < 2 ? 0 : total * 0.5,
         status: i < 2 ? 'paid' : 'partial',
-        createdBy: adminUser._id, // Invoice.createdBy is optional but set for proper reference
+        createdBy: invoiceAdminUser._id, // Invoice.createdBy is optional but set for proper reference
         payments: i < 2 ? [
           {
             method: 'cash',
             amount: total,
             date: visit.date,
-            processedBy: adminUser._id, // Invoice.payments[].processedBy is optional but set for proper reference
+            processedBy: invoiceAdminUser._id, // Invoice.payments[].processedBy is optional but set for proper reference
           },
         ] : [],
       });
@@ -875,12 +1099,13 @@ async function seedDataScript() {
     }
     console.log('✅ Invoices created\n');
 
-    // 17. Create Documents
+    // 20. Create Documents
     console.log('📄 Creating documents...');
+    // Use the admin user for uploading documents
+    const documentUploader = seedData.users.find(u => u.adminProfile) || seedData.users[0];
     for (let i = 0; i < seedData.visits.length; i++) {
       const visit = seedData.visits[i];
       const patient = seedData.patients[i];
-      const adminUser = seedData.users[0];
 
       const document = await Document.create({
         documentCode: `DOC-${String(i + 1).padStart(6, '0')}`,
@@ -895,7 +1120,7 @@ async function seedDataScript() {
         url: 'https://example.com/documents/sample.pdf',
         patient: patient._id,
         visit: visit._id,
-        uploadedBy: adminUser._id,
+        uploadedBy: documentUploader._id,
         status: 'active',
       });
       seedData.documents.push(document);
@@ -903,7 +1128,7 @@ async function seedDataScript() {
     }
     console.log('✅ Documents created\n');
 
-    // 18. Create Referrals
+    // 21. Create Referrals
     console.log('🔄 Creating referrals...');
     for (let i = 0; i < Math.min(2, seedData.patients.length); i++) {
       const patient = seedData.patients[i];
@@ -928,7 +1153,7 @@ async function seedDataScript() {
     }
     console.log('✅ Referrals created\n');
 
-    // 19. Create Queue Entries
+    // 22. Create Queue Entries
     console.log('📋 Creating queue entries...');
     for (let i = 0; i < seedData.appointments.length; i++) {
       const appointment = seedData.appointments[i];
@@ -955,7 +1180,7 @@ async function seedDataScript() {
     }
     console.log('✅ Queue entries created\n');
 
-    // 20. Create Memberships
+    // 23. Create Memberships
     console.log('🎟️ Creating memberships...');
     for (let i = 0; i < Math.min(3, seedData.patients.length); i++) {
       const patient = seedData.patients[i];
@@ -989,7 +1214,7 @@ async function seedDataScript() {
     }
     console.log('✅ Memberships created\n');
 
-    // 21. Create Notifications
+    // 24. Create Notifications
     console.log('🔔 Creating notifications...');
     for (const user of seedData.users) {
       const notification = await Notification.create({
@@ -1004,7 +1229,7 @@ async function seedDataScript() {
     }
     console.log('✅ Notifications created\n');
 
-    // 22. Create Settings (if not exists)
+    // 25. Create Settings (if not exists)
     console.log('⚙️ Checking settings...');
     const existingSettings = await Settings.findOne();
     if (!existingSettings) {
@@ -1023,31 +1248,84 @@ async function seedDataScript() {
     }
     console.log('✅ Settings checked\n');
 
+    // 26. Create Audit Logs (sample entries)
+    console.log('📝 Creating audit log entries...');
+    const adminUser = seedData.users.find(u => u.adminProfile);
+    if (adminUser) {
+      const auditActions = [
+        { action: 'login', resource: 'system', description: 'Admin user logged in' },
+        { action: 'create', resource: 'patient', description: 'Created new patient record' },
+        { action: 'update', resource: 'appointment', description: 'Updated appointment status' },
+        { action: 'read', resource: 'invoice', description: 'Viewed invoice details' },
+      ];
+      
+      for (const auditData of auditActions) {
+        const auditLog = await AuditLog.create({
+          userId: adminUser._id,
+          userEmail: adminUser.email,
+          userRole: 'admin',
+          action: auditData.action,
+          resource: auditData.resource,
+          description: auditData.description,
+          success: true,
+          timestamp: new Date(),
+          ipAddress: '127.0.0.1',
+          requestMethod: auditData.action === 'login' ? 'POST' : 'GET',
+          requestPath: `/${auditData.resource}`,
+        });
+        seedData.auditLogs.push(auditLog);
+      }
+      console.log(`   ✓ Created ${seedData.auditLogs.length} audit log entries`);
+    }
+    console.log('✅ Audit logs created\n');
+
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🎉 Seed data generation completed!');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('\nSummary:');
+    console.log('   --- Authentication & Authorization ---');
     console.log(`   Roles: ${seedData.roles.length}`);
     console.log(`   Users: ${seedData.users.length}`);
-    console.log(`   Staff: ${seedData.staff.length}`);
+    console.log('   --- Staff Profiles ---');
+    console.log(`   Admins: ${seedData.admins.length}`);
     console.log(`   Doctors: ${seedData.doctors.length}`);
+    console.log(`   Nurses: ${seedData.nurses.length}`);
+    console.log(`   Receptionists: ${seedData.receptionists.length}`);
+    console.log(`   Accountants: ${seedData.accountants.length}`);
+    console.log(`   Medical Reps: ${seedData.medicalRepresentatives.length}`);
+    console.log('   --- Patients & Clinical ---');
     console.log(`   Patients: ${seedData.patients.length}`);
-    console.log(`   Services: ${seedData.services.length}`);
-    console.log(`   Medicines: ${seedData.medicines.length}`);
-    console.log(`   Inventory Items: ${seedData.inventory.length}`);
-    console.log(`   Rooms: ${seedData.rooms.length}`);
     console.log(`   Appointments: ${seedData.appointments.length}`);
     console.log(`   Visits: ${seedData.visits.length}`);
     console.log(`   Prescriptions: ${seedData.prescriptions.length}`);
     console.log(`   Lab Results: ${seedData.labResults.length}`);
     console.log(`   Imaging: ${seedData.imaging.length}`);
     console.log(`   Procedures: ${seedData.procedures.length}`);
+    console.log('   --- Billing & Membership ---');
     console.log(`   Invoices: ${seedData.invoices.length}`);
-    console.log(`   Documents: ${seedData.documents.length}`);
-    console.log(`   Referrals: ${Math.min(2, seedData.patients.length)}`);
+    console.log(`   Memberships: ${seedData.memberships.length}`);
+    console.log('   --- Catalog & Inventory ---');
+    console.log(`   Services: ${seedData.services.length}`);
+    console.log(`   Medicines: ${seedData.medicines.length}`);
+    console.log(`   Inventory Items: ${seedData.inventory.length}`);
+    console.log(`   Rooms: ${seedData.rooms.length}`);
+    console.log('   --- Queue & Documents ---');
     console.log(`   Queue Entries: ${seedData.queues.length}`);
-    console.log(`   Memberships: ${Math.min(3, seedData.patients.length)}`);
+    console.log(`   Documents: ${seedData.documents.length}`);
+    console.log(`   Referrals: ${seedData.referrals.length}`);
+    console.log('   --- Audit & Notifications ---');
+    console.log(`   Audit Logs: ${seedData.auditLogs.length}`);
+    console.log(`   Notifications: ${seedData.users.length}`);
     console.log('\n✅ All collection references are properly linked!\n');
+    
+    console.log('Default login credentials:');
+    console.log('   (Passwords are auto-generated by profile models - check console output above)');
+    console.log('   Admin: admin@clinic.com');
+    console.log('   Doctors: doctor1@clinic.com, doctor2@clinic.com');
+    console.log('   Nurses: nurse1@clinic.com, nurse2@clinic.com');
+    console.log('   Receptionist: receptionist@clinic.com');
+    console.log('   Accountant: accountant@clinic.com');
+    console.log('   Med Reps: medrep1@pharma.com, medrep2@biotech.com\n');
 
     await mongoose.connection.close();
     process.exit(0);
