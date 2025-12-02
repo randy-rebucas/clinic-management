@@ -2,6 +2,9 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 import { AttachmentSchema, IAttachment } from './Attachment';
 
 export interface IPatient extends Document {
+  // Multi-tenant support
+  tenantId: Types.ObjectId; // Reference to Tenant
+  
   // Patient identification
   patientCode?: string; // e.g. CLINIC-0001 (optional for backward compatibility)
   
@@ -110,11 +113,18 @@ export interface IPatient extends Document {
 
 const PatientSchema: Schema = new Schema(
   {
+    // Multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
+    },
+    
     // Patient identification
     patientCode: {
       type: String,
       index: true,
-      unique: true,
       sparse: true, // Allow null/undefined values
       trim: true,
     },
@@ -164,7 +174,6 @@ const PatientSchema: Schema = new Schema(
     email: {
       type: String,
       required: [true, 'Email is required'],
-      unique: true,
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
@@ -294,9 +303,10 @@ const PatientSchema: Schema = new Schema(
 );
 
 // Indexes
+PatientSchema.index({ tenantId: 1, email: 1 }, { unique: true }); // Email unique per tenant
+PatientSchema.index({ tenantId: 1, patientCode: 1 }, { unique: true, sparse: true }); // Patient code unique per tenant
+PatientSchema.index({ tenantId: 1 }); // Tenant index
 PatientSchema.index({ lastName: 1, firstName: 1 });
-// email is already indexed via unique: true
-// patientCode is already indexed via index: true and unique: true
 
 // Virtual for full name
 PatientSchema.virtual('fullName').get(function (this: IPatient) {

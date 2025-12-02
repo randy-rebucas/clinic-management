@@ -14,6 +14,9 @@ export type DocumentCategory =
 export type DocumentType = 'pdf' | 'image' | 'word' | 'excel' | 'other';
 
 export interface IDocument extends Document {
+  // Multi-tenant support
+  tenantId: Types.ObjectId; // Reference to Tenant
+  
   // Document identification
   documentCode: string; // Unique document identifier
   title: string;
@@ -132,7 +135,15 @@ const LabResultMetadataSchema: Schema = new Schema(
 
 const DocumentSchema: Schema = new Schema(
   {
-    documentCode: { type: String, required: true, unique: true, index: true },
+    // Multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
+    },
+    
+    documentCode: { type: String, required: true, index: true },
     title: { type: String, required: true, trim: true, index: true },
     description: { type: String, trim: true },
     category: {
@@ -184,14 +195,16 @@ const DocumentSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-DocumentSchema.index({ patient: 1, category: 1, status: 1 });
-DocumentSchema.index({ category: 1, status: 1 });
-DocumentSchema.index({ tags: 1 });
-DocumentSchema.index({ title: 'text', description: 'text', ocrText: 'text' }); // Full-text search
-DocumentSchema.index({ uploadDate: -1 });
-DocumentSchema.index({ expiryDate: 1 });
-DocumentSchema.index({ uploadedBy: 1 });
-DocumentSchema.index({ lastModifiedBy: 1 });
+DocumentSchema.index({ tenantId: 1, documentCode: 1 }, { unique: true }); // Document code unique per tenant
+DocumentSchema.index({ tenantId: 1 }); // Tenant index
+DocumentSchema.index({ tenantId: 1, patient: 1, category: 1, status: 1 });
+DocumentSchema.index({ tenantId: 1, category: 1, status: 1 });
+DocumentSchema.index({ tenantId: 1, tags: 1 });
+DocumentSchema.index({ tenantId: 1, title: 'text', description: 'text', ocrText: 'text' }); // Full-text search
+DocumentSchema.index({ tenantId: 1, uploadDate: -1 });
+DocumentSchema.index({ tenantId: 1, expiryDate: 1 });
+DocumentSchema.index({ tenantId: 1, uploadedBy: 1 });
+DocumentSchema.index({ tenantId: 1, lastModifiedBy: 1 });
 
 // Pre-save hook to generate document code
 DocumentSchema.pre('save', async function (next) {
@@ -199,7 +212,7 @@ DocumentSchema.pre('save', async function (next) {
     try {
       // Use the model directly from mongoose.models or this.constructor
       const DocumentModel = mongoose.models.Document || this.constructor;
-      const count = await DocumentModel.countDocuments();
+      const count = await DocumentModel.countDocuments({ tenantId: this.tenantId });
       // Generate unique code using timestamp and random string to avoid collisions
       const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
       this.documentCode = `DOC-${Date.now()}-${randomSuffix}`;

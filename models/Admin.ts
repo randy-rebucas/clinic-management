@@ -2,6 +2,9 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 export interface IAdmin extends Document {
+  // Multi-tenant support
+  tenantId: Types.ObjectId; // Reference to Tenant
+  
   firstName: string;
   lastName: string;
   email: string;
@@ -30,6 +33,14 @@ export interface IAdmin extends Document {
 
 const AdminSchema: Schema = new Schema(
   {
+    // Multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
+    },
+    
     firstName: {
       type: String,
       required: [true, 'First name is required'],
@@ -43,7 +54,6 @@ const AdminSchema: Schema = new Schema(
     email: {
       type: String,
       required: [true, 'Email is required'],
-      unique: true,
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
@@ -88,9 +98,10 @@ const AdminSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-AdminSchema.index({ email: 1 });
-AdminSchema.index({ status: 1 });
-AdminSchema.index({ department: 1 });
+AdminSchema.index({ tenantId: 1, email: 1 }, { unique: true }); // Email unique per tenant
+AdminSchema.index({ tenantId: 1 }); // Tenant index
+AdminSchema.index({ tenantId: 1, status: 1 });
+AdminSchema.index({ tenantId: 1, department: 1 });
 
 // Register Admin model immediately after schema definition
 if (!mongoose.models.Admin) {
@@ -125,8 +136,11 @@ AdminSchema.post('save', async function (doc: IAdmin) {
       return;
     }
 
-    // Check if a User with this email already exists
-    const existingUserByEmail = await User.findOne({ email: doc.email.toLowerCase().trim() });
+    // Check if a User with this email already exists (within the same tenant)
+    const existingUserByEmail = await User.findOne({ 
+      email: doc.email.toLowerCase().trim(),
+      tenantId: doc.tenantId 
+    });
     
     if (!existingUserByEmail) {
       // Find the admin role
@@ -148,6 +162,7 @@ AdminSchema.post('save', async function (doc: IAdmin) {
         password: hashedPassword,
         role: adminRole._id,
         adminProfile: doc._id,
+        tenantId: doc.tenantId, // Include tenantId from admin
         status: doc.status === 'active' ? 'active' : 'inactive',
       });
 

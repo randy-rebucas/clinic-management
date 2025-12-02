@@ -4,6 +4,7 @@ import User from '@/models/User';
 import mongoose from 'mongoose';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { withTenantFilter } from '@/app/lib/api-helpers';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -27,7 +28,8 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const department = searchParams.get('department');
 
-    let query: any = {};
+    // Build query with tenant filtering
+    let query: any = await withTenantFilter({});
     
     // Handle role filter - if role is provided as string (role name), find the Role document
     if (role) {
@@ -90,9 +92,13 @@ export async function POST(request: NextRequest) {
     const bcrypt = await import('bcryptjs');
     const hashedPassword = await bcrypt.hash(body.password, 10);
 
+    // Add tenantId to the user data
+    const tenantFilter = await withTenantFilter({});
+    
     const user = await User.create({
       ...body,
       password: hashedPassword,
+      tenantId: tenantFilter.tenantId,
     });
 
     // Remove password from response

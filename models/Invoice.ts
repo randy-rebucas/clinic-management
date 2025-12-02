@@ -11,6 +11,9 @@ export interface IBillingItem {
 }
 
 export interface IInvoice extends Document {
+  // Multi-tenant support
+  tenantId: Types.ObjectId; // Reference to Tenant
+  
   patient: Types.ObjectId;
   visit?: Types.ObjectId;
   invoiceNumber: string;
@@ -69,6 +72,14 @@ const BillingItemSchema: Schema = new Schema(
 
 const InvoiceSchema: Schema = new Schema(
   {
+    // Multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
+    },
+    
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
     invoiceNumber: { type: String, required: true },
@@ -131,7 +142,10 @@ const InvoiceSchema: Schema = new Schema(
 InvoiceSchema.index({ patient: 1, createdAt: -1 });
 InvoiceSchema.index({ visit: 1 });
 InvoiceSchema.index({ status: 1 });
-InvoiceSchema.index({ invoiceNumber: 1 });
+InvoiceSchema.index({ tenantId: 1, invoiceNumber: 1 }, { unique: true }); // Invoice number unique per tenant
+InvoiceSchema.index({ tenantId: 1 }); // Tenant index
+InvoiceSchema.index({ tenantId: 1, patient: 1 });
+InvoiceSchema.index({ tenantId: 1, status: 1 });
 InvoiceSchema.index({ createdBy: 1 });
 
 export default mongoose.models.Invoice || mongoose.model<IInvoice>('Invoice', InvoiceSchema);

@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { SignupFormSchema, LoginFormSchema, SignupFormState, LoginFormState } from '@/app/lib/definitions';
 import { createSession, deleteSession } from '@/app/lib/dal';
 import { sanitizeEmail, checkRateLimit, resetRateLimit } from '@/app/lib/security';
+import { getTenant } from '@/app/lib/tenant';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import bcrypt from 'bcryptjs';
@@ -73,20 +74,30 @@ export async function signup(
       }
     }
 
+    // Get current tenant
+    const tenant = await getTenant();
+    if (!tenant) {
+      return {
+        message: 'Tenant not found. Please ensure you are accessing the correct tenant.',
+      };
+    }
+
     // Create user (normalize email to lowercase)
     const user = await User.create({
       name,
       email: sanitizedEmail,
       password: hashedPassword,
       role: roleDoc._id,
+      tenantId: tenant._id,
     });
 
-    // Create session with role name and roleId
+    // Create session with role name, roleId, and tenantId
     await createSession(
       user._id.toString(), 
       user.email, 
       roleDoc.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative',
-      roleDoc._id.toString()
+      roleDoc._id.toString(),
+      tenant._id
     );
 
     revalidatePath('/');
@@ -134,8 +145,21 @@ export async function login(
 
     await connectDB();
 
-    // Find user by email (case-insensitive) with role populated
-    const user = await User.findOne({ email: sanitizedEmail })
+    // Get current tenant
+    const tenant = await getTenant();
+    if (!tenant) {
+      return {
+        errors: {
+          email: ['Tenant not found. Please ensure you are accessing the correct tenant.'],
+        },
+      };
+    }
+
+    // Find user by email and tenant (case-insensitive) with role populated
+    const user = await User.findOne({ 
+      email: sanitizedEmail,
+      tenantId: tenant._id 
+    })
       .populate('role', 'name displayName');
     if (!user) {
       // Use generic error message to prevent user enumeration
@@ -179,8 +203,14 @@ export async function login(
       }
     }
 
-    // Create session with role name and roleId
-    await createSession(user._id.toString(), user.email, roleName, roleId);
+    // Create session with role name, roleId, and tenantId
+    await createSession(
+      user._id.toString(), 
+      user.email, 
+      roleName, 
+      roleId,
+      user.tenantId?.toString() || tenant._id
+    );
 
     // Log login for audit trail
     try {

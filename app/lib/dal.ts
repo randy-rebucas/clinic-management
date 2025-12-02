@@ -29,6 +29,7 @@ export interface SessionPayload extends JWTPayload {
   email: string;
   role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative'; // Role name for backward compatibility
   roleId?: string; // Role ObjectId from database
+  tenantId?: string; // Tenant ObjectId from database
   expiresAt: number | Date;
 }
 
@@ -87,11 +88,12 @@ export async function createSession(
   userId: string, 
   email: string, 
   role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative',
-  roleId?: string
+  roleId?: string,
+  tenantId?: string
 ) {
   try {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    const session = await encrypt({ userId, email, role, roleId, expiresAt });
+    const session = await encrypt({ userId, email, role, roleId, tenantId, expiresAt });
 
     const cookieStore = await cookies();
     cookieStore.set('session', session, {

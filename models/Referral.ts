@@ -4,6 +4,9 @@ export type ReferralStatus = 'pending' | 'accepted' | 'completed' | 'declined' |
 export type ReferralType = 'doctor_to_doctor' | 'patient_to_patient' | 'external';
 
 export interface IReferral extends Document {
+  // Multi-tenant support
+  tenantId: Types.ObjectId; // Reference to Tenant
+  
   // Referral identification
   referralCode: string; // Unique referral code
   type: ReferralType;
@@ -73,7 +76,15 @@ export interface IReferral extends Document {
 
 const ReferralSchema: Schema = new Schema(
   {
-    referralCode: { type: String, unique: true, index: true },
+    // Multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
+    },
+    
+    referralCode: { type: String, index: true },
     type: {
       type: String,
       enum: ['doctor_to_doctor', 'patient_to_patient', 'external'],
@@ -136,12 +147,14 @@ const ReferralSchema: Schema = new Schema(
 );
 
 // Indexes
-ReferralSchema.index({ referringDoctor: 1, status: 1 });
-ReferralSchema.index({ receivingDoctor: 1, status: 1 });
-ReferralSchema.index({ patient: 1, status: 1 });
-ReferralSchema.index({ status: 1, referredDate: -1 });
-ReferralSchema.index({ type: 1, status: 1 });
-ReferralSchema.index({ 'feedback.submittedBy': 1 });
+ReferralSchema.index({ tenantId: 1, referralCode: 1 }, { unique: true }); // Referral code unique per tenant
+ReferralSchema.index({ tenantId: 1 }); // Tenant index
+ReferralSchema.index({ tenantId: 1, referringDoctor: 1, status: 1 });
+ReferralSchema.index({ tenantId: 1, receivingDoctor: 1, status: 1 });
+ReferralSchema.index({ tenantId: 1, patient: 1, status: 1 });
+ReferralSchema.index({ tenantId: 1, status: 1, referredDate: -1 });
+ReferralSchema.index({ tenantId: 1, type: 1, status: 1 });
+ReferralSchema.index({ tenantId: 1, 'feedback.submittedBy': 1 });
 
 // Pre-validate hook to clean up referringContact before validation
 ReferralSchema.pre('validate', function (this: IReferral, next) {
@@ -157,7 +170,7 @@ ReferralSchema.pre('validate', function (this: IReferral, next) {
 // Pre-save hook to generate referral code
 ReferralSchema.pre('save', async function (this: IReferral, next) {
   if (!this.referralCode) {
-    const count = await mongoose.models.Referral?.countDocuments() || 0;
+    const count = await mongoose.models.Referral?.countDocuments({ tenantId: this.tenantId }) || 0;
     this.referralCode = `REF-${Date.now()}-${count + 1}`;
   }
   next();

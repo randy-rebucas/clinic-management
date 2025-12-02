@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Service from '@/models/Service';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { withTenantFilter } from '@/app/lib/api-helpers';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -18,7 +19,9 @@ export async function GET(request: NextRequest) {
     const active = searchParams.get('active') !== 'false';
     const search = searchParams.get('search');
 
-    let query: any = {};
+    // Build query with tenant filtering
+    let query: any = await withTenantFilter({});
+    
     if (active) {
       query.active = true;
     }
@@ -66,10 +69,17 @@ export async function POST(request: NextRequest) {
     await connectDB();
     const body = await request.json();
 
-    // Auto-generate code if not provided
+    // Add tenantId to the service data
+    const tenantFilter = await withTenantFilter({});
+    body.tenantId = tenantFilter.tenantId;
+    
+    // Auto-generate code if not provided (tenant-scoped)
     if (!body.code) {
       const categoryPrefix = body.category?.toUpperCase().substring(0, 4) || 'SERV';
-      const lastService = await Service.findOne({ code: { $regex: `^${categoryPrefix}` } })
+      const lastService = await Service.findOne({ 
+        ...tenantFilter,
+        code: { $regex: `^${categoryPrefix}` } 
+      })
         .sort({ code: -1 })
         .exec();
       

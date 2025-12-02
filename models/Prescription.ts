@@ -31,6 +31,9 @@ export interface IPharmacyDispense {
 }
 
 export interface IPrescription extends Document {
+  // Multi-tenant support
+  tenantId: Types.ObjectId; // Reference to Tenant
+  
   prescriptionCode: string; // Unique prescription identifier
   visit?: Types.ObjectId;
   patient: Types.ObjectId;
@@ -112,7 +115,15 @@ const PharmacyDispenseSchema: Schema = new Schema(
 
 const PrescriptionSchema: Schema = new Schema(
   {
-    prescriptionCode: { type: String, required: true, unique: true },
+    // Multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
+    },
+    
+    prescriptionCode: { type: String, required: true },
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true },
     prescribedBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -164,11 +175,12 @@ const PrescriptionSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-PrescriptionSchema.index({ patient: 1, issuedAt: -1 });
-PrescriptionSchema.index({ visit: 1 });
-PrescriptionSchema.index({ prescribedBy: 1 });
-PrescriptionSchema.index({ status: 1 });
-// prescriptionCode is already indexed via unique: true
+PrescriptionSchema.index({ tenantId: 1, prescriptionCode: 1 }, { unique: true }); // Prescription code unique per tenant
+PrescriptionSchema.index({ tenantId: 1 }); // Tenant index
+PrescriptionSchema.index({ tenantId: 1, patient: 1, issuedAt: -1 });
+PrescriptionSchema.index({ tenantId: 1, visit: 1 });
+PrescriptionSchema.index({ tenantId: 1, prescribedBy: 1 });
+PrescriptionSchema.index({ tenantId: 1, status: 1 });
 
 export default mongoose.models.Prescription || mongoose.model<IPrescription>('Prescription', PrescriptionSchema);
 

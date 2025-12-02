@@ -1,6 +1,9 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IAppointment extends Document {
+  // Multi-tenant support
+  tenantId: Types.ObjectId; // Reference to Tenant
+  
   // Patient reference (required)
   patient: Types.ObjectId;
   
@@ -41,6 +44,14 @@ export interface IAppointment extends Document {
 
 const AppointmentSchema: Schema = new Schema(
   {
+    // Multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
+    },
+    
     // Patient reference (required)
     patient: {
       type: Schema.Types.ObjectId,
@@ -65,7 +76,6 @@ const AppointmentSchema: Schema = new Schema(
     appointmentCode: {
       type: String,
       index: true,
-      unique: true,
       sparse: true, // Allow null/undefined values
       trim: true,
     },
@@ -142,13 +152,15 @@ const AppointmentSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-AppointmentSchema.index({ appointmentDate: 1, appointmentTime: 1 });
-// scheduledAt is already indexed inline (index: true)
+AppointmentSchema.index({ tenantId: 1, appointmentCode: 1 }, { unique: true, sparse: true }); // Appointment code unique per tenant
+AppointmentSchema.index({ tenantId: 1 }); // Tenant index
+AppointmentSchema.index({ tenantId: 1, appointmentDate: 1, appointmentTime: 1 });
+AppointmentSchema.index({ tenantId: 1, scheduledAt: 1 });
 AppointmentSchema.index({ doctor: 1, appointmentDate: 1 });
 AppointmentSchema.index({ provider: 1, scheduledAt: 1 });
-AppointmentSchema.index({ patient: 1, status: 1 });
-AppointmentSchema.index({ status: 1 });
-AppointmentSchema.index({ room: 1, appointmentDate: 1, appointmentTime: 1 });
+AppointmentSchema.index({ tenantId: 1, patient: 1, status: 1 });
+AppointmentSchema.index({ tenantId: 1, status: 1 });
+AppointmentSchema.index({ tenantId: 1, room: 1, appointmentDate: 1, appointmentTime: 1 });
 
 // Virtual for computed scheduledAt from appointmentDate + appointmentTime
 AppointmentSchema.virtual('computedScheduledAt').get(function (this: IAppointment) {

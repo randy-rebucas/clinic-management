@@ -1,6 +1,9 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IService extends Document {
+  // Multi-tenant support
+  tenantId: Types.ObjectId; // Reference to Tenant
+  
   code: string; // Service code (e.g., CONSULT-001, PROC-001)
   name: string; // Service name
   description?: string;
@@ -18,10 +21,17 @@ export interface IService extends Document {
 
 const ServiceSchema: Schema = new Schema(
   {
+    // Multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
+    },
+    
     code: {
       type: String,
       required: [true, 'Service code is required'],
-      unique: true,
       trim: true,
       index: true,
     },
@@ -76,8 +86,10 @@ const ServiceSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-ServiceSchema.index({ category: 1, active: 1 });
-ServiceSchema.index({ name: 'text', description: 'text' });
+ServiceSchema.index({ tenantId: 1, code: 1 }, { unique: true }); // Service code unique per tenant
+ServiceSchema.index({ tenantId: 1 }); // Tenant index
+ServiceSchema.index({ tenantId: 1, category: 1, active: 1 });
+ServiceSchema.index({ tenantId: 1, name: 'text', description: 'text' });
 
 export default mongoose.models.Service || mongoose.model<IService>('Service', ServiceSchema);
 

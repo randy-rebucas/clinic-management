@@ -5,6 +5,7 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
 import logger from '@/lib/logger';
+import { withTenantFilter } from '@/app/lib/api-helpers';
 
 export async function GET(request: NextRequest) {
   // User authentication check
@@ -37,8 +38,8 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get('limit');
     const page = searchParams.get('page') || '1';
 
-    // Build filter query
-    const filter: any = {};
+    // Build filter query with tenant filtering
+    const filter: any = await withTenantFilter({});
 
     // Search filter - search across multiple fields
     if (search) {
@@ -155,9 +156,16 @@ export async function POST(request: NextRequest) {
     
     console.log('Creating patient with data:', JSON.stringify(body, null, 2));
     
-    // Auto-generate patientCode if not provided
+    // Add tenantId to the patient data
+    const tenantFilter = await withTenantFilter({});
+    body.tenantId = tenantFilter.tenantId;
+    
+    // Auto-generate patientCode if not provided (tenant-scoped)
     if (!body.patientCode) {
-      const lastPatient = await Patient.findOne({ patientCode: { $exists: true, $ne: null } })
+      const lastPatient = await Patient.findOne({ 
+        ...tenantFilter,
+        patientCode: { $exists: true, $ne: null } 
+      })
         .sort({ patientCode: -1 })
         .exec();
       

@@ -5,6 +5,8 @@ export interface IUser extends Document {
   email: string;
   password: string;
   role: Types.ObjectId; // Reference to Role
+  // Multi-tenant support
+  tenantId: Types.ObjectId; // Reference to Tenant
   // Staff information reference (one-to-one relationship) - DEPRECATED: Use role-specific profiles instead
   staffInfo?: Types.ObjectId;
   // Permissions reference (one-to-many relationship)
@@ -33,10 +35,15 @@ const UserSchema = new Schema<IUser>(
     email: {
       type: String,
       required: [true, 'Email is required'],
-      unique: true,
       trim: true,
       lowercase: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
+    },
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
     },
     password: {
       type: String,
@@ -78,6 +85,8 @@ const UserSchema = new Schema<IUser>(
 );
 
 // Indexes for efficient queries
+UserSchema.index({ tenantId: 1, email: 1 }, { unique: true }); // Email unique per tenant
+UserSchema.index({ tenantId: 1 }); // Tenant index
 UserSchema.index({ adminProfile: 1 });
 UserSchema.index({ doctorProfile: 1 });
 UserSchema.index({ nurseProfile: 1 });

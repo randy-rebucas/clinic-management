@@ -46,7 +46,15 @@ export interface IQueue extends Document {
 
 const QueueSchema: Schema = new Schema(
   {
-    queueNumber: { type: String, unique: true, index: true }, // Auto-generated in pre-validate hook
+    // Multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
+    },
+    
+    queueNumber: { type: String, index: true }, // Auto-generated in pre-validate hook
     queueType: {
       type: String,
       enum: ['appointment', 'walk-in', 'follow-up'],
@@ -83,11 +91,13 @@ const QueueSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queue queries
-QueueSchema.index({ status: 1, priority: 1, queuedAt: 1 }); // For queue display
-QueueSchema.index({ doctor: 1, status: 1, priority: 1 });
-QueueSchema.index({ room: 1, status: 1 });
-QueueSchema.index({ checkedIn: 1, status: 1 });
-QueueSchema.index({ qrCode: 1 });
+QueueSchema.index({ tenantId: 1, queueNumber: 1 }, { unique: true }); // Queue number unique per tenant
+QueueSchema.index({ tenantId: 1 }); // Tenant index
+QueueSchema.index({ tenantId: 1, status: 1, priority: 1, queuedAt: 1 }); // For queue display
+QueueSchema.index({ tenantId: 1, doctor: 1, status: 1, priority: 1 });
+QueueSchema.index({ tenantId: 1, room: 1, status: 1 });
+QueueSchema.index({ tenantId: 1, checkedIn: 1, status: 1 });
+QueueSchema.index({ tenantId: 1, qrCode: 1 });
 
 // Pre-validate hook to generate queue number (runs before validation)
 QueueSchema.pre('validate', async function (next) {
@@ -96,10 +106,11 @@ QueueSchema.pre('validate', async function (next) {
     const today = new Date();
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
     
-    // Count today's queues of this type
+    // Count today's queues of this type (tenant-scoped)
     const startOfDay = new Date(today.setHours(0, 0, 0, 0));
     const endOfDay = new Date(today.setHours(23, 59, 59, 999));
     const count = await mongoose.models.Queue?.countDocuments({
+      tenantId: this.tenantId,
       queueType: this.queueType,
       queuedAt: { $gte: startOfDay, $lte: endOfDay },
     }) || 0;

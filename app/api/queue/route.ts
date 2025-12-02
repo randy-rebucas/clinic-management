@@ -9,6 +9,7 @@ import Doctor from '@/models/Doctor';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
+import { withTenantFilter } from '@/app/lib/api-helpers';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -43,7 +44,8 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || 'waiting';
     const display = searchParams.get('display') === 'true'; // For TV display
 
-    let query: any = {};
+    // Build query with tenant filtering
+    let query: any = await withTenantFilter({});
     
     // Handle status filter - support comma-separated values
     if (status && status !== 'all') {

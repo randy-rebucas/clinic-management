@@ -1,6 +1,9 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IRoom extends Document {
+  // Multi-tenant support
+  tenantId: Types.ObjectId; // Reference to Tenant
+  
   name: string; // e.g., "Room 101", "Consultation Room A"
   roomNumber?: string; // Optional numeric identifier
   floor?: number;
@@ -28,10 +31,17 @@ export interface IRoom extends Document {
 
 const RoomSchema: Schema = new Schema(
   {
+    // Multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
+    },
+    
     name: {
       type: String,
       required: [true, 'Room name is required'],
-      unique: true,
       trim: true,
     },
     roomNumber: {
@@ -93,9 +103,10 @@ const RoomSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-RoomSchema.index({ roomType: 1, status: 1 });
-RoomSchema.index({ status: 1 });
-// name is already indexed via unique: true
+RoomSchema.index({ tenantId: 1, name: 1 }, { unique: true }); // Room name unique per tenant
+RoomSchema.index({ tenantId: 1 }); // Tenant index
+RoomSchema.index({ tenantId: 1, roomType: 1, status: 1 });
+RoomSchema.index({ tenantId: 1, status: 1 });
 
 export default mongoose.models.Room || mongoose.model<IRoom>('Room', RoomSchema);
 

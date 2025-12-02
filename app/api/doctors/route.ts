@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { withTenantFilter } from '@/app/lib/api-helpers';
 
 export async function GET() {
   // User authentication check
@@ -20,7 +21,8 @@ export async function GET() {
 
   try {
     await connectDB();
-    const doctors = await Doctor.find({}).sort({ createdAt: -1 });
+    const filter = await withTenantFilter({});
+    const doctors = await Doctor.find(filter).sort({ createdAt: -1 });
     return NextResponse.json({ success: true, data: doctors });
   } catch (error: any) {
     console.error('Error fetching doctors:', error);
@@ -48,6 +50,11 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
+    
+    // Add tenantId to the doctor data
+    const tenantFilter = await withTenantFilter({});
+    body.tenantId = tenantFilter.tenantId;
+    
     const doctor = await Doctor.create(body);
     return NextResponse.json({ success: true, data: doctor }, { status: 201 });
   } catch (error: any) {

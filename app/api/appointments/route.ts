@@ -4,6 +4,7 @@ import Appointment from '@/models/Appointment';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
+import { withTenantFilter } from '@/app/lib/api-helpers';
 
 export async function GET(request: NextRequest) {
   // User authentication check
@@ -29,7 +30,9 @@ export async function GET(request: NextRequest) {
     const isWalkIn = searchParams.get('isWalkIn');
     const room = searchParams.get('room');
 
-    let query: any = {};
+    // Build query with tenant filtering
+    let query: any = await withTenantFilter({});
+    
     if (date) {
       const startOfDay = new Date(date);
       startOfDay.setHours(0, 0, 0, 0);
@@ -97,9 +100,16 @@ export async function POST(request: NextRequest) {
       body.duration = settings.appointmentSettings?.defaultDuration || 30;
     }
     
-    // Auto-generate appointmentCode if not provided
+    // Add tenantId to the appointment data
+    const tenantFilter = await withTenantFilter({});
+    body.tenantId = tenantFilter.tenantId;
+    
+    // Auto-generate appointmentCode if not provided (tenant-scoped)
     if (!body.appointmentCode) {
-      const lastAppointment = await Appointment.findOne({ appointmentCode: { $exists: true, $ne: null } })
+      const lastAppointment = await Appointment.findOne({ 
+        ...tenantFilter,
+        appointmentCode: { $exists: true, $ne: null } 
+      })
         .sort({ appointmentCode: -1 })
         .exec();
       
@@ -122,6 +132,7 @@ export async function POST(request: NextRequest) {
       tomorrow.setDate(tomorrow.getDate() + 1);
       
       const todayWalkIns = await Appointment.find({
+        ...tenantFilter,
         isWalkIn: true,
         appointmentDate: { $gte: today, $lt: tomorrow },
         status: { $in: ['scheduled', 'confirmed'] },

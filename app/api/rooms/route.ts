@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Room from '@/models/Room';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { withTenantFilter } from '@/app/lib/api-helpers';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -18,7 +19,9 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const available = searchParams.get('available');
 
-    let query: any = {};
+    // Build query with tenant filtering
+    let query: any = await withTenantFilter({});
+    
     if (roomType) {
       query.roomType = roomType;
     }
@@ -51,6 +54,10 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
+    
+    // Add tenantId to the room data
+    const tenantFilter = await withTenantFilter({});
+    body.tenantId = tenantFilter.tenantId;
 
     const room = await Room.create(body);
 

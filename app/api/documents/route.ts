@@ -5,6 +5,7 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getDocumentType, inferDocumentCategory, validateFile } from '@/lib/document-utils';
 import { uploadDocumentToCloudinary, getThumbnailUrl, isCloudinaryConfigured } from '@/lib/cloudinary';
+import { withTenantFilter } from '@/app/lib/api-helpers';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -24,7 +25,8 @@ export async function GET(request: NextRequest) {
     const visitId = searchParams.get('visitId');
     const limit = parseInt(searchParams.get('limit') || '50', 10);
 
-    let query: any = { status };
+    // Build query with tenant filtering
+    let query: any = await withTenantFilter({ status });
 
     // Filter by patient (users can only see documents for patients they have access to)
     if (patientId) {
@@ -162,8 +164,12 @@ export async function POST(request: NextRequest) {
     const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
     const documentCode = `DOC-${Date.now()}-${randomSuffix}`;
 
+    // Add tenantId to the document data
+    const tenantFilter = await withTenantFilter({});
+    
     // Build document object
     const documentData: any = {
+      tenantId: tenantFilter.tenantId,
       documentCode,
       title: title || file.name,
       description: description || undefined,

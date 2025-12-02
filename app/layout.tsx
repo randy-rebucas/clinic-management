@@ -6,6 +6,7 @@ import LayoutWrapper from "@/components/LayoutWrapper";
 import { SidebarProvider } from "@/components/SidebarContext";
 import { SettingsProvider } from "@/components/SettingsContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { TenantProvider } from "@/components/TenantProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,14 +34,16 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ErrorBoundary>
-          <SettingsProvider>
-            <SidebarProvider>
-              <Navigation />
-              <LayoutWrapper>
-                {children}
-              </LayoutWrapper>
-            </SidebarProvider>
-          </SettingsProvider>
+          <TenantProvider>
+            <SettingsProvider>
+              <SidebarProvider>
+                <Navigation />
+                <LayoutWrapper>
+                  {children}
+                </LayoutWrapper>
+              </SidebarProvider>
+            </SettingsProvider>
+          </TenantProvider>
         </ErrorBoundary>
       </body>
     </html>

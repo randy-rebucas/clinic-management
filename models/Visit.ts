@@ -70,6 +70,9 @@ export interface IDigitalSignature {
 }
 
 export interface IVisit extends Document {
+  // Multi-tenant support
+  tenantId: Types.ObjectId; // Reference to Tenant
+  
   patient: Types.ObjectId;
   visitCode: string;
   date: Date;
@@ -139,6 +142,14 @@ const PhysicalExamSchema: Schema = new Schema(
 
 const VisitSchema: Schema = new Schema(
   {
+    // Multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
+    },
+    
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
     visitCode: { type: String, required: true }, // clinic-specific code
     date: { type: Date, default: Date.now, index: true },
@@ -247,6 +258,13 @@ VisitSchema.pre('validate', function(next) {
   }
   next();
 });
+
+// Indexes for efficient queries
+VisitSchema.index({ tenantId: 1, visitCode: 1 }, { unique: true }); // Visit code unique per tenant
+VisitSchema.index({ tenantId: 1 }); // Tenant index
+VisitSchema.index({ tenantId: 1, patient: 1 });
+VisitSchema.index({ tenantId: 1, date: 1 });
+VisitSchema.index({ tenantId: 1, provider: 1 });
 
 export default mongoose.models.Visit || mongoose.model<IVisit>('Visit', VisitSchema);
 

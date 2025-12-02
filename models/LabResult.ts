@@ -27,6 +27,9 @@ export interface IThirdPartyLab {
 }
 
 export interface ILabResult extends Document {
+  // Multi-tenant support
+  tenantId: Types.ObjectId; // Reference to Tenant
+  
   visit?: Types.ObjectId;
   patient: Types.ObjectId;
   orderedBy?: Types.ObjectId;
@@ -99,11 +102,19 @@ const ThirdPartyLabSchema: Schema = new Schema(
 
 const LabResultSchema: Schema = new Schema(
   {
+    // Multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'Tenant is required'],
+      index: true,
+    },
+    
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
     orderedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     orderDate: { type: Date, default: Date.now },
-    requestCode: { type: String, unique: true, sparse: true, index: true },
+    requestCode: { type: String, sparse: true, index: true },
     request: { type: LabRequestSchema, required: true },
     thirdPartyLab: ThirdPartyLabSchema,
     results: { type: Schema.Types.Mixed },
@@ -130,11 +141,13 @@ const LabResultSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-LabResultSchema.index({ patient: 1, orderDate: -1 });
-LabResultSchema.index({ visit: 1 });
-LabResultSchema.index({ orderedBy: 1 });
-LabResultSchema.index({ reviewedBy: 1 });
-LabResultSchema.index({ status: 1 });
+LabResultSchema.index({ tenantId: 1, requestCode: 1 }, { unique: true, sparse: true }); // Request code unique per tenant
+LabResultSchema.index({ tenantId: 1 }); // Tenant index
+LabResultSchema.index({ tenantId: 1, patient: 1, orderDate: -1 });
+LabResultSchema.index({ tenantId: 1, visit: 1 });
+LabResultSchema.index({ tenantId: 1, orderedBy: 1 });
+LabResultSchema.index({ tenantId: 1, reviewedBy: 1 });
+LabResultSchema.index({ tenantId: 1, status: 1 });
 
 export default mongoose.models.LabResult || mongoose.model<ILabResult>('LabResult', LabResultSchema);
 
