@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import QRCode from 'react-qr-code';
 
-type TabType = 'overview' | 'appointments' | 'visits' | 'prescriptions' | 'lab-results' | 'invoices';
+type TabType = 'overview' | 'appointments' | 'visits' | 'prescriptions' | 'lab-results' | 'invoices' | 'documents';
 
 interface PatientData {
   _id: string;
@@ -51,9 +51,12 @@ export default function PatientPortalClient() {
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [labResults, setLabResults] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [referrals, setReferrals] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<TabType | null>(null);
   const [showQRCode, setShowQRCode] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [cancellingAppointment, setCancellingAppointment] = useState<string | null>(null);
   
   // Booking state
   const [showBookingModal, setShowBookingModal] = useState(false);
@@ -110,6 +113,8 @@ export default function PatientPortalClient() {
       setPrescriptions(data.data.prescriptions || []);
       setLabResults(data.data.labResults || []);
       setInvoices(data.data.invoices || []);
+      setDocuments(data.data.documents || []);
+      setReferrals(data.data.referrals || []);
     } catch (err: any) {
       setError(err.message || 'Failed to load patient data');
     } finally {
@@ -242,6 +247,66 @@ export default function PatientPortalClient() {
     const maxDate = new Date();
     maxDate.setDate(maxDate.getDate() + 60); // 60 days ahead
     return maxDate.toISOString().split('T')[0];
+  };
+
+  const cancelAppointment = async (appointmentId: string) => {
+    if (!confirm('Are you sure you want to cancel this appointment?')) return;
+    
+    setCancellingAppointment(appointmentId);
+    try {
+      const res = await fetch(`/api/patients/appointments/${appointmentId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        // Refresh appointments
+        fetchPatientData();
+      } else {
+        alert(data.error || 'Failed to cancel appointment');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to cancel appointment');
+    } finally {
+      setCancellingAppointment(null);
+    }
+  };
+
+  const canCancelAppointment = (appointment: any) => {
+    if (['completed', 'cancelled', 'no-show'].includes(appointment.status)) {
+      return false;
+    }
+    const appointmentDateTime = new Date(appointment.appointmentDate);
+    if (appointment.appointmentTime) {
+      const [hours, minutes] = appointment.appointmentTime.split(':').map(Number);
+      appointmentDateTime.setHours(hours, minutes, 0, 0);
+    }
+    return appointmentDateTime > new Date();
+  };
+
+  const getDocumentIcon = (category: string) => {
+    switch (category) {
+      case 'laboratory_result':
+        return '🧪';
+      case 'imaging':
+        return '📷';
+      case 'prescription':
+        return '💊';
+      case 'medical_certificate':
+        return '📋';
+      case 'referral':
+        return '📤';
+      case 'invoice':
+        return '🧾';
+      default:
+        return '📄';
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
   const formatDate = (dateString: string) => {
@@ -409,6 +474,18 @@ export default function PatientPortalClient() {
         </svg>
       ),
     },
+    {
+      id: 'documents',
+      label: 'Documents',
+      description: 'Medical records',
+      count: documents.length,
+      color: 'from-cyan-500 to-cyan-600',
+      icon: (
+        <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
+    },
   ];
 
   // Content rendering based on active tab
@@ -527,6 +604,45 @@ export default function PatientPortalClient() {
                 )}
               </div>
             </div>
+
+            {/* Referrals */}
+            {referrals.length > 0 && (
+              <div className="space-y-3 sm:space-y-4 sm:col-span-2">
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm sm:text-base">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                  Referrals
+                </h3>
+                <div className="grid gap-3">
+                  {referrals.slice(0, 3).map((ref) => (
+                    <div key={ref._id} className="bg-gray-50 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-gray-900 text-sm sm:text-base">
+                            {ref.specialty || 'Specialist Referral'}
+                          </p>
+                          {ref.referredToDoctor && (
+                            <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                              To: Dr. {ref.referredToDoctor.firstName} {ref.referredToDoctor.lastName}
+                            </p>
+                          )}
+                          {ref.referringDoctor && (
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              From: Dr. {ref.referringDoctor.firstName} {ref.referringDoctor.lastName}
+                            </p>
+                          )}
+                          <p className="text-xs text-gray-400 mt-1">{formatDate(ref.referralDate)}</p>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(ref.status)}`}>
+                          {ref.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         );
 
@@ -537,22 +653,45 @@ export default function PatientPortalClient() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <p className="text-gray-500 text-sm sm:text-base">No appointments found</p>
+            <button
+              onClick={openBookingModal}
+              className="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+            >
+              Book an Appointment
+            </button>
           </div>
         ) : (
           <div className="space-y-3 sm:space-y-4">
             {appointments.map((apt) => (
               <div key={apt._id} className="bg-gray-50 rounded-lg sm:rounded-xl p-3 sm:p-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-gray-900 text-sm sm:text-base truncate">
-                      {apt.doctor?.firstName} {apt.doctor?.lastName}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium text-gray-900 text-sm sm:text-base">
+                        Dr. {apt.doctor?.firstName} {apt.doctor?.lastName}
+                      </p>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(apt.status)}`}>
+                        {apt.status}
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-1">{apt.reason || 'General Consultation'}</p>
+                    <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                      📅 {formatDateTime(apt.appointmentDate)}
+                      {apt.appointmentTime && ` at ${formatTimeSlot(apt.appointmentTime)}`}
                     </p>
-                    <p className="text-xs sm:text-sm text-gray-500 truncate">{apt.reason || 'General Consultation'}</p>
-                    <p className="text-xs sm:text-sm text-gray-600 mt-1">{formatDateTime(apt.appointmentDate)}</p>
+                    {apt.appointmentCode && (
+                      <p className="text-xs text-gray-400 mt-1">Code: {apt.appointmentCode}</p>
+                    )}
                   </div>
-                  <span className={`self-start sm:self-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap ${getStatusColor(apt.status)}`}>
-                    {apt.status}
-                  </span>
+                  {canCancelAppointment(apt) && (
+                    <button
+                      onClick={() => cancelAppointment(apt._id)}
+                      disabled={cancellingAppointment === apt._id}
+                      className="self-start px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {cancellingAppointment === apt._id ? 'Cancelling...' : 'Cancel'}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -686,6 +825,48 @@ export default function PatientPortalClient() {
                     <span className={`inline-block mt-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-medium ${getStatusColor(inv.paymentStatus || inv.status)}`}>
                       {inv.paymentStatus || inv.status}
                     </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+
+      case 'documents':
+        return documents.length === 0 ? (
+          <div className="text-center py-8 sm:py-12">
+            <svg className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-3 sm:mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p className="text-gray-500 text-sm sm:text-base">No documents found</p>
+            <p className="text-xs text-gray-400 mt-2">Your medical documents will appear here</p>
+          </div>
+        ) : (
+          <div className="space-y-3 sm:space-y-4">
+            {documents.map((doc) => (
+              <div key={doc._id} className="bg-gray-50 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-xl flex-shrink-0">
+                    {getDocumentIcon(doc.category)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-900 text-sm sm:text-base truncate">
+                      {doc.title}
+                    </p>
+                    {doc.description && (
+                      <p className="text-xs sm:text-sm text-gray-500 truncate mt-0.5">{doc.description}</p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <span className="px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded text-xs capitalize">
+                        {doc.category?.replace(/_/g, ' ')}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {formatFileSize(doc.size || 0)}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {formatDate(doc.uploadDate)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

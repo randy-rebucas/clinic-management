@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
+import Doctor from '@/models/Doctor';
 import Appointment from '@/models/Appointment';
 import Visit from '@/models/Visit';
 import Prescription from '@/models/Prescription';
 import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
+import Document from '@/models/Document';
+import Referral from '@/models/Referral';
 import logger from '@/lib/logger';
+
+// Ensure Doctor model is registered for populate calls
+void Doctor;
 
 /**
  * Get patient session data
@@ -127,6 +133,29 @@ export async function GET(request: NextRequest) {
         .limit(10)
         .lean();
       responseData.invoices = invoices;
+    }
+
+    if (include.includes('documents') || include.includes('all')) {
+      const documents = await Document.find({ 
+        patient: patient._id,
+        status: 'active',
+        isConfidential: { $ne: true } // Don't show confidential documents
+      })
+        .select('documentCode title description category documentType filename size uploadDate')
+        .sort({ uploadDate: -1 })
+        .limit(20)
+        .lean();
+      responseData.documents = documents;
+    }
+
+    if (include.includes('referrals') || include.includes('all')) {
+      const referrals = await Referral.find({ patient: patient._id })
+        .populate('referringDoctor', 'firstName lastName')
+        .populate('referredToDoctor', 'firstName lastName')
+        .sort({ referralDate: -1 })
+        .limit(10)
+        .lean();
+      responseData.referrals = referrals;
     }
 
     return NextResponse.json({
