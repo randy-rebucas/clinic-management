@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "install:setup": "tsx scripts/install.ts",
     "setup:admin": "tsx scripts/create-admin.ts",
     "seed": "tsx scripts/seed-data.ts"
   },

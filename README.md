@@ -96,6 +96,25 @@ The application features a modern sidebar navigation layout with:
 
 ### Installation
 
+#### Quick Install (Recommended)
+
+Run the automated installation script:
+
+```bash
+npm run install:setup
+```
+
+This script will:
+- ✅ Check Node.js version
+- ✅ Install dependencies
+- ✅ Create `.env.local` file from template
+- ✅ Validate environment variables
+- ✅ Test MongoDB connection
+- ✅ Optionally seed the database with sample data
+- ✅ Optionally create an admin user
+
+#### Manual Installation
+
 1. Clone or navigate to the project directory:
    ```bash
    cd clinic-management
@@ -107,7 +126,7 @@ The application features a modern sidebar navigation layout with:
    ```
 
 3. Set up environment variables:
-   - Copy `.env.example` to `.env.local`
+   - Copy `.env.example` to `.env.local` (or the install script will create it)
    - Update `MONGODB_URI` with your MongoDB connection string
    - Add `SESSION_SECRET` (generate with: `openssl rand -base64 32`)
    ```bash
@@ -459,8 +478,14 @@ Additional documentation is available in the `docs/` directory:
 ## Development
 
 ```bash
-# Create admin user (first time setup)
+# First time setup (automated installation)
+npm run install:setup
+
+# Create admin user (if not done during install)
 npm run setup:admin
+
+# Seed database with sample data (optional)
+npm run seed
 
 # Run development server (with Turbopack - faster)
 npm run dev

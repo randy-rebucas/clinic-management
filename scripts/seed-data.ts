@@ -659,29 +659,74 @@ async function seedDataScript() {
     console.log('🏥 Creating patients...');
     const patientsData = [
       {
-        firstName: 'John', lastName: 'Doe', email: 'john.doe@example.com', phone: '+1-555-0101',
-        dateOfBirth: new Date(1985, 5, 15), sex: 'male',
+        firstName: 'John', middleName: 'Michael', lastName: 'Doe', suffix: 'Jr.', 
+        email: 'john.doe@example.com', phone: '+1-555-0101',
+        dateOfBirth: new Date(1985, 5, 15), sex: 'male', civilStatus: 'married', 
+        nationality: 'US', occupation: 'Engineer',
         discountEligibility: { senior: { eligible: false }, pwd: { eligible: false } },
+        preExistingConditions: [
+          { condition: 'Hypertension', diagnosisDate: new Date(2020, 0, 1), status: 'chronic', notes: 'Controlled with medication' }
+        ],
+        socialHistory: { smoker: 'never', alcohol: 'social', drugs: 'none' },
+        immunizations: [
+          { name: 'COVID-19', date: new Date(2021, 5, 1), batch: 'PF-2021-001', notes: 'First dose' },
+          { name: 'COVID-19', date: new Date(2021, 6, 1), batch: 'PF-2021-002', notes: 'Second dose' }
+        ],
       },
       {
-        firstName: 'Jane', lastName: 'Smith', email: 'jane.smith@example.com', phone: '+1-555-0102',
-        dateOfBirth: new Date(1970, 3, 20), sex: 'female',
+        firstName: 'Jane', lastName: 'Smith', 
+        email: 'jane.smith@example.com', phone: '+1-555-0102',
+        dateOfBirth: new Date(1970, 3, 20), sex: 'female', civilStatus: 'widowed',
+        nationality: 'US', occupation: 'Teacher',
         discountEligibility: { senior: { eligible: true, idNumber: 'SEN-001' }, pwd: { eligible: false } },
+        identifiers: { philHealth: 'PH-123456', govId: 'SSN-789-45-6789' },
+        preExistingConditions: [
+          { condition: 'Diabetes Type 2', diagnosisDate: new Date(2015, 2, 10), status: 'chronic' }
+        ],
+        socialHistory: { smoker: 'former', alcohol: 'none', drugs: 'none', notes: 'Quit smoking in 2010' },
+        familyHistory: new Map([['diabetes', 'mother'], ['hypertension', 'father']]),
       },
       {
-        firstName: 'Michael', lastName: 'Johnson', email: 'michael.j@example.com', phone: '+1-555-0103',
-        dateOfBirth: new Date(1990, 8, 10), sex: 'male',
+        firstName: 'Michael', lastName: 'Johnson', 
+        email: 'michael.j@example.com', phone: '+1-555-0103',
+        dateOfBirth: new Date(1990, 8, 10), sex: 'male', civilStatus: 'single',
+        nationality: 'US', occupation: 'Software Developer',
         discountEligibility: { senior: { eligible: false }, pwd: { eligible: true, idNumber: 'PWD-001' } },
+        preExistingConditions: [
+          { condition: 'Asthma', diagnosisDate: new Date(2005, 0, 1), status: 'active' }
+        ],
+        allergies: [
+          { substance: 'Penicillin', reaction: 'Rash', severity: 'moderate' },
+          { substance: 'Dust', reaction: 'Sneezing', severity: 'mild' }
+        ],
+        socialHistory: { smoker: 'never', alcohol: 'social', drugs: 'none' },
       },
       {
-        firstName: 'Emily', lastName: 'Williams', email: 'emily.w@example.com', phone: '+1-555-0104',
-        dateOfBirth: new Date(2000, 1, 5), sex: 'female',
+        firstName: 'Emily', middleName: 'Rose', lastName: 'Williams', 
+        email: 'emily.w@example.com', phone: '+1-555-0104',
+        dateOfBirth: new Date(2000, 1, 5), sex: 'female', civilStatus: 'single',
+        nationality: 'US', occupation: 'Student',
         discountEligibility: { senior: { eligible: false }, pwd: { eligible: false } },
+        contacts: { phone: '+1-555-0104', email: 'emily.w@example.com' },
+        immunizations: [
+          { name: 'MMR', date: new Date(2001, 0, 1), notes: 'Childhood vaccination' },
+          { name: 'Hepatitis B', date: new Date(2001, 0, 1), notes: 'Childhood vaccination' }
+        ],
+        socialHistory: { smoker: 'never', alcohol: 'none', drugs: 'none' },
       },
       {
-        firstName: 'Robert', lastName: 'Brown', email: 'robert.b@example.com', phone: '+1-555-0105',
-        dateOfBirth: new Date(1965, 11, 25), sex: 'male',
+        firstName: 'Robert', lastName: 'Brown', 
+        email: 'robert.b@example.com', phone: '+1-555-0105',
+        dateOfBirth: new Date(1965, 11, 25), sex: 'male', civilStatus: 'married',
+        nationality: 'US', occupation: 'Retired',
         discountEligibility: { senior: { eligible: true, idNumber: 'SEN-002' }, pwd: { eligible: false } },
+        identifiers: { govId: 'SSN-123-45-6789' },
+        preExistingConditions: [
+          { condition: 'Arthritis', diagnosisDate: new Date(2010, 5, 1), status: 'chronic' },
+          { condition: 'High Cholesterol', diagnosisDate: new Date(2012, 8, 15), status: 'active' }
+        ],
+        socialHistory: { smoker: 'former', alcohol: 'social', drugs: 'none', notes: 'Quit smoking in 2005' },
+        familyHistory: new Map([['heart_disease', 'father'], ['cancer', 'mother']]),
       },
     ];
 
@@ -701,8 +746,8 @@ async function seedDataScript() {
           phone: `+1-555-${String(5000 + i).padStart(4, '0')}`,
           relationship: 'Spouse',
         },
-        medicalHistory: 'No significant medical history',
-        allergies: ['Penicillin'],
+        medicalHistory: i === 0 ? 'No significant medical history' : `Patient ${i + 1} medical history`,
+        allergies: pData.allergies || (i === 0 ? ['Penicillin'] : []),
         active: true,
       });
       seedData.patients.push(patient);
@@ -820,26 +865,37 @@ async function seedDataScript() {
     for (let i = 0; i < seedData.patients.length; i++) {
       const patient = seedData.patients[i];
       const doctor = seedData.doctors[i % seedData.doctors.length];
+      const doctorUser = doctorUsers[i % doctorUsers.length];
       const appointmentDate = new Date(today);
       appointmentDate.setDate(today.getDate() + (i + 1));
       appointmentDate.setHours(9 + (i * 2), 0, 0, 0);
 
+      // Use scheduledAt for some appointments, appointmentDate/appointmentTime for others
+      const useScheduledAt = i % 2 === 0;
+      const scheduledAt = new Date(appointmentDate);
+      scheduledAt.setMinutes(0, 0, 0);
+
       const appointment = await Appointment.create({
         patient: patient._id,
         doctor: doctor._id,
+        provider: doctorUser._id, // Also set provider (User reference)
         appointmentCode: `APT-${String(i + 1).padStart(6, '0')}`,
-        appointmentDate: appointmentDate,
-        appointmentTime: `${9 + (i * 2)}:00`,
-        scheduledAt: appointmentDate,
+        ...(useScheduledAt ? { scheduledAt } : { 
+          appointmentDate: new Date(appointmentDate.getFullYear(), appointmentDate.getMonth(), appointmentDate.getDate()),
+          appointmentTime: `${9 + (i * 2)}:00`
+        }),
         duration: 30,
-        status: i === 0 ? 'scheduled' : i === 1 ? 'confirmed' : 'pending',
-        reason: 'General checkup',
+        status: i === 0 ? 'scheduled' : i === 1 ? 'confirmed' : i === 2 ? 'rescheduled' : 'pending',
+        isWalkIn: i === 3, // Make one appointment a walk-in
+        queueNumber: i === 3 ? i + 1 : undefined,
+        estimatedWaitTime: i === 3 ? 15 : undefined,
+        reason: i === 3 ? 'Walk-in consultation' : 'General checkup',
         notes: `Appointment for ${patient.firstName} ${patient.lastName}`,
         createdBy: seedData.users[0]._id,
         room: seedData.rooms[i % seedData.rooms.length].name,
       });
       seedData.appointments.push(appointment);
-      console.log(`   ✓ Created appointment: ${appointment.appointmentCode}`);
+      console.log(`   ✓ Created appointment: ${appointment.appointmentCode}${appointment.isWalkIn ? ' (walk-in)' : ''}`);
     }
     console.log('✅ Appointments created\n');
 
@@ -858,33 +914,58 @@ async function seedDataScript() {
         visitCode: `VISIT-${String(i + 1).padStart(6, '0')}`,
         date: visitDate,
         provider: doctorUser._id, // Visit.provider is optional but should be set for proper reference
-        visitType: i === 0 ? 'consultation' : i === 1 ? 'follow-up' : 'checkup',
-        chiefComplaint: 'Routine checkup',
-        historyOfPresentIllness: 'Patient presents for routine examination',
+        visitType: i === 0 ? 'consultation' : i === 1 ? 'follow-up' : i === 2 ? 'emergency' : i === 3 ? 'teleconsult' : 'checkup',
+        chiefComplaint: i === 0 ? 'Routine checkup' : i === 1 ? 'Follow-up for diabetes management' : i === 2 ? 'Chest pain' : 'Annual physical',
+        historyOfPresentIllness: i === 0 ? 'Patient presents for routine examination' : i === 1 ? 'Patient returns for diabetes follow-up' : i === 2 ? 'Patient presents with acute chest pain' : 'Patient presents for annual physical examination',
         vitals: {
-          bp: '120/80',
+          bp: `${120 + (i * 5)}/${80 + (i * 2)}`,
           hr: 72 + (i * 2),
-          rr: 16,
+          rr: 16 + (i % 2),
           tempC: 36.5 + (i * 0.1),
-          spo2: 98,
+          spo2: 98 - (i % 2),
           heightCm: 170 + (i * 5),
           weightKg: 70 + (i * 3),
           bmi: 22 + (i * 0.5),
         },
         physicalExam: {
           general: 'Well-appearing',
-          cardiovascular: 'Regular rhythm',
-          abdomen: 'Soft, non-tender',
+          heent: 'Normal',
+          chest: 'Clear to auscultation',
+          cardiovascular: 'Regular rhythm, no murmurs',
+          abdomen: 'Soft, non-tender, non-distended',
+          neuro: 'Alert and oriented',
+          skin: 'No rashes or lesions',
         },
         diagnoses: [
-          { code: 'Z00.00', description: 'Encounter for general adult medical examination', primary: true },
+          { code: i === 0 ? 'Z00.00' : i === 1 ? 'E11.9' : i === 2 ? 'R06.02' : 'Z00.00', 
+            description: i === 0 ? 'Encounter for general adult medical examination' : i === 1 ? 'Type 2 diabetes mellitus without complications' : i === 2 ? 'Shortness of breath' : 'Encounter for general adult medical examination', 
+            primary: true },
         ],
         soapNotes: {
-          subjective: 'Patient reports feeling well',
-          objective: 'Vitals within normal limits',
-          assessment: 'Healthy individual',
-          plan: 'Continue routine care',
+          subjective: i === 0 ? 'Patient reports feeling well' : i === 1 ? 'Patient reports good glucose control, occasional fatigue' : i === 2 ? 'Patient reports sudden onset chest pain and shortness of breath' : 'Patient reports feeling healthy',
+          objective: `Vitals: BP ${120 + (i * 5)}/${80 + (i * 2)}, HR ${72 + (i * 2)}, Temp ${36.5 + (i * 0.1)}°C. Physical exam within normal limits.`,
+          assessment: i === 0 ? 'Healthy individual, no acute concerns' : i === 1 ? 'Type 2 diabetes, well-controlled' : i === 2 ? 'Acute chest pain, rule out cardiac event' : 'Healthy individual',
+          plan: i === 0 ? 'Continue routine care, annual screening' : i === 1 ? 'Continue current medications, monitor glucose levels' : i === 2 ? 'ECG ordered, cardiac enzymes, chest X-ray' : 'Continue routine care',
         },
+        treatmentPlan: {
+          medications: i > 0 ? [
+            { name: 'Metformin', dosage: '500mg', frequency: 'BID', duration: '30 days', instructions: 'Take with meals' }
+          ] : [],
+          procedures: i === 2 ? [
+            { name: 'ECG', description: '12-lead ECG to rule out cardiac event', scheduledDate: visitDate }
+          ] : [],
+          lifestyle: i === 1 ? [
+            { category: 'diet', instructions: 'Follow diabetic diet, limit carbohydrates' },
+            { category: 'exercise', instructions: '30 minutes of moderate exercise daily' }
+          ] : [],
+          followUp: i > 0 ? {
+            date: new Date(visitDate.getTime() + 30 * 24 * 60 * 60 * 1000), // 30 days later
+            instructions: 'Return for follow-up appointment',
+            reminderSent: false,
+          } : undefined,
+        },
+        followUpDate: i > 0 ? new Date(visitDate.getTime() + 30 * 24 * 60 * 60 * 1000) : undefined,
+        followUpReminderSent: false,
         prescriptions: [],
         labsOrdered: [],
         imagingOrdered: [],
@@ -892,9 +973,20 @@ async function seedDataScript() {
         status: 'closed',
       };
 
+      // Add digital signature for some visits
+      if (i === 0 || i === 1) {
+        visitData.digitalSignature = {
+          providerName: `Dr. ${doctor.firstName} ${doctor.lastName}`,
+          providerId: doctorUser._id,
+          signatureData: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', // Placeholder base64
+          signedAt: visitDate,
+          ipAddress: '192.168.1.100',
+        };
+      }
+
       const visit = await Visit.create(visitData);
       seedData.visits.push(visit);
-      console.log(`   ✓ Created visit: ${visit.visitCode}`);
+      console.log(`   ✓ Created visit: ${visit.visitCode} (${visit.visitType})`);
     }
     console.log('✅ Visits created\n');
 
@@ -1057,11 +1149,45 @@ async function seedDataScript() {
           type: 'senior',
           percentage: 20,
           amount: subtotal * 0.2,
-          appliedBy: invoiceAdminUser._id, // Invoice.discounts[].appliedBy is optional but set for proper reference
+          appliedBy: invoiceAdminUser._id,
+        });
+      }
+      if (patient.discountEligibility?.pwd?.eligible) {
+        discounts.push({
+          type: 'pwd',
+          percentage: 20,
+          amount: subtotal * 0.2,
+          appliedBy: invoiceAdminUser._id,
+        });
+      }
+      if (patient.discountEligibility?.membership?.eligible) {
+        discounts.push({
+          type: 'membership',
+          percentage: patient.discountEligibility.membership.discountPercentage || 10,
+          amount: subtotal * ((patient.discountEligibility.membership.discountPercentage || 10) / 100),
+          appliedBy: invoiceAdminUser._id,
         });
       }
       const discountAmount = discounts.reduce((sum, d) => sum + d.amount, 0);
-      const total = subtotal - discountAmount;
+      const tax = (subtotal - discountAmount) * 0.12; // 12% tax
+      const total = subtotal - discountAmount + tax;
+
+      // Add insurance for some invoices
+      const hasInsurance = i === 1 || i === 2;
+      const insurance = hasInsurance ? {
+        provider: i === 1 ? 'BlueCross BlueShield' : 'Aetna',
+        policyNumber: `POL-${String(1000 + i).padStart(6, '0')}`,
+        memberId: `MEM-${String(2000 + i).padStart(6, '0')}`,
+        coverageType: 'partial' as const,
+        coverageAmount: total * 0.8,
+        claimNumber: `CLAIM-${String(i + 1).padStart(6, '0')}`,
+        status: i === 1 ? 'approved' as const : 'pending' as const,
+        notes: 'Insurance claim submitted',
+      } : undefined;
+
+      const paymentMethods: Array<'cash' | 'gcash' | 'bank_transfer' | 'card' | 'check' | 'insurance' | 'hmo' | 'other'> = 
+        ['cash', 'gcash', 'card', 'bank_transfer', 'insurance'];
+      const paymentMethod = paymentMethods[i % paymentMethods.length];
 
       const invoice = await Invoice.create({
         patient: patient._id,
@@ -1069,7 +1195,7 @@ async function seedDataScript() {
         invoiceNumber: `INV-${String(i + 1).padStart(6, '0')}`,
         items: [
           {
-            serviceId: service._id, // Reference to Service model
+            serviceId: service._id,
             code: service.code,
             description: service.name,
             category: service.category,
@@ -1080,22 +1206,27 @@ async function seedDataScript() {
         ],
         subtotal: subtotal,
         discounts: discounts,
+        tax: tax,
         total: total,
         totalPaid: i < 2 ? total : total * 0.5,
         outstandingBalance: i < 2 ? 0 : total * 0.5,
         status: i < 2 ? 'paid' : 'partial',
-        createdBy: invoiceAdminUser._id, // Invoice.createdBy is optional but set for proper reference
+        insurance: insurance,
+        createdBy: invoiceAdminUser._id,
         payments: i < 2 ? [
           {
-            method: 'cash',
+            method: paymentMethod,
             amount: total,
             date: visit.date,
-            processedBy: invoiceAdminUser._id, // Invoice.payments[].processedBy is optional but set for proper reference
+            receiptNo: paymentMethod === 'cash' ? `RCP-${String(i + 1).padStart(6, '0')}` : undefined,
+            referenceNo: paymentMethod === 'gcash' || paymentMethod === 'bank_transfer' ? `REF-${String(i + 1).padStart(6, '0')}` : undefined,
+            processedBy: invoiceAdminUser._id,
+            notes: paymentMethod === 'insurance' ? 'Insurance payment processed' : undefined,
           },
         ] : [],
       });
       seedData.invoices.push(invoice);
-      console.log(`   ✓ Created invoice: ${invoice.invoiceNumber}`);
+      console.log(`   ✓ Created invoice: ${invoice.invoiceNumber} (${invoice.status}, ${paymentMethod})`);
     }
     console.log('✅ Invoices created\n');
 
@@ -1130,26 +1261,72 @@ async function seedDataScript() {
 
     // 21. Create Referrals
     console.log('🔄 Creating referrals...');
-    for (let i = 0; i < Math.min(2, seedData.patients.length); i++) {
+    for (let i = 0; i < Math.min(3, seedData.patients.length); i++) {
       const patient = seedData.patients[i];
-      const referringDoctor = seedData.doctors[i];
+      const referringDoctor = seedData.doctors[i % seedData.doctors.length];
       const receivingDoctor = seedData.doctors[(i + 1) % seedData.doctors.length];
+      const visit = i < seedData.visits.length ? seedData.visits[i] : null;
+      const appointment = i < seedData.appointments.length ? seedData.appointments[i] : null;
+
+      const referralTypes: Array<'doctor_to_doctor' | 'patient_to_patient' | 'external'> = 
+        ['doctor_to_doctor', 'doctor_to_doctor', 'external'];
+      const referralType = referralTypes[i];
+      const urgencies: Array<'routine' | 'urgent' | 'stat'> = ['routine', 'urgent', 'stat'];
+      const urgency = urgencies[i];
+      const statuses: Array<'pending' | 'accepted' | 'completed' | 'declined' | 'cancelled'> = 
+        ['pending', 'accepted', 'completed'];
+      const status = statuses[i];
+
+      const referredDate = new Date();
+      referredDate.setDate(referredDate.getDate() - (i + 1));
+      const acceptedDate = status === 'accepted' || status === 'completed' ? new Date(referredDate.getTime() + 24 * 60 * 60 * 1000) : undefined;
+      const completedDate = status === 'completed' ? new Date(acceptedDate!.getTime() + 7 * 24 * 60 * 60 * 1000) : undefined;
 
       const referral = await Referral.create({
         referralCode: `REF-${String(i + 1).padStart(6, '0')}`,
-        type: 'doctor_to_doctor',
-        referringDoctor: referringDoctor._id,
-        receivingDoctor: receivingDoctor._id,
+        type: referralType,
+        referringDoctor: referralType === 'doctor_to_doctor' ? referringDoctor._id : undefined,
+        receivingDoctor: referralType === 'doctor_to_doctor' ? receivingDoctor._id : undefined,
+        referringClinic: referralType === 'external' ? 'External Medical Center' : undefined,
+        referringContact: referralType === 'external' ? {
+          name: 'Dr. External Referrer',
+          phone: '+1-555-9999',
+          email: 'external@clinic.com',
+        } : undefined,
         patient: patient._id,
-        reason: 'Specialist consultation required',
-        urgency: 'routine',
-        specialty: 'Cardiology',
-        status: 'pending',
-        referredDate: new Date(),
+        reason: i === 0 ? 'Specialist consultation required for cardiac evaluation' : i === 1 ? 'Urgent specialist review needed' : 'External referral for advanced imaging',
+        urgency: urgency,
+        specialty: i === 0 ? 'Cardiology' : i === 1 ? 'Neurology' : 'Radiology',
+        notes: i === 0 ? 'Patient has history of chest pain, needs cardiac workup' : i === 1 ? 'Urgent neurological assessment required' : 'External imaging facility referral',
+        chiefComplaint: i === 0 ? 'Chest pain and shortness of breath' : i === 1 ? 'Severe headaches' : 'Advanced imaging required',
+        diagnosis: i === 0 ? 'Rule out cardiac event' : i === 1 ? 'Possible migraine, rule out other causes' : 'Imaging referral',
+        relevantHistory: i === 0 ? 'Patient has hypertension, family history of heart disease' : i === 1 ? 'Patient reports recurrent headaches for 3 months' : 'Previous imaging inconclusive',
+        medications: i === 0 ? ['Metformin', 'Lisinopril'] : i === 1 ? ['Ibuprofen'] : [],
+        attachments: i > 0 ? [
+          {
+            filename: `referral-doc-${i + 1}.pdf`,
+            url: `https://example.com/documents/referral-${i + 1}.pdf`,
+            uploadDate: referredDate,
+          }
+        ] : [],
+        status: status,
+        referredDate: referredDate,
+        acceptedDate: acceptedDate,
+        completedDate: completedDate,
+        visit: visit?._id,
+        appointment: appointment?._id,
         followUpRequired: true,
+        followUpDate: new Date(referredDate.getTime() + 14 * 24 * 60 * 60 * 1000), // 14 days later
+        followUpNotes: status === 'completed' ? 'Follow-up consultation completed successfully' : 'Follow-up appointment scheduled',
+        feedback: status === 'completed' ? {
+          rating: 5,
+          comments: 'Excellent referral process, timely and professional',
+          submittedBy: doctorUsers[i % doctorUsers.length]._id,
+          submittedAt: completedDate!,
+        } : undefined,
       });
       seedData.referrals.push(referral);
-      console.log(`   ✓ Created referral: ${referral.referralCode}`);
+      console.log(`   ✓ Created referral: ${referral.referralCode} (${referral.type}, ${referral.status})`);
     }
     console.log('✅ Referrals created\n');
 
@@ -1160,23 +1337,41 @@ async function seedDataScript() {
       const patient = seedData.patients[i];
       const doctor = seedData.doctors[i % seedData.doctors.length];
       const room = seedData.rooms[i % seedData.rooms.length];
+      const visit = i < seedData.visits.length ? seedData.visits[i] : null;
+
+      const queuedAt = new Date();
+      queuedAt.setHours(9 + i, 0, 0, 0);
+      const checkedInAt = i > 0 ? new Date(queuedAt.getTime() + 5 * 60 * 1000) : undefined; // 5 minutes after queued
+      const calledAt = i === 1 ? new Date(checkedInAt!.getTime() + 10 * 60 * 1000) : undefined; // 10 minutes after check-in
+      const startedAt = i === 1 ? new Date(calledAt!.getTime() + 2 * 60 * 1000) : undefined; // 2 minutes after called
+      const completedAt = i === 2 ? new Date(startedAt ? startedAt.getTime() + 20 * 60 * 1000 : queuedAt.getTime() + 30 * 60 * 1000) : undefined;
+
+      const checkInMethods: Array<'manual' | 'qr_code' | 'kiosk'> = ['manual', 'qr_code', 'kiosk'];
+      const checkInMethod = i > 0 ? checkInMethods[i % checkInMethods.length] : undefined;
 
       const queue = await Queue.create({
-        queueType: 'appointment',
+        queueType: appointment.isWalkIn ? 'walk-in' : 'appointment',
         patient: patient._id,
         patientName: `${patient.firstName} ${patient.lastName}`,
         appointment: appointment._id,
+        visit: visit?._id, // Link to visit if exists
         doctor: doctor._id,
-        room: room._id, // Queue.room is ObjectId reference to Room
-        status: i === 0 ? 'waiting' : i === 1 ? 'in-progress' : 'completed',
+        room: room._id,
+        status: i === 0 ? 'waiting' : i === 1 ? 'in-progress' : i === 2 ? 'completed' : 'waiting',
         priority: i,
         estimatedWaitTime: 15 + (i * 5),
-        queuedAt: new Date(),
+        queuedAt: queuedAt,
+        calledAt: calledAt,
+        startedAt: startedAt,
+        completedAt: completedAt,
         checkedIn: i > 0,
-        checkedInAt: i > 0 ? new Date() : undefined,
+        checkedInAt: checkedInAt,
+        checkInMethod: checkInMethod,
+        qrCode: checkInMethod === 'qr_code' ? `QR-${patient.patientCode}-${Date.now()}` : undefined,
+        notes: i === 1 ? 'Patient called, consultation in progress' : undefined,
       });
       seedData.queues.push(queue);
-      console.log(`   ✓ Created queue entry: ${queue.queueNumber}`);
+      console.log(`   ✓ Created queue entry: ${queue.queueNumber} (${queue.queueType}, ${queue.status})`);
     }
     console.log('✅ Queue entries created\n');
 
