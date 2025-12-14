@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Membership from '@/models/Membership';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function POST(
   request: NextRequest,
@@ -16,6 +18,11 @@ export async function POST(
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const { id } = await params;
     const body = await request.json();
     const { points, description, type, relatedEntity } = body;
@@ -27,7 +34,15 @@ export async function POST(
       );
     }
 
-    const membership = await Membership.findById(id);
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    const membership = await Membership.findOne(query);
     if (!membership) {
       return NextResponse.json(
         { success: false, error: 'Membership not found' },

@@ -18,8 +18,24 @@ export async function GET(
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const { getTenantContext } = await import('@/lib/tenant');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const { Types } = await import('mongoose');
+    
     const { id } = await params;
-    const patient = await Patient.findById(id);
+    
+    // Build query with tenant filter
+    const patientQuery: any = { _id: id };
+    if (tenantId) {
+      patientQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const patient = await Patient.findOne(patientQuery);
 
     if (!patient) {
       return NextResponse.json(
@@ -65,11 +81,18 @@ export async function GET(
       }
     }
 
-    // Check for unpaid balances
-    const unpaidInvoices = await Invoice.find({
+    // Check for unpaid balances (tenant-scoped)
+    const invoiceQuery: any = {
       patient: id,
       status: { $in: ['unpaid', 'partial'] },
-    });
+    };
+    if (tenantId) {
+      invoiceQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      invoiceQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const unpaidInvoices = await Invoice.find(invoiceQuery);
 
     if (unpaidInvoices.length > 0) {
       const totalUnpaid = unpaidInvoices.reduce((sum: number, invoice: any) => {

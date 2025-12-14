@@ -14,6 +14,9 @@ export type DocumentCategory =
 export type DocumentType = 'pdf' | 'image' | 'word' | 'excel' | 'other';
 
 export interface IDocument extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   // Document identification
   documentCode: string; // Unique document identifier
   title: string;
@@ -132,7 +135,14 @@ const LabResultMetadataSchema: Schema = new Schema(
 
 const DocumentSchema: Schema = new Schema(
   {
-    documentCode: { type: String, required: true, unique: true, index: true },
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
+    documentCode: { type: String, required: true, index: true },
     title: { type: String, required: true, trim: true, index: true },
     description: { type: String, trim: true },
     category: {
@@ -175,7 +185,6 @@ const DocumentSchema: Schema = new Schema(
       type: String,
       enum: ['active', 'archived', 'deleted'],
       default: 'active',
-      index: true,
     },
     isConfidential: { type: Boolean, default: false },
     notes: { type: String },
@@ -183,18 +192,19 @@ const DocumentSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Indexes for efficient queries
-DocumentSchema.index({ patient: 1, category: 1, status: 1 });
-DocumentSchema.index({ category: 1, status: 1 });
-DocumentSchema.index({ tags: 1 });
-DocumentSchema.index({ title: 'text', description: 'text', ocrText: 'text' }); // Full-text search
-DocumentSchema.index({ uploadDate: -1 });
-DocumentSchema.index({ expiryDate: 1 });
-DocumentSchema.index({ uploadedBy: 1 });
-DocumentSchema.index({ uploadedBy: 1, uploadDate: -1 }); // For uploader history
-DocumentSchema.index({ lastModifiedBy: 1 });
-DocumentSchema.index({ visit: 1, category: 1 }); // For visit-related documents
-DocumentSchema.index({ appointment: 1, category: 1 }); // For appointment-related documents
+// Indexes for efficient queries (tenant-scoped)
+DocumentSchema.index({ tenantId: 1, patient: 1, category: 1, status: 1 });
+DocumentSchema.index({ tenantId: 1, category: 1, status: 1 });
+DocumentSchema.index({ tenantId: 1, tags: 1 });
+DocumentSchema.index({ tenantId: 1, title: 'text', description: 'text', ocrText: 'text' }); // Full-text search
+DocumentSchema.index({ tenantId: 1, uploadDate: -1 });
+DocumentSchema.index({ tenantId: 1, expiryDate: 1 });
+DocumentSchema.index({ tenantId: 1, uploadedBy: 1 });
+DocumentSchema.index({ tenantId: 1, uploadedBy: 1, uploadDate: -1 }); // For uploader history
+DocumentSchema.index({ tenantId: 1, lastModifiedBy: 1 });
+DocumentSchema.index({ tenantId: 1, visit: 1, category: 1 }); // For visit-related documents
+DocumentSchema.index({ tenantId: 1, appointment: 1, category: 1 }); // For appointment-related documents
+DocumentSchema.index({ tenantId: 1, documentCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped document code
 
 // Pre-save hook to generate document code
 DocumentSchema.pre('save', async function (next) {

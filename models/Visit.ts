@@ -70,6 +70,9 @@ export interface IDigitalSignature {
 }
 
 export interface IVisit extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   patient: Types.ObjectId;
   visitCode: string;
   date: Date;
@@ -139,6 +142,13 @@ const PhysicalExamSchema: Schema = new Schema(
 
 const VisitSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
     visitCode: { type: String, required: true }, // clinic-specific code
     date: { type: Date, default: Date.now, index: true },
@@ -213,14 +223,14 @@ const VisitSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-VisitSchema.index({ patient: 1, date: -1 });
-VisitSchema.index({ provider: 1 });
-VisitSchema.index({ provider: 1, date: -1 }); // For provider's visit history
-VisitSchema.index({ status: 1, date: -1 }); // For status-based queries
-VisitSchema.index({ visitCode: 1 }); // For visit code lookups
-VisitSchema.index({ visitType: 1, date: -1 }); // For visit type queries
-VisitSchema.index({ date: 1, status: 1 }); // For date range + status queries (dashboard, period reports)
-VisitSchema.index({ patient: 1, status: 1 }); // For patient's visits by status
+VisitSchema.index({ tenantId: 1, patient: 1, date: -1 });
+VisitSchema.index({ tenantId: 1, provider: 1 });
+VisitSchema.index({ tenantId: 1, provider: 1, date: -1 }); // Tenant-scoped provider visit history
+VisitSchema.index({ tenantId: 1, status: 1, date: -1 }); // Tenant-scoped status queries
+VisitSchema.index({ tenantId: 1, visitCode: 1 }); // Tenant-scoped visit code lookups
+VisitSchema.index({ tenantId: 1, visitType: 1, date: -1 }); // Tenant-scoped visit type queries
+VisitSchema.index({ tenantId: 1, date: 1, status: 1 }); // Tenant-scoped date range + status queries
+VisitSchema.index({ tenantId: 1, patient: 1, status: 1 }); // Tenant-scoped patient visits by status
 
 // Pre-validate hook: if digitalSignature is provided (has any field), all required fields must be present
 VisitSchema.pre('validate', function(next) {

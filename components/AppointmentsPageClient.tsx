@@ -98,10 +98,13 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
       const patientExists = patients.some(p => p._id === patientId);
       if (patientExists) {
         const patient = patients.find(p => p._id === patientId);
+        const selectedDateStr = selectedDate.toISOString().split('T')[0];
+        const todayStr = new Date().toISOString().split('T')[0];
         setFormData(prev => ({
           ...prev,
           patient: patientId,
-          appointmentDate: selectedDate.toISOString().split('T')[0],
+          appointmentDate: selectedDateStr,
+          appointmentTime: selectedDateStr === todayStr ? getCurrentTime() : '',
         }));
         if (patient) {
           setSelectedPatient(patient);
@@ -369,6 +372,13 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
+  const getCurrentTime = () => {
+    const now = new Date();
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
   const getStatusColor = (status: string): 'green' | 'blue' | 'gray' | 'red' | 'yellow' | 'purple' | 'orange' => {
     switch (status) {
       case 'confirmed':
@@ -414,11 +424,13 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
 
   if (loading) {
     return (
-      <section className="py-12 px-4">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-3 min-h-[50vh] justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="text-gray-600">Loading appointments...</p>
+          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
+            <div className="relative">
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100 border-t-blue-600"></div>
+            </div>
+            <p className="text-gray-600 font-medium">Loading appointments...</p>
           </div>
         </div>
       </section>
@@ -429,120 +441,189 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   const walkInQueue = getWalkInQueue();
 
   return (
-    <section className="py-12 px-4">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
           {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md">
-              <p>{error}</p>
+            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-red-800 mb-1">Error</h3>
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
+              </div>
             </div>
           )}
           {success && (
-            <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-md">
-              <p>{success}</p>
+            <div className="bg-green-50 border-l-4 border-green-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-green-800 mb-1">Success</h3>
+                  <p className="text-sm text-green-700">{success}</p>
+                </div>
+              </div>
             </div>
           )}
 
           {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <div>
-              <h1 className="text-3xl font-bold mb-1">Appointments</h1>
-              <p className="text-sm text-gray-500">Manage appointments and walk-in queue</p>
-            </div>
-        <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={() => {
-              setFormData({ ...formData, isWalkIn: false, appointmentDate: selectedDate.toISOString().split('T')[0] });
-              setShowWalkInForm(false);
-              setShowForm(true);
-            }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
-          >
-            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            Schedule Appointment
-          </button>
-          <button
-            onClick={() => {
-              setFormData({ ...formData, isWalkIn: true, appointmentDate: new Date().toISOString().split('T')[0] });
-              setShowForm(false);
-              setShowWalkInForm(true);
-            }}
-            className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors flex items-center"
-          >
-            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Add Walk-In
-          </button>
-        </div>
-      </div>
-
-          {/* View Mode Tabs */}
-          <div className="bg-white border border-gray-200 rounded-lg">
-            <div className="border-b border-gray-200">
-              <div className="flex">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Appointments</h1>
+                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage appointments and walk-in queue</p>
+                </div>
+              </div>
+              <div className="flex gap-3 flex-wrap">
                 <button
-                  onClick={() => setViewMode('calendar')}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                    viewMode === 'calendar'
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-900'
-                  }`}
+                  onClick={() => {
+                    const selectedDateStr = selectedDate.toISOString().split('T')[0];
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    setFormData({ 
+                      ...formData, 
+                      isWalkIn: false, 
+                      appointmentDate: selectedDateStr,
+                      appointmentTime: selectedDateStr === todayStr ? getCurrentTime() : ''
+                    });
+                    setShowWalkInForm(false);
+                    setShowForm(true);
+                  }}
+                  className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center gap-2 text-sm font-semibold shadow-md"
                 >
-                  Calendar View
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Schedule Appointment
                 </button>
                 <button
-                  onClick={() => setViewMode('list')}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                    viewMode === 'list'
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-900'
-                  }`}
+                  onClick={() => {
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    setFormData({ 
+                      ...formData, 
+                      isWalkIn: true, 
+                      appointmentDate: todayStr,
+                      appointmentTime: getCurrentTime()
+                    });
+                    setShowForm(false);
+                    setShowWalkInForm(true);
+                  }}
+                  className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all flex items-center gap-2 text-sm font-semibold shadow-md"
                 >
-                  List View
-                </button>
-                <button
-                  onClick={() => setViewMode('queue')}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center ${
-                    viewMode === 'queue'
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-900'
-                  }`}
-                >
-                  Walk-In Queue
-                  {walkInQueue.length > 0 && (
-                    <span className="ml-1.5 px-2 py-0.5 bg-orange-600 text-white text-xs rounded-full">
-                      {walkInQueue.length}
-                    </span>
-                  )}
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Add Walk-In
                 </button>
               </div>
             </div>
-      </div>
+          </div>
+
+          {/* View Mode Tabs */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="border-b border-gray-200 bg-gray-50/50">
+              <div className="flex">
+                <button
+                  onClick={() => setViewMode('calendar')}
+                  className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all relative ${
+                    viewMode === 'calendar'
+                      ? 'text-blue-600 bg-white'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  {viewMode === 'calendar' && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-blue-600"></span>
+                  )}
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Calendar View
+                  </span>
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all relative ${
+                    viewMode === 'list'
+                      ? 'text-blue-600 bg-white'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  {viewMode === 'list' && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-blue-600"></span>
+                  )}
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                    List View
+                  </span>
+                </button>
+                <button
+                  onClick={() => setViewMode('queue')}
+                  className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center ${
+                    viewMode === 'queue'
+                      ? 'text-blue-600 bg-white'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  {viewMode === 'queue' && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-blue-600"></span>
+                  )}
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Walk-In Queue
+                    {walkInQueue.length > 0 && (
+                      <span className="ml-1 px-2 py-0.5 bg-orange-500 text-white text-xs rounded-full font-bold border border-orange-600">
+                        {walkInQueue.length}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
 
           {/* Calendar View */}
           {viewMode === 'calendar' && (
-            <div className="flex flex-col lg:flex-row gap-4">
-          <div className="flex-none w-[350px]">
+            <div className="flex flex-col lg:flex-row gap-6">
+          <div className="flex-none w-full lg:w-[380px]">
             <AppointmentCalendar
               appointments={appointments}
               selectedDate={selectedDate}
               onDateSelect={setSelectedDate}
             />
             {/* Filters */}
-            <div className="bg-white border border-gray-200 rounded-lg mt-4">
-              <div className="p-3">
-                <h3 className="text-lg font-semibold mb-3">Filters</h3>
-                <div className="flex flex-col gap-3">
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm mt-4">
+              <div className="p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-purple-500 rounded-lg">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">Filters</h3>
+                </div>
+                <div className="flex flex-col gap-4">
                   <div>
-                    <label className="block text-xs font-medium mb-1">Doctor</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Doctor</label>
                     <select
                       value={filterDoctor || ''}
                       onChange={(e) => setFilterDoctor(e.target.value === 'all' ? '' : e.target.value)}
-                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm transition-all bg-white"
                     >
                       <option value="all">All Doctors</option>
                       {doctors.map((doctor) => (
@@ -553,13 +634,13 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1">Room</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Room</label>
                     <input
                       type="text"
                       placeholder="Filter by room..."
                       value={filterRoom}
                       onChange={(e) => setFilterRoom(e.target.value)}
-                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm transition-all"
                     />
                   </div>
                   {(filterDoctor || filterRoom) && (
@@ -568,7 +649,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                         setFilterDoctor('');
                         setFilterRoom('');
                       }}
-                      className="w-full px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm"
+                      className="w-full px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
                     >
                       Clear Filters
                     </button>
@@ -578,91 +659,111 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
             </div>
           </div>
           <div className="flex-1">
-            <div className="bg-white border border-gray-200 rounded-lg">
-              <div className="p-3">
-                <h3 className="text-lg font-semibold mb-3">
-                  Appointments for {formatDate(selectedDate.toISOString())}
-                  {(filterDoctor || filterRoom) && (
-                    <span className="text-sm text-gray-500 ml-2">
-                      (Filtered{filterDoctor ? ' by doctor' : ''}{filterRoom ? ' by room' : ''})
-                    </span>
-                  )}
-                </h3>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+              <div className="p-5 sm:p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="p-2 bg-blue-500 rounded-lg">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">
+                      Appointments for {formatDate(selectedDate.toISOString())}
+                    </h3>
+                    {(filterDoctor || filterRoom) && (
+                      <p className="text-sm text-gray-600 mt-0.5">
+                        Filtered{filterDoctor ? ' by doctor' : ''}{filterRoom ? ' by room' : ''}
+                      </p>
+                    )}
+                  </div>
+                </div>
                 {selectedDateAppointments.length === 0 ? (
                   <div className="text-center py-12">
-                    <div className="mb-3">
-                      <svg className="w-12 h-12 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
                     </div>
-                    <p className="text-gray-500">No appointments scheduled for this date</p>
+                    <h3 className="text-lg font-bold text-gray-900 mb-2">No appointments scheduled</h3>
+                    <p className="text-sm text-gray-600">No appointments found for this date</p>
                   </div>
                 ) : (
                   <div className="flex flex-col gap-3">
                     {selectedDateAppointments.map((appointment) => (
-                      <div key={appointment._id} className="bg-white border border-gray-200 rounded-lg p-3">
+                      <div key={appointment._id} className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-blue-300 transition-all">
                         <div className="flex justify-between items-start gap-3">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2 flex-wrap">
-                              <span className={`px-2 py-0.5 text-xs rounded-full ${
-                                getStatusColor(appointment.status) === 'green' ? 'bg-green-100 text-green-800' :
-                                getStatusColor(appointment.status) === 'blue' ? 'bg-blue-100 text-blue-800' :
-                                getStatusColor(appointment.status) === 'red' ? 'bg-red-100 text-red-800' :
-                                getStatusColor(appointment.status) === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
-                                getStatusColor(appointment.status) === 'purple' ? 'bg-purple-100 text-purple-800' :
-                                getStatusColor(appointment.status) === 'orange' ? 'bg-orange-100 text-orange-800' :
-                                'bg-gray-100 text-gray-800'
+                            <div className="flex items-center gap-2 mb-3 flex-wrap">
+                              <span className={`px-2.5 py-1 text-xs rounded-full font-semibold border ${
+                                getStatusColor(appointment.status) === 'green' ? 'bg-green-100 text-green-700 border-green-200' :
+                                getStatusColor(appointment.status) === 'blue' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                getStatusColor(appointment.status) === 'red' ? 'bg-red-100 text-red-700 border-red-200' :
+                                getStatusColor(appointment.status) === 'yellow' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                                getStatusColor(appointment.status) === 'purple' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                getStatusColor(appointment.status) === 'orange' ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                                'bg-gray-100 text-gray-700 border-gray-200'
                               }`}>
                                 {appointment.status}
                               </span>
                               {appointment.isWalkIn && (
-                                <span className="px-2 py-0.5 bg-orange-100 text-orange-800 text-xs rounded-full">
+                                <span className="px-2.5 py-1 bg-orange-100 text-orange-700 text-xs rounded-full font-semibold border border-orange-200">
                                   Walk-In #{appointment.queueNumber}
                                 </span>
                               )}
                               {appointment.appointmentCode && (
-                                <span className="text-xs text-gray-500">#{appointment.appointmentCode}</span>
+                                <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full font-semibold border border-gray-200">
+                                  #{appointment.appointmentCode}
+                                </span>
                               )}
                             </div>
-                            <div className="text-sm font-bold mb-1">
+                            <div className="text-base font-bold text-gray-900 mb-2">
                               {appointment.patient.firstName} {appointment.patient.lastName}
                             </div>
-                            <div className="text-sm text-gray-500 mb-1">
+                            <div className="text-sm text-gray-600 mb-2 flex items-center gap-2">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
                               {appointment.doctor
                                 ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName} - ${appointment.doctor.specialization}`
                                 : appointment.provider
                                 ? appointment.provider.name
                                 : 'No provider assigned'}
                             </div>
-                            <div className="text-sm text-gray-500 mb-1">
+                            <div className="text-sm text-gray-600 mb-2 flex items-center gap-2">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
                               {formatTime(appointment.appointmentTime)} ({appointment.duration} min)
                               {appointment.room && (
-                                <span className="text-blue-600 ml-2">
+                                <span className="text-blue-600 ml-2 font-semibold">
                                   • Room: {appointment.room}
                                 </span>
                               )}
                             </div>
                             {appointment.reason && (
-                              <div className="text-sm text-gray-500 mt-1">Reason: {appointment.reason}</div>
+                              <div className="text-sm text-gray-600 mt-2 bg-white/50 p-2 rounded-lg border border-gray-200">
+                                <span className="font-semibold">Reason:</span> {appointment.reason}
+                              </div>
                             )}
                             {appointment.estimatedWaitTime && (
-                              <div className="text-xs text-orange-600 mt-1">
+                              <div className="text-xs text-orange-700 font-semibold mt-2 bg-orange-50 p-2 rounded-lg border border-orange-200">
                                 Estimated wait: {appointment.estimatedWaitTime} minutes
                               </div>
                             )}
                           </div>
-                          <div className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-2 flex-shrink-0">
                             {appointment.status === 'scheduled' && (
                               <>
                                 <button
                                   onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
-                                  className="px-2 py-1 bg-green-50 text-green-700 rounded-md hover:bg-green-100 transition-colors text-xs"
+                                  className="px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-xs font-semibold border border-green-200"
                                 >
                                   Confirm
                                 </button>
                                 <button
                                   onClick={() => handleStatusUpdate(appointment._id, 'cancelled')}
-                                  className="px-2 py-1 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors text-xs"
+                                  className="px-3 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors text-xs font-semibold border border-red-200"
                                 >
                                   Cancel
                                 </button>
@@ -672,13 +773,13 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                               <>
                                 <button
                                   onClick={() => handleStatusUpdate(appointment._id, 'completed')}
-                                  className="px-2 py-1 bg-gray-50 text-gray-700 rounded-md hover:bg-gray-100 transition-colors text-xs"
+                                  className="px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-xs font-semibold border border-gray-200"
                                 >
                                   Complete
                                 </button>
                                 <button
                                   onClick={() => handleStatusUpdate(appointment._id, 'no-show')}
-                                  className="px-2 py-1 bg-yellow-50 text-yellow-700 rounded-md hover:bg-yellow-100 transition-colors text-xs"
+                                  className="px-3 py-2 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 transition-colors text-xs font-semibold border border-yellow-200"
                                 >
                                   No-Show
                                 </button>
@@ -698,40 +799,46 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
 
           {/* List View */}
           {viewMode === 'list' && (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Patient</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Provider</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Date & Time</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
+                  <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Patient</th>
+                  <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Provider</th>
+                  <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Date & Time</th>
+                  <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                  <th className="px-5 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {appointments.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center">
-                      <p className="text-gray-500">No appointments found</p>
+                    <td colSpan={5} className="px-5 py-12 text-center">
+                      <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-bold text-gray-900 mb-2">No appointments found</h3>
+                      <p className="text-sm text-gray-600">Schedule an appointment to get started</p>
                     </td>
                   </tr>
                 ) : (
                   appointments.map((appointment) => (
-                    <tr key={appointment._id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="text-sm font-medium">
+                    <tr key={appointment._id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="text-sm font-bold text-gray-900">
                           {appointment.patient.firstName} {appointment.patient.lastName}
                         </div>
                         {appointment.isWalkIn && (
-                          <span className="inline-block mt-1 px-2 py-0.5 bg-orange-100 text-orange-800 text-xs rounded">
+                          <span className="inline-block mt-1.5 px-2.5 py-1 bg-orange-100 text-orange-700 text-xs rounded-full font-semibold border border-orange-200">
                             Walk-In #{appointment.queueNumber}
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm text-gray-500">
+                      <td className="px-5 py-4">
+                        <div className="text-sm text-gray-600">
                           {appointment.doctor
                             ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`
                             : appointment.provider
@@ -739,40 +846,40 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                             : 'N/A'}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm text-gray-500">
+                      <td className="px-5 py-4">
+                        <div className="text-sm text-gray-600">
                           {formatDate(appointment.appointmentDate)} at {formatTime(appointment.appointmentTime)}
                         </div>
                         {appointment.room && (
-                          <div className="text-xs text-blue-600 mt-1">Room: {appointment.room}</div>
+                          <div className="text-xs text-blue-600 mt-1 font-semibold">Room: {appointment.room}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 text-xs rounded-full ${
-                          getStatusColor(appointment.status) === 'green' ? 'bg-green-100 text-green-800' :
-                          getStatusColor(appointment.status) === 'blue' ? 'bg-blue-100 text-blue-800' :
-                          getStatusColor(appointment.status) === 'red' ? 'bg-red-100 text-red-800' :
-                          getStatusColor(appointment.status) === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
-                          getStatusColor(appointment.status) === 'purple' ? 'bg-purple-100 text-purple-800' :
-                          getStatusColor(appointment.status) === 'orange' ? 'bg-orange-100 text-orange-800' :
-                          'bg-gray-100 text-gray-800'
+                      <td className="px-5 py-4">
+                        <span className={`px-2.5 py-1 text-xs rounded-full font-semibold border ${
+                          getStatusColor(appointment.status) === 'green' ? 'bg-green-100 text-green-700 border-green-200' :
+                          getStatusColor(appointment.status) === 'blue' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                          getStatusColor(appointment.status) === 'red' ? 'bg-red-100 text-red-700 border-red-200' :
+                          getStatusColor(appointment.status) === 'yellow' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                          getStatusColor(appointment.status) === 'purple' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                          getStatusColor(appointment.status) === 'orange' ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                          'bg-gray-100 text-gray-700 border-gray-200'
                         }`}>
                           {appointment.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-5 py-4 text-right">
                         <div className="flex gap-2 justify-end">
                           {appointment.status === 'scheduled' && (
                             <>
                               <button
                                 onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
-                                className="px-2 py-1 text-green-700 hover:bg-green-50 rounded transition-colors text-xs"
+                                className="px-3 py-1.5 text-green-700 hover:bg-green-50 rounded-lg transition-colors text-xs font-semibold border border-green-200"
                               >
                                 Confirm
                               </button>
                               <button
                                 onClick={() => handleStatusUpdate(appointment._id, 'cancelled')}
-                                className="px-2 py-1 text-red-700 hover:bg-red-50 rounded transition-colors text-xs"
+                                className="px-3 py-1.5 text-red-700 hover:bg-red-50 rounded-lg transition-colors text-xs font-semibold border border-red-200"
                               >
                                 Cancel
                               </button>
@@ -782,13 +889,13 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                             <>
                               <button
                                 onClick={() => handleStatusUpdate(appointment._id, 'completed')}
-                                className="px-2 py-1 text-gray-700 hover:bg-gray-50 rounded transition-colors text-xs"
+                                className="px-3 py-1.5 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-xs font-semibold border border-gray-200"
                               >
                                 Complete
                               </button>
                               <button
                                 onClick={() => handleStatusUpdate(appointment._id, 'no-show')}
-                                className="px-2 py-1 text-yellow-700 hover:bg-yellow-50 rounded transition-colors text-xs"
+                                className="px-3 py-1.5 text-yellow-700 hover:bg-yellow-50 rounded-lg transition-colors text-xs font-semibold border border-yellow-200"
                               >
                                 No-Show
                               </button>
@@ -807,53 +914,61 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
 
           {/* Walk-In Queue View */}
           {viewMode === 'queue' && (
-            <div className="bg-white border border-gray-200 rounded-lg">
-              <div className="p-3">
-                <h2 className="text-xl font-semibold mb-3">Today&apos;s Walk-In Queue</h2>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+              <div className="p-5 sm:p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="p-2 bg-orange-500 rounded-lg">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-900">Today&apos;s Walk-In Queue</h2>
+                </div>
             {walkInQueue.length === 0 ? (
               <div className="text-center py-12">
-                <div className="mb-3">
-                  <svg className="w-12 h-12 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <p className="text-gray-500">No walk-in patients in queue</p>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">No walk-in patients in queue</h3>
+                <p className="text-sm text-gray-600">Walk-in patients will appear here</p>
               </div>
             ) : (
               <div className="flex flex-col gap-3">
                 {walkInQueue.map((appointment) => (
-                  <div key={appointment._id} className="bg-orange-50 border border-orange-300 rounded-lg p-3">
+                  <div key={appointment._id} className="bg-gradient-to-r from-orange-50 to-orange-100/50 border border-orange-200 rounded-xl p-4 hover:shadow-md transition-all">
                     <div className="flex justify-between items-center gap-3">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-4">
                         <div
-                          className="w-12 h-12 rounded-full bg-orange-600 flex items-center justify-center text-white text-lg font-bold"
+                          className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white text-lg font-bold shadow-md"
                         >
                           {appointment.queueNumber}
                         </div>
                         <div>
-                          <div className="text-sm font-bold">
+                          <div className="text-base font-bold text-gray-900">
                             {appointment.patient.firstName} {appointment.patient.lastName}
                           </div>
-                          <div className="text-xs text-gray-500">{appointment.patient.phone}</div>
+                          <div className="text-sm text-gray-600 mt-1">{appointment.patient.phone}</div>
                           {appointment.estimatedWaitTime && (
-                            <div className="text-xs text-orange-600 mt-1">
+                            <div className="text-xs text-orange-700 font-semibold mt-2 bg-white/50 px-2 py-1 rounded-lg border border-orange-200">
                               Est. wait: {appointment.estimatedWaitTime} minutes
                             </div>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 text-xs rounded-full ${
-                          getStatusColor(appointment.status) === 'red' ? 'bg-red-100 text-red-800' :
-                          getStatusColor(appointment.status) === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
-                          getStatusColor(appointment.status) === 'green' ? 'bg-green-100 text-green-800' :
-                          'bg-blue-100 text-blue-800'
+                        <span className={`px-2.5 py-1 text-xs rounded-full font-semibold border ${
+                          getStatusColor(appointment.status) === 'red' ? 'bg-red-100 text-red-700 border-red-200' :
+                          getStatusColor(appointment.status) === 'yellow' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                          getStatusColor(appointment.status) === 'green' ? 'bg-green-100 text-green-700 border-green-200' :
+                          'bg-blue-100 text-blue-700 border-blue-200'
                         }`}>
                           {appointment.status}
                         </span>
                         <button
                           onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
-                          className="px-2 py-1 bg-green-50 text-green-700 rounded-md hover:bg-green-100 transition-colors text-xs"
+                          className="px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-xs font-semibold border border-green-200"
                         >
                           Confirm
                         </button>
@@ -868,7 +983,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
           )}
 
           {/* Appointment Form Modal */}
-          <Modal open={showForm || showWalkInForm}           onOpenChange={(open) => {
+          <Modal open={showForm || showWalkInForm} onOpenChange={(open) => {
         if (!open) {
           setShowForm(false);
           setShowWalkInForm(false);
@@ -878,15 +993,31 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
           setFormData({ ...formData, patient: '' });
         }
       }} className="max-w-3xl">
-        <div className="p-6">
-          <h2 className="text-xl font-semibold mb-4">
-            {showWalkInForm ? 'Add Walk-In Patient' : 'Schedule Appointment'}
-          </h2>
+        <div className="p-6 sm:p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className={`p-2 rounded-lg ${showWalkInForm ? 'bg-orange-500' : 'bg-blue-500'}`}>
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {showWalkInForm ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                )}
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {showWalkInForm ? 'Add Walk-In Patient' : 'Schedule Appointment'}
+              </h2>
+              <p className="text-sm text-gray-600 mt-0.5">
+                {showWalkInForm ? 'Register a walk-in patient' : 'Create a new appointment'}
+              </p>
+            </div>
+          </div>
           <form onSubmit={handleSubmit}>
-            <div className="flex flex-col gap-3 mt-4">
-              <div className="flex flex-col md:flex-row gap-3">
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-col md:flex-row gap-4">
                 <div className="flex-1">
-                  <label className="block text-sm font-medium mb-1">Patient <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Patient <span className="text-red-500">*</span></label>
                   <div className="relative patient-search-container">
                     <input
                       type="text"
@@ -925,14 +1056,14 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                         }
                       }}
                       placeholder="Type to search patients..."
-                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                     />
                     {showPatientSearch && (
                       <div
-                        className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto"
+                        className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto"
                       >
                       {filteredPatients.length > 0 ? (
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-1 p-1">
                           {filteredPatients.map((patient, index) => (
                             <button
                               key={patient._id}
@@ -942,16 +1073,16 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                 setShowPatientSearch(false);
                               }}
                               onMouseEnter={() => setHighlightedIndex(index)}
-                              className={`w-full text-left px-3 py-2 rounded transition-colors ${
+                              className={`w-full text-left px-4 py-2.5 rounded-lg transition-colors ${
                                 highlightedIndex === index 
-                                  ? 'bg-blue-50 hover:bg-blue-100' 
-                                  : 'hover:bg-gray-100'
+                                  ? 'bg-blue-50 hover:bg-blue-100 border border-blue-200' 
+                                  : 'hover:bg-gray-50 border border-transparent'
                               }`}
                             >
                               <div className="flex flex-col">
-                                <span className="font-medium text-sm">{patient.firstName} {patient.lastName}</span>
+                                <span className="font-semibold text-sm text-gray-900">{patient.firstName} {patient.lastName}</span>
                                 {(patient.email || patient.phone) && (
-                                  <span className="text-xs text-gray-500 mt-0.5">
+                                  <span className="text-xs text-gray-600 mt-0.5">
                                     {patient.email && patient.phone 
                                       ? `${patient.email} • ${patient.phone}`
                                       : patient.email || patient.phone}
@@ -962,28 +1093,28 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                           ))}
                         </div>
                       ) : patientSearch.trim() ? (
-                        <div className="p-2">
-                          <p className="text-sm text-gray-500">No patients found</p>
+                        <div className="p-4 text-center">
+                          <p className="text-sm text-gray-600">No patients found</p>
                         </div>
                       ) : (
-                        <div className="p-2">
-                          <p className="text-sm text-gray-500">All patients ({patients.length})</p>
+                        <div className="p-4 text-center">
+                          <p className="text-sm text-gray-600">All patients ({patients.length})</p>
                         </div>
                       )}
                       </div>
                     )}
                   </div>
                   {formData.patient && !selectedPatient && (
-                    <p className="text-xs text-red-600 mt-1">Please select a valid patient from the list</p>
+                    <p className="text-xs text-red-600 mt-1.5 font-medium">Please select a valid patient from the list</p>
                   )}
                 </div>
                 <div className="flex-1">
-                  <label className="block text-sm font-medium mb-1">Doctor/Provider <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Doctor/Provider <span className="text-red-500">*</span></label>
                   <select
                     required
                     value={formData.doctor || ''}
                     onChange={(e) => setFormData({ ...formData, doctor: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                   >
                     <option value="">Select a doctor</option>
                     {doctors.map((doctor) => (
@@ -994,32 +1125,40 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                   </select>
                 </div>
               </div>
-              <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex flex-col md:flex-row gap-4">
                 <div className="flex-1">
-                  <label className="block text-sm font-medium mb-1">Date <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Date <span className="text-red-500">*</span></label>
                   <input
                     type="date"
                     required
                     value={formData.appointmentDate}
-                    onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value })}
+                    onChange={(e) => {
+                      const selectedDateStr = e.target.value;
+                      const todayStr = new Date().toISOString().split('T')[0];
+                      setFormData({ 
+                        ...formData, 
+                        appointmentDate: selectedDateStr,
+                        appointmentTime: selectedDateStr === todayStr && !formData.appointmentTime ? getCurrentTime() : formData.appointmentTime
+                      });
+                    }}
                     min={new Date().toISOString().split('T')[0]}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="block text-sm font-medium mb-1">Time <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Time <span className="text-red-500">*</span></label>
                   <input
                     type="time"
                     required
                     value={formData.appointmentTime}
                     onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                   />
                 </div>
               </div>
-              <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex flex-col md:flex-row gap-4">
                 <div className="flex-1">
-                  <label className="block text-sm font-medium mb-1">Duration (minutes)</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Duration (minutes)</label>
                   <input
                     type="number"
                     min="15"
@@ -1027,26 +1166,26 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                     step="15"
                     value={formData.duration}
                     onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 30 })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="block text-sm font-medium mb-1">Room (Optional)</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Room (Optional)</label>
                   <input
                     type="text"
                     value={formData.room}
                     onChange={(e) => setFormData({ ...formData, room: e.target.value })}
                     placeholder="e.g., Room 101, Consultation Room A"
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Status</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                 >
                   <option value="scheduled">Scheduled</option>
                   <option value="confirmed">Confirmed</option>
@@ -1054,25 +1193,25 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Reason</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Reason</label>
                 <input
                   type="text"
                   value={formData.reason}
                   onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                   placeholder="Appointment reason"
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Notes</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows={3}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white resize-none"
                 />
               </div>
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
                 <button
                   type="button"
                   onClick={() => {
@@ -1083,11 +1222,15 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                     setHighlightedIndex(-1);
                     setFormData({ ...formData, patient: '' });
                   }}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                  className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
                 >
                   Cancel
                 </button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                <button type="submit" className={`px-5 py-2.5 text-white rounded-lg transition-all text-sm font-semibold shadow-md ${
+                  showWalkInForm 
+                    ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
+                    : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
+                }`}>
                   {showWalkInForm ? 'Add Walk-In' : 'Schedule Appointment'}
                 </button>
               </div>

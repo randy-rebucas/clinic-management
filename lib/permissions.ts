@@ -67,8 +67,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
 
 /**
  * Get role name from role ID or role name
+ * @param roleIdOrName Role ID or role name
+ * @param tenantId Optional tenant ID for tenant-scoped role lookup
  */
-async function getRoleName(roleIdOrName: string | Types.ObjectId | undefined | null): Promise<RoleName | null> {
+async function getRoleName(roleIdOrName: string | Types.ObjectId | undefined | null, tenantId?: string | null): Promise<RoleName | null> {
   if (!roleIdOrName) return null;
   
   // If it's already a role name string, return it
@@ -78,7 +80,16 @@ async function getRoleName(roleIdOrName: string | Types.ObjectId | undefined | n
   
   try {
     await connectDB();
-    const role = await Role.findById(roleIdOrName).select('name').lean();
+    
+    // Build query with tenant filter if tenantId provided
+    const query: any = { _id: roleIdOrName };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const role = await Role.findOne(query).select('name').lean();
     if (!role || Array.isArray(role)) return null;
     return (role as any).name as RoleName;
   } catch (error) {
@@ -89,8 +100,10 @@ async function getRoleName(roleIdOrName: string | Types.ObjectId | undefined | n
 
 /**
  * Get user's permissions from database (role permissions + custom permissions)
+ * @param userId User ID
+ * @param tenantId Optional tenant ID for tenant-scoped permission lookup
  */
-export async function getUserPermissions(userId: string | Types.ObjectId): Promise<PermissionData[]> {
+export async function getUserPermissions(userId: string | Types.ObjectId, tenantId?: string | null): Promise<PermissionData[]> {
   try {
     await connectDB();
     
@@ -102,10 +115,39 @@ export async function getUserPermissions(userId: string | Types.ObjectId): Promi
       await import('@/models/Permission');
     }
     
-    // Get user with role and permissions
-    const user = await User.findById(userId)
-      .populate('role', 'name defaultPermissions permissions')
-      .populate('permissions', 'resource actions')
+    // Build query with tenant filter if tenantId provided
+    const userQuery: any = { _id: userId };
+    if (tenantId) {
+      userQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      userQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    // Build populate options with tenant filter
+    const rolePopulateOptions: any = {
+      path: 'role',
+      select: 'name defaultPermissions permissions',
+    };
+    if (tenantId) {
+      rolePopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      rolePopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const permissionPopulateOptions: any = {
+      path: 'permissions',
+      select: 'resource actions',
+    };
+    if (tenantId) {
+      permissionPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      permissionPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    // Get user with role and permissions (tenant-scoped)
+    const user = await User.findOne(userQuery)
+      .populate(rolePopulateOptions)
+      .populate(permissionPopulateOptions)
       .lean();
     
     if (!user || Array.isArray(user)) {
@@ -113,7 +155,7 @@ export async function getUserPermissions(userId: string | Types.ObjectId): Promi
     }
     
     const permissions: PermissionData[] = [];
-    const roleName = await getRoleName((user as any).role?._id || (user as any).role);
+    const roleName = await getRoleName((user as any).role?._id || (user as any).role, tenantId);
     
     // Get role-based permissions
     if ((user as any).role) {

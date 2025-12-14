@@ -129,52 +129,67 @@ export default function PatientNewClient() {
   };
 
   return (
-    <section className="py-12 px-4">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
           {/* Header */}
-          <div className="flex items-center gap-2">
-            <Link
-              href="/patients"
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold mb-1">New Patient</h1>
-              <p className="text-sm text-gray-600">Add a new patient to the system</p>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+            <div className="flex items-start gap-4">
+              <Link
+                href="/patients"
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </Link>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">New Patient</h1>
+                    <p className="text-sm sm:text-base text-gray-600 mt-1">Add a new patient to the system</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Error Message */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-start gap-2">
-                <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <div>
-                  <h3 className="text-sm font-medium text-red-800">Error</h3>
-                  <p className="text-sm text-red-700 mt-1">{error}</p>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-red-800 mb-1">Error</h3>
+                  <p className="text-sm text-red-700">{error}</p>
                 </div>
               </div>
             </div>
           )}
 
           {/* Form Card */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             {submitting ? (
-              <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '200px' }}>
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <p className="text-sm text-gray-600">Creating patient...</p>
+              <div className="flex flex-col items-center justify-center gap-4 p-12" style={{ minHeight: '300px' }}>
+                <div className="relative">
+                  <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div>
+                </div>
+                <p className="text-gray-600 font-medium">Creating patient...</p>
               </div>
             ) : (
-              <PatientForm
-                onSubmit={handleSubmit}
-                onCancel={handleCancel}
-              />
+              <div className="p-6 sm:p-8">
+                <PatientForm
+                  onSubmit={handleSubmit}
+                  onCancel={handleCancel}
+                />
+              </div>
             )}
           </div>
         </div>

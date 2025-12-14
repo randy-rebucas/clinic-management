@@ -119,17 +119,24 @@ export default function AppointmentCalendar({
   const days = getDaysInMonth(currentMonth);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="flex flex-col gap-4 p-4">
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+      <div className="flex flex-col gap-5 p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">
-            {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-          </h2>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-500 rounded-lg">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">
+              {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+            </h2>
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => navigateMonth('prev')}
               aria-label="Previous month"
-              className="p-1.5 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900 transition-colors"
+              className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900 transition-colors"
             >
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -137,14 +144,14 @@ export default function AppointmentCalendar({
             </button>
             <button
               onClick={goToToday}
-              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md text-xs font-medium transition-colors"
+              className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition-colors border border-blue-200"
             >
               Today
             </button>
             <button
               onClick={() => navigateMonth('next')}
               aria-label="Next month"
-              className="p-1.5 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900 transition-colors"
+              className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900 transition-colors"
             >
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -156,7 +163,7 @@ export default function AppointmentCalendar({
         <div className="grid grid-cols-7 gap-1 mb-2">
           {dayNames.map((day) => (
             <div key={day} className="text-center py-2">
-              <span className="text-xs font-medium text-gray-500">
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
                 {day}
               </span>
             </div>
@@ -175,28 +182,30 @@ export default function AppointmentCalendar({
                 key={index}
                 onClick={() => date && onDateSelect(date)}
                 disabled={!date}
-                className={`aspect-square p-1 relative transition-colors ${
+                className={`aspect-square p-1 relative transition-all ${
                   isSelected(date)
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-transparent hover:bg-gray-100 text-gray-700'
+                    ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md'
+                    : 'bg-transparent hover:bg-gray-50 text-gray-700'
                 } ${isPastDate ? 'opacity-50' : ''} ${
-                  isToday(date) && !isSelected(date) ? 'border-2 border-blue-600' : ''
-                } rounded disabled:opacity-0 disabled:cursor-default`}
+                  isToday(date) && !isSelected(date) ? 'ring-2 ring-blue-500 ring-offset-1' : ''
+                } rounded-lg disabled:opacity-0 disabled:cursor-default`}
               >
                 <div className="flex flex-col items-center justify-center gap-1 h-full">
                   <span
                     className={`text-sm ${
-                      isSelected(date) ? 'font-bold text-white' : 'font-normal text-gray-700'
+                      isSelected(date) ? 'font-bold text-white' : 'font-semibold text-gray-900'
                     }`}
                   >
                     {date?.getDate()}
                   </span>
                   {appointmentCount > 0 && (
                     <span
-                      className={`text-xs px-1.5 py-0.5 rounded mt-0.5 ${
+                      className={`text-xs px-1.5 py-0.5 rounded-full mt-0.5 font-semibold ${
                         hasWalkIn
-                          ? 'bg-orange-100 text-orange-700'
-                          : 'bg-blue-100 text-blue-700'
+                          ? 'bg-orange-100 text-orange-700 border border-orange-200'
+                          : isSelected(date)
+                          ? 'bg-white/20 text-white border border-white/30'
+                          : 'bg-blue-100 text-blue-700 border border-blue-200'
                       }`}
                     >
                       {appointmentCount}

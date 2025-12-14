@@ -4,6 +4,8 @@ import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { logDataAccess } from '@/lib/audit';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 /**
  * Patient portal - Get patient profile
@@ -18,6 +20,11 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
 
@@ -33,15 +40,27 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Find patient by email (or use patientId if provided and user has access)
+    // Find patient by email (or use patientId if provided and user has access) - tenant-scoped
     let patient;
     if (patientId) {
-      // Verify user has access to this patient
-      patient = await Patient.findById(patientId);
+      // Build query with tenant filter
+      const patientQuery: any = { _id: patientId };
+      if (tenantId) {
+        patientQuery.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      patient = await Patient.findOne(patientQuery);
       // In production, add permission check here
     } else {
-      // Find patient by user email
-      patient = await Patient.findOne({ email: user.email });
+      // Build query with tenant filter
+      const patientQuery: any = { email: user.email };
+      if (tenantId) {
+        patientQuery.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      patient = await Patient.findOne(patientQuery);
     }
 
     if (!patient) {
@@ -61,7 +80,8 @@ export async function GET(request: NextRequest) {
       patient._id.toString(),
       request.headers.get('x-forwarded-for') || undefined,
       request.headers.get('user-agent') || undefined,
-      request.nextUrl.pathname
+      request.nextUrl.pathname,
+      tenantId || patient.tenantId?.toString()
     );
 
     return NextResponse.json({ success: true, data: patient });

@@ -217,229 +217,283 @@ export default function DocumentUploadForm({
   return (
     <form onSubmit={handleSubmit}>
       <div className="max-h-[80vh] overflow-y-auto">
-        <div className="flex flex-col gap-3 p-4">
+        <div className="flex flex-col gap-6 p-4 sm:p-6">
           {/* File Upload */}
-          <div>
-            <label className="block text-xs font-medium mb-2">
-              File <span className="text-red-500">*</span>
-            </label>
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-purple-500 rounded-lg">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+              <label className="block text-sm font-bold text-gray-900">
+                File <span className="text-red-600">*</span>
+              </label>
+            </div>
             <input
               type="file"
               onChange={handleFileChange}
               required
-              className="w-full text-sm text-gray-700"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm bg-white"
             />
             {filePreview && (
-              <div className="mt-2">
+              <div className="mt-4 p-3 bg-white border border-purple-200 rounded-lg">
                 <img
                   src={filePreview}
                   alt="Preview"
-                  className="max-w-full h-32 object-contain border border-gray-300 rounded-md"
+                  className="max-w-full h-40 object-contain mx-auto"
                 />
               </div>
             )}
             {formData.file && !filePreview && (
-              <p className="text-xs text-gray-500 mt-2">
-                Selected: {formData.file.name} ({(formData.file.size / 1024).toFixed(2)} KB)
-              </p>
+              <div className="mt-4 p-3 bg-white border border-purple-200 rounded-lg">
+                <p className="text-sm font-medium text-gray-900">
+                  Selected: <span className="font-bold">{formData.file.name}</span> ({(formData.file.size / 1024).toFixed(2)} KB)
+                </p>
+              </div>
             )}
           </div>
 
-          {/* Title */}
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Title <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              required
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            />
-          </div>
+          {/* Basic Information */}
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-blue-500 rounded-lg">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Basic Information</h3>
+            </div>
+            <div className="flex flex-col gap-4">
+              {/* Title */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-2">
+                  Title <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  required
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+                />
+              </div>
 
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Description</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={2}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-vertical min-h-[40px]"
-            />
-          </div>
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-2">Description</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  rows={2}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y transition-all text-sm"
+                />
+              </div>
 
-          {/* Category */}
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Category <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              required
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            >
-              <option value="">Select category...</option>
-              {DOCUMENT_CATEGORIES.map((cat) => (
-                <option key={cat.value} value={cat.value}>
-                  {cat.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-      {/* Patient Selection */}
-      <div className="patient-search-container relative">
-        <label className="block text-xs font-medium mb-1">Patient (Optional)</label>
-        <div className="relative">
-          <input
-            type="text"
-            value={patientSearch}
-            onChange={(e) => {
-              setPatientSearch(e.target.value);
-              setShowPatientSearch(true);
-              if (!e.target.value) {
-                setFormData({ ...formData, patient: '' });
-                setSelectedPatient(null);
-              }
-            }}
-            onFocus={() => setShowPatientSearch(true)}
-            placeholder="Type to search patients..."
-            className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          />
-          {showPatientSearch && (
-            <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
-              {filteredPatients.length > 0 ? (
-                <div className="flex flex-col">
-                  {filteredPatients.map((patient) => (
-                    <button
-                      key={patient._id}
-                      type="button"
-                      onClick={() => {
-                        selectPatient(patient);
-                        setShowPatientSearch(false);
-                      }}
-                      className="w-full text-left px-3 py-2 hover:bg-gray-100 transition-colors flex flex-col items-start"
-                    >
-                      <span className="font-medium text-xs">{patient.firstName} {patient.lastName}</span>
-                      {patient.patientCode && (
-                        <span className="text-xs text-gray-600">{patient.patientCode}</span>
-                      )}
-                    </button>
+              {/* Category */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-2">
+                  Category <span className="text-red-600">*</span>
+                </label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  required
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                >
+                  <option value="">Select category...</option>
+                  {DOCUMENT_CATEGORIES.map((cat) => (
+                    <option key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </option>
                   ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Patient & Visit Selection */}
+          <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 border border-cyan-200 rounded-xl p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-cyan-500 rounded-lg">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Patient & Visit</h3>
+            </div>
+            <div className="flex flex-col gap-4">
+              {/* Patient Selection */}
+              <div className="patient-search-container relative">
+                <label className="block text-xs font-semibold text-gray-700 mb-2">Patient (Optional)</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={patientSearch}
+                    onChange={(e) => {
+                      setPatientSearch(e.target.value);
+                      setShowPatientSearch(true);
+                      if (!e.target.value) {
+                        setFormData({ ...formData, patient: '' });
+                        setSelectedPatient(null);
+                      }
+                    }}
+                    onFocus={() => setShowPatientSearch(true)}
+                    placeholder="Type to search patients..."
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none transition-all text-sm"
+                  />
+                  {showPatientSearch && (
+                    <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                      {filteredPatients.length > 0 ? (
+                        <div className="flex flex-col">
+                          {filteredPatients.map((patient) => (
+                            <button
+                              key={patient._id}
+                              type="button"
+                              onClick={() => {
+                                selectPatient(patient);
+                                setShowPatientSearch(false);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-cyan-50 transition-colors flex flex-col items-start rounded"
+                            >
+                              <span className="font-semibold text-sm text-gray-900">{patient.firstName} {patient.lastName}</span>
+                              {patient.patientCode && (
+                                <span className="text-xs text-gray-600">{patient.patientCode}</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      ) : patientSearch ? (
+                        <div className="p-2">
+                          <p className="text-xs text-gray-600">No patients found</p>
+                        </div>
+                      ) : (
+                        <div className="p-2">
+                          <p className="text-xs text-gray-600">Start typing to search...</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              ) : patientSearch ? (
-                <div className="p-2">
-                  <p className="text-xs text-gray-600">No patients found</p>
-                </div>
-              ) : (
-                <div className="p-2">
-                  <p className="text-xs text-gray-600">Start typing to search...</p>
+              </div>
+
+              {/* Visit Selection */}
+              {formData.patient && visits.length > 0 && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Visit (Optional)</label>
+                  <select
+                    value={formData.visit}
+                    onChange={(e) => setFormData({ ...formData, visit: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                  >
+                    <option value="">Select a visit...</option>
+                    {visits.map((visit) => (
+                      <option key={visit._id} value={visit._id}>
+                        {visit.visitCode} - {new Date(visit.date).toLocaleDateString()}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-          {/* Visit Selection */}
-          {formData.patient && visits.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium mb-2">Visit (Optional)</label>
-              <select
-                value={formData.visit}
-                onChange={(e) => setFormData({ ...formData, visit: e.target.value })}
-                className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-              >
-                <option value="">Select a visit...</option>
-                {visits.map((visit) => (
-                  <option key={visit._id} value={visit._id}>
-                    {visit.visitCode} - {new Date(visit.date).toLocaleDateString()}
-                  </option>
-                ))}
-              </select>
+          {/* Additional Information */}
+          <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-gray-500 rounded-lg">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Additional Information</h3>
             </div>
-          )}
+            <div className="flex flex-col gap-4">
+              {/* Tags */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-2">Tags (comma-separated)</label>
+                <input
+                  type="text"
+                  value={formData.tags}
+                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                  placeholder="e.g., urgent, follow-up, important"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all text-sm"
+                />
+              </div>
 
-          {/* Tags */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Tags (comma-separated)</label>
-            <input
-              type="text"
-              value={formData.tags}
-              onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-              placeholder="e.g., urgent, follow-up, important"
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            />
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-2">Notes</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  rows={2}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none resize-y transition-all text-sm"
+                />
+              </div>
+
+              {/* Scanned */}
+              <div className="flex items-center gap-3 p-3 bg-white/50 rounded-lg border border-gray-200">
+                <input
+                  type="checkbox"
+                  id="scanned"
+                  checked={formData.scanned}
+                  onChange={(e) => setFormData({ ...formData, scanned: e.target.checked })}
+                  className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                />
+                <label htmlFor="scanned" className="text-sm font-semibold text-gray-700 cursor-pointer">
+                  This is a scanned document
+                </label>
+              </div>
+            </div>
           </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Notes</label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              rows={2}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-vertical min-h-[40px]"
-            />
-          </div>
-
-      {/* Scanned */}
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="scanned"
-          checked={formData.scanned}
-          onChange={(e) => setFormData({ ...formData, scanned: e.target.checked })}
-          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-        />
-        <label htmlFor="scanned" className="text-xs cursor-pointer">
-          This is a scanned document
-        </label>
-      </div>
 
           {/* Category-specific fields */}
           {formData.category === 'referral' && (
-            <div>
-              <hr className="my-3 border-gray-200" />
-              <div className="flex flex-col gap-3 pt-3">
-                <h3 className="text-lg font-semibold">Referral Information</h3>
+            <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border border-amber-200 rounded-xl p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-amber-500 rounded-lg">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Referral Information</h3>
+              </div>
+              <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Referring Doctor</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referring Doctor</label>
                   <input
                     type="text"
                     value={formData.referringDoctor}
                     onChange={(e) => setFormData({ ...formData, referringDoctor: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Referring Clinic</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referring Clinic</label>
                   <input
                     type="text"
                     value={formData.referringClinic}
                     onChange={(e) => setFormData({ ...formData, referringClinic: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Referral Date</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referral Date</label>
                   <input
                     type="date"
                     value={formData.referralDate}
                     onChange={(e) => setFormData({ ...formData, referralDate: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Reason</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Reason</label>
                   <textarea
                     value={formData.referralReason}
                     onChange={(e) => setFormData({ ...formData, referralReason: e.target.value })}
                     rows={2}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-vertical min-h-[40px] text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none resize-y transition-all text-sm"
                   />
                 </div>
               </div>
@@ -447,45 +501,51 @@ export default function DocumentUploadForm({
           )}
 
           {formData.category === 'imaging' && (
-            <div>
-              <hr className="my-3 border-gray-200" />
-              <div className="flex flex-col gap-3 pt-3">
-                <h3 className="text-lg font-semibold">Imaging Information</h3>
+            <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 rounded-xl p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-indigo-500 rounded-lg">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Imaging Information</h3>
+              </div>
+              <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Modality</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Modality</label>
                   <input
                     type="text"
                     value={formData.modality}
                     onChange={(e) => setFormData({ ...formData, modality: e.target.value })}
                     placeholder="X-ray, CT, MRI, Ultrasound, etc."
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Body Part</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Body Part</label>
                   <input
                     type="text"
                     value={formData.bodyPart}
                     onChange={(e) => setFormData({ ...formData, bodyPart: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Study Date</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Study Date</label>
                   <input
                     type="date"
                     value={formData.studyDate}
                     onChange={(e) => setFormData({ ...formData, studyDate: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Radiologist</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Radiologist</label>
                   <input
                     type="text"
                     value={formData.radiologist}
                     onChange={(e) => setFormData({ ...formData, radiologist: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
               </div>
@@ -493,45 +553,51 @@ export default function DocumentUploadForm({
           )}
 
           {formData.category === 'medical_certificate' && (
-            <div>
-              <hr className="my-3 border-gray-200" />
-              <div className="flex flex-col gap-3 pt-3">
-                <h3 className="text-lg font-semibold">Medical Certificate Information</h3>
+            <div className="bg-gradient-to-br from-teal-50 to-teal-100/50 border border-teal-200 rounded-xl p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-teal-500 rounded-lg">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Medical Certificate Information</h3>
+              </div>
+              <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Issue Date</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Issue Date</label>
                   <input
                     type="date"
                     value={formData.issueDate}
                     onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Valid Until</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Valid Until</label>
                   <input
                     type="date"
                     value={formData.validUntil}
                     onChange={(e) => setFormData({ ...formData, validUntil: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Purpose</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Purpose</label>
                   <input
                     type="text"
                     value={formData.purpose}
                     onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
                     placeholder="Work, School, Travel, etc."
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Restrictions</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Restrictions</label>
                   <textarea
                     value={formData.restrictions}
                     onChange={(e) => setFormData({ ...formData, restrictions: e.target.value })}
                     rows={2}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-vertical min-h-[40px] text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none resize-y transition-all text-sm"
                   />
                 </div>
               </div>
@@ -539,35 +605,41 @@ export default function DocumentUploadForm({
           )}
 
           {formData.category === 'laboratory_result' && (
-            <div>
-              <hr className="my-3 border-gray-200" />
-              <div className="flex flex-col gap-3 pt-3">
-                <h3 className="text-lg font-semibold">Laboratory Result Information</h3>
+            <div className="bg-gradient-to-br from-rose-50 to-rose-100/50 border border-rose-200 rounded-xl p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-rose-500 rounded-lg">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Laboratory Result Information</h3>
+              </div>
+              <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Test Type</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Test Type</label>
                   <input
                     type="text"
                     value={formData.testType}
                     onChange={(e) => setFormData({ ...formData, testType: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Test Date</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Test Date</label>
                   <input
                     type="date"
                     value={formData.testDate}
                     onChange={(e) => setFormData({ ...formData, testDate: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Lab Name</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">Lab Name</label>
                   <input
                     type="text"
                     value={formData.labName}
                     onChange={(e) => setFormData({ ...formData, labName: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
               </div>
@@ -575,17 +647,16 @@ export default function DocumentUploadForm({
           )}
 
           {/* Form Actions */}
-          <div className="border-t border-gray-200 pt-3 mt-3">
-            <div className="flex justify-end gap-2">
-              {onCancel && (
-                <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors">
-                  Cancel
-                </button>
-              )}
-              <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
-                Upload Document
+          <hr className="border-gray-200" />
+          <div className="flex justify-end gap-3 pt-2">
+            {onCancel && (
+              <button type="button" onClick={onCancel} className="px-4 py-2.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-semibold border border-gray-200">
+                Cancel
               </button>
-            </div>
+            )}
+            <button type="submit" className="px-4 py-2.5 text-sm bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all font-semibold shadow-md">
+              Upload Document
+            </button>
           </div>
         </div>
       </div>

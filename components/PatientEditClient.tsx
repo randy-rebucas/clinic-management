@@ -216,11 +216,11 @@ export default function PatientEditClient({ patientId }: { patientId: string }) 
 
   if (loading) {
     return (
-      <section className="py-12 px-4">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col gap-4">
-            <div className="h-10 w-[300px] bg-gray-200 rounded animate-pulse"></div>
-            <div className="h-[400px] bg-gray-200 rounded animate-pulse"></div>
+            <div className="h-16 w-[300px] bg-gray-200 rounded-xl animate-pulse"></div>
+            <div className="h-[400px] bg-gray-200 rounded-xl animate-pulse"></div>
           </div>
         </div>
       </section>
@@ -229,19 +229,19 @@ export default function PatientEditClient({ patientId }: { patientId: string }) 
 
   if (error) {
     return (
-      <section className="py-12 px-4">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <div className="flex items-start gap-2">
-              <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+          <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-6 shadow-sm">
+            <div className="flex items-start gap-3">
+              <svg className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <div>
-                <h3 className="text-sm font-medium text-red-800">Error</h3>
-                <p className="text-sm text-red-700 mt-1">{error}</p>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-red-800 mb-2">Error</h3>
+                <p className="text-sm text-red-700 mb-4">{error}</p>
                 <button
                   onClick={handleCancel}
-                  className="mt-3 text-sm text-red-600 hover:text-red-800 underline"
+                  className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-semibold"
                 >
                   ← Back to Patient
                 </button>
@@ -255,13 +255,18 @@ export default function PatientEditClient({ patientId }: { patientId: string }) 
 
   if (!patient) {
     return (
-      <section className="py-12 px-4">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: '50vh' }}>
-            <h2 className="text-2xl font-semibold">Patient not found</h2>
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-4">
+              <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900">Patient not found</h2>
             <Link
               href="/patients"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
             >
               Back to Patients
             </Link>
@@ -320,53 +325,68 @@ export default function PatientEditClient({ patientId }: { patientId: string }) 
     .join(' ');
 
   return (
-    <section className="py-12 px-4">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
           {/* Header */}
-          <div className="flex items-center gap-2">
-            <Link
-              href={`/patients/${patientId}`}
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold mb-1">Edit Patient</h1>
-              <p className="text-sm text-gray-600">{fullName}</p>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+            <div className="flex items-start gap-4">
+              <Link
+                href={`/patients/${patientId}`}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </Link>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-md">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Edit Patient</h1>
+                    <p className="text-sm sm:text-base text-gray-600 mt-1">{fullName}</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Error Message */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-start gap-2">
-                <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <div>
-                  <h3 className="text-sm font-medium text-red-800">Error</h3>
-                  <p className="text-sm text-red-700 mt-1">{error}</p>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-red-800 mb-1">Error</h3>
+                  <p className="text-sm text-red-700">{error}</p>
                 </div>
               </div>
             </div>
           )}
 
           {/* Form Card */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             {submitting ? (
-              <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '200px' }}>
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <p className="text-sm text-gray-600">Updating patient...</p>
+              <div className="flex flex-col items-center justify-center gap-4 p-12" style={{ minHeight: '300px' }}>
+                <div className="relative">
+                  <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div>
+                </div>
+                <p className="text-gray-600 font-medium">Updating patient...</p>
               </div>
             ) : (
-              <PatientForm
-                initialData={initialData}
-                onSubmit={handleSubmit}
-                onCancel={handleCancel}
-              />
+              <div className="p-6 sm:p-8">
+                <PatientForm
+                  initialData={initialData}
+                  onSubmit={handleSubmit}
+                  onCancel={handleCancel}
+                />
+              </div>
             )}
           </div>
         </div>

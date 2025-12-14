@@ -4,6 +4,9 @@ export type QueueStatus = 'waiting' | 'in-progress' | 'completed' | 'cancelled' 
 export type QueueType = 'appointment' | 'walk-in' | 'follow-up';
 
 export interface IQueue extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   // Queue identification
   queueNumber: string; // Display number (e.g., "A001", "W005")
   queueType: QueueType;
@@ -46,7 +49,14 @@ export interface IQueue extends Document {
 
 const QueueSchema: Schema = new Schema(
   {
-    queueNumber: { type: String, unique: true, index: true }, // Auto-generated in pre-validate hook
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
+    queueNumber: { type: String }, // Auto-generated in pre-validate hook, indexed via compound index below
     queueType: {
       type: String,
       enum: ['appointment', 'walk-in', 'follow-up'],
@@ -82,12 +92,13 @@ const QueueSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Indexes for efficient queue queries
-QueueSchema.index({ status: 1, priority: 1, queuedAt: 1 }); // For queue display
-QueueSchema.index({ doctor: 1, status: 1, priority: 1 });
-QueueSchema.index({ room: 1, status: 1 });
-QueueSchema.index({ checkedIn: 1, status: 1 });
-QueueSchema.index({ qrCode: 1 });
+// Indexes for efficient queue queries (tenant-scoped)
+QueueSchema.index({ tenantId: 1, status: 1, priority: 1, queuedAt: 1 }); // For queue display
+QueueSchema.index({ tenantId: 1, doctor: 1, status: 1, priority: 1 });
+QueueSchema.index({ tenantId: 1, room: 1, status: 1 });
+QueueSchema.index({ tenantId: 1, checkedIn: 1, status: 1 });
+QueueSchema.index({ tenantId: 1, qrCode: 1 });
+QueueSchema.index({ tenantId: 1, queueNumber: 1 }, { unique: true, sparse: true }); // Tenant-scoped queue number
 
 // Pre-validate hook to generate queue number (runs before validation)
 QueueSchema.pre('validate', async function (next) {

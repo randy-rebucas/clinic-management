@@ -13,6 +13,9 @@ export type NotificationType =
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 export interface INotification extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   user: Types.ObjectId; // User who should receive the notification
   type: NotificationType;
   priority: NotificationPriority;
@@ -40,6 +43,13 @@ export interface INotification extends Document {
 
 const NotificationSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     type: {
       type: String,
@@ -71,10 +81,10 @@ const NotificationSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Indexes for efficient queries
-NotificationSchema.index({ user: 1, read: 1, createdAt: -1 });
-NotificationSchema.index({ user: 1, type: 1, read: 1 });
-NotificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // Auto-delete expired notifications
+// Indexes for efficient queries (tenant-scoped)
+NotificationSchema.index({ tenantId: 1, user: 1, read: 1, createdAt: -1 });
+NotificationSchema.index({ tenantId: 1, user: 1, type: 1, read: 1 });
+NotificationSchema.index({ tenantId: 1, expiresAt: 1 }, { expireAfterSeconds: 0 }); // Auto-delete expired notifications
 
 export default mongoose.models.Notification || mongoose.model<INotification>('Notification', NotificationSchema);
 

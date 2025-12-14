@@ -1,6 +1,9 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IAppointment extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   // Patient reference (required)
   patient: Types.ObjectId;
   
@@ -41,6 +44,13 @@ export interface IAppointment extends Document {
 
 const AppointmentSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     // Patient reference (required)
     patient: {
       type: Schema.Types.ObjectId,
@@ -64,8 +74,7 @@ const AppointmentSchema: Schema = new Schema(
     // Appointment identification
     appointmentCode: {
       type: String,
-      index: true,
-      unique: true,
+      unique: true, // unique: true automatically creates an index
       sparse: true, // Allow null/undefined values
       trim: true,
     },
@@ -141,23 +150,23 @@ const AppointmentSchema: Schema = new Schema(
   }
 );
 
-// Indexes for efficient queries
-AppointmentSchema.index({ appointmentDate: 1, appointmentTime: 1 });
+// Indexes for efficient queries (tenant-scoped)
+AppointmentSchema.index({ tenantId: 1, appointmentDate: 1, appointmentTime: 1 });
 // scheduledAt is already indexed inline (index: true)
-AppointmentSchema.index({ doctor: 1, appointmentDate: 1 });
-AppointmentSchema.index({ provider: 1, scheduledAt: 1 });
-AppointmentSchema.index({ patient: 1, status: 1 });
-AppointmentSchema.index({ status: 1 });
-AppointmentSchema.index({ room: 1, appointmentDate: 1, appointmentTime: 1 });
-AppointmentSchema.index({ doctor: 1 }); // For doctor lookups
-AppointmentSchema.index({ provider: 1 }); // For provider lookups
-AppointmentSchema.index({ createdBy: 1 }); // For audit queries
-AppointmentSchema.index({ patient: 1, createdAt: -1 }); // For patient history
-AppointmentSchema.index({ status: 1, scheduledAt: 1 }); // For status-based date queries
-AppointmentSchema.index({ appointmentDate: 1, status: 1 }); // For date + status queries (dashboard, today's appointments)
-AppointmentSchema.index({ isWalkIn: 1, appointmentDate: 1 }); // For walk-in queries
-AppointmentSchema.index({ room: 1, status: 1 }); // For room-based status queries
-AppointmentSchema.index({ patient: 1, appointmentDate: -1 }); // For patient appointment history by date
+AppointmentSchema.index({ tenantId: 1, doctor: 1, appointmentDate: 1 });
+AppointmentSchema.index({ tenantId: 1, provider: 1, scheduledAt: 1 });
+AppointmentSchema.index({ tenantId: 1, patient: 1, status: 1 });
+AppointmentSchema.index({ tenantId: 1, status: 1 });
+AppointmentSchema.index({ tenantId: 1, room: 1, appointmentDate: 1, appointmentTime: 1 });
+AppointmentSchema.index({ tenantId: 1, doctor: 1 }); // Tenant-scoped doctor lookups
+AppointmentSchema.index({ tenantId: 1, provider: 1 }); // Tenant-scoped provider lookups
+AppointmentSchema.index({ tenantId: 1, createdBy: 1 }); // Tenant-scoped audit queries
+AppointmentSchema.index({ tenantId: 1, patient: 1, createdAt: -1 }); // Tenant-scoped patient history
+AppointmentSchema.index({ tenantId: 1, status: 1, scheduledAt: 1 }); // Tenant-scoped status-based date queries
+AppointmentSchema.index({ tenantId: 1, appointmentDate: 1, status: 1 }); // Tenant-scoped date + status queries
+AppointmentSchema.index({ tenantId: 1, isWalkIn: 1, appointmentDate: 1 }); // Tenant-scoped walk-in queries
+AppointmentSchema.index({ tenantId: 1, room: 1, status: 1 }); // Tenant-scoped room-based status queries
+AppointmentSchema.index({ tenantId: 1, patient: 1, appointmentDate: -1 }); // Tenant-scoped patient appointment history
 
 // Virtual for computed scheduledAt from appointmentDate + appointmentTime
 AppointmentSchema.virtual('computedScheduledAt').get(function (this: IAppointment) {

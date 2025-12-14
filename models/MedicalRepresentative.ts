@@ -2,6 +2,9 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 export interface IMedicalRepresentative extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   firstName: string;
   lastName: string;
   email: string;
@@ -56,6 +59,13 @@ export interface IMedicalRepresentative extends Document {
 
 const MedicalRepresentativeSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     firstName: {
       type: String,
       required: [true, 'First name is required'],
@@ -69,7 +79,6 @@ const MedicalRepresentativeSchema: Schema = new Schema(
     email: {
       type: String,
       required: [true, 'Email is required'],
-      unique: true,
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
@@ -136,11 +145,11 @@ const MedicalRepresentativeSchema: Schema = new Schema(
   }
 );
 
-// Indexes for efficient queries
-MedicalRepresentativeSchema.index({ email: 1 }); // Additional index (unique already creates one)
-MedicalRepresentativeSchema.index({ company: 1, status: 1 }); // For company-based queries
-MedicalRepresentativeSchema.index({ status: 1 }); // For status-based queries
-MedicalRepresentativeSchema.index({ createdAt: -1 }); // For sorting by creation date
+// Indexes for efficient queries (tenant-scoped)
+MedicalRepresentativeSchema.index({ tenantId: 1, email: 1 }, { unique: true, sparse: true }); // Tenant-scoped unique email
+MedicalRepresentativeSchema.index({ tenantId: 1, company: 1, status: 1 }); // For company-based queries
+MedicalRepresentativeSchema.index({ tenantId: 1, status: 1 }); // For status-based queries
+MedicalRepresentativeSchema.index({ tenantId: 1, createdAt: -1 }); // For sorting by creation date
 
 // Register MedicalRepresentative model immediately after schema definition
 if (!mongoose.models.MedicalRepresentative) {

@@ -16,10 +16,25 @@ export async function POST(
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const { getTenantContext } = await import('@/lib/tenant');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const { Types } = await import('mongoose');
+    
     const { id } = await params;
     const body = await request.json();
 
-    const prescription = await Prescription.findById(id);
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    const prescription = await Prescription.findOne(query);
     if (!prescription) {
       return NextResponse.json(
         { success: false, error: 'Prescription not found' },
@@ -60,8 +75,30 @@ export async function POST(
     }
 
     await prescription.save();
-    await prescription.populate('patient', 'firstName lastName patientCode');
-    await prescription.populate('prescribedBy', 'name email');
+    
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const prescribedByPopulateOptions: any = {
+      path: 'prescribedBy',
+      select: 'name email',
+    };
+    if (tenantId) {
+      prescribedByPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      prescribedByPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await prescription.populate(patientPopulateOptions);
+    await prescription.populate(prescribedByPopulateOptions);
 
     return NextResponse.json({ success: true, data: prescription });
   } catch (error: any) {

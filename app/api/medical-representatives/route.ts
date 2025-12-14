@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import { MedicalRepresentative, User } from '@/models';
 import { verifySession } from '@/app/lib/dal';
 import { isAdmin } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 // GET /api/medical-representatives - Get all medical representatives
 export async function GET(request: NextRequest) {
@@ -13,6 +15,10 @@ export async function GET(request: NextRequest) {
     }
 
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
@@ -24,14 +30,35 @@ export async function GET(request: NextRequest) {
 
     // Build query
     const query: any = {};
+    
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
     if (status) query.status = status;
     if (company) query['company.name'] = { $regex: company, $options: 'i' };
     if (search) {
-      query.$or = [
+      const searchConditions = [
         { firstName: { $regex: search, $options: 'i' } },
         { lastName: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
         { 'company.name': { $regex: search, $options: 'i' } },
+      ];
+      
+      // Combine tenant filter with search conditions
+      const tenantFilter: any = {};
+      if (tenantId) {
+        tenantFilter.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      query.$and = [
+        tenantFilter,
+        { $or: searchConditions }
       ];
     }
 
@@ -98,13 +125,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Medical representative with this email already exists' }, { status: 400 });
     }
 
-    // Generate rep code
-    const count = await MedicalRepresentative.countDocuments();
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Generate rep code (tenant-scoped)
+    const countQuery: any = {};
+    if (tenantId) {
+      countQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      countQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    const count = await MedicalRepresentative.countDocuments(countQuery);
     const repCode = `MR-${String(count + 1).padStart(4, '0')}`;
 
     // Create medical representative
     // The post-save hook will automatically create the User account
-    const representative = await MedicalRepresentative.create({
+    const repData: any = {
       repCode,
       firstName,
       lastName,
@@ -115,7 +152,14 @@ export async function POST(request: NextRequest) {
       products: products || [],
       notes,
       status: 'active',
-    });
+    };
+    
+    // Ensure medical representative is created with tenantId
+    if (tenantId && !repData.tenantId) {
+      repData.tenantId = new Types.ObjectId(tenantId);
+    }
+    
+    const representative = await MedicalRepresentative.create(repData);
 
     // Populate userId to return the full data
     await representative.populate('userId', 'name email status');

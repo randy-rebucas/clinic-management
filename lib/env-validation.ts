@@ -11,6 +11,7 @@ interface EnvConfig {
 const envConfig: EnvConfig = {
   required: ['MONGODB_URI', 'SESSION_SECRET'],
   optional: [
+    'ROOT_DOMAIN', // Root domain for multi-tenant subdomain detection (e.g., 'example.com' or 'localhost')
     'TWILIO_ACCOUNT_SID',
     'TWILIO_AUTH_TOKEN',
     'TWILIO_PHONE_NUMBER',

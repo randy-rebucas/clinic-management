@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
+import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -19,12 +22,25 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
     const visitId = searchParams.get('visitId');
     const status = searchParams.get('status');
 
     let query: any = {};
+    
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
     if (patientId) {
       query.patient = patientId;
     }
@@ -35,8 +51,19 @@ export async function GET(request: NextRequest) {
       query.status = status;
     }
 
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode email phone',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
     const labResults = await LabResult.find(query)
-      .populate('patient', 'firstName lastName patientCode email phone')
+      .populate(patientPopulateOptions)
       .populate('visit', 'visitCode date')
       .populate('orderedBy', 'name email')
       .populate('reviewedBy', 'name email')
@@ -68,9 +95,35 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Validate that the patient belongs to the tenant
+    if (body.patient && tenantId) {
+      const patientQuery: any = {
+        _id: body.patient,
+        tenantId: new Types.ObjectId(tenantId),
+      };
+      const patient = await Patient.findOne(patientQuery);
+      if (!patient) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
+          { status: 400 }
+        );
+      }
+    }
 
-    // Auto-generate request code
-    const lastLabResult = await LabResult.findOne({ requestCode: { $exists: true, $ne: null } })
+    // Auto-generate request code (tenant-scoped)
+    const codeQuery: any = { requestCode: { $exists: true, $ne: null } };
+    if (tenantId) {
+      codeQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const lastLabResult = await LabResult.findOne(codeQuery)
       .sort({ requestCode: -1 })
       .exec();
 
@@ -94,8 +147,26 @@ export async function POST(request: NextRequest) {
       body.orderDate = new Date();
     }
 
-    const labResult = await LabResult.create(body);
-    await labResult.populate('patient', 'firstName lastName patientCode email phone');
+    // Ensure lab result is created with tenantId
+    const labResultData: any = { ...body };
+    if (tenantId && !labResultData.tenantId) {
+      labResultData.tenantId = new Types.ObjectId(tenantId);
+    }
+
+    const labResult = await LabResult.create(labResultData);
+    
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode email phone',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await labResult.populate(patientPopulateOptions);
     await labResult.populate('visit', 'visitCode date');
     await labResult.populate('orderedBy', 'name email');
 

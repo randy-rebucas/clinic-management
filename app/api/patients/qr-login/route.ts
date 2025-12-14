@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 /**
  * Patient QR Code Login
@@ -11,7 +13,7 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
-    const { qrCode } = body;
+    const { qrCode, tenantId: bodyTenantId } = body;
 
     if (!qrCode) {
       return NextResponse.json(
@@ -31,7 +33,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { patientId, patientCode, type } = qrData;
+    const { patientId, patientCode, type, tenantId: qrTenantId } = qrData;
 
     if (!patientId && !patientCode) {
       return NextResponse.json(
@@ -47,12 +49,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find patient by ID or patient code
+    // Get tenant context from subdomain or body/QR code
+    const tenantContext = await getTenantContext();
+    const tenantId = bodyTenantId || qrTenantId || tenantContext.tenantId;
+
+    // Find patient by ID or patient code (tenant-scoped)
     let patient;
     if (patientId) {
-      patient = await Patient.findById(patientId);
+      const patientQuery: any = { _id: patientId };
+      if (tenantId) {
+        patientQuery.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        // If no tenant, check for patients without tenantId (backward compatibility)
+        patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      patient = await Patient.findOne(patientQuery);
     } else if (patientCode) {
-      patient = await Patient.findOne({ patientCode });
+      const patientQuery: any = { patientCode };
+      if (tenantId) {
+        patientQuery.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        // If no tenant, check for patients without tenantId (backward compatibility)
+        patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      patient = await Patient.findOne(patientQuery);
     }
 
     if (!patient) {

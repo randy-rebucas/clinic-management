@@ -2,6 +2,9 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 export interface IReceptionist extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   firstName: string;
   lastName: string;
   email: string;
@@ -64,6 +67,13 @@ export interface IReceptionist extends Document {
 
 const ReceptionistSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     firstName: {
       type: String,
       required: [true, 'First name is required'],
@@ -77,7 +87,6 @@ const ReceptionistSchema: Schema = new Schema(
     email: {
       type: String,
       required: [true, 'Email is required'],
-      unique: true,
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
@@ -90,7 +99,7 @@ const ReceptionistSchema: Schema = new Schema(
     employeeId: {
       type: String,
       trim: true,
-      sparse: true,
+      // sparse index is created explicitly below via compound index
     },
     department: {
       type: String,
@@ -166,12 +175,12 @@ const ReceptionistSchema: Schema = new Schema(
   }
 );
 
-// Indexes for efficient queries
-ReceptionistSchema.index({ email: 1 }); // Additional index (unique already creates one)
-ReceptionistSchema.index({ employeeId: 1 }, { sparse: true });
-ReceptionistSchema.index({ department: 1, status: 1 }); // For department-based queries
-ReceptionistSchema.index({ status: 1 }); // For status-based queries
-ReceptionistSchema.index({ createdAt: -1 }); // For sorting by creation date
+// Indexes for efficient queries (tenant-scoped)
+ReceptionistSchema.index({ tenantId: 1, email: 1 }, { unique: true, sparse: true }); // Tenant-scoped unique email
+ReceptionistSchema.index({ tenantId: 1, employeeId: 1 }, { sparse: true });
+ReceptionistSchema.index({ tenantId: 1, department: 1, status: 1 }); // For department-based queries
+ReceptionistSchema.index({ tenantId: 1, status: 1 }); // For status-based queries
+ReceptionistSchema.index({ tenantId: 1, createdAt: -1 }); // For sorting by creation date
 
 // Register Receptionist model immediately after schema definition
 if (!mongoose.models.Receptionist) {

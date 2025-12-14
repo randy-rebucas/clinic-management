@@ -3,6 +3,9 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 export type RoleName = 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
 
 export interface IRole extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   name: RoleName; // Unique role identifier
   displayName: string; // Human-readable name (e.g., "Administrator", "Doctor")
   description?: string; // Role description
@@ -20,12 +23,17 @@ export interface IRole extends Document {
 
 const RoleSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     name: {
       type: String,
       enum: ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'],
       required: [true, 'Role name is required'],
-      unique: true,
-      index: true,
     },
     displayName: {
       type: String,
@@ -44,7 +52,6 @@ const RoleSchema: Schema = new Schema(
     isActive: {
       type: Boolean,
       default: true,
-      index: true,
     },
     defaultPermissions: [{
       resource: {
@@ -66,11 +73,11 @@ const RoleSchema: Schema = new Schema(
   }
 );
 
-// Indexes for efficient queries
-RoleSchema.index({ name: 1, isActive: 1 });
-RoleSchema.index({ level: -1 });
-RoleSchema.index({ isActive: 1 }); // For active role queries
-RoleSchema.index({ name: 1 }); // Additional index for name lookups (unique already creates one)
+// Indexes for efficient queries (tenant-scoped)
+RoleSchema.index({ tenantId: 1, name: 1 }, { unique: true, sparse: true }); // Tenant-scoped unique role name
+RoleSchema.index({ tenantId: 1, name: 1, isActive: 1 });
+RoleSchema.index({ tenantId: 1, level: -1 });
+RoleSchema.index({ tenantId: 1, isActive: 1 }); // For active role queries
 
 // Prevent re-compilation during development
 const Role = mongoose.models.Role || mongoose.model<IRole>('Role', RoleSchema);

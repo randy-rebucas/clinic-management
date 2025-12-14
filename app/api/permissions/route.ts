@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Permission from '@/models/Permission';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 // GET all permissions - admin only
 export async function GET(request: NextRequest) {
@@ -18,12 +20,25 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const userId = searchParams.get('userId');
     const roleId = searchParams.get('roleId');
     const resource = searchParams.get('resource');
 
     let query: any = {};
+    
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
     if (userId) {
       query.user = userId;
     }
@@ -65,6 +80,10 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
 
     // Validate that either user or role is provided, but not both
     if (!body.user && !body.role) {
@@ -81,7 +100,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const permission = await Permission.create(body);
+    // Ensure permission is created with tenantId
+    const permissionData: any = { ...body };
+    if (tenantId && !permissionData.tenantId) {
+      permissionData.tenantId = new Types.ObjectId(tenantId);
+    }
+
+    const permission = await Permission.create(permissionData);
     await permission.populate('user', 'name email');
     await permission.populate('role', 'name displayName');
 

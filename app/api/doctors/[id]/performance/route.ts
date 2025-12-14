@@ -17,12 +17,27 @@ export async function GET(
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const { getTenantContext } = await import('@/lib/tenant');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const { Types } = await import('mongoose');
+    
     const { id } = await params;
     const searchParams = request.nextUrl.searchParams;
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
-    const doctor = await Doctor.findById(id);
+    // Build query with tenant filter
+    const doctorQuery: any = { _id: id };
+    if (tenantId) {
+      doctorQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    const doctor = await Doctor.findOne(doctorQuery);
     if (!doctor) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },
@@ -44,11 +59,18 @@ export async function GET(
       }
     }
 
-    // Get appointment statistics
-    const appointments = await Appointment.find({
+    // Get appointment statistics (tenant-scoped)
+    const appointmentQuery: any = {
       doctor: id,
       ...dateQuery,
-    });
+    };
+    if (tenantId) {
+      appointmentQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      appointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const appointments = await Appointment.find(appointmentQuery);
 
     const totalAppointments = appointments.length;
     const completedAppointments = appointments.filter((apt) => apt.status === 'completed').length;

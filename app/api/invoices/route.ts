@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
+import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -20,12 +23,25 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
     const visitId = searchParams.get('visitId');
     const status = searchParams.get('status');
 
     let query: any = {};
+    
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
     if (patientId) {
       query.patient = patientId;
     }
@@ -36,8 +52,19 @@ export async function GET(request: NextRequest) {
       query.status = status;
     }
 
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode email phone',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
     const invoices = await Invoice.find(query)
-      .populate('patient', 'firstName lastName patientCode email phone')
+      .populate(patientPopulateOptions)
       .populate('visit', 'visitCode date')
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
@@ -73,12 +100,38 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Validate that the patient belongs to the tenant
+    if (body.patient && tenantId) {
+      const patientQuery: any = {
+        _id: body.patient,
+        tenantId: new Types.ObjectId(tenantId),
+      };
+      const patient = await Patient.findOne(patientQuery);
+      if (!patient) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
+          { status: 400 }
+        );
+      }
+    }
 
-    // Auto-generate invoice number using settings prefix
+    // Auto-generate invoice number using settings prefix (tenant-scoped)
     const settings = await getSettings();
     const invoicePrefix = settings.billingSettings?.invoicePrefix || 'INV';
     
-    const lastInvoice = await Invoice.findOne({ invoiceNumber: { $exists: true, $ne: null } })
+    const codeQuery: any = { invoiceNumber: { $exists: true, $ne: null } };
+    if (tenantId) {
+      codeQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const lastInvoice = await Invoice.findOne(codeQuery)
       .sort({ invoiceNumber: -1 })
       .exec();
 
@@ -111,8 +164,26 @@ export async function POST(request: NextRequest) {
       body.createdBy = session.userId;
     }
 
-    const invoice = await Invoice.create(body);
-    await invoice.populate('patient', 'firstName lastName patientCode email phone');
+    // Ensure invoice is created with tenantId
+    const invoiceData: any = { ...body };
+    if (tenantId && !invoiceData.tenantId) {
+      invoiceData.tenantId = new Types.ObjectId(tenantId);
+    }
+
+    const invoice = await Invoice.create(invoiceData);
+    
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode email phone',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await invoice.populate(patientPopulateOptions);
     await invoice.populate('visit', 'visitCode date');
     await invoice.populate('createdBy', 'name email');
 

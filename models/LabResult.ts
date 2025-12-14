@@ -27,6 +27,9 @@ export interface IThirdPartyLab {
 }
 
 export interface ILabResult extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   visit?: Types.ObjectId;
   patient: Types.ObjectId;
   orderedBy?: Types.ObjectId;
@@ -99,11 +102,19 @@ const ThirdPartyLabSchema: Schema = new Schema(
 
 const LabResultSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
     orderedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     orderDate: { type: Date, default: Date.now },
-    requestCode: { type: String, unique: true, sparse: true, index: true },
+    requestCode: { type: String, trim: true },
+    // sparse unique index is created explicitly below via compound index
     request: { type: LabRequestSchema, required: true },
     thirdPartyLab: ThirdPartyLabSchema,
     results: { type: Schema.Types.Mixed },
@@ -129,15 +140,16 @@ const LabResultSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Indexes for efficient queries
-LabResultSchema.index({ patient: 1, orderDate: -1 });
-LabResultSchema.index({ visit: 1 });
-LabResultSchema.index({ orderedBy: 1 });
-LabResultSchema.index({ reviewedBy: 1 });
-LabResultSchema.index({ status: 1 });
-LabResultSchema.index({ orderedBy: 1, orderDate: -1 }); // For orderer history
-LabResultSchema.index({ status: 1, orderDate: -1 }); // For status-based date queries
-LabResultSchema.index({ patient: 1, status: 1 }); // For patient's pending results
+// Indexes for efficient queries (tenant-scoped)
+LabResultSchema.index({ tenantId: 1, patient: 1, orderDate: -1 });
+LabResultSchema.index({ tenantId: 1, visit: 1 });
+LabResultSchema.index({ tenantId: 1, orderedBy: 1 });
+LabResultSchema.index({ tenantId: 1, reviewedBy: 1 });
+LabResultSchema.index({ tenantId: 1, status: 1 });
+LabResultSchema.index({ tenantId: 1, orderedBy: 1, orderDate: -1 }); // For orderer history
+LabResultSchema.index({ tenantId: 1, status: 1, orderDate: -1 }); // For status-based date queries
+LabResultSchema.index({ tenantId: 1, patient: 1, status: 1 }); // For patient's pending results
+LabResultSchema.index({ tenantId: 1, requestCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped request code
 
 export default mongoose.models.LabResult || mongoose.model<ILabResult>('LabResult', LabResultSchema);
 

@@ -29,6 +29,7 @@ export interface SessionPayload extends JWTPayload {
   email: string;
   role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative'; // Role name for backward compatibility
   roleId?: string; // Role ObjectId from database
+  tenantId?: string; // Tenant ObjectId for multi-tenant support
   expiresAt: number | Date;
 }
 
@@ -87,11 +88,12 @@ export async function createSession(
   userId: string, 
   email: string, 
   role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative',
-  roleId?: string
+  roleId?: string,
+  tenantId?: string
 ) {
   try {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    const session = await encrypt({ userId, email, role, roleId, expiresAt });
+    const session = await encrypt({ userId, email, role, roleId, tenantId, expiresAt });
 
     const cookieStore = await cookies();
     cookieStore.set('session', session, {
@@ -203,7 +205,7 @@ export async function getUser() {
     if (!user || Array.isArray(user)) return null;
     
     // Type assertion for lean() result
-    const userObj = user as { _id: { toString(): string }; role: any; [key: string]: any };
+    const userObj = user as unknown as { _id: { toString(): string }; role?: any; [key: string]: any };
     
     // Handle role - could be ObjectId, string, or already populated object
     let roleData: { name: string; displayName?: string } | null = null;
@@ -220,10 +222,11 @@ export async function getUser() {
       else if (typeof userObj.role === 'string') {
         const Role = (await import('@/models/Role')).default;
         const roleDoc = await Role.findOne({ name: userObj.role }).lean();
-        if (roleDoc) {
+        if (roleDoc && !Array.isArray(roleDoc)) {
+          const roleObj = roleDoc as unknown as { name: string; displayName?: string };
           roleData = {
-            name: roleDoc.name,
-            displayName: roleDoc.displayName,
+            name: roleObj.name,
+            displayName: roleObj.displayName,
           };
         }
       }
@@ -232,10 +235,11 @@ export async function getUser() {
         try {
           const Role = (await import('@/models/Role')).default;
           const roleDoc = await Role.findById(userObj.role).lean();
-          if (roleDoc) {
+          if (roleDoc && !Array.isArray(roleDoc)) {
+            const roleObj = roleDoc as unknown as { name: string; displayName?: string };
             roleData = {
-              name: roleDoc.name,
-              displayName: roleDoc.displayName,
+              name: roleObj.name,
+              displayName: roleObj.displayName,
             };
           }
         } catch (populateError) {
@@ -243,10 +247,11 @@ export async function getUser() {
           if (session.role) {
             const Role = (await import('@/models/Role')).default;
             const roleDoc = await Role.findOne({ name: session.role }).lean();
-            if (roleDoc) {
+            if (roleDoc && !Array.isArray(roleDoc)) {
+              const roleObj = roleDoc as unknown as { name: string; displayName?: string };
               roleData = {
-                name: roleDoc.name,
-                displayName: roleDoc.displayName,
+                name: roleObj.name,
+                displayName: roleObj.displayName,
               };
             }
           }

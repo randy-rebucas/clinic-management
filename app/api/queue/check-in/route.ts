@@ -5,6 +5,8 @@ import Room from '@/models/Room';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 /**
  * Check-in using QR code
@@ -47,10 +49,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get tenant context from headers (public endpoint)
+    const tenantContext = await getTenantContext();
+    const tenantId = tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: queueId };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const doctorPopulateOptions: any = {
+      path: 'doctor',
+      select: 'firstName lastName',
+    };
+    if (tenantId) {
+      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
     // Find queue entry
-    const queue = await Queue.findById(queueId)
-      .populate('patient', 'firstName lastName patientCode')
-      .populate('doctor', 'firstName lastName')
+    const queue = await Queue.findOne(query)
+      .populate(patientPopulateOptions)
+      .populate(doctorPopulateOptions)
       .populate('room', 'name roomNumber');
 
     if (!queue) {
@@ -88,6 +123,7 @@ export async function POST(request: NextRequest) {
       userId: session?.userId || 'public',
       userEmail: session?.email || 'qr_checkin',
       userRole: session?.role || 'public',
+      tenantId: tenantId,
       action: 'update',
       resource: 'system',
       resourceId: queue._id,

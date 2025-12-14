@@ -25,10 +25,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get tenant context from session or headers
+    const { getTenantContext } = await import('@/lib/tenant');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const { Types } = await import('mongoose');
+
     let interactions;
     if (includePatientMedications && patientId) {
-      // Get patient's current active prescriptions
-      const patient = await Patient.findById(patientId);
+      // Get patient's current active prescriptions (tenant-scoped)
+      const patientQuery: any = { _id: patientId };
+      if (tenantId) {
+        patientQuery.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const patient = await Patient.findOne(patientQuery);
       if (!patient) {
         return NextResponse.json(
           { success: false, error: 'Patient not found' },
@@ -36,11 +49,18 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Get active prescriptions for this patient
-      const activePrescriptions = await Prescription.find({
+      // Get active prescriptions for this patient (tenant-scoped)
+      const prescriptionQuery: any = {
         patient: patientId,
         status: { $in: ['active', 'partially-dispensed'] },
-      });
+      };
+      if (tenantId) {
+        prescriptionQuery.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        prescriptionQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const activePrescriptions = await Prescription.find(prescriptionQuery);
 
       const currentMedications = activePrescriptions.flatMap((prescription) =>
         prescription.medications.map((med: any) => ({

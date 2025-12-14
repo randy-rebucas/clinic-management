@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Notification from '@/models/Notification';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -14,10 +16,21 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
     
-    const unreadCount = await Notification.countDocuments({
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    const unreadQuery: any = {
       user: session.userId,
       read: false,
-    });
+    };
+    if (tenantId) {
+      unreadQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      unreadQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const unreadCount = await Notification.countDocuments(unreadQuery);
 
     return NextResponse.json({
       success: true,

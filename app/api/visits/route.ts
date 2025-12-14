@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
+import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(request: NextRequest) {
   // User authentication check
@@ -20,6 +23,11 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
     const providerId = searchParams.get('providerId');
@@ -27,6 +35,14 @@ export async function GET(request: NextRequest) {
     const date = searchParams.get('date');
 
     let query: any = {};
+    
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
     if (patientId) {
       query.patient = patientId;
     }
@@ -44,8 +60,19 @@ export async function GET(request: NextRequest) {
       query.date = { $gte: startOfDay, $lte: endOfDay };
     }
 
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
     const visits = await Visit.find(query)
-      .populate('patient', 'firstName lastName patientCode')
+      .populate(patientPopulateOptions)
       .populate('provider', 'name email')
       .sort({ date: -1 });
 
@@ -76,9 +103,35 @@ export async function POST(request: NextRequest) {
     await connectDB();
     const body = await request.json();
     
-    // Auto-generate visitCode if not provided
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Validate that the patient belongs to the tenant
+    if (body.patient && tenantId) {
+      const patientQuery: any = {
+        _id: body.patient,
+        tenantId: new Types.ObjectId(tenantId),
+      };
+      const patient = await Patient.findOne(patientQuery);
+      if (!patient) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
+          { status: 400 }
+        );
+      }
+    }
+    
+    // Auto-generate visitCode if not provided (tenant-scoped)
     if (!body.visitCode) {
-      const lastVisit = await Visit.findOne({ visitCode: { $exists: true, $ne: null } })
+      const codeQuery: any = { visitCode: { $exists: true, $ne: null } };
+      if (tenantId) {
+        codeQuery.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const lastVisit = await Visit.findOne(codeQuery)
         .sort({ visitCode: -1 })
         .exec();
       
@@ -111,8 +164,26 @@ export async function POST(request: NextRequest) {
       };
     }
     
-    const visit = await Visit.create(body);
-    await visit.populate('patient', 'firstName lastName patientCode');
+    // Ensure visit is created with tenantId
+    const visitData: any = { ...body };
+    if (tenantId && !visitData.tenantId) {
+      visitData.tenantId = new Types.ObjectId(tenantId);
+    }
+    
+    const visit = await Visit.create(visitData);
+    
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await visit.populate(patientPopulateOptions);
     await visit.populate('provider', 'name email');
     
     return NextResponse.json({ success: true, data: visit }, { status: 201 });

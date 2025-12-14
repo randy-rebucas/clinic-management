@@ -88,6 +88,74 @@ const DAYS = [
   { value: 'sunday', label: 'Sunday' },
 ];
 
+// Default settings - matches getDefaultSettings() from lib/settings.ts
+// Used as fallback when API fails
+const defaultSettingsFallback: Settings = {
+  clinicName: 'Clinic Management System',
+  clinicAddress: '',
+  clinicPhone: '',
+  clinicEmail: '',
+  clinicWebsite: '',
+  taxId: '',
+  licenseNumber: '',
+  businessHours: [
+    { day: 'monday', open: '09:00', close: '17:00', closed: false },
+    { day: 'tuesday', open: '09:00', close: '17:00', closed: false },
+    { day: 'wednesday', open: '09:00', close: '17:00', closed: false },
+    { day: 'thursday', open: '09:00', close: '17:00', closed: false },
+    { day: 'friday', open: '09:00', close: '17:00', closed: false },
+    { day: 'saturday', open: '09:00', close: '13:00', closed: false },
+    { day: 'sunday', open: '09:00', close: '13:00', closed: true },
+  ],
+  appointmentSettings: {
+    defaultDuration: 30,
+    reminderHoursBefore: [24, 2],
+    allowOnlineBooking: true,
+    requireConfirmation: false,
+    maxAdvanceBookingDays: 90,
+    minAdvanceBookingHours: 2,
+  },
+  communicationSettings: {
+    smsEnabled: false,
+    emailEnabled: false,
+    appointmentReminders: true,
+    labResultNotifications: true,
+    invoiceReminders: true,
+  },
+  billingSettings: {
+    currency: 'PHP',
+    taxRate: 0,
+    paymentTerms: 30,
+    lateFeePercentage: 0,
+    invoicePrefix: 'INV',
+    allowPartialPayments: true,
+  },
+  queueSettings: {
+    enableQueue: true,
+    autoAssignRooms: false,
+    estimatedWaitTimeMinutes: 15,
+    displayQueuePublicly: false,
+  },
+  generalSettings: {
+    timezone: 'UTC',
+    dateFormat: 'MM/DD/YYYY',
+    timeFormat: '12h',
+    itemsPerPage: 20,
+    enableAuditLog: true,
+    sessionTimeoutMinutes: 480,
+  },
+  integrationSettings: {
+    cloudinaryEnabled: false,
+    twilioEnabled: false,
+    smtpEnabled: false,
+  },
+  displaySettings: {
+    theme: 'light',
+    sidebarCollapsed: false,
+    showNotifications: true,
+  },
+};
+
 // Helper component for labeled TextField
 const LabeledTextField = ({ 
   label, 
@@ -115,7 +183,7 @@ const LabeledTextField = ({
       onChange={onChange}
       disabled={disabled}
       placeholder={placeholder}
-      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
     />
   </div>
 );
@@ -138,213 +206,17 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
       const response = await fetch('/api/settings');
       if (response.ok) {
         const data = await response.json();
-        // Ensure all fields have default values - apply defaults where values are missing or empty
-        const settingsWithDefaults: Settings = {
-          _id: data._id,
-          clinicName: (data.clinicName && data.clinicName.trim()) || 'Clinic Management System',
-          clinicAddress: data.clinicAddress || '',
-          clinicPhone: data.clinicPhone || '',
-          clinicEmail: data.clinicEmail || '',
-          clinicWebsite: data.clinicWebsite || '',
-          taxId: data.taxId || '',
-          licenseNumber: data.licenseNumber || '',
-          businessHours: (data.businessHours && data.businessHours.length > 0) ? data.businessHours : [
-            { day: 'monday', open: '09:00', close: '17:00', closed: false },
-            { day: 'tuesday', open: '09:00', close: '17:00', closed: false },
-            { day: 'wednesday', open: '09:00', close: '17:00', closed: false },
-            { day: 'thursday', open: '09:00', close: '17:00', closed: false },
-            { day: 'friday', open: '09:00', close: '17:00', closed: false },
-            { day: 'saturday', open: '09:00', close: '13:00', closed: false },
-            { day: 'sunday', open: '09:00', close: '13:00', closed: true },
-          ],
-          appointmentSettings: {
-            defaultDuration: data.appointmentSettings?.defaultDuration ?? 30,
-            reminderHoursBefore: data.appointmentSettings?.reminderHoursBefore ?? [24, 2],
-            allowOnlineBooking: data.appointmentSettings?.allowOnlineBooking ?? true,
-            requireConfirmation: data.appointmentSettings?.requireConfirmation ?? false,
-            maxAdvanceBookingDays: data.appointmentSettings?.maxAdvanceBookingDays ?? 90,
-            minAdvanceBookingHours: data.appointmentSettings?.minAdvanceBookingHours ?? 2,
-          },
-          communicationSettings: {
-            smsEnabled: data.communicationSettings?.smsEnabled ?? false,
-            emailEnabled: data.communicationSettings?.emailEnabled ?? false,
-            appointmentReminders: data.communicationSettings?.appointmentReminders ?? true,
-            labResultNotifications: data.communicationSettings?.labResultNotifications ?? true,
-            invoiceReminders: data.communicationSettings?.invoiceReminders ?? true,
-          },
-          billingSettings: {
-            currency: (data.billingSettings?.currency && data.billingSettings.currency.trim()) || 'PHP',
-            taxRate: data.billingSettings?.taxRate ?? 0,
-            paymentTerms: data.billingSettings?.paymentTerms ?? 30,
-            lateFeePercentage: data.billingSettings?.lateFeePercentage ?? 0,
-            invoicePrefix: (data.billingSettings?.invoicePrefix && data.billingSettings.invoicePrefix.trim()) || 'INV',
-            allowPartialPayments: data.billingSettings?.allowPartialPayments ?? true,
-          },
-          queueSettings: {
-            enableQueue: data.queueSettings?.enableQueue ?? true,
-            autoAssignRooms: data.queueSettings?.autoAssignRooms ?? false,
-            estimatedWaitTimeMinutes: data.queueSettings?.estimatedWaitTimeMinutes ?? 15,
-            displayQueuePublicly: data.queueSettings?.displayQueuePublicly ?? false,
-          },
-          generalSettings: {
-            timezone: (data.generalSettings?.timezone && data.generalSettings.timezone.trim()) || 'UTC',
-            dateFormat: (data.generalSettings?.dateFormat && data.generalSettings.dateFormat.trim()) || 'MM/DD/YYYY',
-            timeFormat: data.generalSettings?.timeFormat || '12h',
-            itemsPerPage: data.generalSettings?.itemsPerPage ?? 20,
-            enableAuditLog: data.generalSettings?.enableAuditLog ?? true,
-            sessionTimeoutMinutes: data.generalSettings?.sessionTimeoutMinutes ?? 480,
-          },
-          integrationSettings: {
-            cloudinaryEnabled: data.integrationSettings?.cloudinaryEnabled ?? false,
-            twilioEnabled: data.integrationSettings?.twilioEnabled ?? false,
-            smtpEnabled: data.integrationSettings?.smtpEnabled ?? false,
-          },
-          displaySettings: {
-            theme: data.displaySettings?.theme || 'light',
-            sidebarCollapsed: data.displaySettings?.sidebarCollapsed ?? true,
-            showNotifications: data.displaySettings?.showNotifications ?? true,
-          },
-        };
-        setSettings(settingsWithDefaults);
+        // API now returns settings merged with defaults, so we can use it directly
+        setSettings(data as Settings);
       } else {
         // If fetch fails, use default settings
-        const defaultSettings: Settings = {
-          clinicName: 'Clinic Management System',
-          clinicAddress: '',
-          clinicPhone: '',
-          clinicEmail: '',
-          clinicWebsite: '',
-          taxId: '',
-          licenseNumber: '',
-          businessHours: [
-            { day: 'monday', open: '09:00', close: '17:00', closed: false },
-            { day: 'tuesday', open: '09:00', close: '17:00', closed: false },
-            { day: 'wednesday', open: '09:00', close: '17:00', closed: false },
-            { day: 'thursday', open: '09:00', close: '17:00', closed: false },
-            { day: 'friday', open: '09:00', close: '17:00', closed: false },
-            { day: 'saturday', open: '09:00', close: '13:00', closed: false },
-            { day: 'sunday', open: '09:00', close: '13:00', closed: true },
-          ],
-          appointmentSettings: {
-            defaultDuration: 30,
-            reminderHoursBefore: [24, 2],
-            allowOnlineBooking: true,
-            requireConfirmation: false,
-            maxAdvanceBookingDays: 90,
-            minAdvanceBookingHours: 2,
-          },
-          communicationSettings: {
-            smsEnabled: false,
-            emailEnabled: false,
-            appointmentReminders: true,
-            labResultNotifications: true,
-            invoiceReminders: true,
-          },
-          billingSettings: {
-            currency: 'PHP',
-            taxRate: 0,
-            paymentTerms: 30,
-            lateFeePercentage: 0,
-            invoicePrefix: 'INV',
-            allowPartialPayments: true,
-          },
-          queueSettings: {
-            enableQueue: true,
-            autoAssignRooms: false,
-            estimatedWaitTimeMinutes: 15,
-            displayQueuePublicly: false,
-          },
-          generalSettings: {
-            timezone: 'UTC',
-            dateFormat: 'MM/DD/YYYY',
-            timeFormat: '12h',
-            itemsPerPage: 20,
-            enableAuditLog: true,
-            sessionTimeoutMinutes: 480,
-          },
-          integrationSettings: {
-            cloudinaryEnabled: false,
-            twilioEnabled: false,
-            smtpEnabled: false,
-          },
-          displaySettings: {
-            theme: 'light',
-            sidebarCollapsed: true,
-            showNotifications: true,
-          },
-        };
-        setSettings(defaultSettings);
+        setSettings(defaultSettingsFallback);
         setMessage({ type: 'error', text: 'Failed to load settings, using defaults' });
       }
     } catch (error) {
       console.error('Error fetching settings:', error);
       // Use default settings on error
-      const defaultSettings: Settings = {
-        clinicName: 'Clinic Management System',
-        clinicAddress: '',
-        clinicPhone: '',
-        clinicEmail: '',
-        clinicWebsite: '',
-        taxId: '',
-        licenseNumber: '',
-        businessHours: [
-          { day: 'monday', open: '09:00', close: '17:00', closed: false },
-          { day: 'tuesday', open: '09:00', close: '17:00', closed: false },
-          { day: 'wednesday', open: '09:00', close: '17:00', closed: false },
-          { day: 'thursday', open: '09:00', close: '17:00', closed: false },
-          { day: 'friday', open: '09:00', close: '17:00', closed: false },
-          { day: 'saturday', open: '09:00', close: '13:00', closed: false },
-          { day: 'sunday', open: '09:00', close: '13:00', closed: true },
-        ],
-        appointmentSettings: {
-          defaultDuration: 30,
-          reminderHoursBefore: [24, 2],
-          allowOnlineBooking: true,
-          requireConfirmation: false,
-          maxAdvanceBookingDays: 90,
-          minAdvanceBookingHours: 2,
-        },
-        communicationSettings: {
-          smsEnabled: false,
-          emailEnabled: false,
-          appointmentReminders: true,
-          labResultNotifications: true,
-          invoiceReminders: true,
-        },
-        billingSettings: {
-          currency: 'PHP',
-          taxRate: 0,
-          paymentTerms: 30,
-          lateFeePercentage: 0,
-          invoicePrefix: 'INV',
-          allowPartialPayments: true,
-        },
-        queueSettings: {
-          enableQueue: true,
-          autoAssignRooms: false,
-          estimatedWaitTimeMinutes: 15,
-          displayQueuePublicly: false,
-        },
-        generalSettings: {
-          timezone: 'UTC',
-          dateFormat: 'MM/DD/YYYY',
-          timeFormat: '12h',
-          itemsPerPage: 20,
-          enableAuditLog: true,
-          sessionTimeoutMinutes: 480,
-        },
-        integrationSettings: {
-          cloudinaryEnabled: false,
-          twilioEnabled: false,
-          smtpEnabled: false,
-        },
-        displaySettings: {
-          theme: 'light',
-          sidebarCollapsed: true,
-          showNotifications: true,
-        },
-      };
-      setSettings(defaultSettings);
+      setSettings(defaultSettingsFallback);
       setMessage({ type: 'error', text: 'Failed to load settings, using defaults' });
     } finally {
       setLoading(false);
@@ -435,55 +307,84 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
   }
 
   return (
-    <section className="py-12 px-4">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-slate-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-4">
-          <div className="flex justify-between items-center flex-wrap gap-3">
-            <div>
-              <h1 className="text-3xl font-bold mb-1">Settings</h1>
-              <p className="text-sm text-gray-600">Manage clinic settings and preferences</p>
-            </div>
-            {isAdmin && (
-              <button 
-                onClick={handleSave} 
-                disabled={saving} 
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center gap-2"
-              >
-                {saving ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Save Changes
-                  </>
-                ) : (
-                  'Save Changes'
-                )}
-              </button>
-            )}
-          </div>
-        {message && (
-          <div className={`rounded-lg p-3 ${
-            message.type === 'success' 
-              ? 'bg-green-50 border border-green-200 text-green-800' 
-              : 'bg-red-50 border border-red-200 text-red-800'
-          }`}>
-            <div className="flex items-center gap-2">
-              {message.type === 'success' ? (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+        <div className="flex flex-col gap-6">
+          {/* Header */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gradient-to-br from-slate-500 to-slate-600 rounded-lg shadow-md">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Settings</h1>
+                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage clinic settings and preferences</p>
+                </div>
+              </div>
+              {isAdmin && (
+                <button 
+                  onClick={handleSave} 
+                  disabled={saving} 
+                  className="px-5 py-2.5 bg-gradient-to-r from-slate-500 to-slate-600 text-white rounded-lg hover:from-slate-600 hover:to-slate-700 disabled:from-slate-400 disabled:to-slate-500 disabled:cursor-not-allowed transition-all text-sm font-semibold flex items-center gap-2 shadow-md"
+                >
+                  {saving ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Save Changes
+                    </>
+                  )}
+                </button>
               )}
-              <p className="text-sm">{message.text}</p>
+            </div>
+          </div>
+
+        {/* Messages */}
+        {message && (
+          <div className={`rounded-xl p-4 shadow-sm ${
+            message.type === 'success' 
+              ? 'bg-green-50 border border-green-200' 
+              : 'bg-red-50 border border-red-200'
+          }`}>
+            <div className="flex items-center gap-3">
+              {message.type === 'success' ? (
+                <div className="p-1.5 bg-green-500 rounded-lg flex-shrink-0">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              ) : (
+                <div className="p-1.5 bg-red-500 rounded-lg flex-shrink-0">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+              )}
+              <p className={`text-sm font-semibold ${message.type === 'success' ? 'text-green-800' : 'text-red-800'}`}>{message.text}</p>
             </div>
           </div>
         )}
 
         {!isAdmin && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-            <p className="text-sm text-yellow-800">You can view settings but only admins can make changes.</p>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="p-1.5 bg-yellow-500 rounded-lg flex-shrink-0">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <p className="text-sm text-yellow-800 font-semibold">You can view settings but only admins can make changes.</p>
+            </div>
           </div>
         )}
 
@@ -514,11 +415,18 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             </nav>
           </div>
 
-          <div className="pt-3">
+          <div className="p-6">
             {activeTab === 'clinic' && (
-              <div className="bg-gray-50 rounded-lg border border-gray-200">
-                <div className="flex flex-col gap-4 p-4">
-                  <h3 className="text-xl font-semibold">Clinic Information</h3>
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="p-2 bg-blue-500 rounded-lg">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">Clinic Information</h3>
+                </div>
+                <div className="flex flex-col gap-4">
                   <LabeledTextField
                     label="Clinic Name"
                     value={settings.clinicName || ''}
@@ -574,9 +482,16 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'hours' && (
-              <div className="bg-gray-50 rounded-lg border border-gray-200">
-                <div className="flex flex-col gap-4 p-4">
-                  <h3 className="text-xl font-semibold">Business Hours</h3>
+              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="p-2 bg-emerald-500 rounded-lg">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">Business Hours</h3>
+                </div>
+                <div className="flex flex-col gap-4">
                   {DAYS.map((day) => {
                     const hours = settings.businessHours.find((h) => h.day === day.value);
                     if (!hours) return null;
@@ -595,7 +510,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                               disabled={!isAdmin}
                               className="sr-only peer"
                             />
-                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"></div>
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-slate-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"></div>
                           </label>
                           <p className="text-sm text-gray-600">
                             {hours.closed ? 'Closed' : 'Open'}
@@ -608,7 +523,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                               value={hours.open}
                               onChange={(e) => updateBusinessHours(day.value, 'open', e.target.value)}
                               disabled={!isAdmin}
-                              className="w-[140px] flex-shrink-0 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                              className="w-[140px] flex-shrink-0 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                             />
                             <p className="text-sm text-gray-600">to</p>
                             <input
@@ -616,7 +531,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                               value={hours.close}
                               onChange={(e) => updateBusinessHours(day.value, 'close', e.target.value)}
                               disabled={!isAdmin}
-                              className="w-[140px] flex-shrink-0 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                              className="w-[140px] flex-shrink-0 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                             />
                           </div>
                         )}
@@ -655,7 +570,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       checked={settings.appointmentSettings.allowOnlineBooking}
                       onChange={(e) => updateSettings('appointmentSettings.allowOnlineBooking', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Allow Online Booking</span>
                   </label>
@@ -665,7 +580,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       checked={settings.appointmentSettings.requireConfirmation}
                       onChange={(e) => updateSettings('appointmentSettings.requireConfirmation', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Require Confirmation</span>
                   </label>
@@ -690,16 +605,23 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'communication' && (
-              <div className="bg-gray-50 rounded-lg border border-gray-200">
-                <div className="flex flex-col gap-4 p-4">
-                  <h3 className="text-xl font-semibold">Communication Settings</h3>
+              <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 border border-cyan-200 rounded-xl p-5">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="p-2 bg-cyan-500 rounded-lg">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">Communication Settings</h3>
+                </div>
+                <div className="flex flex-col gap-4">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={settings.communicationSettings.smsEnabled}
                       onChange={(e) => updateSettings('communicationSettings.smsEnabled', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">SMS Enabled</span>
                   </label>
@@ -709,7 +631,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       checked={settings.communicationSettings.emailEnabled}
                       onChange={(e) => updateSettings('communicationSettings.emailEnabled', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Email Enabled</span>
                   </label>
@@ -719,7 +641,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       checked={settings.communicationSettings.appointmentReminders}
                       onChange={(e) => updateSettings('communicationSettings.appointmentReminders', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Appointment Reminders</span>
                   </label>
@@ -729,7 +651,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       checked={settings.communicationSettings.labResultNotifications}
                       onChange={(e) => updateSettings('communicationSettings.labResultNotifications', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Lab Result Notifications</span>
                   </label>
@@ -739,7 +661,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       checked={settings.communicationSettings.invoiceReminders}
                       onChange={(e) => updateSettings('communicationSettings.invoiceReminders', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Invoice Reminders</span>
                   </label>
@@ -797,7 +719,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       checked={settings.billingSettings.allowPartialPayments}
                       onChange={(e) => updateSettings('billingSettings.allowPartialPayments', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Allow Partial Payments</span>
                   </label>
@@ -806,16 +728,23 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'queue' && (
-              <div className="bg-gray-50 rounded-lg border border-gray-200">
-                <div className="flex flex-col gap-4 p-4">
-                  <h3 className="text-xl font-semibold">Queue Settings</h3>
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="p-2 bg-purple-500 rounded-lg">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">Queue Settings</h3>
+                </div>
+                <div className="flex flex-col gap-4">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={settings.queueSettings.enableQueue}
                       onChange={(e) => updateSettings('queueSettings.enableQueue', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Enable Queue</span>
                   </label>
@@ -825,7 +754,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       checked={settings.queueSettings.autoAssignRooms}
                       onChange={(e) => updateSettings('queueSettings.autoAssignRooms', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Auto Assign Rooms</span>
                   </label>
@@ -843,7 +772,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       checked={settings.queueSettings.displayQueuePublicly}
                       onChange={(e) => updateSettings('queueSettings.displayQueuePublicly', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Display Queue Publicly</span>
                   </label>
@@ -901,7 +830,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       checked={settings.generalSettings.enableAuditLog}
                       onChange={(e) => updateSettings('generalSettings.enableAuditLog', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Enable Audit Log</span>
                   </label>
@@ -918,9 +847,16 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'display' && (
-              <div className="bg-gray-50 rounded-lg border border-gray-200">
-                <div className="flex flex-col gap-4 p-4">
-                  <h3 className="text-xl font-semibold">Display Settings</h3>
+              <div className="bg-gradient-to-br from-violet-50 to-violet-100/50 border border-violet-200 rounded-xl p-5">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="p-2 bg-violet-500 rounded-lg">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">Display Settings</h3>
+                </div>
+                <div className="flex flex-col gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">Theme</label>
                     <select
@@ -940,7 +876,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       checked={settings.displaySettings.sidebarCollapsed}
                       onChange={(e) => updateSettings('displaySettings.sidebarCollapsed', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Sidebar Collapsed by Default</span>
                   </label>
@@ -950,7 +886,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                       checked={settings.displaySettings.showNotifications}
                       onChange={(e) => updateSettings('displaySettings.showNotifications', e.target.checked)}
                       disabled={!isAdmin}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span className="text-sm">Show Notifications</span>
                   </label>
@@ -961,27 +897,34 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             {activeTab === 'integrations' && (
               <div className="flex flex-col gap-4">
                 {/* Twilio Integration */}
-                <div className="bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="flex flex-col gap-4 p-4">
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+                  <div className="flex flex-col gap-4">
                     <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="text-xl font-semibold mb-1">Twilio (SMS)</h3>
-                        <p className="text-sm text-gray-600">Configure SMS notifications via Twilio</p>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-500 rounded-lg">
+                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-gray-900 mb-1">Twilio (SMS)</h3>
+                          <p className="text-sm text-gray-600">Configure SMS notifications via Twilio</p>
+                        </div>
                       </div>
                       <div className="flex gap-2 items-center">
                         {settings.integrationStatus?.twilio ? (
-                          <div className="bg-green-50 border border-green-200 rounded-lg p-2 flex items-center gap-1">
-                            <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="bg-green-50 border-2 border-green-300 rounded-full px-3 py-1.5 flex items-center gap-2">
+                            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
-                            <p className="text-xs text-green-800">Configured</p>
+                            <p className="text-xs font-semibold text-green-800">Configured</p>
                           </div>
                         ) : (
-                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 flex items-center gap-1">
-                            <svg className="w-3 h-3 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="bg-yellow-50 border-2 border-yellow-300 rounded-full px-3 py-1.5 flex items-center gap-2">
+                            <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
-                            <p className="text-xs text-yellow-800">Not Configured</p>
+                            <p className="text-xs font-semibold text-yellow-800">Not Configured</p>
                           </div>
                         )}
                       </div>
@@ -1001,9 +944,9 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
-                      <p className="text-xs text-blue-800">
-                        Add these variables to your <code className="font-mono text-xs">.env.local</code> file and restart the server.
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-xs font-medium text-blue-800">
+                        Add these variables to your <code className="font-mono text-xs bg-blue-100 px-1 py-0.5 rounded">.env.local</code> file and restart the server.
                       </p>
                     </div>
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -1012,7 +955,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                         checked={settings.integrationSettings.twilioEnabled}
                         onChange={(e) => updateSettings('integrationSettings.twilioEnabled', e.target.checked)}
                         disabled={!isAdmin}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                       <span className="text-sm">Enable Twilio Integration</span>
                     </label>
@@ -1020,27 +963,34 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
 
                 {/* SMTP Integration */}
-                <div className="bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="flex flex-col gap-4 p-4">
+                <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 rounded-xl p-5">
+                  <div className="flex flex-col gap-4">
                     <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="text-xl font-semibold mb-1">SMTP (Email)</h3>
-                        <p className="text-sm text-gray-600">Configure email notifications via SMTP</p>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-indigo-500 rounded-lg">
+                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-gray-900 mb-1">SMTP (Email)</h3>
+                          <p className="text-sm text-gray-600">Configure email notifications via SMTP</p>
+                        </div>
                       </div>
                       <div className="flex gap-2 items-center">
                         {settings.integrationStatus?.smtp ? (
-                          <div className="bg-green-50 border border-green-200 rounded-lg p-2 flex items-center gap-1">
-                            <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="bg-green-50 border-2 border-green-300 rounded-full px-3 py-1.5 flex items-center gap-2">
+                            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
-                            <p className="text-xs text-green-800">Configured</p>
+                            <p className="text-xs font-semibold text-green-800">Configured</p>
                           </div>
                         ) : (
-                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 flex items-center gap-1">
-                            <svg className="w-3 h-3 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="bg-yellow-50 border-2 border-yellow-300 rounded-full px-3 py-1.5 flex items-center gap-2">
+                            <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
-                            <p className="text-xs text-yellow-800">Not Configured</p>
+                            <p className="text-xs font-semibold text-yellow-800">Not Configured</p>
                           </div>
                         )}
                       </div>
@@ -1066,9 +1016,9 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
-                      <p className="text-xs text-blue-800">
-                        Add these variables to your <code className="font-mono text-xs">.env.local</code> file and restart the server.
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-xs font-medium text-blue-800">
+                        Add these variables to your <code className="font-mono text-xs bg-blue-100 px-1 py-0.5 rounded">.env.local</code> file and restart the server.
                       </p>
                     </div>
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -1077,7 +1027,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                         checked={settings.integrationSettings.smtpEnabled}
                         onChange={(e) => updateSettings('integrationSettings.smtpEnabled', e.target.checked)}
                         disabled={!isAdmin}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                       <span className="text-sm">Enable SMTP Integration</span>
                     </label>
@@ -1085,27 +1035,34 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
 
                 {/* Cloudinary Integration */}
-                <div className="bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="flex flex-col gap-4 p-4">
+                <div className="bg-gradient-to-br from-teal-50 to-teal-100/50 border border-teal-200 rounded-xl p-5">
+                  <div className="flex flex-col gap-4">
                     <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="text-xl font-semibold mb-1">Cloudinary (File Storage)</h3>
-                        <p className="text-sm text-gray-600">Configure document and image storage via Cloudinary</p>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-teal-500 rounded-lg">
+                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-gray-900 mb-1">Cloudinary (File Storage)</h3>
+                          <p className="text-sm text-gray-600">Configure document and image storage via Cloudinary</p>
+                        </div>
                       </div>
                       <div className="flex gap-2 items-center">
                         {settings.integrationStatus?.cloudinary ? (
-                          <div className="bg-green-50 border border-green-200 rounded-lg p-2 flex items-center gap-1">
-                            <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="bg-green-50 border-2 border-green-300 rounded-full px-3 py-1.5 flex items-center gap-2">
+                            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
-                            <p className="text-xs text-green-800">Configured</p>
+                            <p className="text-xs font-semibold text-green-800">Configured</p>
                           </div>
                         ) : (
-                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 flex items-center gap-1">
-                            <svg className="w-3 h-3 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="bg-yellow-50 border-2 border-yellow-300 rounded-full px-3 py-1.5 flex items-center gap-2">
+                            <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
-                            <p className="text-xs text-yellow-800">Not Configured</p>
+                            <p className="text-xs font-semibold text-yellow-800">Not Configured</p>
                           </div>
                         )}
                       </div>
@@ -1125,9 +1082,9 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
-                      <p className="text-xs text-blue-800">
-                        Add these variables to your <code className="font-mono text-xs">.env.local</code> file and restart the server.
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-xs font-medium text-blue-800">
+                        Add these variables to your <code className="font-mono text-xs bg-blue-100 px-1 py-0.5 rounded">.env.local</code> file and restart the server.
                       </p>
                     </div>
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -1136,7 +1093,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                         checked={settings.integrationSettings.cloudinaryEnabled}
                         onChange={(e) => updateSettings('integrationSettings.cloudinaryEnabled', e.target.checked)}
                         disabled={!isAdmin}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                       <span className="text-sm">Enable Cloudinary Integration</span>
                     </label>

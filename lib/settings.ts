@@ -8,30 +8,57 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 /**
  * Get settings from database (server-side only)
  * Uses caching to avoid repeated database calls
+ * @param tenantId Optional tenant ID to get tenant-specific settings
  */
-export async function getSettings() {
-  // Return cached settings if still valid
+export async function getSettings(tenantId?: string | null) {
+  // Return cached settings if still valid (but only if same tenant)
   const now = Date.now();
-  if (cachedSettings && (now - cacheTimestamp) < CACHE_DURATION) {
+  const cacheKey = tenantId || 'default';
+  if (cachedSettings && cachedSettings._cacheKey === cacheKey && (now - cacheTimestamp) < CACHE_DURATION) {
     return cachedSettings;
   }
 
   try {
     await connectDB();
     
-    // Get or create default settings
-    let settings = await Settings.findOne();
-    
-    if (!settings) {
-      // Create default settings if none exist
-      settings = await Settings.create({});
+    // Get tenant-specific settings if tenantId provided
+    let settings;
+    if (tenantId) {
+      const { Types } = await import('mongoose');
+      settings = await Settings.findOne({ tenantId: new Types.ObjectId(tenantId) });
+    } else {
+      // Get settings without tenant (for backward compatibility)
+      settings = await Settings.findOne({ 
+        $or: [{ tenantId: { $exists: false } }, { tenantId: null }] 
+      });
     }
     
-    // Cache the settings
-    cachedSettings = settings;
+    if (!settings) {
+      // Create default settings if none exist - use full default values
+      const defaultSettingsData = getDefaultSettings();
+      const settingsData: any = {
+        ...defaultSettingsData,
+      };
+      if (tenantId) {
+        const { Types } = await import('mongoose');
+        settingsData.tenantId = new Types.ObjectId(tenantId);
+      }
+      settings = await Settings.create(settingsData);
+    }
+    
+    // Merge with defaults to ensure all fields are present (in case schema changed)
+    const defaultSettingsData = getDefaultSettings();
+    const settingsObj = {
+      ...defaultSettingsData,
+      ...settings.toObject(),
+    };
+    
+    // Cache the merged settings with tenant key
+    cachedSettings = { ...settingsObj, _cacheKey: cacheKey };
     cacheTimestamp = now;
     
-    return settings;
+    // Return a Mongoose-like object with the merged data
+    return settingsObj as any;
   } catch (error) {
     console.error('Error fetching settings:', error);
     // Return default settings if database fails
@@ -42,12 +69,20 @@ export async function getSettings() {
 /**
  * Get default settings (fallback)
  */
+/**
+ * Get default settings (fallback)
+ * This is the single source of truth for default settings values
+ * Used throughout the application when settings don't exist or need defaults
+ */
 export function getDefaultSettings() {
   return {
     clinicName: 'Clinic Management System',
     clinicAddress: '',
     clinicPhone: '',
     clinicEmail: '',
+    clinicWebsite: '',
+    taxId: '',
+    licenseNumber: '',
     businessHours: [
       { day: 'monday', open: '09:00', close: '17:00', closed: false },
       { day: 'tuesday', open: '09:00', close: '17:00', closed: false },

@@ -8,6 +8,8 @@ import Imaging from '@/models/Imaging';
 import Procedure from '@/models/Procedure';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(
   request: NextRequest,
@@ -51,8 +53,31 @@ export async function GET(
       );
     }
 
-    const visit = await Visit.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone')
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode email phone',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
+    const visit = await Visit.findOne(query)
+      .populate(patientPopulateOptions)
       .populate('provider', 'name email')
       .populate('prescriptions')
       .populate('labsOrdered')
@@ -96,9 +121,28 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
     
-    // Auto-generate visitCode if creating new visit
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    // Auto-generate visitCode if creating new visit (tenant-scoped)
     if (!body.visitCode) {
-      const lastVisit = await Visit.findOne({ visitCode: { $exists: true, $ne: null } })
+      const codeQuery: any = { visitCode: { $exists: true, $ne: null } };
+      if (tenantId) {
+        codeQuery.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const lastVisit = await Visit.findOne(codeQuery)
         .sort({ visitCode: -1 })
         .exec();
       
@@ -126,12 +170,10 @@ export async function PUT(
       };
     }
     
-    const visit = await Visit.findByIdAndUpdate(id, body, {
+    const visit = await Visit.findOneAndUpdate(query, body, {
       new: true,
       runValidators: true,
-    })
-      .populate('patient', 'firstName lastName patientCode email phone')
-      .populate('provider', 'name email');
+    });
     
     if (!visit) {
       return NextResponse.json(
@@ -139,6 +181,20 @@ export async function PUT(
         { status: 404 }
       );
     }
+    
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode email phone',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await visit.populate(patientPopulateOptions);
+    await visit.populate('provider', 'name email');
     
     // Send follow-up reminder if followUpDate is set and not sent yet
     if (visit.followUpDate && !visit.followUpReminderSent) {
@@ -181,7 +237,20 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-    const visit = await Visit.findByIdAndDelete(id);
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const visit = await Visit.findOneAndDelete(query);
     if (!visit) {
       return NextResponse.json(
         { success: false, error: 'Visit not found' },

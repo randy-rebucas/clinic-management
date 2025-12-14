@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IBusinessHours {
   day: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -8,6 +8,9 @@ export interface IBusinessHours {
 }
 
 export interface ISettings extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   // Clinic Information
   clinicName: string;
   clinicAddress: string;
@@ -98,6 +101,12 @@ const BusinessHoursSchema = new Schema<IBusinessHours>({
 
 const SettingsSchema = new Schema<ISettings>(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+    },
+    
     clinicName: {
       type: String,
       required: true,
@@ -182,8 +191,8 @@ const SettingsSchema = new Schema<ISettings>(
   }
 );
 
-// Note: MongoDB automatically creates a unique index on _id, so no custom index is needed
-// To ensure only one settings document exists, enforce this at the application level
+// Indexes for efficient queries (tenant-scoped)
+SettingsSchema.index({ tenantId: 1 }, { unique: true, sparse: true }); // One settings per tenant
 
 // Prevent re-compilation during development
 const Settings = mongoose.models.Settings || mongoose.model<ISettings>('Settings', SettingsSchema);

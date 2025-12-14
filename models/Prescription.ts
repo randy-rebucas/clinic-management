@@ -31,6 +31,9 @@ export interface IPharmacyDispense {
 }
 
 export interface IPrescription extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   prescriptionCode: string; // Unique prescription identifier
   visit?: Types.ObjectId;
   patient: Types.ObjectId;
@@ -112,7 +115,14 @@ const PharmacyDispenseSchema: Schema = new Schema(
 
 const PrescriptionSchema: Schema = new Schema(
   {
-    prescriptionCode: { type: String, required: true, unique: true },
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
+    prescriptionCode: { type: String, required: true },
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true },
     prescribedBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -163,15 +173,15 @@ const PrescriptionSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Indexes for efficient queries
-PrescriptionSchema.index({ patient: 1, issuedAt: -1 });
-PrescriptionSchema.index({ visit: 1 });
-PrescriptionSchema.index({ prescribedBy: 1 });
-PrescriptionSchema.index({ status: 1 });
-PrescriptionSchema.index({ prescribedBy: 1, issuedAt: -1 }); // For prescriber history
-PrescriptionSchema.index({ status: 1, issuedAt: -1 }); // For status-based date queries
-PrescriptionSchema.index({ patient: 1, status: 1 }); // For patient's active prescriptions
-// prescriptionCode is already indexed via unique: true
+// Indexes for efficient queries (tenant-scoped)
+PrescriptionSchema.index({ tenantId: 1, patient: 1, issuedAt: -1 });
+PrescriptionSchema.index({ tenantId: 1, visit: 1 });
+PrescriptionSchema.index({ tenantId: 1, prescribedBy: 1 });
+PrescriptionSchema.index({ tenantId: 1, status: 1 });
+PrescriptionSchema.index({ tenantId: 1, prescribedBy: 1, issuedAt: -1 }); // For prescriber history
+PrescriptionSchema.index({ tenantId: 1, status: 1, issuedAt: -1 }); // For status-based date queries
+PrescriptionSchema.index({ tenantId: 1, patient: 1, status: 1 }); // For patient's active prescriptions
+PrescriptionSchema.index({ tenantId: 1, prescriptionCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped prescription code
 
 export default mongoose.models.Prescription || mongoose.model<IPrescription>('Prescription', PrescriptionSchema);
 

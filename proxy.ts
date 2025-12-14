@@ -1,33 +1,98 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
+import { extractSubdomain, getRootDomain, verifyTenant } from '@/lib/tenant';
+import { requiresSubscriptionRedirect } from '@/lib/subscription';
 
-export function proxy(request: NextRequest) {
+/**
+ * Proxy middleware for multi-tenant support and security headers
+ * Extracts subdomain from request, sets tenant context, and adds security headers
+ */
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const host = request.headers.get('host') || '';
+  const subdomain = extractSubdomain(host);
+  const rootDomain = getRootDomain();
 
-  // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/signup', '/setup', '/onboard', '/book', '/patient/login'];
-  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + '/'));
-
-  // Static files and API routes are handled separately
-  // API routes check authentication internally
-  // Pages check authentication in their server components
-  
-  // For public routes, allow access
-  if (isPublicRoute) {
+  // Allow access to API routes, static files, and Next.js internals
+  if (
+    pathname.startsWith('/api') ||
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/favicon.ico') ||
+    pathname.match(/\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/)
+  ) {
     const response = NextResponse.next();
     addSecurityHeaders(request, response);
     return response;
   }
 
-  // For protected routes, authentication is checked in:
-  // 1. Page server components (redirect to /login if not authenticated)
-  // 2. API route handlers (return 401 if not authenticated)
-  // This proxy allows the request to proceed
-  const response = NextResponse.next();
+  // Public routes that don't require authentication
+  const publicRoutes = ['/login', '/signup', '/setup', '/onboard', '/book', '/patient/login', '/tenant-onboard', '/subscription'];
+  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + '/'));
+
+  // If no subdomain, allow normal access (root domain)
+  if (!subdomain) {
+    // Block access to tenant-specific routes on root domain (except tenant-onboard)
+    if (pathname.startsWith('/tenant') && !pathname.startsWith('/tenant-onboard')) {
+      const response = NextResponse.redirect(new URL('/', request.url));
+      addSecurityHeaders(request, response);
+      return response;
+    }
+    
+    // For public routes and protected routes, authentication is checked in:
+    // 1. Page server components (redirect to /login if not authenticated)
+    // 2. API route handlers (return 401 if not authenticated)
+    const response = NextResponse.next();
+    addSecurityHeaders(request, response);
+    return response;
+  }
+
+  // If subdomain exists, verify tenant and handle routing
+  const tenant = await verifyTenant(subdomain);
+  
+  if (!tenant) {
+    // Tenant not found or inactive
+    const response = NextResponse.redirect(new URL('/', request.url));
+    addSecurityHeaders(request, response);
+    return response;
+  }
+
+  // Check subscription status and redirect to subscription page if expired
+  // Allow access to subscription page, login, and public routes
+  const subscriptionRoutes = ['/subscription', '/login', '/signup', '/tenant-onboard'];
+  const isSubscriptionRoute = subscriptionRoutes.some((route) => pathname === route || pathname.startsWith(route + '/'));
+  
+  if (!isSubscriptionRoute && !isPublicRoute) {
+    const needsRedirect = await requiresSubscriptionRedirect(tenant._id);
+    if (needsRedirect) {
+      const response = NextResponse.redirect(new URL('/subscription', request.url));
+      addSecurityHeaders(request, response);
+      return response;
+    }
+  }
+
+  // Block access to admin/setup routes from subdomains (these should be on root domain only)
+  if (pathname.startsWith('/admin') || pathname.startsWith('/setup')) {
+    const response = NextResponse.redirect(new URL('/', request.url));
+    addSecurityHeaders(request, response);
+    return response;
+  }
+
+  // Add tenant subdomain to headers for downstream use
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-tenant-subdomain', subdomain);
+
+  const response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+  
   addSecurityHeaders(request, response);
   return response;
 }
 
+/**
+ * Add security headers to response
+ */
 function addSecurityHeaders(request: NextRequest, response: NextResponse) {
   // Security headers for production
   if (process.env.NODE_ENV === 'production') {
@@ -70,7 +135,7 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - public folder files
+     * - public folder files (images, etc.)
      */
     '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],

@@ -76,6 +76,9 @@
 export { default as Attachment, AttachmentSchema } from './Attachment';
 export type { IAttachment } from './Attachment';
 
+export { default as Tenant } from './Tenant';
+export type { ITenant } from './Tenant';
+
 export { default as Medicine } from './Medicine';
 export type { IMedicine, IDosageRange } from './Medicine';
 
@@ -209,6 +212,7 @@ export function registerAllModels(): void {
   
   // Base models
   require('./Attachment');
+  require('./Tenant');
   require('./Medicine');
   require('./Service');
   require('./Room');
@@ -260,6 +264,7 @@ export function registerAllModels(): void {
 const models = {
   // Base/Reference
   Attachment: require('./Attachment').default,
+  Tenant: require('./Tenant').default,
   Medicine: require('./Medicine').default,
   Service: require('./Service').default,
   Room: require('./Room').default,

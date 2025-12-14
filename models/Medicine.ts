@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IDosageRange {
   minAge?: number; // in years
@@ -11,6 +11,9 @@ export interface IDosageRange {
 }
 
 export interface IMedicine extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   name: string;
   genericName?: string;
   brandNames?: string[]; // Common brand names
@@ -49,6 +52,13 @@ const DosageRangeSchema: Schema = new Schema(
 
 const MedicineSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     name: { type: String, required: true, index: true },
     genericName: String,
     brandNames: [String],
@@ -80,12 +90,12 @@ const MedicineSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Indexes for efficient searching
-MedicineSchema.index({ name: 'text', genericName: 'text', brandNames: 'text' });
-MedicineSchema.index({ category: 1, active: 1 });
-MedicineSchema.index({ active: 1 }); // For active medicine queries
-MedicineSchema.index({ requiresPrescription: 1, active: 1 }); // For prescription-required queries
-MedicineSchema.index({ controlledSubstance: 1 }); // For controlled substance queries
+// Indexes for efficient searching (tenant-scoped)
+MedicineSchema.index({ tenantId: 1, name: 'text', genericName: 'text', brandNames: 'text' });
+MedicineSchema.index({ tenantId: 1, category: 1, active: 1 });
+MedicineSchema.index({ tenantId: 1, active: 1 }); // For active medicine queries
+MedicineSchema.index({ tenantId: 1, requiresPrescription: 1, active: 1 }); // For prescription-required queries
+MedicineSchema.index({ tenantId: 1, controlledSubstance: 1 }); // For controlled substance queries
 
 export default mongoose.models.Medicine || mongoose.model<IMedicine>('Medicine', MedicineSchema);
 

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Document from '@/models/Document';
+import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getDocumentType, inferDocumentCategory, validateFile } from '@/lib/document-utils';
 import { uploadDocumentToCloudinary, getThumbnailUrl, isCloudinaryConfigured } from '@/lib/cloudinary';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -21,6 +24,11 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
     const category = searchParams.get('category');
@@ -31,6 +39,13 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50', 10);
 
     let query: any = { status };
+    
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
 
     // Filter by patient (users can only see documents for patients they have access to)
     if (patientId) {
@@ -54,8 +69,19 @@ export async function GET(request: NextRequest) {
       query.$text = { $search: search };
     }
 
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
     const documents = await Document.find(query)
-      .populate('patient', 'firstName lastName patientCode')
+      .populate(patientPopulateOptions)
       .populate('uploadedBy', 'name')
       .populate('visit', 'visitCode date')
       .sort({ uploadDate: -1 })
@@ -174,6 +200,25 @@ export async function POST(request: NextRequest) {
     const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
     const documentCode = `DOC-${Date.now()}-${randomSuffix}`;
 
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Validate that the patient belongs to the tenant
+    if (patientId && tenantId) {
+      const patientQuery: any = {
+        _id: patientId,
+        tenantId: new Types.ObjectId(tenantId),
+      };
+      const patient = await Patient.findOne(patientQuery);
+      if (!patient) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
+          { status: 400 }
+        );
+      }
+    }
+
     // Build document object
     const documentData: any = {
       documentCode,
@@ -200,6 +245,11 @@ export async function POST(request: NextRequest) {
     // Add relationships
     if (patientId) documentData.patient = patientId;
     if (visitId) documentData.visit = visitId;
+    
+    // Ensure document is created with tenantId
+    if (tenantId && !documentData.tenantId) {
+      documentData.tenantId = new Types.ObjectId(tenantId);
+    }
 
     // Add category-specific data
     if (category === 'referral' && referralData) {
@@ -216,7 +266,19 @@ export async function POST(request: NextRequest) {
     }
 
     const document = await Document.create(documentData);
-    await document.populate('patient', 'firstName lastName patientCode');
+    
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await document.populate(patientPopulateOptions);
     await document.populate('uploadedBy', 'name');
 
     return NextResponse.json({ success: true, data: document }, { status: 201 });

@@ -2,6 +2,9 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 import { AttachmentSchema, IAttachment } from './Attachment';
 
 export interface IImaging extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   visit?: Types.ObjectId;
   patient: Types.ObjectId;
   orderedBy?: Types.ObjectId;
@@ -20,6 +23,13 @@ export interface IImaging extends Document {
 
 const ImagingSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true },
     orderedBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -36,16 +46,16 @@ const ImagingSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Indexes for efficient queries
-ImagingSchema.index({ patient: 1, orderDate: -1 });
-ImagingSchema.index({ visit: 1 });
-ImagingSchema.index({ orderedBy: 1 });
-ImagingSchema.index({ reportedBy: 1 });
-ImagingSchema.index({ status: 1 });
-ImagingSchema.index({ orderedBy: 1, orderDate: -1 }); // For orderer history
-ImagingSchema.index({ status: 1, orderDate: -1 }); // For status-based date queries
-ImagingSchema.index({ patient: 1, status: 1 }); // For patient's pending imaging
-ImagingSchema.index({ modality: 1 }); // For modality-based queries
+// Indexes for efficient queries (tenant-scoped)
+ImagingSchema.index({ tenantId: 1, patient: 1, orderDate: -1 });
+ImagingSchema.index({ tenantId: 1, visit: 1 });
+ImagingSchema.index({ tenantId: 1, orderedBy: 1 });
+ImagingSchema.index({ tenantId: 1, reportedBy: 1 });
+ImagingSchema.index({ tenantId: 1, status: 1 });
+ImagingSchema.index({ tenantId: 1, orderedBy: 1, orderDate: -1 }); // For orderer history
+ImagingSchema.index({ tenantId: 1, status: 1, orderDate: -1 }); // For status-based date queries
+ImagingSchema.index({ tenantId: 1, patient: 1, status: 1 }); // For patient's pending imaging
+ImagingSchema.index({ tenantId: 1, modality: 1 }); // For modality-based queries
 
 export default mongoose.models.Imaging || mongoose.model<IImaging>('Imaging', ImagingSchema);
 

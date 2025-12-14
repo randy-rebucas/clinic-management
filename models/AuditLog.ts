@@ -35,6 +35,9 @@ export type AuditResource =
   | 'system';
 
 export interface IAuditLog extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   // User information
   userId: Types.ObjectId; // User who performed the action
   userEmail?: string; // Cached for quick reference
@@ -87,6 +90,13 @@ const ChangeSchema: Schema = new Schema(
 
 const AuditLogSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     userEmail: { type: String, index: true },
     userRole: { type: String, index: true },
@@ -119,13 +129,13 @@ const AuditLogSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Indexes for efficient queries
-AuditLogSchema.index({ userId: 1, timestamp: -1 });
-AuditLogSchema.index({ resource: 1, resourceId: 1, timestamp: -1 });
-AuditLogSchema.index({ action: 1, timestamp: -1 });
-AuditLogSchema.index({ dataSubject: 1, timestamp: -1 }); // For PH DPA queries
-AuditLogSchema.index({ isSensitive: 1, timestamp: -1 });
-AuditLogSchema.index({ timestamp: -1 }); // For time-based queries
+// Indexes for efficient queries (tenant-scoped)
+AuditLogSchema.index({ tenantId: 1, userId: 1, timestamp: -1 });
+AuditLogSchema.index({ tenantId: 1, resource: 1, resourceId: 1, timestamp: -1 });
+AuditLogSchema.index({ tenantId: 1, action: 1, timestamp: -1 });
+AuditLogSchema.index({ tenantId: 1, dataSubject: 1, timestamp: -1 }); // For PH DPA queries
+AuditLogSchema.index({ tenantId: 1, isSensitive: 1, timestamp: -1 });
+AuditLogSchema.index({ tenantId: 1, timestamp: -1 }); // For time-based queries
 
 // TTL index to auto-delete old logs (optional - keep for 7 years for compliance)
 // AuditLogSchema.index({ timestamp: 1 }, { expireAfterSeconds: 220752000 }); // 7 years

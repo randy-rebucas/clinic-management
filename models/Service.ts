@@ -1,6 +1,9 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IService extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   code: string; // Service code (e.g., CONSULT-001, PROC-001)
   name: string; // Service name
   description?: string;
@@ -18,10 +21,16 @@ export interface IService extends Document {
 
 const ServiceSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     code: {
       type: String,
       required: [true, 'Service code is required'],
-      unique: true,
       trim: true,
       index: true,
     },
@@ -75,12 +84,12 @@ const ServiceSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Indexes for efficient queries
-ServiceSchema.index({ category: 1, active: 1 });
-ServiceSchema.index({ name: 'text', description: 'text' });
-ServiceSchema.index({ active: 1 }); // For active service queries
-ServiceSchema.index({ requiresDoctor: 1, active: 1 }); // For doctor-required services
-ServiceSchema.index({ code: 1 }); // Additional index for code lookups (unique already creates one)
+// Indexes for efficient queries (tenant-scoped)
+ServiceSchema.index({ tenantId: 1, category: 1, active: 1 });
+ServiceSchema.index({ tenantId: 1, name: 'text', description: 'text' });
+ServiceSchema.index({ tenantId: 1, active: 1 }); // For active service queries
+ServiceSchema.index({ tenantId: 1, requiresDoctor: 1, active: 1 }); // For doctor-required services
+ServiceSchema.index({ tenantId: 1, code: 1 }, { unique: true, sparse: true }); // Tenant-scoped service code
 
 export default mongoose.models.Service || mongoose.model<IService>('Service', ServiceSchema);
 

@@ -41,10 +41,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Handle email - if provided, check for duplicates and normalize
+    // Get tenantId from body if provided
+    const tenantId = body.tenantId;
+
+    // Handle email - if provided, check for duplicates and normalize (tenant-scoped)
     if (body.email && body.email.trim()) {
       const normalizedEmail = body.email.toLowerCase().trim();
-      const existingPatient = await Patient.findOne({ email: normalizedEmail });
+      const emailQuery: any = { email: normalizedEmail };
+      if (tenantId) {
+        emailQuery.tenantId = tenantId;
+      } else {
+        // If no tenant, check for patients without tenantId (backward compatibility)
+        emailQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const existingPatient = await Patient.findOne(emailQuery);
       if (existingPatient) {
         return NextResponse.json(
           { success: false, error: 'A patient with this email already exists. Please use a different email or contact the clinic.' },
@@ -76,11 +87,18 @@ export async function POST(request: NextRequest) {
           );
         }
         
-        // Find the highest patient code number
-        const lastPatient = await Patient.findOne({ 
+        // Find the highest patient code number (tenant-scoped)
+        const codeQuery: any = { 
           patientCode: { $exists: true, $ne: null },
           patientCode: { $regex: /^CLINIC-\d+$/ }
-        })
+        };
+        if (tenantId) {
+          codeQuery.tenantId = tenantId;
+        } else {
+          codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+        }
+        
+        const lastPatient = await Patient.findOne(codeQuery)
           .sort({ patientCode: -1 })
           .exec();
         
@@ -94,8 +112,15 @@ export async function POST(request: NextRequest) {
         
         patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
         
-        // Check if this code already exists
-        const existing = await Patient.findOne({ patientCode });
+        // Check if this code already exists (tenant-scoped)
+        const codeExistsQuery: any = { patientCode };
+        if (tenantId) {
+          codeExistsQuery.tenantId = tenantId;
+        } else {
+          codeExistsQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+        }
+        
+        const existing = await Patient.findOne(codeExistsQuery);
         if (!existing) {
           break; // Code is available
         }
@@ -132,11 +157,18 @@ export async function POST(request: NextRequest) {
             );
           }
           
-          // Generate a new patient code
-          const lastPatient = await Patient.findOne({ 
+          // Generate a new patient code (tenant-scoped)
+          const codeQuery: any = { 
             patientCode: { $exists: true, $ne: null },
             patientCode: { $regex: /^CLINIC-\d+$/ }
-          })
+          };
+          if (tenantId) {
+            codeQuery.tenantId = tenantId;
+          } else {
+            codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+          }
+          
+          const lastPatient = await Patient.findOne(codeQuery)
             .sort({ patientCode: -1 })
             .exec();
           

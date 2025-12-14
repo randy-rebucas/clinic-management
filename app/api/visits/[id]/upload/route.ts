@@ -16,6 +16,13 @@ export async function POST(
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const { getTenantContext } = await import('@/lib/tenant');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const { Types } = await import('mongoose');
+    
     const { id } = await params;
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -45,13 +52,42 @@ export async function POST(
       uploadedBy: session.userId,
     };
 
-    const visit = await Visit.findByIdAndUpdate(
-      id,
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode email phone',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const providerPopulateOptions: any = {
+      path: 'provider',
+      select: 'name email',
+    };
+    if (tenantId) {
+      providerPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      providerPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
+    const visit = await Visit.findOneAndUpdate(
+      query,
       { $push: { attachments: attachment } },
       { new: true }
     )
-      .populate('patient', 'firstName lastName patientCode email phone')
-      .populate('provider', 'name email');
+      .populate(patientPopulateOptions)
+      .populate(providerPopulateOptions);
 
     if (!visit) {
       return NextResponse.json(

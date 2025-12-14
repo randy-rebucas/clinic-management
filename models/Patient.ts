@@ -2,6 +2,9 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 import { AttachmentSchema, IAttachment } from './Attachment';
 
 export interface IPatient extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   // Patient identification
   patientCode?: string; // e.g. CLINIC-0001 (optional for backward compatibility)
   
@@ -110,11 +113,17 @@ export interface IPatient extends Document {
 
 const PatientSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     // Patient identification
     patientCode: {
       type: String,
-      index: true,
-      unique: true,
+      unique: true, // unique: true automatically creates an index
       sparse: true, // Allow null/undefined values
       trim: true,
     },
@@ -164,7 +173,6 @@ const PatientSchema: Schema = new Schema(
     email: {
       type: String,
       required: [true, 'Email is required'],
-      unique: true,
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
@@ -199,8 +207,9 @@ const PatientSchema: Schema = new Schema(
     
     // Identifiers
     identifiers: {
-      philHealth: { type: String, index: true, sparse: true, trim: true },
-      govId: { type: String, index: true, sparse: true, trim: true },
+      philHealth: { type: String, trim: true },
+      govId: { type: String, trim: true },
+      // sparse indexes are created explicitly below via compound indexes
       other: { type: Map, of: String },
     },
     
@@ -294,15 +303,15 @@ const PatientSchema: Schema = new Schema(
 );
 
 // Indexes
-PatientSchema.index({ lastName: 1, firstName: 1 });
-PatientSchema.index({ dateOfBirth: 1 }); // For age-based queries
-PatientSchema.index({ sex: 1 }); // For gender-based queries
-PatientSchema.index({ active: 1 }); // For active patient queries
-PatientSchema.index({ 'identifiers.philHealth': 1 }); // For PhilHealth lookups
-PatientSchema.index({ 'identifiers.govId': 1 }); // For government ID lookups
-PatientSchema.index({ createdAt: -1 }); // For registration date queries
-// email is already indexed via unique: true
-// patientCode is already indexed via index: true and unique: true
+PatientSchema.index({ tenantId: 1, lastName: 1, firstName: 1 }); // Tenant-scoped name queries
+PatientSchema.index({ tenantId: 1, email: 1 }); // Tenant-scoped email (compound index for uniqueness)
+PatientSchema.index({ tenantId: 1, dateOfBirth: 1 }); // Tenant-scoped age queries
+PatientSchema.index({ tenantId: 1, sex: 1 }); // Tenant-scoped gender queries
+PatientSchema.index({ tenantId: 1, active: 1 }); // Tenant-scoped active patient queries
+PatientSchema.index({ tenantId: 1, 'identifiers.philHealth': 1 }); // Tenant-scoped PhilHealth lookups
+PatientSchema.index({ tenantId: 1, 'identifiers.govId': 1 }); // Tenant-scoped government ID lookups
+PatientSchema.index({ tenantId: 1, createdAt: -1 }); // Tenant-scoped registration date queries
+PatientSchema.index({ tenantId: 1, patientCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped patient code
 
 // Virtual for full name
 PatientSchema.virtual('fullName').get(function (this: IPatient) {

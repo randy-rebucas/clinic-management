@@ -17,6 +17,13 @@ export async function POST(
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const { getTenantContext } = await import('@/lib/tenant');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const { Types } = await import('mongoose');
+    
     const { id } = await params;
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -46,8 +53,16 @@ export async function POST(
       uploadedBy: session.userId,
     };
 
-    const patient = await Patient.findByIdAndUpdate(
-      id,
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    const patient = await Patient.findOneAndUpdate(
+      query,
       { $push: { attachments: attachment } },
       { new: true }
     );

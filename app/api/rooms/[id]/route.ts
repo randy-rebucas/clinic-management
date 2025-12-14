@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Room from '@/models/Room';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(
   request: NextRequest,
@@ -17,7 +19,20 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    const room = await Room.findById(id);
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const room = await Room.findOne(query);
 
     if (!room) {
       return NextResponse.json(
@@ -51,7 +66,19 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
-    const room = await Room.findByIdAndUpdate(id, body, {
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    const room = await Room.findOneAndUpdate(query, body, {
       new: true,
       runValidators: true,
     });
@@ -92,7 +119,19 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-    const room = await Room.findByIdAndDelete(id);
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const room = await Room.findOneAndDelete(query);
 
     if (!room) {
       return NextResponse.json(

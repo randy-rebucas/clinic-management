@@ -43,6 +43,9 @@ export async function auditRequest(
        method === 'PUT' || method === 'PATCH' ? 'update' : 
        method === 'DELETE' ? 'delete' : 'read');
 
+    // Get tenantId from session
+    const tenantId = session.tenantId;
+    
     if (dataSubject && action === 'read') {
       // Log data access for PH DPA compliance
       await logDataAccess(
@@ -61,6 +64,7 @@ export async function auditRequest(
         userId: session.userId,
         userEmail: session.email,
         userRole: session.role,
+        tenantId: tenantId,
         action,
         resource: options.resource,
         resourceId: resourceId || undefined,

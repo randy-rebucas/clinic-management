@@ -22,11 +22,26 @@ export async function PUT(
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const { getTenantContext } = await import('@/lib/tenant');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const { Types } = await import('mongoose');
+    
     const { id } = await params;
     const body = await request.json();
     const { defaultPermissions, permissionIds } = body;
 
-    const role = await Role.findById(id);
+    // Build query with tenant filter
+    const roleQuery: any = { _id: id };
+    if (tenantId) {
+      roleQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      roleQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    const role = await Role.findOne(roleQuery);
     if (!role) {
       return NextResponse.json(
         { success: false, error: 'Role not found' },
@@ -39,11 +54,18 @@ export async function PUT(
       role.defaultPermissions = defaultPermissions;
     }
 
-    // Update permission references if provided
+    // Update permission references if provided (tenant-scoped)
     if (permissionIds !== undefined) {
-      // Validate all permission IDs exist
+      // Validate all permission IDs exist (tenant-scoped)
       if (permissionIds.length > 0) {
-        const permissions = await Permission.find({ _id: { $in: permissionIds } });
+        const permissionQuery: any = { _id: { $in: permissionIds } };
+        if (tenantId) {
+          permissionQuery.tenantId = new Types.ObjectId(tenantId);
+        } else {
+          permissionQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+        }
+        
+        const permissions = await Permission.find(permissionQuery);
         if (permissions.length !== permissionIds.length) {
           return NextResponse.json(
             { success: false, error: 'Some permission IDs are invalid' },
@@ -55,7 +77,19 @@ export async function PUT(
     }
 
     await role.save();
-    await role.populate('permissions', 'resource actions');
+    
+    // Build populate options with tenant filter
+    const permissionPopulateOptions: any = {
+      path: 'permissions',
+      select: 'resource actions',
+    };
+    if (tenantId) {
+      permissionPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      permissionPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await role.populate(permissionPopulateOptions);
 
     return NextResponse.json({ success: true, data: role });
   } catch (error: any) {

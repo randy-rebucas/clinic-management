@@ -3,10 +3,12 @@ import connectDB from '@/lib/mongodb';
 import Settings from '@/models/Settings';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { clearSettingsCache } from '@/lib/settings';
+import { clearSettingsCache, getDefaultSettings } from '@/lib/settings';
 import { isSMSConfigured } from '@/lib/sms';
 import { isEmailConfigured } from '@/lib/email';
 import { isCloudinaryConfigured } from '@/lib/cloudinary';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 // GET settings - accessible to all authenticated users
 export async function GET() {
@@ -18,17 +20,41 @@ export async function GET() {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
 
-    // Get or create default settings
-    let settings = await Settings.findOne();
+    // Get or create default settings (tenant-scoped)
+    const settingsQuery: any = {};
+    if (tenantId) {
+      settingsQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      settingsQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    let settings = await Settings.findOne(settingsQuery);
 
     if (!settings) {
-      // Create default settings if none exist
-      settings = await Settings.create({});
+      // Create default settings if none exist - use full default values
+      const defaultSettingsData = getDefaultSettings();
+      const settingsData: any = {
+        ...defaultSettingsData,
+      };
+      if (tenantId) {
+        settingsData.tenantId = new Types.ObjectId(tenantId);
+      }
+      settings = await Settings.create(settingsData);
     }
 
+    // Merge with defaults to ensure all fields are present
+    const defaultSettingsData = getDefaultSettings();
+    const settingsObj = {
+      ...defaultSettingsData,
+      ...settings.toObject(),
+    };
+    
     // Add integration status based on environment variables
-    const settingsObj = settings.toObject();
     settingsObj.integrationStatus = {
       twilio: isSMSConfigured(),
       smtp: isEmailConfigured(),
@@ -63,17 +89,43 @@ export async function PUT(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
 
     const body = await request.json();
 
-    // Get existing settings or create new
-    let settings = await Settings.findOne();
+    // Get existing settings or create new (tenant-scoped)
+    const settingsQuery: any = {};
+    if (tenantId) {
+      settingsQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      settingsQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    let settings = await Settings.findOne(settingsQuery);
 
     if (!settings) {
-      settings = await Settings.create(body);
+      // Merge with defaults when creating new settings
+      const defaultSettingsData = getDefaultSettings();
+      const settingsData: any = {
+        ...defaultSettingsData,
+        ...body,
+      };
+      if (tenantId && !settingsData.tenantId) {
+        settingsData.tenantId = new Types.ObjectId(tenantId);
+      }
+      settings = await Settings.create(settingsData);
     } else {
-      // Update settings
-      Object.assign(settings, body);
+      // Update settings - merge with defaults to ensure all fields exist
+      const defaultSettingsData = getDefaultSettings();
+      const updatedData = {
+        ...defaultSettingsData,
+        ...settings.toObject(),
+        ...body,
+      };
+      Object.assign(settings, updatedData);
       await settings.save();
     }
 

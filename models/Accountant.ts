@@ -2,6 +2,9 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 export interface IAccountant extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   firstName: string;
   lastName: string;
   email: string;
@@ -68,6 +71,13 @@ export interface IAccountant extends Document {
 
 const AccountantSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     firstName: {
       type: String,
       required: [true, 'First name is required'],
@@ -81,7 +91,6 @@ const AccountantSchema: Schema = new Schema(
     email: {
       type: String,
       required: [true, 'Email is required'],
-      unique: true,
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
@@ -94,7 +103,7 @@ const AccountantSchema: Schema = new Schema(
     employeeId: {
       type: String,
       trim: true,
-      sparse: true,
+      // sparse index is created explicitly below via compound index
     },
     department: {
       type: String,
@@ -114,7 +123,7 @@ const AccountantSchema: Schema = new Schema(
     licenseNumber: {
       type: String,
       trim: true,
-      sparse: true,
+      // sparse index is created explicitly below via compound index
     },
     schedule: [
       {
@@ -179,13 +188,13 @@ const AccountantSchema: Schema = new Schema(
   }
 );
 
-// Indexes for efficient queries
-AccountantSchema.index({ email: 1 }); // Additional index (unique already creates one)
-AccountantSchema.index({ employeeId: 1 }, { sparse: true });
-AccountantSchema.index({ licenseNumber: 1 }, { sparse: true });
-AccountantSchema.index({ department: 1, status: 1 }); // For department-based queries
-AccountantSchema.index({ status: 1 }); // For status-based queries
-AccountantSchema.index({ createdAt: -1 }); // For sorting by creation date
+// Indexes for efficient queries (tenant-scoped)
+AccountantSchema.index({ tenantId: 1, email: 1 }, { unique: true, sparse: true }); // Tenant-scoped unique email
+AccountantSchema.index({ tenantId: 1, employeeId: 1 }, { sparse: true });
+AccountantSchema.index({ tenantId: 1, licenseNumber: 1 }, { sparse: true });
+AccountantSchema.index({ tenantId: 1, department: 1, status: 1 }); // For department-based queries
+AccountantSchema.index({ tenantId: 1, status: 1 }); // For status-based queries
+AccountantSchema.index({ tenantId: 1, createdAt: -1 }); // For sorting by creation date
 
 // Register Accountant model immediately after schema definition
 if (!mongoose.models.Accountant) {

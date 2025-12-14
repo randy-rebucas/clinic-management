@@ -1,6 +1,9 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IInventoryItem extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   medicineId?: Types.ObjectId; // Reference to Medicine
   name: string;
   category: 'medicine' | 'supply' | 'equipment' | 'other';
@@ -23,6 +26,13 @@ export interface IInventoryItem extends Document {
 
 const InventoryItemSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     medicineId: { type: Schema.Types.ObjectId, ref: 'Medicine' },
     name: { type: String, required: true, trim: true, index: true },
     category: {
@@ -31,7 +41,8 @@ const InventoryItemSchema: Schema = new Schema(
       required: true,
       index: true,
     },
-    sku: { type: String, trim: true, index: true, sparse: true },
+    sku: { type: String, trim: true },
+    // sparse unique index is created explicitly below via compound index
     quantity: { type: Number, required: true, min: 0, default: 0 },
     unit: { type: String, default: 'pieces', trim: true },
     reorderLevel: { type: Number, default: 10, min: 0 },
@@ -52,16 +63,16 @@ const InventoryItemSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Indexes for efficient queries
-InventoryItemSchema.index({ category: 1, status: 1 });
-InventoryItemSchema.index({ name: 'text' });
-InventoryItemSchema.index({ status: 1 });
-InventoryItemSchema.index({ expiryDate: 1 });
-InventoryItemSchema.index({ medicineId: 1 });
-InventoryItemSchema.index({ medicineId: 1, status: 1 }); // For medicine-specific status queries
-InventoryItemSchema.index({ lastRestockedBy: 1 });
-InventoryItemSchema.index({ status: 1, expiryDate: 1 }); // For low-stock/expired queries
-InventoryItemSchema.index({ sku: 1 }); // For SKU lookups (sparse already set)
+// Indexes for efficient queries (tenant-scoped)
+InventoryItemSchema.index({ tenantId: 1, category: 1, status: 1 });
+InventoryItemSchema.index({ tenantId: 1, name: 'text' });
+InventoryItemSchema.index({ tenantId: 1, status: 1 });
+InventoryItemSchema.index({ tenantId: 1, expiryDate: 1 });
+InventoryItemSchema.index({ tenantId: 1, medicineId: 1 });
+InventoryItemSchema.index({ tenantId: 1, medicineId: 1, status: 1 }); // For medicine-specific status queries
+InventoryItemSchema.index({ tenantId: 1, lastRestockedBy: 1 });
+InventoryItemSchema.index({ tenantId: 1, status: 1, expiryDate: 1 }); // For low-stock/expired queries
+InventoryItemSchema.index({ tenantId: 1, sku: 1 }, { unique: true, sparse: true }); // Tenant-scoped SKU
 
 // Pre-save hook to update status based on quantity and expiry
 InventoryItemSchema.pre('save', function (this: IInventoryItem, next) {

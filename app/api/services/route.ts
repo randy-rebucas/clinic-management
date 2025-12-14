@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Service from '@/models/Service';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -13,12 +15,25 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const category = searchParams.get('category');
     const active = searchParams.get('active') !== 'false';
     const search = searchParams.get('search');
 
     let query: any = {};
+    
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
     if (active) {
       query.active = true;
     }
@@ -26,10 +41,23 @@ export async function GET(request: NextRequest) {
       query.category = category;
     }
     if (search) {
-      query.$or = [
+      const searchConditions = [
         { name: { $regex: search, $options: 'i' } },
         { code: { $regex: search, $options: 'i' } },
         { description: { $regex: search, $options: 'i' } },
+      ];
+      
+      // Combine tenant filter with search conditions
+      const tenantFilter: any = {};
+      if (tenantId) {
+        tenantFilter.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      query.$and = [
+        tenantFilter,
+        { $or: searchConditions }
       ];
     }
 
@@ -65,11 +93,22 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
 
-    // Auto-generate code if not provided
+    // Auto-generate code if not provided (tenant-scoped)
     if (!body.code) {
       const categoryPrefix = body.category?.toUpperCase().substring(0, 4) || 'SERV';
-      const lastService = await Service.findOne({ code: { $regex: `^${categoryPrefix}` } })
+      const codeQuery: any = { code: { $regex: `^${categoryPrefix}` } };
+      if (tenantId) {
+        codeQuery.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const lastService = await Service.findOne(codeQuery)
         .sort({ code: -1 })
         .exec();
       
@@ -84,7 +123,13 @@ export async function POST(request: NextRequest) {
       body.code = `${categoryPrefix}-${String(nextNumber).padStart(3, '0')}`;
     }
 
-    const service = await Service.create(body);
+    // Ensure service is created with tenantId
+    const serviceData: any = { ...body };
+    if (tenantId && !serviceData.tenantId) {
+      serviceData.tenantId = new Types.ObjectId(tenantId);
+    }
+
+    const service = await Service.create(serviceData);
     return NextResponse.json({ success: true, data: service }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating service:', error);

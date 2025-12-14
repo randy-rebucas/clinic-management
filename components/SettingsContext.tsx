@@ -73,11 +73,16 @@ interface SettingsContextType {
   refreshSettings: () => Promise<void>;
 }
 
+// Default settings - matches getDefaultSettings() from lib/settings.ts
+// Note: This is a client-side fallback. Server-side should use getDefaultSettings() from lib/settings.ts
 const defaultSettings: Settings = {
   clinicName: 'Clinic Management System',
   clinicAddress: '',
   clinicPhone: '',
   clinicEmail: '',
+  clinicWebsite: '',
+  taxId: '',
+  licenseNumber: '',
   businessHours: [
     { day: 'monday', open: '09:00', close: '17:00', closed: false },
     { day: 'tuesday', open: '09:00', close: '17:00', closed: false },
@@ -131,7 +136,7 @@ const defaultSettings: Settings = {
   },
   displaySettings: {
     theme: 'light',
-    sidebarCollapsed: true,
+    sidebarCollapsed: false,
     showNotifications: true,
   },
 };

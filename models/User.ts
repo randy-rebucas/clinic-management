@@ -4,6 +4,7 @@ export interface IUser extends Document {
   name: string;
   email: string;
   password: string;
+  tenantId?: Types.ObjectId; // Reference to Tenant (optional for backward compatibility)
   role: Types.ObjectId; // Reference to Role
   // Staff information reference (one-to-one relationship) - DEPRECATED: Use role-specific profiles instead
   staffInfo?: Types.ObjectId;
@@ -33,10 +34,14 @@ const UserSchema = new Schema<IUser>(
     email: {
       type: String,
       required: [true, 'Email is required'],
-      unique: true,
       trim: true,
       lowercase: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
+    },
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
     },
     password: {
       type: String,
@@ -68,7 +73,6 @@ const UserSchema = new Schema<IUser>(
       type: String,
       enum: ['active', 'inactive', 'suspended'],
       default: 'active',
-      index: true,
     },
     lastLogin: { type: Date },
   },
@@ -86,7 +90,8 @@ UserSchema.index({ accountantProfile: 1 });
 UserSchema.index({ medicalRepresentativeProfile: 1 });
 UserSchema.index({ role: 1, status: 1 }); // For role-based status queries
 UserSchema.index({ status: 1 }); // For status-based queries
-UserSchema.index({ email: 1 }); // Additional index for email lookups (unique already creates one, but explicit is better)
+UserSchema.index({ email: 1, tenantId: 1 }); // Compound index for tenant-scoped email lookups
+UserSchema.index({ tenantId: 1, status: 1 }); // For tenant-scoped user queries
 UserSchema.index({ lastLogin: -1 }); // For recent login queries
 UserSchema.index({ createdAt: -1 }); // For sorting by creation date
 

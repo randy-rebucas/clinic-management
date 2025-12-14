@@ -5,6 +5,8 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
 import logger from '@/lib/logger';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(request: NextRequest) {
   // User authentication check
@@ -23,6 +25,10 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
     
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     // Get query parameters
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search') || '';
@@ -39,11 +45,19 @@ export async function GET(request: NextRequest) {
 
     // Build filter query
     const filter: any = {};
+    
+    // Add tenant filter
+    const tenantFilter: any = {};
+    if (tenantId) {
+      tenantFilter.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
 
     // Search filter - search across multiple fields
     if (search) {
       const searchRegex = new RegExp(search, 'i');
-      filter.$or = [
+      const searchConditions = [
         { firstName: searchRegex },
         { lastName: searchRegex },
         { middleName: searchRegex },
@@ -53,6 +67,15 @@ export async function GET(request: NextRequest) {
         { 'address.city': searchRegex },
         { 'address.state': searchRegex },
       ];
+      
+      // Combine tenant filter with search conditions
+      filter.$and = [
+        tenantFilter,
+        { $or: searchConditions }
+      ];
+    } else {
+      // No search, just use tenant filter
+      Object.assign(filter, tenantFilter);
     }
 
     // Sex filter
@@ -153,6 +176,15 @@ export async function POST(request: NextRequest) {
     await connectDB();
     const body = await request.json();
     
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Ensure patient is created with tenantId
+    if (tenantId && !body.tenantId) {
+      body.tenantId = new Types.ObjectId(tenantId);
+    }
+    
     console.log('Creating patient with data:', JSON.stringify(body, null, 2));
     
     // Auto-generate patientCode if not provided
@@ -171,11 +203,17 @@ export async function POST(request: NextRequest) {
           );
         }
         
-        // Find the highest patient code number
-        const lastPatient = await Patient.findOne({ 
+        // Find the highest patient code number (tenant-scoped)
+        const codeQuery: any = { 
           patientCode: { $exists: true, $ne: null },
           patientCode: { $regex: /^CLINIC-\d+$/ }
-        })
+        };
+        if (tenantId) {
+          codeQuery.tenantId = new Types.ObjectId(tenantId);
+        } else {
+          codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+        }
+        const lastPatient = await Patient.findOne(codeQuery)
           .sort({ patientCode: -1 })
           .exec();
         
@@ -189,8 +227,14 @@ export async function POST(request: NextRequest) {
         
         patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
         
-        // Check if this code already exists
-        const existing = await Patient.findOne({ patientCode });
+        // Check if this code already exists (tenant-scoped)
+        const existingQuery: any = { patientCode };
+        if (tenantId) {
+          existingQuery.tenantId = new Types.ObjectId(tenantId);
+        } else {
+          existingQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+        }
+        const existing = await Patient.findOne(existingQuery);
         if (!existing) {
           break; // Code is available
         }
@@ -224,11 +268,17 @@ export async function POST(request: NextRequest) {
             );
           }
           
-          // Generate a new patient code
-          const lastPatient = await Patient.findOne({ 
+          // Generate a new patient code (tenant-scoped)
+          const codeQuery: any = { 
             patientCode: { $exists: true, $ne: null },
             patientCode: { $regex: /^CLINIC-\d+$/ }
-          })
+          };
+          if (tenantId) {
+            codeQuery.tenantId = new Types.ObjectId(tenantId);
+          } else {
+            codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+          }
+          const lastPatient = await Patient.findOne(codeQuery)
             .sort({ patientCode: -1 })
             .exec();
           

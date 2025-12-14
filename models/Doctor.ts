@@ -2,6 +2,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 export interface IDoctor extends Document {
+  tenantId?: Types.ObjectId; // Reference to Tenant (optional for backward compatibility)
   firstName: string;
   lastName: string;
   email: string;
@@ -57,6 +58,11 @@ export interface IDoctor extends Document {
 
 const DoctorSchema: Schema = new Schema(
   {
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
     firstName: {
       type: String,
       required: [true, 'First name is required'],
@@ -70,7 +76,6 @@ const DoctorSchema: Schema = new Schema(
     email: {
       type: String,
       required: [true, 'Email is required'],
-      unique: true,
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
@@ -88,7 +93,6 @@ const DoctorSchema: Schema = new Schema(
     licenseNumber: {
       type: String,
       required: [true, 'License number is required'],
-      unique: true,
       trim: true,
     },
     schedule: [
@@ -148,11 +152,11 @@ const DoctorSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-DoctorSchema.index({ email: 1 }); // Additional index (unique already creates one)
-DoctorSchema.index({ licenseNumber: 1 }); // Additional index (unique already creates one)
-DoctorSchema.index({ specialization: 1, status: 1 }); // For specialization-based queries
-DoctorSchema.index({ department: 1, status: 1 }); // For department-based queries
-DoctorSchema.index({ status: 1 }); // For status-based queries
+DoctorSchema.index({ tenantId: 1, email: 1 }, { unique: true, sparse: true }); // Tenant-scoped unique email
+DoctorSchema.index({ tenantId: 1, licenseNumber: 1 }, { unique: true, sparse: true }); // Tenant-scoped unique license
+DoctorSchema.index({ tenantId: 1, specialization: 1, status: 1 }); // Tenant-scoped specialization queries
+DoctorSchema.index({ tenantId: 1, department: 1, status: 1 }); // Tenant-scoped department queries
+DoctorSchema.index({ tenantId: 1, status: 1 }); // Tenant-scoped status queries
 
 // Register Doctor model immediately after schema definition
 // This ensures it's available when other models (like User) reference it via ref: 'Doctor'

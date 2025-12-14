@@ -2,9 +2,11 @@ import { config } from 'dotenv';
 import { resolve } from 'path';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { Types } from 'mongoose';
 
 // Import all models from index (ensures proper registration order)
 import {
+  Tenant,
   User,
   Role,
   Permission,
@@ -43,6 +45,7 @@ config({ path: resolve(process.cwd(), '.env') });
 
 // Store created IDs for references
 const seedData: {
+  tenant: any | null;
   roles: any[];
   users: any[];
   staff: any[];
@@ -70,6 +73,7 @@ const seedData: {
   memberships: any[];
   auditLogs: any[];
 } = {
+  tenant: null,
   roles: [],
   users: [],
   staff: [],
@@ -112,46 +116,85 @@ async function seedDataScript() {
     await mongoose.connect(MONGODB_URI, { bufferCommands: false });
     console.log('✅ Connected to database\n');
 
+    // 0. Create or get default tenant
+    console.log('🏢 Setting up tenant...');
+    let defaultTenant = await Tenant.findOne({ subdomain: 'default' });
+    if (!defaultTenant) {
+      defaultTenant = await Tenant.create({
+        name: 'Default Clinic',
+        subdomain: 'default',
+        displayName: 'Default Clinic',
+        email: 'admin@clinic.com',
+        phone: '+1-555-0000',
+        address: {
+          street: '123 Medical Street',
+          city: 'Health City',
+          state: 'HC',
+          zipCode: '12345',
+          country: 'US',
+        },
+        settings: {
+          timezone: 'UTC',
+          currency: 'USD',
+          dateFormat: 'MM/DD/YYYY',
+        },
+        status: 'active',
+        subscription: {
+          plan: 'premium',
+          status: 'active',
+          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
+        },
+      });
+      console.log(`   ✓ Created default tenant: ${defaultTenant.name} (${defaultTenant.subdomain})`);
+    } else {
+      console.log(`   ✓ Using existing tenant: ${defaultTenant.name} (${defaultTenant.subdomain})`);
+    }
+    seedData.tenant = defaultTenant;
+    const tenantId = defaultTenant._id;
+    console.log('✅ Tenant setup complete\n');
+
     // Clear existing data (optional - comment out if you want to keep existing data)
     console.log('🗑️  Clearing existing data...');
     await Promise.all([
       // Audit & Notifications
-      AuditLog.deleteMany({}),
-      Notification.deleteMany({}),
+      AuditLog.deleteMany({ tenantId }),
+      Notification.deleteMany({ tenantId }),
       // Queue & Membership
-      Queue.deleteMany({}),
-      Membership.deleteMany({}),
+      Queue.deleteMany({ tenantId }),
+      Membership.deleteMany({ tenantId }),
       // Documents & Referrals
-      Referral.deleteMany({}),
-      Document.deleteMany({}),
+      Referral.deleteMany({ tenantId }),
+      Document.deleteMany({ tenantId }),
       // Billing
-      Invoice.deleteMany({}),
+      Invoice.deleteMany({ tenantId }),
       // Clinical records
-      Procedure.deleteMany({}),
-      Imaging.deleteMany({}),
-      LabResult.deleteMany({}),
-      Prescription.deleteMany({}),
-      Visit.deleteMany({}),
-      Appointment.deleteMany({}),
+      Procedure.deleteMany({ tenantId }),
+      Imaging.deleteMany({ tenantId }),
+      LabResult.deleteMany({ tenantId }),
+      Prescription.deleteMany({ tenantId }),
+      Visit.deleteMany({ tenantId }),
+      Appointment.deleteMany({ tenantId }),
       // Inventory & Catalog
-      InventoryItem.deleteMany({}),
-      Medicine.deleteMany({}),
-      Service.deleteMany({}),
-      Room.deleteMany({}),
+      InventoryItem.deleteMany({ tenantId }),
+      Medicine.deleteMany({ tenantId }),
+      Service.deleteMany({ tenantId }),
+      Room.deleteMany({ tenantId }),
       // Patient
-      Patient.deleteMany({}),
+      Patient.deleteMany({ tenantId }),
       // Profile models (these have post-save hooks that create Users)
-      MedicalRepresentative.deleteMany({}),
-      Accountant.deleteMany({}),
-      Receptionist.deleteMany({}),
-      Nurse.deleteMany({}),
-      Doctor.deleteMany({}),
-      Admin.deleteMany({}),
-      Staff.deleteMany({}),
+      MedicalRepresentative.deleteMany({ tenantId }),
+      Accountant.deleteMany({ tenantId }),
+      Receptionist.deleteMany({ tenantId }),
+      Nurse.deleteMany({ tenantId }),
+      Doctor.deleteMany({ tenantId }),
+      Admin.deleteMany({ tenantId }),
+      Staff.deleteMany({ tenantId }),
       // Auth
-      User.deleteMany({}),
-      Permission.deleteMany({}),
-      Role.deleteMany({}),
+      User.deleteMany({ tenantId }),
+      Permission.deleteMany({ tenantId }),
+      Role.deleteMany({ tenantId }),
+      // Settings (tenant-scoped)
+      Settings.deleteMany({ tenantId }),
     ]);
     console.log('✅ Existing data cleared\n');
 
@@ -160,9 +203,10 @@ async function seedDataScript() {
     
     // Admin role
     const adminRole = await Role.findOneAndUpdate(
-      { name: 'admin' },
+      { name: 'admin', tenantId },
       {
         name: 'admin',
+        tenantId,
         displayName: 'Administrator',
         description: 'Full system access with all permissions',
         level: 100,
@@ -176,13 +220,14 @@ async function seedDataScript() {
     
     // Create Permission documents for admin role
     // First, clear any existing permissions for this role to avoid duplicates
-    await Permission.deleteMany({ role: adminRole._id });
+    await Permission.deleteMany({ role: adminRole._id, tenantId });
     
     const adminPermissions = [];
     try {
       for (const perm of adminRole.defaultPermissions || []) {
         const permission = await Permission.create({
           role: adminRole._id, // Reference to Role model
+          tenantId,
           resource: perm.resource,
           actions: perm.actions,
         });
@@ -201,9 +246,10 @@ async function seedDataScript() {
 
     // Doctor role
     const doctorRole = await Role.findOneAndUpdate(
-      { name: 'doctor' },
+      { name: 'doctor', tenantId },
       {
         name: 'doctor',
+        tenantId,
         displayName: 'Doctor',
         description: 'Clinical staff with access to patient care, visits, and prescriptions',
         level: 80,
@@ -215,13 +261,14 @@ async function seedDataScript() {
     
     // Create Permission documents for doctor role
     // First, clear any existing permissions for this role to avoid duplicates
-    await Permission.deleteMany({ role: doctorRole._id });
+    await Permission.deleteMany({ role: doctorRole._id, tenantId });
     
     const doctorPermissions = [];
     try {
       for (const perm of doctorRole.defaultPermissions || []) {
         const permission = await Permission.create({
           role: doctorRole._id, // Reference to Role model
+          tenantId,
           resource: perm.resource,
           actions: perm.actions,
         });
@@ -240,9 +287,10 @@ async function seedDataScript() {
 
     // Nurse role
     const nurseRole = await Role.findOneAndUpdate(
-      { name: 'nurse' },
+      { name: 'nurse', tenantId },
       {
         name: 'nurse',
+        tenantId,
         displayName: 'Nurse',
         description: 'Clinical staff with access to patient care and lab results',
         level: 60,
@@ -254,13 +302,14 @@ async function seedDataScript() {
     
     // Create Permission documents for nurse role
     // First, clear any existing permissions for this role to avoid duplicates
-    await Permission.deleteMany({ role: nurseRole._id });
+    await Permission.deleteMany({ role: nurseRole._id, tenantId });
     
     const nursePermissions = [];
     try {
       for (const perm of nurseRole.defaultPermissions || []) {
         const permission = await Permission.create({
           role: nurseRole._id, // Reference to Role model
+          tenantId,
           resource: perm.resource,
           actions: perm.actions,
         });
@@ -279,9 +328,10 @@ async function seedDataScript() {
 
     // Receptionist role
     const receptionistRole = await Role.findOneAndUpdate(
-      { name: 'receptionist' },
+      { name: 'receptionist', tenantId },
       {
         name: 'receptionist',
+        tenantId,
         displayName: 'Receptionist',
         description: 'Front desk staff with access to appointments and patient management',
         level: 40,
@@ -293,13 +343,14 @@ async function seedDataScript() {
     
     // Create Permission documents for receptionist role
     // First, clear any existing permissions for this role to avoid duplicates
-    await Permission.deleteMany({ role: receptionistRole._id });
+    await Permission.deleteMany({ role: receptionistRole._id, tenantId });
     
     const receptionistPermissions = [];
     try {
       for (const perm of receptionistRole.defaultPermissions || []) {
         const permission = await Permission.create({
           role: receptionistRole._id, // Reference to Role model
+          tenantId,
           resource: perm.resource,
           actions: perm.actions,
         });
@@ -318,9 +369,10 @@ async function seedDataScript() {
 
     // Accountant role
     const accountantRole = await Role.findOneAndUpdate(
-      { name: 'accountant' },
+      { name: 'accountant', tenantId },
       {
         name: 'accountant',
+        tenantId,
         displayName: 'Accountant',
         description: 'Financial staff with access to billing and invoices',
         level: 30,
@@ -332,13 +384,14 @@ async function seedDataScript() {
     
     // Create Permission documents for accountant role
     // First, clear any existing permissions for this role to avoid duplicates
-    await Permission.deleteMany({ role: accountantRole._id });
+    await Permission.deleteMany({ role: accountantRole._id, tenantId });
     
     const accountantPermissions = [];
     try {
       for (const perm of accountantRole.defaultPermissions || []) {
         const permission = await Permission.create({
           role: accountantRole._id, // Reference to Role model
+          tenantId,
           resource: perm.resource,
           actions: perm.actions,
         });
@@ -357,9 +410,10 @@ async function seedDataScript() {
 
     // Medical Representative role
     const medicalRepRole = await Role.findOneAndUpdate(
-      { name: 'medical-representative' },
+      { name: 'medical-representative', tenantId },
       {
         name: 'medical-representative',
+        tenantId,
         displayName: 'Medical Representative',
         description: 'External medical representatives with limited access',
         level: 20,
@@ -373,13 +427,14 @@ async function seedDataScript() {
     );
     
     // Create Permission documents for medical-representative role
-    await Permission.deleteMany({ role: medicalRepRole._id });
+    await Permission.deleteMany({ role: medicalRepRole._id, tenantId });
     
     const medicalRepPermissions = [];
     try {
       for (const perm of medicalRepRole.defaultPermissions || []) {
         const permission = await Permission.create({
           role: medicalRepRole._id,
+          tenantId,
           resource: perm.resource,
           actions: perm.actions,
         });
@@ -405,6 +460,7 @@ async function seedDataScript() {
     for (const adminData of adminsData) {
       const admin = await Admin.create({
         ...adminData,
+        tenantId,
         title: 'Mr.',
         department: 'Administration',
         accessLevel: 'full',
@@ -437,6 +493,7 @@ async function seedDataScript() {
         lastName: docData.lastName,
         email: docData.email,
         phone: `+1-555-${String(3000 + i).padStart(4, '0')}`,
+        tenantId,
         specialization: docData.specialization,
         licenseNumber: `LIC-${String(1000 + i).padStart(6, '0')}`,
         schedule: [
@@ -486,6 +543,7 @@ async function seedDataScript() {
         lastName: nurseData.lastName,
         email: nurseData.email,
         phone: `+1-555-${String(4000 + i).padStart(4, '0')}`,
+        tenantId,
         employeeId: `NRS-${String(i + 1).padStart(4, '0')}`,
         licenseNumber: `NL-${String(2000 + i).padStart(6, '0')}`,
         department: 'Nursing',
@@ -534,6 +592,7 @@ async function seedDataScript() {
         lastName: recepData.lastName,
         email: recepData.email,
         phone: `+1-555-${String(5000 + i).padStart(4, '0')}`,
+        tenantId,
         employeeId: `RCP-${String(i + 1).padStart(4, '0')}`,
         department: 'Front Desk',
         hireDate: new Date(2023, 0, 1),
@@ -578,6 +637,7 @@ async function seedDataScript() {
         lastName: acctData.lastName,
         email: acctData.email,
         phone: `+1-555-${String(6000 + i).padStart(4, '0')}`,
+        tenantId,
         employeeId: `ACC-${String(i + 1).padStart(4, '0')}`,
         department: 'Finance',
         certification: 'CPA',
@@ -625,6 +685,7 @@ async function seedDataScript() {
         lastName: medRepData.lastName,
         email: medRepData.email,
         phone: `+1-555-${String(7000 + i).padStart(4, '0')}`,
+        tenantId,
         company: medRepData.company,
         territory: 'Metro Area',
         products: ['Drug A', 'Drug B', 'Drug C'],
@@ -654,6 +715,11 @@ async function seedDataScript() {
 
     // Get doctor users for later use
     const doctorUsers = seedData.users.filter(u => u.doctorProfile);
+    
+    // Safety check: if no doctor users found, we'll use doctors directly
+    if (doctorUsers.length === 0) {
+      console.warn('⚠️  Warning: No doctor users found. Some appointments/visits may not have provider references.');
+    }
 
     // 8. Create Patients
     console.log('🏥 Creating patients...');
@@ -734,6 +800,7 @@ async function seedDataScript() {
       const pData = patientsData[i];
       const patient = await Patient.create({
         ...pData,
+        tenantId,
         patientCode: `PAT-${String(i + 1).padStart(4, '0')}`,
         address: {
           street: `${100 + i} Health Street`,
@@ -769,6 +836,7 @@ async function seedDataScript() {
     for (const serviceData of servicesData) {
       const service = await Service.create({
         ...serviceData,
+        tenantId,
         description: `${serviceData.name} service`,
         unit: 'per service',
         duration: serviceData.category === 'consultation' ? 30 : 15,
@@ -792,6 +860,7 @@ async function seedDataScript() {
     for (const medData of medicinesData) {
       const medicine = await Medicine.create({
         ...medData,
+        tenantId,
         unit: 'mg',
         route: 'oral',
         indications: ['Pain relief', 'Fever'],
@@ -811,6 +880,7 @@ async function seedDataScript() {
       const medicine = seedData.medicines[i];
       const inventory = await InventoryItem.create({
         medicineId: medicine._id,
+        tenantId,
         name: medicine.name,
         category: 'medicine',
         sku: `SKU-${String(i + 1).padStart(6, '0')}`,
@@ -841,6 +911,7 @@ async function seedDataScript() {
     for (const roomData of roomsData) {
       const room = await Room.create({
         ...roomData,
+        tenantId,
         building: 'Main Building',
         capacity: 4,
         equipment: ['Examination table', 'Stethoscope', 'Blood pressure monitor'],
@@ -865,7 +936,7 @@ async function seedDataScript() {
     for (let i = 0; i < seedData.patients.length; i++) {
       const patient = seedData.patients[i];
       const doctor = seedData.doctors[i % seedData.doctors.length];
-      const doctorUser = doctorUsers[i % doctorUsers.length];
+      const doctorUser = doctorUsers.length > 0 ? doctorUsers[i % doctorUsers.length] : null;
       const appointmentDate = new Date(today);
       appointmentDate.setDate(today.getDate() + (i + 1));
       appointmentDate.setHours(9 + (i * 2), 0, 0, 0);
@@ -878,7 +949,8 @@ async function seedDataScript() {
       const appointment = await Appointment.create({
         patient: patient._id,
         doctor: doctor._id,
-        provider: doctorUser._id, // Also set provider (User reference)
+        provider: doctorUser?._id || doctor._id, // Use doctorUser if available, fallback to doctor._id
+        tenantId,
         appointmentCode: `APT-${String(i + 1).padStart(6, '0')}`,
         ...(useScheduledAt ? { scheduledAt } : { 
           appointmentDate: new Date(appointmentDate.getFullYear(), appointmentDate.getMonth(), appointmentDate.getDate()),
@@ -891,8 +963,8 @@ async function seedDataScript() {
         estimatedWaitTime: i === 3 ? 15 : undefined,
         reason: i === 3 ? 'Walk-in consultation' : 'General checkup',
         notes: `Appointment for ${patient.firstName} ${patient.lastName}`,
-        createdBy: seedData.users[0]._id,
-        room: seedData.rooms[i % seedData.rooms.length].name,
+        createdBy: seedData.users[0]._id.toString() as unknown as Types.ObjectId,
+        room: seedData.rooms[i % seedData.rooms.length].name as string,
       });
       seedData.appointments.push(appointment);
       console.log(`   ✓ Created appointment: ${appointment.appointmentCode}${appointment.isWalkIn ? ' (walk-in)' : ''}`);
@@ -904,16 +976,17 @@ async function seedDataScript() {
     for (let i = 0; i < seedData.patients.length; i++) {
       const patient = seedData.patients[i];
       const doctor = seedData.doctors[i % seedData.doctors.length];
-      const doctorUser = doctorUsers[i % doctorUsers.length];
+      const doctorUser = doctorUsers.length > 0 ? doctorUsers[i % doctorUsers.length] : null;
       const visitDate = new Date();
       visitDate.setDate(visitDate.getDate() - (i + 1));
 
       // Build visit data object - ensure provider is set (required for proper reference)
       const visitData: any = {
         patient: patient._id,
+        tenantId,
         visitCode: `VISIT-${String(i + 1).padStart(6, '0')}`,
         date: visitDate,
-        provider: doctorUser._id, // Visit.provider is optional but should be set for proper reference
+        provider: doctorUser?._id || doctor._id, // Visit.provider is optional but should be set for proper reference
         visitType: i === 0 ? 'consultation' : i === 1 ? 'follow-up' : i === 2 ? 'emergency' : i === 3 ? 'teleconsult' : 'checkup',
         chiefComplaint: i === 0 ? 'Routine checkup' : i === 1 ? 'Follow-up for diabetes management' : i === 2 ? 'Chest pain' : 'Annual physical',
         historyOfPresentIllness: i === 0 ? 'Patient presents for routine examination' : i === 1 ? 'Patient returns for diabetes follow-up' : i === 2 ? 'Patient presents with acute chest pain' : 'Patient presents for annual physical examination',
@@ -977,7 +1050,7 @@ async function seedDataScript() {
       if (i === 0 || i === 1) {
         visitData.digitalSignature = {
           providerName: `Dr. ${doctor.firstName} ${doctor.lastName}`,
-          providerId: doctorUser._id,
+          providerId: doctorUser?._id || doctor._id,
           signatureData: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', // Placeholder base64
           signedAt: visitDate,
           ipAddress: '192.168.1.100',
@@ -996,13 +1069,15 @@ async function seedDataScript() {
       const visit = seedData.visits[i];
       const patient = seedData.patients[i];
       const medicine = seedData.medicines[i % seedData.medicines.length];
-      const doctorUser = doctorUsers[i % doctorUsers.length];
+      const doctor = seedData.doctors[i % seedData.doctors.length];
+      const doctorUser = doctorUsers.length > 0 ? doctorUsers[i % doctorUsers.length] : null;
 
       const prescription = await Prescription.create({
         prescriptionCode: `RX-${String(i + 1).padStart(6, '0')}`,
         visit: visit._id,
         patient: patient._id,
-        prescribedBy: doctorUser._id, // Prescription.prescribedBy is optional but should be set
+        tenantId,
+        prescribedBy: doctorUser?._id || doctor._id, // Prescription.prescribedBy is optional but should be set
         issuedAt: visit.date,
         medications: [
           {
@@ -1037,12 +1112,14 @@ async function seedDataScript() {
     for (let i = 0; i < seedData.visits.length; i++) {
       const visit = seedData.visits[i];
       const patient = seedData.patients[i];
-      const doctorUser = doctorUsers[i % doctorUsers.length];
+      const doctor = seedData.doctors[i % seedData.doctors.length];
+      const doctorUser = doctorUsers.length > 0 ? doctorUsers[i % doctorUsers.length] : null;
 
       const labResult = await LabResult.create({
         visit: visit._id,
         patient: patient._id,
-        orderedBy: doctorUser._id, // LabResult.orderedBy is optional but should be set
+        tenantId,
+        orderedBy: doctorUser?._id || doctor._id, // LabResult.orderedBy is optional but should be set
         orderDate: visit.date,
         requestCode: `LAB-${String(i + 1).padStart(6, '0')}`,
         request: {
@@ -1076,12 +1153,14 @@ async function seedDataScript() {
     for (let i = 0; i < Math.min(3, seedData.visits.length); i++) {
       const visit = seedData.visits[i];
       const patient = seedData.patients[i];
-      const doctorUser = doctorUsers[i % doctorUsers.length];
+      const doctor = seedData.doctors[i % seedData.doctors.length];
+      const doctorUser = doctorUsers.length > 0 ? doctorUsers[i % doctorUsers.length] : null;
 
       const imaging = await Imaging.create({
         visit: visit._id,
         patient: patient._id,
-        orderedBy: doctorUser._id, // Imaging.orderedBy is optional but should be set
+        tenantId,
+        orderedBy: doctorUser?._id || doctor._id, // Imaging.orderedBy is optional but should be set
         modality: i === 0 ? 'X-Ray' : i === 1 ? 'Ultrasound' : 'CT',
         bodyPart: i === 0 ? 'Chest' : i === 1 ? 'Abdomen' : 'Head',
         orderDate: visit.date,
@@ -1089,7 +1168,7 @@ async function seedDataScript() {
         impression: 'Normal study',
         images: [],
         status: 'completed',
-        reportedBy: doctorUser._id, // Imaging.reportedBy is optional but should be set
+        reportedBy: doctorUser?._id || doctor._id, // Imaging.reportedBy is optional but should be set
         reportedAt: new Date(visit.date.getTime() + 2 * 24 * 60 * 60 * 1000),
       });
 
@@ -1107,13 +1186,15 @@ async function seedDataScript() {
     for (let i = 0; i < Math.min(2, seedData.visits.length); i++) {
       const visit = seedData.visits[i];
       const patient = seedData.patients[i];
-      const doctorUser = doctorUsers[i % doctorUsers.length];
+      const doctor = seedData.doctors[i % seedData.doctors.length];
+      const doctorUser = doctorUsers.length > 0 ? doctorUsers[i % doctorUsers.length] : null;
 
       const procedure = await Procedure.create({
         visit: visit._id,
         patient: patient._id,
+        tenantId,
         type: i === 0 ? 'minor-surgery' : 'wound-care',
-        performedBy: doctorUser._id, // Procedure.performedBy is optional but should be set
+        performedBy: doctorUser?._id || doctor._id, // Procedure.performedBy is optional but should be set
         date: visit.date,
         details: 'Procedure performed successfully',
         outcome: 'Successful',
@@ -1192,6 +1273,7 @@ async function seedDataScript() {
       const invoice = await Invoice.create({
         patient: patient._id,
         visit: visit._id,
+        tenantId,
         invoiceNumber: `INV-${String(i + 1).padStart(6, '0')}`,
         items: [
           {
@@ -1251,6 +1333,7 @@ async function seedDataScript() {
         url: 'https://example.com/documents/sample.pdf',
         patient: patient._id,
         visit: visit._id,
+        tenantId,
         uploadedBy: documentUploader._id,
         status: 'active',
       });
@@ -1284,6 +1367,7 @@ async function seedDataScript() {
 
       const referral = await Referral.create({
         referralCode: `REF-${String(i + 1).padStart(6, '0')}`,
+        tenantId,
         type: referralType,
         referringDoctor: referralType === 'doctor_to_doctor' ? referringDoctor._id : undefined,
         receivingDoctor: referralType === 'doctor_to_doctor' ? receivingDoctor._id : undefined,
@@ -1321,7 +1405,7 @@ async function seedDataScript() {
         feedback: status === 'completed' ? {
           rating: 5,
           comments: 'Excellent referral process, timely and professional',
-          submittedBy: doctorUsers[i % doctorUsers.length]._id,
+          submittedBy: doctorUsers.length > 0 ? doctorUsers[i % doctorUsers.length]._id : seedData.doctors[i % seedData.doctors.length]._id,
           submittedAt: completedDate!,
         } : undefined,
       });
@@ -1357,6 +1441,7 @@ async function seedDataScript() {
         visit: visit?._id, // Link to visit if exists
         doctor: doctor._id,
         room: room._id,
+        tenantId,
         status: i === 0 ? 'waiting' : i === 1 ? 'in-progress' : i === 2 ? 'completed' : 'waiting',
         priority: i,
         estimatedWaitTime: 15 + (i * 5),
@@ -1383,6 +1468,7 @@ async function seedDataScript() {
       // based on tier, so we don't need to set it explicitly
       const membership = await Membership.create({
         patient: patient._id,
+        tenantId,
         membershipNumber: `MEM-${String(i + 1).padStart(6, '0')}`,
         tier: i === 0 ? 'bronze' : i === 1 ? 'silver' : 'gold',
         status: 'active',
@@ -1414,6 +1500,7 @@ async function seedDataScript() {
     for (const user of seedData.users) {
       const notification = await Notification.create({
         user: user._id,
+        tenantId,
         type: 'system',
         priority: 'normal',
         title: 'Welcome to Clinic Management System',
@@ -1426,13 +1513,16 @@ async function seedDataScript() {
 
     // 25. Create Settings (if not exists)
     console.log('⚙️ Checking settings...');
-    const existingSettings = await Settings.findOne();
+    const existingSettings = await Settings.findOne({ tenantId });
     if (!existingSettings) {
       await Settings.create({
-        clinicName: 'Sample Clinic',
-        clinicAddress: '123 Medical Street, Health City, HC 12345',
-        clinicPhone: '+1-555-0000',
-        clinicEmail: 'info@clinic.com',
+        tenantId,
+        clinicName: defaultTenant.name || 'Sample Clinic',
+        clinicAddress: defaultTenant.address?.street 
+          ? `${defaultTenant.address.street}, ${defaultTenant.address.city}, ${defaultTenant.address.state} ${defaultTenant.address.zipCode}`
+          : '123 Medical Street, Health City, HC 12345',
+        clinicPhone: defaultTenant.phone || '+1-555-0000',
+        clinicEmail: defaultTenant.email || 'info@clinic.com',
         clinicWebsite: 'https://clinic.com',
         taxId: 'TAX-123456',
         licenseNumber: 'LIC-789012',
@@ -1457,6 +1547,7 @@ async function seedDataScript() {
       for (const auditData of auditActions) {
         const auditLog = await AuditLog.create({
           userId: adminUser._id,
+          tenantId,
           userEmail: adminUser.email,
           userRole: 'admin',
           action: auditData.action,
@@ -1478,6 +1569,8 @@ async function seedDataScript() {
     console.log('🎉 Seed data generation completed!');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('\nSummary:');
+    console.log('   --- Tenant ---');
+    console.log(`   Tenant: ${seedData.tenant?.name || 'N/A'} (${seedData.tenant?.subdomain || 'N/A'})`);
     console.log('   --- Authentication & Authorization ---');
     console.log(`   Roles: ${seedData.roles.length}`);
     console.log(`   Users: ${seedData.users.length}`);

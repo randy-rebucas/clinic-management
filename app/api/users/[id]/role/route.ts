@@ -22,6 +22,13 @@ export async function PUT(
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const { getTenantContext } = await import('@/lib/tenant');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const { Types } = await import('mongoose');
+    
     const { id } = await params;
     const body = await request.json();
     const { roleId } = body;
@@ -33,8 +40,15 @@ export async function PUT(
       );
     }
 
-    // Verify role exists
-    const role = await Role.findById(roleId);
+    // Verify role exists (tenant-scoped)
+    const roleQuery: any = { _id: roleId };
+    if (tenantId) {
+      roleQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      roleQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const role = await Role.findOne(roleQuery);
     if (!role) {
       return NextResponse.json(
         { success: false, error: 'Role not found' },
@@ -42,14 +56,32 @@ export async function PUT(
       );
     }
 
-    // Update user's role
-    const user = await User.findByIdAndUpdate(
-      id,
+    // Update user's role (tenant-scoped)
+    const userQuery: any = { _id: id };
+    if (tenantId) {
+      userQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      userQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    // Build populate options with tenant filter
+    const rolePopulateOptions: any = {
+      path: 'role',
+      select: 'name displayName',
+    };
+    if (tenantId) {
+      rolePopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      rolePopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const user = await User.findOneAndUpdate(
+      userQuery,
       { role: roleId },
       { new: true }
     )
       .select('-password')
-      .populate('role', 'name displayName')
+      .populate(rolePopulateOptions)
       .lean();
 
     if (!user) {

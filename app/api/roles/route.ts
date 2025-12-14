@@ -5,6 +5,8 @@ import Role from '@/models/Role';
 import Permission from '@/models/Permission'; // Import to register model for populate
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requireAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 // GET all roles - admin only
 export async function GET(request: NextRequest) {
@@ -29,8 +31,20 @@ export async function GET(request: NextRequest) {
       const _ = Permission;
     }
     
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = {};
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
     // Fetch roles with populate
-    const roles = await Role.find({})
+    const roles = await Role.find(query)
       .populate('permissions', 'resource actions')
       .sort({ level: -1, name: 1 })
       .lean()
@@ -72,6 +86,10 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
 
     // Validate role name
     const validRoleNames = ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'];
@@ -82,7 +100,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const role = await Role.create(body);
+    // Ensure role is created with tenantId
+    const roleData: any = { ...body };
+    if (tenantId && !roleData.tenantId) {
+      roleData.tenantId = new Types.ObjectId(tenantId);
+    }
+
+    const role = await Role.create(roleData);
     await role.populate('permissions', 'resource actions');
 
     return NextResponse.json({ success: true, data: role }, { status: 201 });

@@ -9,6 +9,8 @@ import Doctor from '@/models/Doctor';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -37,6 +39,10 @@ export async function GET(request: NextRequest) {
       await import('@/models/Room');
     }
     
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const doctorId = searchParams.get('doctorId');
     const roomId = searchParams.get('roomId');
@@ -44,6 +50,13 @@ export async function GET(request: NextRequest) {
     const display = searchParams.get('display') === 'true'; // For TV display
 
     let query: any = {};
+    
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
     
     // Handle status filter - support comma-separated values
     if (status && status !== 'all') {
@@ -61,10 +74,31 @@ export async function GET(request: NextRequest) {
       query.room = roomId;
     }
 
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const doctorPopulateOptions: any = {
+      path: 'doctor',
+      select: 'firstName lastName',
+    };
+    if (tenantId) {
+      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
     // Find queues - populate will work if models are registered
     const queues = await Queue.find(query)
-      .populate('patient', 'firstName lastName patientCode')
-      .populate('doctor', 'firstName lastName')
+      .populate(patientPopulateOptions)
+      .populate(doctorPopulateOptions)
       .populate('room', 'name roomNumber')
       .sort({ priority: 1, queuedAt: 1 }) // Priority first, then by time
       .limit(display ? 20 : 100);
@@ -121,9 +155,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get patient name
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Validate that the patient belongs to the tenant
     const Patient = (await import('@/models/Patient')).default;
-    const patient = await Patient.findById(patientId).select('firstName lastName').lean();
+    const patientQuery: any = { _id: patientId };
+    if (tenantId) {
+      patientQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const patient = await Patient.findOne(patientQuery).select('firstName lastName').lean();
     if (!patient || Array.isArray(patient) || !('firstName' in patient) || !('lastName' in patient)) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
@@ -133,22 +178,29 @@ export async function POST(request: NextRequest) {
 
     const patientName = `${patient.firstName} ${patient.lastName}`;
 
-    // Generate queue number before creating the queue
+    // Generate queue number before creating the queue (tenant-scoped)
     const finalQueueType = queueType || 'appointment';
     const prefix = finalQueueType === 'appointment' ? 'A' : finalQueueType === 'walk-in' ? 'W' : 'F';
     const today = new Date();
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
     
-    // Count today's queues of this type
+    // Count today's queues of this type (tenant-scoped)
     const startOfDay = new Date(today);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(today);
     endOfDay.setHours(23, 59, 59, 999);
     
-    const count = await Queue.countDocuments({
+    const countQuery: any = {
       queueType: finalQueueType,
       queuedAt: { $gte: startOfDay, $lte: endOfDay },
-    });
+    };
+    if (tenantId) {
+      countQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      countQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const count = await Queue.countDocuments(countQuery);
     
     const queueNumber = `${prefix}${dateStr}-${String(count + 1).padStart(3, '0')}`;
 
@@ -160,7 +212,7 @@ export async function POST(request: NextRequest) {
       timestamp: Date.now(),
     });
 
-    const queue = await Queue.create({
+    const queueData: any = {
       queueNumber,
       patient: patientId,
       patientName,
@@ -171,7 +223,14 @@ export async function POST(request: NextRequest) {
       queueType: finalQueueType,
       priority: priority || 0,
       qrCode: qrCodeData,
-    });
+    };
+    
+    // Ensure queue is created with tenantId
+    if (tenantId && !queueData.tenantId) {
+      queueData.tenantId = new Types.ObjectId(tenantId);
+    }
+
+    const queue = await Queue.create(queueData);
 
     // Update QR code with actual queue ID
     queue.qrCode = JSON.stringify({
@@ -182,8 +241,29 @@ export async function POST(request: NextRequest) {
     });
     await queue.save();
 
-    await queue.populate('patient', 'firstName lastName patientCode');
-    await queue.populate('doctor', 'firstName lastName');
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const doctorPopulateOptions: any = {
+      path: 'doctor',
+      select: 'firstName lastName',
+    };
+    if (tenantId) {
+      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await queue.populate(patientPopulateOptions);
+    await queue.populate(doctorPopulateOptions);
     await queue.populate('room', 'name roomNumber');
 
     // Log queue creation
@@ -191,6 +271,7 @@ export async function POST(request: NextRequest) {
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
+      tenantId: tenantId,
       action: 'create',
       resource: 'system',
       resourceId: queue._id,

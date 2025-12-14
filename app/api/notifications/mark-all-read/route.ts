@@ -14,8 +14,21 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     
+    // Get tenant context from session or headers
+    const { getTenantContext } = await import('@/lib/tenant');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const { Types } = await import('mongoose');
+    
+    const updateQuery: any = { user: session.userId, read: false };
+    if (tenantId) {
+      updateQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      updateQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
     const result = await Notification.updateMany(
-      { user: session.userId, read: false },
+      updateQuery,
       { read: true, readAt: new Date() }
     );
 

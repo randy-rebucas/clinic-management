@@ -4,6 +4,9 @@ export type MembershipTier = 'bronze' | 'silver' | 'gold' | 'platinum';
 export type MembershipStatus = 'active' | 'inactive' | 'expired' | 'suspended';
 
 export interface IMembership extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   patient: Types.ObjectId; // Reference to Patient
   membershipNumber: string; // Unique membership number
   tier: MembershipTier;
@@ -69,8 +72,15 @@ const TransactionSchema: Schema = new Schema(
 
 const MembershipSchema: Schema = new Schema(
   {
-    patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, unique: true, index: true },
-    membershipNumber: { type: String, required: true, unique: true },
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
+    patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
+    membershipNumber: { type: String, required: true },
     tier: {
       type: String,
       enum: ['bronze', 'silver', 'gold', 'platinum'],
@@ -99,11 +109,12 @@ const MembershipSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Indexes
-// membershipNumber is already indexed via unique: true
-MembershipSchema.index({ tier: 1, status: 1 });
-MembershipSchema.index({ points: -1 });
-MembershipSchema.index({ expiryDate: 1 });
+// Indexes (tenant-scoped)
+MembershipSchema.index({ tenantId: 1, patient: 1 }, { unique: true, sparse: true }); // One membership per patient per tenant
+MembershipSchema.index({ tenantId: 1, membershipNumber: 1 }, { unique: true, sparse: true }); // Tenant-scoped membership number
+MembershipSchema.index({ tenantId: 1, tier: 1, status: 1 });
+MembershipSchema.index({ tenantId: 1, points: -1 });
+MembershipSchema.index({ tenantId: 1, expiryDate: 1 });
 
 // Pre-save hook to generate membership number and set tier benefits
 MembershipSchema.pre('save', async function (this: IMembership, next) {

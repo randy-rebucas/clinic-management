@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Notification from '@/models/Notification';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(
   request: NextRequest,
@@ -17,7 +19,20 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    const notification = await Notification.findById(id);
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const notification = await Notification.findOne(query);
 
     if (!notification) {
       return NextResponse.json(
@@ -59,7 +74,19 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
-    const notification = await Notification.findById(id);
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    const notification = await Notification.findOne(query);
 
     if (!notification) {
       return NextResponse.json(
@@ -83,7 +110,7 @@ export async function PUT(
       body.readAt = undefined;
     }
 
-    const updatedNotification = await Notification.findByIdAndUpdate(id, body, {
+    const updatedNotification = await Notification.findOneAndUpdate(query, body, {
       new: true,
       runValidators: true,
     });
@@ -117,7 +144,19 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-    const notification = await Notification.findById(id);
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    const notification = await Notification.findOne(query);
 
     if (!notification) {
       return NextResponse.json(
@@ -134,7 +173,7 @@ export async function DELETE(
       );
     }
 
-    await Notification.findByIdAndDelete(id);
+    await Notification.findOneAndDelete(query);
 
     return NextResponse.json({ success: true, data: {} });
   } catch (error: any) {

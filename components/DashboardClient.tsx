@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSetting } from './SettingsContext';
+import { Modal } from './ui/Modal';
 
 interface DashboardData {
   period: string;
@@ -47,6 +48,8 @@ export default function DashboardClient() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<'today' | 'week' | 'month'>('today');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showAdminDialog, setShowAdminDialog] = useState(false);
   const router = useRouter();
   const currency = useSetting('billingSettings.currency', 'PHP');
 
@@ -81,6 +84,23 @@ export default function DashboardClient() {
 
     fetchDashboardData();
   }, [router, period]);
+
+  useEffect(() => {
+    async function checkAdminStatus() {
+      try {
+        const res = await fetch('/api/user/is-admin');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            setIsAdmin(data.isAdmin || false);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check admin status:', error);
+      }
+    }
+    checkAdminStatus();
+  }, []);
 
   if (loading || !dashboardData) {
     return (
@@ -234,7 +254,21 @@ export default function DashboardClient() {
         </svg>
       ),
     },
+    ...(isAdmin ? [{
+      title: 'Admin Panel',
+      href: null, // No href for admin - it's a dialog
+      description: 'Access admin settings and controls',
+      iconColor: 'purple',
+      isDialog: true, // Mark as dialog action
+      icon: (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      ),
+    }] : []),
   ];
+
 
   const getBadgeColorClasses = (color: string) => {
     const colorMap: Record<string, string> = {
@@ -428,8 +462,8 @@ export default function DashboardClient() {
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <h2 className="text-lg font-semibold mb-2">Quick Actions</h2>
             <div className="flex gap-3 flex-wrap">
-              {quickActions.map((action) => (
-                <Link key={action.title} href={action.href} className="flex-1 min-w-[200px]">
+              {quickActions.map((action) => {
+                const actionContent = (
                   <div className="bg-gray-50 rounded-lg p-3 cursor-pointer transition-all hover:bg-gray-100 hover:shadow-sm">
                     <div className="flex items-start gap-3">
                       <div className={`rounded-lg p-2 flex items-center justify-center ${getIconLightBgColor(action.iconColor)}`}>
@@ -441,12 +475,110 @@ export default function DashboardClient() {
                       </div>
                     </div>
                   </div>
-                </Link>
-              ))}
+                );
+
+                if ((action as any).isDialog) {
+                  return (
+                    <button
+                      key={action.title}
+                      onClick={() => setShowAdminDialog(true)}
+                      className="flex-1 min-w-[200px] text-left"
+                    >
+                      {actionContent}
+                    </button>
+                  );
+                }
+
+                return (
+                  <Link key={action.title} href={action.href || '#'} className="flex-1 min-w-[200px]">
+                    {actionContent}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Admin Dialog */}
+      <Modal open={showAdminDialog} onOpenChange={setShowAdminDialog}>
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="rounded-lg p-2 bg-purple-100 text-purple-700">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900">Admin Panel</h2>
+          </div>
+          
+          <div className="mb-6">
+            <p className="text-sm text-gray-600 mb-4">
+              Welcome to the Admin Panel. You have administrative access to manage clinic settings and configurations.
+            </p>
+            
+            <div className="space-y-3">
+              <Link
+                href="/settings"
+                onClick={() => setShowAdminDialog(false)}
+                className="block p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-900">System Settings</div>
+                    <div className="text-sm text-gray-500">Manage clinic settings and preferences</div>
+                  </div>
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </Link>
+              
+              <Link
+                href="/users"
+                onClick={() => setShowAdminDialog(false)}
+                className="block p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-900">User Management</div>
+                    <div className="text-sm text-gray-500">Manage users and their roles</div>
+                  </div>
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </Link>
+              
+              <Link
+                href="/roles"
+                onClick={() => setShowAdminDialog(false)}
+                className="block p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-900">Role Management</div>
+                    <div className="text-sm text-gray-500">Configure roles and permissions</div>
+                  </div>
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </Link>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+            <button
+              onClick={() => setShowAdminDialog(false)}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
     </section>
   );
 }

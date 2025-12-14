@@ -4,6 +4,8 @@ import Queue from '@/models/Queue';
 import Room from '@/models/Room';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(
   request: NextRequest,
@@ -24,9 +26,43 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    const queue = await Queue.findById(id)
-      .populate('patient', 'firstName lastName patientCode')
-      .populate('doctor', 'firstName lastName')
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const doctorPopulateOptions: any = {
+      path: 'doctor',
+      select: 'firstName lastName',
+    };
+    if (tenantId) {
+      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const queue = await Queue.findOne(query)
+      .populate(patientPopulateOptions)
+      .populate(doctorPopulateOptions)
       .populate('room', 'name roomNumber')
       .populate('appointment', 'appointmentCode appointmentDate appointmentTime');
 
@@ -67,6 +103,18 @@ export async function PUT(
     await connectDB();
     const { id } = await params;
     const body = await request.json();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
 
     // Update status timestamps
     if (body.status === 'in-progress' && !body.startedAt) {
@@ -77,12 +125,33 @@ export async function PUT(
       body.completedAt = new Date();
     }
 
-    const queue = await Queue.findByIdAndUpdate(id, body, {
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const doctorPopulateOptions: any = {
+      path: 'doctor',
+      select: 'firstName lastName',
+    };
+    if (tenantId) {
+      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
+    const queue = await Queue.findOneAndUpdate(query, body, {
       new: true,
       runValidators: true,
     })
-      .populate('patient', 'firstName lastName patientCode')
-      .populate('doctor', 'firstName lastName')
+      .populate(patientPopulateOptions)
+      .populate(doctorPopulateOptions)
       .populate('room', 'name roomNumber');
 
     if (!queue) {
@@ -127,9 +196,21 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
 
-    const queue = await Queue.findByIdAndUpdate(
-      id,
+    const queue = await Queue.findOneAndUpdate(
+      query,
       { status: 'cancelled' },
       { new: true }
     );

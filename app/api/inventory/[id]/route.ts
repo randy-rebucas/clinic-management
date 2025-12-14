@@ -6,6 +6,8 @@ import Medicine from '@/models/Medicine';
 import User from '@/models/User';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(
   request: NextRequest,
@@ -29,8 +31,32 @@ export async function GET(
     }
     
     const { id } = await params;
-    const item = await InventoryItem.findById(id)
-      .populate('medicineId', 'name genericName')
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    // Build populate options with tenant filter
+    const medicinePopulateOptions: any = {
+      path: 'medicineId',
+      select: 'name genericName',
+    };
+    if (tenantId) {
+      medicinePopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      medicinePopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
+    const item = await InventoryItem.findOne(query)
+      .populate(medicinePopulateOptions)
       .populate('lastRestockedBy', 'name')
       .lean()
       .exec();
@@ -90,21 +116,52 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
     // If quantity is being updated, track restock
     if (body.quantity !== undefined) {
-      const currentItem = await InventoryItem.findById(id);
+      const currentItem = await InventoryItem.findOne(query);
       if (currentItem && body.quantity > currentItem.quantity) {
         body.lastRestocked = new Date();
         body.lastRestockedBy = session.userId;
       }
     }
 
-    const item = await InventoryItem.findByIdAndUpdate(id, body, {
+    const item = await InventoryItem.findOneAndUpdate(query, body, {
       new: true,
       runValidators: true,
-    })
-      .populate('medicineId', 'name genericName')
-      .populate('lastRestockedBy', 'name');
+    });
+    
+    if (!item) {
+      return NextResponse.json(
+        { success: false, error: 'Inventory item not found' },
+        { status: 404 }
+      );
+    }
+    
+    // Build populate options with tenant filter
+    const medicinePopulateOptions: any = {
+      path: 'medicineId',
+      select: 'name genericName',
+    };
+    if (tenantId) {
+      medicinePopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      medicinePopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await item.populate(medicinePopulateOptions);
+    await item.populate('lastRestockedBy', 'name');
 
     if (!item) {
       return NextResponse.json(
@@ -155,7 +212,20 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-    const item = await InventoryItem.findByIdAndDelete(id);
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const item = await InventoryItem.findOneAndDelete(query);
 
     if (!item) {
       return NextResponse.json(

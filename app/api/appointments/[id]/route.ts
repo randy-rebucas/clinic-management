@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 // Email reminder function (placeholder - implement with your email service)
 async function sendAppointmentReminder(appointment: any) {
@@ -40,9 +42,44 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    const appointment = await Appointment.findById(id)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('doctor', 'firstName lastName specialization');
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    // Build populate options with tenant filter for doctor
+    const doctorPopulateOptions: any = {
+      path: 'doctor',
+      select: 'firstName lastName specialization',
+    };
+    if (tenantId) {
+      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    // Build populate options with tenant filter for patient
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName email phone',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const appointment = await Appointment.findOne(query)
+      .populate(patientPopulateOptions)
+      .populate(doctorPopulateOptions);
     if (!appointment) {
       return NextResponse.json(
         { success: false, error: 'Appointment not found' },
@@ -79,12 +116,47 @@ export async function PUT(
     await connectDB();
     const { id } = await params;
     const body = await request.json();
-    const appointment = await Appointment.findByIdAndUpdate(id, body, {
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    // Build populate options with tenant filter for doctor
+    const doctorPopulateOptions: any = {
+      path: 'doctor',
+      select: 'firstName lastName specialization',
+    };
+    if (tenantId) {
+      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    // Build populate options with tenant filter for patient
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName email phone',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const appointment = await Appointment.findOneAndUpdate(query, body, {
       new: true,
       runValidators: true,
     })
-      .populate('patient', 'firstName lastName email phone')
-      .populate('doctor', 'firstName lastName specialization');
+      .populate(patientPopulateOptions)
+      .populate(doctorPopulateOptions);
     if (!appointment) {
       return NextResponse.json(
         { success: false, error: 'Appointment not found' },
@@ -132,7 +204,20 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-    const appointment = await Appointment.findByIdAndDelete(id);
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const appointment = await Appointment.findOneAndDelete(query);
     if (!appointment) {
       return NextResponse.json(
         { success: false, error: 'Appointment not found' },

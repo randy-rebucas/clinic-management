@@ -91,10 +91,30 @@ export async function GET(request: NextRequest) {
       },
     };
 
-    // Optionally load related data
+    // Get tenantId from patient
+    const patientTenantId = patient.tenantId;
+
+    // Optionally load related data (tenant-scoped)
     if (include.includes('appointments') || include.includes('all')) {
-      const appointments = await Appointment.find({ patient: patient._id })
-        .populate('doctor', 'firstName lastName')
+      const appointmentQuery: any = { patient: patient._id };
+      if (patientTenantId) {
+        appointmentQuery.tenantId = patientTenantId;
+      } else {
+        appointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const doctorPopulateOptions: any = {
+        path: 'doctor',
+        select: 'firstName lastName',
+      };
+      if (patientTenantId) {
+        doctorPopulateOptions.match = { tenantId: patientTenantId };
+      } else {
+        doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      }
+      
+      const appointments = await Appointment.find(appointmentQuery)
+        .populate(doctorPopulateOptions)
         .sort({ appointmentDate: -1 })
         .limit(10)
         .lean();
@@ -102,45 +122,100 @@ export async function GET(request: NextRequest) {
     }
 
     if (include.includes('visits') || include.includes('all')) {
-      const visits = await Visit.find({ patient: patient._id })
-        .populate('doctor', 'firstName lastName')
-        .sort({ visitDate: -1 })
+      const visitQuery: any = { patient: patient._id };
+      if (patientTenantId) {
+        visitQuery.tenantId = patientTenantId;
+      } else {
+        visitQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const providerPopulateOptions: any = {
+        path: 'provider',
+        select: 'name email',
+      };
+      if (patientTenantId) {
+        providerPopulateOptions.match = { tenantId: patientTenantId };
+      } else {
+        providerPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      }
+      
+      const visits = await Visit.find(visitQuery)
+        .populate(providerPopulateOptions)
+        .sort({ date: -1 })
         .limit(10)
         .lean();
       responseData.visits = visits;
     }
 
     if (include.includes('prescriptions') || include.includes('all')) {
-      const prescriptions = await Prescription.find({ patient: patient._id })
-        .populate('doctor', 'firstName lastName')
-        .sort({ prescriptionDate: -1 })
+      const prescriptionQuery: any = { patient: patient._id };
+      if (patientTenantId) {
+        prescriptionQuery.tenantId = patientTenantId;
+      } else {
+        prescriptionQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const prescribedByPopulateOptions: any = {
+        path: 'prescribedBy',
+        select: 'name email',
+      };
+      if (patientTenantId) {
+        prescribedByPopulateOptions.match = { tenantId: patientTenantId };
+      } else {
+        prescribedByPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      }
+      
+      const prescriptions = await Prescription.find(prescriptionQuery)
+        .populate(prescribedByPopulateOptions)
+        .sort({ issuedAt: -1 })
         .limit(10)
         .lean();
       responseData.prescriptions = prescriptions;
     }
 
     if (include.includes('labResults') || include.includes('all')) {
-      const labResults = await LabResult.find({ patient: patient._id })
-        .sort({ testDate: -1 })
+      const labResultQuery: any = { patient: patient._id };
+      if (patientTenantId) {
+        labResultQuery.tenantId = patientTenantId;
+      } else {
+        labResultQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const labResults = await LabResult.find(labResultQuery)
+        .sort({ orderDate: -1 })
         .limit(10)
         .lean();
       responseData.labResults = labResults;
     }
 
     if (include.includes('invoices') || include.includes('all')) {
-      const invoices = await Invoice.find({ patient: patient._id })
-        .sort({ invoiceDate: -1 })
+      const invoiceQuery: any = { patient: patient._id };
+      if (patientTenantId) {
+        invoiceQuery.tenantId = patientTenantId;
+      } else {
+        invoiceQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const invoices = await Invoice.find(invoiceQuery)
+        .sort({ createdAt: -1 })
         .limit(10)
         .lean();
       responseData.invoices = invoices;
     }
 
     if (include.includes('documents') || include.includes('all')) {
-      const documents = await Document.find({ 
+      const documentQuery: any = { 
         patient: patient._id,
         status: 'active',
         isConfidential: { $ne: true } // Don't show confidential documents
-      })
+      };
+      if (patientTenantId) {
+        documentQuery.tenantId = patientTenantId;
+      } else {
+        documentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const documents = await Document.find(documentQuery)
         .select('documentCode title description category documentType filename size uploadDate')
         .sort({ uploadDate: -1 })
         .limit(20)
@@ -149,10 +224,37 @@ export async function GET(request: NextRequest) {
     }
 
     if (include.includes('referrals') || include.includes('all')) {
-      const referrals = await Referral.find({ patient: patient._id })
-        .populate('referringDoctor', 'firstName lastName')
-        .populate('referredToDoctor', 'firstName lastName')
-        .sort({ referralDate: -1 })
+      const referralQuery: any = { patient: patient._id };
+      if (patientTenantId) {
+        referralQuery.tenantId = patientTenantId;
+      } else {
+        referralQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const referringDoctorPopulateOptions: any = {
+        path: 'referringDoctor',
+        select: 'firstName lastName',
+      };
+      if (patientTenantId) {
+        referringDoctorPopulateOptions.match = { tenantId: patientTenantId };
+      } else {
+        referringDoctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      }
+      
+      const receivingDoctorPopulateOptions: any = {
+        path: 'receivingDoctor',
+        select: 'firstName lastName',
+      };
+      if (patientTenantId) {
+        receivingDoctorPopulateOptions.match = { tenantId: patientTenantId };
+      } else {
+        receivingDoctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      }
+      
+      const referrals = await Referral.find(referralQuery)
+        .populate(referringDoctorPopulateOptions)
+        .populate(receivingDoctorPopulateOptions)
+        .sort({ referredDate: -1 })
         .limit(10)
         .lean();
       responseData.referrals = referrals;

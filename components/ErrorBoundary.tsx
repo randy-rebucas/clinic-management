@@ -47,11 +47,11 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-6">
-            <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-red-50/30 p-4">
+          <div className="max-w-md w-full bg-white shadow-xl rounded-xl border border-gray-200 p-8">
+            <div className="flex items-center justify-center w-16 h-16 mx-auto bg-gradient-to-br from-red-500 to-red-600 rounded-full mb-6 shadow-md">
               <svg
-                className="w-6 h-6 text-red-600"
+                className="w-8 h-8 text-white"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -64,18 +64,18 @@ export class ErrorBoundary extends Component<Props, State> {
                 />
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 text-center mb-2">
+            <h2 className="text-2xl font-bold text-gray-900 text-center mb-3">
               Something went wrong
             </h2>
-            <p className="text-gray-600 text-center mb-4">
+            <p className="text-gray-600 text-center mb-6 font-medium">
               We're sorry, but something unexpected happened. Please try refreshing the page.
             </p>
             {process.env.NODE_ENV === 'development' && this.state.error && (
-              <details className="mt-4">
-                <summary className="cursor-pointer text-sm text-gray-500 mb-2">
+              <details className="mt-6 mb-6">
+                <summary className="cursor-pointer text-sm font-semibold text-gray-700 mb-3 p-2 bg-gray-50 rounded-lg hover:bg-gray-100">
                   Error details (development only)
                 </summary>
-                <pre className="text-xs bg-gray-100 p-3 rounded overflow-auto">
+                <pre className="text-xs bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto border border-gray-700">
                   {this.state.error.toString()}
                   {this.state.error.stack}
                 </pre>
@@ -86,7 +86,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 this.setState({ hasError: false, error: null });
                 window.location.reload();
               }}
-              className="w-full mt-4 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
+              className="w-full mt-6 bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md"
             >
               Reload Page
             </button>

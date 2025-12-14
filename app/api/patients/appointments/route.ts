@@ -39,12 +39,31 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
+    // Get tenantId from patient
+    const Patient = (await import('@/models/Patient')).default;
+    const patient = await Patient.findById(sessionData.patientId);
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: 'Patient not found' },
+        { status: 404 }
+      );
+    }
+    
+    const patientTenantId = patient.tenantId;
+
     const searchParams = request.nextUrl.searchParams;
     const date = searchParams.get('date');
     const doctorId = searchParams.get('doctorId');
 
-    // Get available doctors
-    const doctors = await Doctor.find({ status: 'active' })
+    // Get available doctors (tenant-scoped)
+    const doctorQuery: any = { status: 'active' };
+    if (patientTenantId) {
+      doctorQuery.tenantId = patientTenantId;
+    } else {
+      doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const doctors = await Doctor.find(doctorQuery)
       .select('firstName lastName specialization schedule')
       .lean();
 
@@ -55,11 +74,20 @@ export async function GET(request: NextRequest) {
       const endOfDay = new Date(date);
       endOfDay.setHours(23, 59, 59, 999);
 
-      const existingAppointments = await Appointment.find({
+      const appointmentQuery: any = {
         doctor: doctorId,
         appointmentDate: { $gte: startOfDay, $lte: endOfDay },
         status: { $in: ['scheduled', 'confirmed', 'pending'] },
-      }).select('appointmentTime duration').lean();
+      };
+      if (patientTenantId) {
+        appointmentQuery.tenantId = patientTenantId;
+      } else {
+        appointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const existingAppointments = await Appointment.find(appointmentQuery)
+        .select('appointmentTime duration')
+        .lean();
 
       // Generate available time slots (9 AM to 5 PM, 30-minute intervals)
       const availableSlots: string[] = [];
@@ -155,19 +183,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check for conflicts
+    // Get tenantId from patient
+    const Patient = (await import('@/models/Patient')).default;
+    const patient = await Patient.findById(sessionData.patientId);
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: 'Patient not found' },
+        { status: 404 }
+      );
+    }
+    
+    const patientTenantId = patient.tenantId;
+
+    // Check for conflicts (tenant-scoped)
     const appointmentDateObj = new Date(appointmentDate);
     const startOfDay = new Date(appointmentDateObj);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(appointmentDateObj);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const conflictingAppointment = await Appointment.findOne({
+    const conflictQuery: any = {
       doctor: doctorId,
       appointmentDate: { $gte: startOfDay, $lte: endOfDay },
       appointmentTime: appointmentTime,
       status: { $in: ['scheduled', 'confirmed', 'pending'] },
-    });
+    };
+    if (patientTenantId) {
+      conflictQuery.tenantId = patientTenantId;
+    } else {
+      conflictQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    const conflictingAppointment = await Appointment.findOne(conflictQuery);
 
     if (conflictingAppointment) {
       return NextResponse.json(
@@ -176,13 +223,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if patient already has an appointment at this time
-    const patientConflict = await Appointment.findOne({
+    // Check if patient already has an appointment at this time (tenant-scoped)
+    const patientConflictQuery: any = {
       patient: sessionData.patientId,
       appointmentDate: { $gte: startOfDay, $lte: endOfDay },
       appointmentTime: appointmentTime,
       status: { $in: ['scheduled', 'confirmed', 'pending'] },
-    });
+    };
+    if (patientTenantId) {
+      patientConflictQuery.tenantId = patientTenantId;
+    } else {
+      patientConflictQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const patientConflict = await Appointment.findOne(patientConflictQuery);
 
     if (patientConflict) {
       return NextResponse.json(
@@ -191,8 +245,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Auto-generate appointmentCode
-    const lastAppointment = await Appointment.findOne({ appointmentCode: { $exists: true, $ne: null } })
+    // Validate that doctor belongs to tenant
+    const doctorQuery: any = { _id: doctorId };
+    if (patientTenantId) {
+      doctorQuery.tenantId = patientTenantId;
+    } else {
+      doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const doctor = await Doctor.findOne(doctorQuery);
+    if (!doctor) {
+      return NextResponse.json(
+        { success: false, error: 'Doctor not found' },
+        { status: 404 }
+      );
+    }
+
+    // Auto-generate appointmentCode (tenant-scoped)
+    const lastAppointmentQuery: any = { appointmentCode: { $exists: true, $ne: null } };
+    if (patientTenantId) {
+      lastAppointmentQuery.tenantId = patientTenantId;
+    } else {
+      lastAppointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const lastAppointment = await Appointment.findOne(lastAppointmentQuery)
       .sort({ appointmentCode: -1 })
       .exec();
 
@@ -206,8 +283,8 @@ export async function POST(request: NextRequest) {
 
     const appointmentCode = `APT-${String(nextNumber).padStart(6, '0')}`;
 
-    // Create appointment
-    const appointment = await Appointment.create({
+    // Create appointment (tenant-scoped)
+    const appointmentData: any = {
       patient: sessionData.patientId,
       doctor: doctorId,
       appointmentCode,
@@ -217,10 +294,37 @@ export async function POST(request: NextRequest) {
       status: 'pending', // Requires confirmation from clinic
       reason: reason || 'General Consultation',
       isWalkIn: false,
-    });
+    };
+    
+    if (patientTenantId) {
+      appointmentData.tenantId = patientTenantId;
+    }
 
-    await appointment.populate('patient', 'firstName lastName email phone patientCode');
-    await appointment.populate('doctor', 'firstName lastName specialization');
+    const appointment = await Appointment.create(appointmentData);
+
+    // Populate with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName email phone patientCode',
+    };
+    if (patientTenantId) {
+      patientPopulateOptions.match = { tenantId: patientTenantId };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const doctorPopulateOptions: any = {
+      path: 'doctor',
+      select: 'firstName lastName specialization',
+    };
+    if (patientTenantId) {
+      doctorPopulateOptions.match = { tenantId: patientTenantId };
+    } else {
+      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await appointment.populate(patientPopulateOptions);
+    await appointment.populate(doctorPopulateOptions);
 
     // Send confirmation SMS
     sendBookingConfirmation(appointment).catch(console.error);

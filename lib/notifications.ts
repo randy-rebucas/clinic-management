@@ -6,6 +6,7 @@ import { Types } from 'mongoose';
 
 export interface CreateNotificationOptions {
   userId: string | Types.ObjectId;
+  tenantId?: string | Types.ObjectId; // Tenant ID for multi-tenant support
   type: 'appointment' | 'visit' | 'prescription' | 'lab_result' | 'invoice' | 'reminder' | 'system' | 'broadcast';
   priority?: 'low' | 'normal' | 'high' | 'urgent';
   title: string;
@@ -25,7 +26,21 @@ export interface CreateNotificationOptions {
 export async function createNotification(options: CreateNotificationOptions): Promise<any> {
   try {
     await connectDB();
-    const notification = await Notification.create({
+    
+    // Get tenantId from options or try to get from context
+    let tenantId = options.tenantId;
+    if (!tenantId) {
+      try {
+        const { getTenantContext } = await import('./tenant');
+        const tenantContext = await getTenantContext();
+        tenantId = tenantContext.tenantId || undefined;
+      } catch (error) {
+        // If tenant context can't be retrieved, continue without tenantId
+        console.warn('Could not get tenant context for notification');
+      }
+    }
+    
+    const notificationData: any = {
       user: options.userId,
       type: options.type,
       priority: options.priority || 'normal',
@@ -36,7 +51,13 @@ export async function createNotification(options: CreateNotificationOptions): Pr
       metadata: options.metadata,
       expiresAt: options.expiresAt,
       read: false,
-    });
+    };
+    
+    if (tenantId) {
+      notificationData.tenantId = typeof tenantId === 'string' ? new Types.ObjectId(tenantId) : tenantId;
+    }
+    
+    const notification = await Notification.create(notificationData);
     return notification;
   } catch (error: any) {
     console.error('Error creating notification:', error);

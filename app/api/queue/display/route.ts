@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
 import Room from '@/models/Room';
 import { verifySession } from '@/app/lib/dal';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 /**
  * Queue display screen API (for TV monitor)
@@ -11,6 +13,11 @@ import { verifySession } from '@/app/lib/dal';
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
+    
+    // Get tenant context from headers (public endpoint)
+    const tenantContext = await getTenantContext();
+    const tenantId = tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const doctorId = searchParams.get('doctorId');
     const roomId = searchParams.get('roomId');
@@ -21,6 +28,13 @@ export async function GET(request: NextRequest) {
       checkedIn: true, // Only show checked-in patients
     };
     
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
     if (doctorId) {
       query.doctor = doctorId;
     }
@@ -28,9 +42,30 @@ export async function GET(request: NextRequest) {
       query.room = roomId;
     }
 
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const doctorPopulateOptions: any = {
+      path: 'doctor',
+      select: 'firstName lastName',
+    };
+    if (tenantId) {
+      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
     const queues = await Queue.find(query)
-      .populate('patient', 'firstName lastName')
-      .populate('doctor', 'firstName lastName')
+      .populate(patientPopulateOptions)
+      .populate(doctorPopulateOptions)
       .populate('room', 'name roomNumber')
       .sort({ priority: 1, queuedAt: 1 })
       .limit(limit);

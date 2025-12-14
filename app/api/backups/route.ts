@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, isAdmin } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
+import { getTenantContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
 
 export async function GET(request: NextRequest) {
@@ -22,6 +23,10 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
     
     // Get all collections
     const db = mongoose.connection.db;
@@ -60,6 +65,7 @@ export async function GET(request: NextRequest) {
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
+      tenantId: tenantId,
       action: 'backup',
       resource: 'system',
       description: 'Database backup created',
@@ -106,6 +112,11 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const body = await request.json();
     const { backupData } = body;
 
@@ -145,6 +156,7 @@ export async function POST(request: NextRequest) {
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
+      tenantId: tenantId,
       action: 'restore',
       resource: 'system',
       description: 'Database backup restored',

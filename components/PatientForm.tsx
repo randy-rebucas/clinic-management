@@ -171,59 +171,66 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
   return (
     <div className="max-h-[80vh] overflow-y-auto pr-1">
       <form onSubmit={handleSubmit}>
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
       {/* Personal Information */}
-      <div className="bg-white border border-gray-200 rounded-lg">
-        <div className="p-3">
-          <h3 className="text-base font-bold mb-3">Personal Information</h3>
-          <div className="flex flex-col gap-3">
+      <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl">
+        <div className="p-4 sm:p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-blue-500 rounded-lg">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-gray-900">Personal Information</h3>
+          </div>
+          <div className="flex flex-col gap-4">
             {/* Name Fields */}
-            <div className="flex flex-col md:flex-row gap-2 flex-wrap">
-              <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   First Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   required
                   value={formData.firstName}
                   onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
               </div>
-              <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">Middle Name</label>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Middle Name</label>
                 <input
                   value={formData.middleName}
                   onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
               </div>
-              <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Last Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   required
                   value={formData.lastName}
                   onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
               </div>
-              <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">Suffix</label>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Suffix</label>
                 <input
                   value={formData.suffix}
                   onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
                   placeholder="Jr., Sr., III"
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
               </div>
             </div>
             
             {/* Demographics */}
-            <div className="flex flex-col md:flex-row gap-2 flex-wrap">
-              <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Date of Birth <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -231,15 +238,15 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   required
                   value={formData.dateOfBirth}
                   onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
               </div>
-              <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">Sex</label>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Sex</label>
                 <select
                   value={formData.sex}
                   onChange={(e) => setFormData({ ...formData, sex: e.target.value as any })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                 >
                   <option value="unknown">Unknown</option>
                   <option value="male">Male</option>
@@ -247,29 +254,29 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   <option value="other">Other</option>
                 </select>
               </div>
-              <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">Civil Status</label>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Civil Status</label>
                 <input
                   value={formData.civilStatus}
                   onChange={(e) => setFormData({ ...formData, civilStatus: e.target.value })}
                   placeholder="Single, Married, Divorced, etc."
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
               </div>
-              <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">Nationality</label>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nationality</label>
                 <input
                   value={formData.nationality}
                   onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
               </div>
-              <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-medium mb-1">Occupation</label>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Occupation</label>
                 <input
                   value={formData.occupation}
                   onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
               </div>
             </div>
@@ -278,14 +285,21 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
       </div>
 
       {/* Contact & Address Information */}
-      <div className="bg-white border border-gray-200 rounded-lg">
-        <div className="p-3">
-          <h3 className="text-base font-bold mb-3">Contact & Address</h3>
-          <div className="flex flex-col gap-3">
+      <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl">
+        <div className="p-4 sm:p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-purple-500 rounded-lg">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-gray-900">Contact & Address</h3>
+          </div>
+          <div className="flex flex-col gap-4">
             {/* Contact Info */}
-            <div className="flex flex-col md:flex-row gap-2">
-              <div className="flex-1">
-                <label className="block text-xs font-medium mb-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Email <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -293,11 +307,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   required
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
               </div>
-              <div className="flex-1">
-                <label className="block text-xs font-medium mb-1">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Phone <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -305,19 +319,19 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   required
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
               </div>
             </div>
 
             {/* Address Fields */}
-            <div className="pt-3" style={{ borderTop: '1px solid var(--gray-6)' }}>
-              <span className="font-medium mb-2 block">Address</span>
-              <div className="flex flex-col gap-2">
+            <div className="pt-4 border-t border-purple-200">
+              <span className="text-sm font-semibold text-gray-700 mb-3 block">Address</span>
+              <div className="flex flex-col gap-4">
                 <div>
-                  <span className="font-medium mb-1 block">
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Street Address <span className="text-red-500">*</span>
-                  </span>
+                  </label>
                   <input
                     required
                     value={formData.address.street}
@@ -327,14 +341,14 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                           address: { ...formData.address, street: e.target.value },
                         })
                       }
-                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                     />
                 </div>
-                <div className="flex flex-col md:flex-row gap-2">
-                  <div className="flex-1">
-                    <span className="font-medium mb-1 block">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                       City <span className="text-red-500">*</span>
-                    </span>
+                    </label>
                     <input
                       required
                       value={formData.address.city}
@@ -344,13 +358,13 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                           address: { ...formData.address, city: e.target.value },
                         })
                       }
-                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                     />
                   </div>
-                  <div className="flex-1">
-                    <span className="font-medium mb-1 block">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                       State <span className="text-red-500">*</span>
-                    </span>
+                    </label>
                     <input
                       required
                       value={formData.address.state}
@@ -360,13 +374,13 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                           address: { ...formData.address, state: e.target.value },
                         })
                       }
-                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                     />
                   </div>
-                  <div className="flex-1">
-                    <span className="font-medium mb-1 block">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                       Zip Code <span className="text-red-500">*</span>
-                    </span>
+                    </label>
                     <input
                       required
                       value={formData.address.zipCode}
@@ -376,7 +390,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                           address: { ...formData.address, zipCode: e.target.value },
                         })
                       }
-                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                     />
                   </div>
                 </div>
@@ -387,18 +401,25 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
       </div>
 
       {/* Emergency Contact & Identifiers */}
-      <div>
-        <div className="p-3">
-          <span className="font-bold mb-3 block">Emergency Contact & Identifiers</span>
-          <div className="flex flex-col gap-3">
+      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl">
+        <div className="p-4 sm:p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-emerald-500 rounded-lg">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-gray-900">Emergency Contact & Identifiers</h3>
+          </div>
+          <div className="flex flex-col gap-4">
             {/* Emergency Contact */}
             <div>
-              <span className="font-medium mb-2 block">Emergency Contact</span>
-              <div className="flex flex-col md:flex-row gap-2">
-                <div className="flex-1">
-                  <span className="font-medium mb-1 block">
+              <span className="text-sm font-semibold text-gray-700 mb-3 block">Emergency Contact</span>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Name <span className="text-red-500">*</span>
-                  </span>
+                  </label>
                   <input
                     required
                     value={formData.emergencyContact.name}
@@ -408,13 +429,13 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                         emergencyContact: { ...formData.emergencyContact, name: e.target.value },
                       })
                     }
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
-                <div className="flex-1">
-                  <span className="font-medium mb-1 block">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Phone <span className="text-red-500">*</span>
-                  </span>
+                  </label>
                   <input
                     type="tel"
                     required
@@ -425,13 +446,13 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                         emergencyContact: { ...formData.emergencyContact, phone: e.target.value },
                       })
                     }
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
-                <div className="flex-1">
-                  <span className="font-medium mb-1 block">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Relationship <span className="text-red-500">*</span>
-                  </span>
+                  </label>
                   <input
                     required
                     value={formData.emergencyContact.relationship}
@@ -444,18 +465,18 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                         },
                       })
                     }
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
               </div>
             </div>
 
             {/* Identifiers */}
-            <div className="pt-3" style={{ borderTop: '1px solid var(--gray-6)' }}>
-              <span className="font-medium mb-2 block">Identifiers</span>
-              <div className="flex flex-col md:flex-row gap-2">
-                <div className="flex-1">
-                  <span className="font-medium mb-1 block">PhilHealth ID</span>
+            <div className="pt-4 border-t border-emerald-200">
+              <span className="text-sm font-semibold text-gray-700 mb-3 block">Identifiers</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">PhilHealth ID</label>
                   <input
                     value={formData.identifiers?.philHealth || ''}
                     onChange={(e) =>
@@ -464,11 +485,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                         identifiers: { ...formData.identifiers, philHealth: e.target.value },
                       })
                     }
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
-                <div className="flex-1">
-                  <span className="font-medium mb-1 block">Government ID</span>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Government ID</label>
                   <input
                     value={formData.identifiers?.govId || ''}
                     onChange={(e) =>
@@ -477,7 +498,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                         identifiers: { ...formData.identifiers, govId: e.target.value },
                       })
                     }
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
               </div>
@@ -487,62 +508,75 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
       </div>
 
       {/* Medical Information */}
-      <div>
-        <div className="p-3">
-          <span className="font-bold mb-3 block">Medical Information</span>
-          <div className="flex flex-col gap-3">
+      <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border border-amber-200 rounded-xl">
+        <div className="p-4 sm:p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-amber-500 rounded-lg">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-gray-900">Medical Information</h3>
+          </div>
+          <div className="flex flex-col gap-4">
             <div>
-              <span className="font-medium mb-1 block">Medical History</span>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Medical History</label>
               <textarea
                 value={formData.medicalHistory}
                 onChange={(e) => setFormData({ ...formData, medicalHistory: e.target.value })}
-                rows={3}
+                rows={4}
                 placeholder="Enter patient's medical history, previous surgeries, chronic conditions, etc."
-                className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm resize-y"
               />
             </div>
 
             {/* Allergies */}
             <div>
-              <div className="flex justify-between items-center mb-2">
-                          <span className="text-xs font-medium">Allergies</span>
-                <button type="button" onClick={addAllergy} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition-colors">
-                  Add
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-sm font-semibold text-gray-700">Allergies</label>
+                <button type="button" onClick={addAllergy} className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-semibold transition-colors text-sm inline-flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Allergy
                 </button>
               </div>
               {formData.allergies.length === 0 ? (
-                <div className="p-3" style={{ textAlign: 'center', border: '1px dashed var(--gray-6)', borderRadius: 'var(--radius-2)' }}>
-                  <span className="text-xs text-gray-500">No allergies recorded.</span>
+                <div className="p-6 text-center border-2 border-dashed border-gray-300 rounded-lg bg-white/50">
+                  <svg className="w-8 h-8 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <span className="text-sm text-gray-500">No allergies recorded.</span>
                 </div>
               ) : (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
                   {formData.allergies.map((allergy, index) => (
-                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-2">
-                      <div className="flex flex-col md:flex-row gap-2 flex-wrap">
-                        <div className="flex-1 min-w-[150px]">
-                          <span className="block text-xs font-medium mb-1">Substance</span>
+                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Substance</label>
                           <input
                               value={allergy.substance}
                               onChange={(e) => updateAllergy(index, 'substance', e.target.value)}
                               placeholder="e.g., Penicillin"
-                              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                             />
                         </div>
-                        <div className="flex-1 min-w-[150px]">
-                          <span className="block text-xs font-medium mb-1">Reaction</span>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Reaction</label>
                           <input
                               value={allergy.reaction}
                               onChange={(e) => updateAllergy(index, 'reaction', e.target.value)}
                               placeholder="e.g., Rash"
-                              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                             />
                         </div>
-                        <div className="flex-1 min-w-[150px]">
-                          <span className="block text-xs font-medium mb-1">Severity</span>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Severity</label>
                           <select
                   value={allergy.severity}
                   onChange={(e) => updateAllergy(index, 'severity', e.target.value)}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                 >
                   <option value="unknown">Unknown</option>
                   <option value="mild">Mild</option>
@@ -551,11 +585,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   <option value="life-threatening">Life-threatening</option>
                 </select>
                         </div>
-                        <div className="flex-shrink-0" style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <div className="flex items-end">
                           <button
                             type="button"
                             onClick={() => removeAllergy(index)}
-                            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-md font-medium transition-colors"
+                            className="w-full px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-semibold transition-colors text-sm"
                           >
                             Remove
                           </button>
@@ -566,11 +600,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                 </div>
               )}
             </div>
-          
+            
             {/* Pre-existing Conditions */}
             <div>
-              <div className="flex justify-between items-center mb-2">
-                          <span className="text-xs font-medium">Pre-existing Conditions</span>
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-sm font-semibold text-gray-700">Pre-existing Conditions</label>
                 <button
                   type="button"
                   onClick={() => {
@@ -582,22 +616,28 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                       ],
                     });
                   }}
-                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md font-medium transition-colors"
+                  className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-semibold transition-colors text-sm inline-flex items-center gap-2"
                 >
-                  Add
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Condition
                 </button>
               </div>
               {formData.preExistingConditions.length === 0 ? (
-                <div className="p-3" style={{ textAlign: 'center', border: '1px dashed var(--gray-6)', borderRadius: 'var(--radius-2)' }}>
-                  <span className="text-xs text-gray-500">No pre-existing conditions recorded.</span>
+                <div className="p-6 text-center border-2 border-dashed border-gray-300 rounded-lg bg-white/50">
+                  <svg className="w-8 h-8 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span className="text-sm text-gray-500">No pre-existing conditions recorded.</span>
                 </div>
               ) : (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
                   {formData.preExistingConditions.map((condition, index) => (
-                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-2">
-                      <div className="flex flex-col md:flex-row gap-2 flex-wrap">
-                        <div className="flex-[2] min-w-[200px]">
-                          <span className="block text-xs font-medium mb-1">Condition</span>
+                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <div className="md:col-span-2">
+                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Condition</label>
                           <input
                               value={condition.condition}
                               onChange={(e) => {
@@ -606,11 +646,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                                 setFormData({ ...formData, preExistingConditions: updated });
                               }}
                               placeholder="e.g., Diabetes"
-                              className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                             />
                         </div>
-                        <div className="flex-1 min-w-[120px]">
-                          <span className="block text-xs font-medium mb-1">Status</span>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Status</label>
                           <select
                   value={condition.status}
                   onChange={(e) => {
@@ -618,15 +658,15 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                               updated[index] = { ...updated[index], status: e.target.value as any };
                               setFormData({ ...formData, preExistingConditions: updated });
                             }}
-                          className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                         >
                           <option value="active">Active</option>
                           <option value="chronic">Chronic</option>
                           <option value="resolved">Resolved</option>
                         </select>
                         </div>
-                        <div className="flex-1 min-w-[120px]">
-                          <span className="block text-xs font-medium mb-1">Date</span>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Date</label>
                   <input
                     type="date"
                     value={condition.diagnosisDate || ''}
@@ -635,10 +675,10 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                       updated[index] = { ...updated[index], diagnosisDate: e.target.value };
                       setFormData({ ...formData, preExistingConditions: updated });
                     }}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                         </div>
-                        <div className="flex-shrink-0" style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <div className="flex items-end">
                           <button
                             type="button"
                             onClick={() => {
@@ -647,7 +687,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                                 preExistingConditions: formData.preExistingConditions.filter((_, i) => i !== index),
                               });
                             }}
-                            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-md font-medium transition-colors"
+                            className="w-full px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-semibold transition-colors text-sm"
                           >
                             Remove
                           </button>
@@ -661,8 +701,8 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
 
             {/* Family History */}
             <div>
-              <div className="flex justify-between items-center mb-2">
-                          <span className="text-xs font-medium">Family History</span>
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-sm font-semibold text-gray-700">Family History</label>
                 <button
                   type="button"
                   onClick={() => {
@@ -678,23 +718,29 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                       });
                     }
                   }}
-                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md font-medium transition-colors"
+                  className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-semibold transition-colors text-sm inline-flex items-center gap-2"
                 >
-                  Add
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add History
                 </button>
               </div>
               {Object.keys(formData.familyHistory).length === 0 ? (
-                <div className="p-3" style={{ textAlign: 'center', border: '1px dashed var(--gray-6)', borderRadius: 'var(--radius-2)' }}>
-                  <span className="text-xs text-gray-500">No family history recorded.</span>
+                <div className="p-6 text-center border-2 border-dashed border-gray-300 rounded-lg bg-white/50">
+                  <svg className="w-8 h-8 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  <span className="text-sm text-gray-500">No family history recorded.</span>
                 </div>
               ) : (
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-2">
                   {Object.entries(formData.familyHistory).map(([condition, relation], index) => (
-                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-2">
+                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
                       <div className="flex justify-between items-center">
                         <div className="flex-1">
-                          <span className="font-medium">{condition}</span>
-                          {relation && <span className="text-gray-500 ml-2">({relation})</span>}
+                          <span className="font-semibold text-gray-900">{condition}</span>
+                          {relation && <span className="text-gray-600 ml-2">({relation})</span>}
                         </div>
                         <button
                           type="button"
@@ -703,7 +749,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                             delete updated[condition];
                             setFormData({ ...formData, familyHistory: updated });
                           }}
-                          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition-colors text-red-500"
+                          className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-semibold transition-colors text-sm"
                         >
                           Remove
                         </button>
@@ -718,13 +764,13 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
       </div>
 
           {/* Form Actions */}
-          <div className="flex justify-end gap-2 pt-3" style={{ borderTop: '1px solid var(--gray-6)' }}>
+          <div className="flex justify-end gap-3 pt-6 border-t border-gray-200">
             {onCancel && (
-              <button type="button" onClick={onCancel} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition-colors">
+              <button type="button" onClick={onCancel} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors text-sm">
                 Cancel
               </button>
             )}
-            <button type="submit" className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors">
+            <button type="submit" className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-lg font-semibold transition-all text-sm shadow-md">
               Save Patient
             </button>
           </div>

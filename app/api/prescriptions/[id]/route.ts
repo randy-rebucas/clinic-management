@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(
   request: NextRequest,
@@ -33,8 +35,31 @@ export async function GET(
       );
     }
 
-    const prescription = await Prescription.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth')
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode email phone dateOfBirth',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
+    const prescription = await Prescription.findOne(query)
+      .populate(patientPopulateOptions)
       .populate('prescribedBy', 'name email')
       .populate('visit', 'visitCode date');
 
@@ -121,13 +146,44 @@ export async function PUT(
       body.patient = undefined;
     }
 
-    const prescription = await Prescription.findByIdAndUpdate(id, body, {
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    const prescription = await Prescription.findOneAndUpdate(query, body, {
       new: true,
       runValidators: true,
-    })
-      .populate('patient', 'firstName lastName patientCode')
-      .populate('prescribedBy', 'name email')
-      .populate('visit', 'visitCode date');
+    });
+    
+    if (!prescription) {
+      return NextResponse.json(
+        { success: false, error: 'Prescription not found' },
+        { status: 404 }
+      );
+    }
+    
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await prescription.populate(patientPopulateOptions);
+    await prescription.populate('prescribedBy', 'name email');
+    await prescription.populate('visit', 'visitCode date');
 
     if (!prescription) {
       return NextResponse.json(
@@ -171,7 +227,20 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-    const prescription = await Prescription.findByIdAndDelete(id);
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const prescription = await Prescription.findOneAndDelete(query);
 
     if (!prescription) {
       return NextResponse.json(

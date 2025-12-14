@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import { User, Role } from '@/models';
 import { verifySession } from '@/app/lib/dal';
 import { isAdmin } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 // GET /api/users - Get all users
 export async function GET(request: NextRequest) {
@@ -18,6 +20,10 @@ export async function GET(request: NextRequest) {
     }
 
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
@@ -29,12 +35,33 @@ export async function GET(request: NextRequest) {
 
     // Build query
     const query: any = {};
+    
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
     if (status) query.status = status;
     if (role) query.role = role;
     if (search) {
-      query.$or = [
+      const searchConditions = [
         { name: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
+      ];
+      
+      // Combine tenant filter with search conditions
+      const tenantFilter: any = {};
+      if (tenantId) {
+        tenantFilter.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      query.$and = [
+        tenantFilter,
+        { $or: searchConditions }
       ];
     }
 
@@ -92,8 +119,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'User with this email already exists' }, { status: 400 });
     }
 
-    // Verify role exists
-    const roleDoc = await Role.findById(role);
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Verify role exists (tenant-scoped)
+    const roleQuery: any = { _id: role };
+    if (tenantId) {
+      roleQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      roleQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    const roleDoc = await Role.findOne(roleQuery);
     if (!roleDoc) {
       return NextResponse.json({ success: false, error: 'Invalid role' }, { status: 400 });
     }
@@ -102,13 +139,19 @@ export async function POST(request: NextRequest) {
     const bcrypt = require('bcryptjs');
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await User.create({
+    // Ensure user is created with tenantId
+    const userData: any = {
       name,
       email: email.toLowerCase().trim(),
       password: hashedPassword,
       role,
       status: status || 'active',
-    });
+    };
+    if (tenantId && !userData.tenantId) {
+      userData.tenantId = new Types.ObjectId(tenantId);
+    }
+
+    const user = await User.create(userData);
 
     // Return user without password
     const userObj = user.toObject();

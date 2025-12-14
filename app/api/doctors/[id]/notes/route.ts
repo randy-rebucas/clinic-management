@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function POST(
   request: NextRequest,
@@ -16,6 +18,11 @@ export async function POST(
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const { id } = await params;
     const body = await request.json();
     
@@ -26,8 +33,16 @@ export async function POST(
       isImportant: body.isImportant || false,
     };
 
-    const doctor = await Doctor.findByIdAndUpdate(
-      id,
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    const doctor = await Doctor.findOneAndUpdate(
+      query,
       { $push: { internalNotes: note } },
       { new: true }
     );
@@ -61,6 +76,11 @@ export async function DELETE(
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const { id } = await params;
     const searchParams = request.nextUrl.searchParams;
     const noteIndex = searchParams.get('index');
@@ -72,7 +92,15 @@ export async function DELETE(
       );
     }
 
-    const doctor = await Doctor.findById(id);
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    const doctor = await Doctor.findOne(query);
     if (!doctor) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },

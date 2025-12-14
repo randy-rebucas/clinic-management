@@ -142,11 +142,13 @@ export default function UserRoleManagementClient() {
 
   if (loading) {
     return (
-      <section className="py-12 px-4">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-indigo-50/30 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-3 min-h-[50vh] justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="text-gray-500">Loading users...</p>
+          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
+            <div className="relative">
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-100 border-t-indigo-600"></div>
+            </div>
+            <p className="text-gray-600 font-medium">Loading users...</p>
           </div>
         </div>
       </section>
@@ -154,81 +156,102 @@ export default function UserRoleManagementClient() {
   }
 
   return (
-    <section className="py-12 px-4">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-indigo-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
           {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-3">
-              <p className="text-red-800 text-sm">{error}</p>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
+                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <p className="text-red-800 text-sm font-semibold">{error}</p>
+              </div>
             </div>
           )}
           {success && (
-            <div className="bg-green-50 border border-green-200 rounded-md p-3">
-              <p className="text-green-800 text-sm">{success}</p>
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-green-500 rounded-lg flex-shrink-0">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <p className="text-green-800 text-sm font-semibold">{success}</p>
+              </div>
             </div>
           )}
 
           {/* Header */}
-          <div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg shadow-md">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              </div>
               <div>
-                <h1 className="text-3xl font-bold mb-1">User Role Management</h1>
-                <p className="text-sm text-gray-500">Assign and manage roles for system users</p>
+                <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">User Role Management</h1>
+                <p className="text-sm sm:text-base text-gray-600 mt-1">Assign and manage roles for system users</p>
               </div>
             </div>
           </div>
 
           {/* Users Table */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             {users.length === 0 ? (
               <div className="p-12 text-center">
-                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No users found</h3>
-                <p className="mt-1 text-sm text-gray-500">No users are available to manage.</p>
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">No users found</h3>
+                <p className="text-sm text-gray-600 font-medium">No users are available to manage.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Email</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Current Role</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Name</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Email</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Current Role</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {users.map((user) => (
-                      <tr key={user._id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="font-medium text-sm">{user.name}</span>
+                      <tr key={user._id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="font-bold text-sm text-gray-900">{user.name}</span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm">{user.email}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{user.email}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
                             {getRoleName(user)}
                           </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full border ${
                             user.status === 'active'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
+                              ? 'bg-green-100 text-green-800 border-green-200'
+                              : 'bg-red-100 text-red-800 border-red-200'
                           }`}>
                             {user.status}
                           </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <button
                             onClick={() => handleEditRole(user)}
-                            className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors flex items-center gap-1"
+                            className="px-4 py-2 text-xs bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all flex items-center gap-2 font-semibold shadow-sm"
                           >
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M11.3333 1.99999C11.5084 1.82488 11.7163 1.68698 11.9444 1.59499C12.1726 1.503 12.4163 1.45898 12.6622 1.46599C12.9081 1.473 13.1511 1.53088 13.3752 1.63606C13.5993 1.74124 13.7998 1.89139 13.9648 2.07732C14.1298 2.26325 14.2557 2.4809 14.3353 2.71728C14.4149 2.95366 14.4464 3.20399 14.428 3.45332C14.4096 3.70265 14.3416 3.946 14.2277 4.16866C14.1138 4.39132 13.9564 4.58866 13.7647 4.74866L5.528 13L1.33333 14L2.33333 9.80533L10.57 1.57066L11.3333 1.99999Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                             Change Role
                           </button>
@@ -244,22 +267,30 @@ export default function UserRoleManagementClient() {
         {/* Edit Role Dialog */}
         <Modal open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
           <div className="p-6 max-w-[400px]">
-            <h2 className="text-xl font-semibold mb-4">Change User Role</h2>
-            <hr className="border-gray-200 my-3" />
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2 bg-indigo-500 rounded-lg">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-bold text-gray-900">Change User Role</h2>
+            </div>
+            <hr className="border-gray-200 my-4" />
             
             {editingUser && (
-              <div className="flex flex-col gap-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1">User</label>
-                  <p className="text-sm text-gray-700">{editingUser.name} ({editingUser.email})</p>
+              <div className="flex flex-col gap-4">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">User</label>
+                  <p className="text-sm font-bold text-gray-900">{editingUser.name}</p>
+                  <p className="text-xs text-gray-600">{editingUser.email}</p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Select Role</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Select Role</label>
                   <select
                     value={selectedRoleId}
                     onChange={(e) => setSelectedRoleId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
                   >
                     <option value="">Select role</option>
                     {roles.map((role) => (
@@ -272,17 +303,17 @@ export default function UserRoleManagementClient() {
               </div>
             )}
 
-            <div className="flex gap-3 mt-4 justify-end">
+            <div className="flex gap-3 mt-6 pt-4 border-t border-gray-200 justify-end">
               <button
                 onClick={() => setEditingUser(null)}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveRole}
                 disabled={!selectedRoleId}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 disabled:from-indigo-400 disabled:to-indigo-500 disabled:cursor-not-allowed transition-all text-sm font-semibold shadow-md"
               >
                 Save
               </button>

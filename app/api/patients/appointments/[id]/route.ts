@@ -40,10 +40,29 @@ export async function DELETE(
 
     await connectDB();
     
+    // Get tenantId from patient
+    const Patient = (await import('@/models/Patient')).default;
+    const patient = await Patient.findById(sessionData.patientId);
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: 'Patient not found' },
+        { status: 404 }
+      );
+    }
+    
+    const patientTenantId = patient.tenantId;
+    
     const { id } = await params;
 
-    // Find the appointment
-    const appointment = await Appointment.findById(id);
+    // Find the appointment (tenant-scoped)
+    const appointmentQuery: any = { _id: id };
+    if (patientTenantId) {
+      appointmentQuery.tenantId = patientTenantId;
+    } else {
+      appointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const appointment = await Appointment.findOne(appointmentQuery);
 
     if (!appointment) {
       return NextResponse.json(

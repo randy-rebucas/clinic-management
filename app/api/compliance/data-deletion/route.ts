@@ -43,7 +43,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const patient = await Patient.findById(patientId);
+    // Build query with tenant filter
+    const patientQuery: any = { _id: patientId };
+    if (tenantId) {
+      patientQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const patient = await Patient.findOne(patientQuery);
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
@@ -110,13 +118,15 @@ export async function POST(request: NextRequest) {
       patientId,
       patientId,
       request.headers.get('x-forwarded-for') || undefined,
-      `/api/compliance/data-deletion`
+      `/api/compliance/data-deletion`,
+      tenantId
     );
 
     await createAuditLog({
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
+      tenantId: tenantId,
       action: 'data_deletion',
       resource: 'patient',
       resourceId: patientId,

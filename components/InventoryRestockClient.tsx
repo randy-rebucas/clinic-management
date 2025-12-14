@@ -15,6 +15,7 @@ interface InventoryItem {
   reorderQuantity: number;
   unitCost: number;
   supplier?: string;
+  notes?: string;
 }
 
 export default function InventoryRestockClient({ itemId }: { itemId: string }) {
@@ -167,11 +168,13 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
 
   if (loading) {
     return (
-      <section className="py-12 px-4">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col gap-4">
-            <div className="h-10 w-[300px] bg-gray-200 rounded animate-pulse"></div>
-            <div className="h-[400px] bg-gray-200 rounded animate-pulse"></div>
+          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
+            <div className="relative">
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-teal-100 border-t-teal-600"></div>
+            </div>
+            <p className="text-gray-600 font-medium">Loading inventory item...</p>
           </div>
         </div>
       </section>
@@ -180,19 +183,21 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
 
   if (error) {
     return (
-      <section className="py-12 px-4">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <div className="flex items-start gap-2">
-              <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-              <div>
-                <h3 className="text-sm font-medium text-red-800">Error</h3>
-                <p className="text-sm text-red-700 mt-1">{error}</p>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
+                <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-red-900">Error</h3>
+                <p className="text-sm text-red-700 mt-1.5 font-medium">{error}</p>
                 <button
                   onClick={handleCancel}
-                  className="mt-3 text-sm text-red-600 hover:text-red-800 underline"
+                  className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold"
                 >
                   ← Back to Inventory
                 </button>
@@ -206,13 +211,18 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
 
   if (!item) {
     return (
-      <section className="py-12 px-4">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: '50vh' }}>
-            <h2 className="text-2xl font-semibold">Inventory item not found</h2>
+          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
+              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900">Inventory item not found</h2>
             <button
               onClick={handleCancel}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold shadow-md"
             >
               Back to Inventory
             </button>
@@ -227,43 +237,52 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
   const totalCost = restockQty * (parseFloat(unitCost) || item.unitCost || 0);
 
   return (
-    <section className="py-12 px-4">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
           {/* Header */}
-          <div className="flex items-center gap-2">
-            <Link
-              href={`/inventory/${itemId}`}
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold mb-1">Restock Inventory</h1>
-              <p className="text-sm text-gray-600">{item.name}</p>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+            <div className="flex items-center gap-4">
+              <Link
+                href={`/inventory/${itemId}`}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </Link>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-md">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Restock Inventory</h1>
+                  <p className="text-sm sm:text-base text-gray-600 mt-1">{item.name}</p>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Current Stock Info */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Current Quantity</p>
-                <p className="text-2xl font-bold">{item.quantity} {item.unit}</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Current Quantity</p>
+                <p className="text-2xl font-bold text-gray-900">{item.quantity} {item.unit}</p>
               </div>
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Reorder Level</p>
-                <p className="text-sm text-gray-900">{item.reorderLevel} {item.unit}</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Reorder Level</p>
+                <p className="text-sm font-bold text-gray-900">{item.reorderLevel} {item.unit}</p>
               </div>
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Suggested Reorder Qty</p>
-                <p className="text-sm text-gray-900">{item.reorderQuantity} {item.unit}</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Suggested Reorder Qty</p>
+                <p className="text-sm font-bold text-gray-900">{item.reorderQuantity} {item.unit}</p>
               </div>
               {restockQty > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-1">New Quantity</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">New Quantity</p>
                   <p className="text-2xl font-bold text-green-600">{newQuantity} {item.unit}</p>
                 </div>
               )}
@@ -271,16 +290,26 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
           </div>
 
           {/* Restock Form */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-gray-200 bg-gray-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-500 rounded-lg">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Restock Details</h3>
+              </div>
+            </div>
             <form onSubmit={handleSubmit}>
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-6 p-6">
                 {/* Restock Quantity */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Restock Quantity <span className="text-red-500">*</span>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wider">
+                    Restock Quantity <span className="text-red-600">*</span>
                   </label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-green-600 font-medium">+</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-green-600 font-bold text-lg">+</span>
                     <input
                       type="number"
                       required
@@ -289,22 +318,22 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
                       value={restockQuantity}
                       onChange={(e) => setRestockQuantity(e.target.value)}
                       placeholder={`Suggested: ${item.reorderQuantity} ${item.unit}`}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all text-sm"
                     />
-                    <span className="text-sm text-gray-500">{item.unit}</span>
+                    <span className="text-sm font-semibold text-gray-600">{item.unit}</span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-gray-600 mt-2 font-medium">
                     Suggested reorder quantity: {item.reorderQuantity} {item.unit}
                   </p>
                 </div>
 
                 {/* Unit Cost */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wider">
                     Unit Cost (Optional)
                   </label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">{new Intl.NumberFormat('en-PH', { style: 'currency', currency: currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(0).replace(/[\d.,]/g, '').trim()}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-500 font-semibold">{new Intl.NumberFormat('en-PH', { style: 'currency', currency: currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(0).replace(/[\d.,]/g, '').trim()}</span>
                     <input
                       type="number"
                       min="0"
@@ -312,17 +341,17 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
                       value={unitCost}
                       onChange={(e) => setUnitCost(e.target.value)}
                       placeholder={`Current: ${formatCurrency(item.unitCost)}`}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all text-sm"
                     />
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-gray-600 mt-2 font-medium">
                     Current unit cost: {formatCurrency(item.unitCost)}. Leave blank to keep current.
                   </p>
                 </div>
 
                 {/* Supplier */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wider">
                     Supplier (Optional)
                   </label>
                   <input
@@ -330,10 +359,10 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
                     value={supplier}
                     onChange={(e) => setSupplier(e.target.value)}
                     placeholder={item.supplier || 'Enter supplier name'}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                   {item.supplier && (
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-600 mt-2 font-medium">
                       Current supplier: {item.supplier}
                     </p>
                   )}
@@ -341,7 +370,7 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
 
                 {/* Notes */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wider">
                     Notes (Optional)
                   </label>
                   <textarea
@@ -349,25 +378,32 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="e.g., Order #12345, Batch number, etc."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all text-sm resize-y"
                   />
                 </div>
 
                 {/* Cost Summary */}
                 {restockQty > 0 && unitCost && parseFloat(unitCost) > 0 && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <p className="text-sm font-medium text-blue-900 mb-1">Cost Summary</p>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="p-1.5 bg-blue-500 rounded-lg">
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <p className="text-sm font-bold text-blue-900">Cost Summary</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
                       <div>
-                        <span className="text-blue-700">Quantity:</span>
-                        <span className="font-medium ml-2">{restockQty} {item.unit}</span>
+                        <span className="text-blue-700 font-semibold">Quantity:</span>
+                        <span className="font-bold ml-2">{restockQty} {item.unit}</span>
                       </div>
                       <div>
-                        <span className="text-blue-700">Unit Cost:</span>
-                        <span className="font-medium ml-2">{formatCurrency(parseFloat(unitCost))}</span>
+                        <span className="text-blue-700 font-semibold">Unit Cost:</span>
+                        <span className="font-bold ml-2">{formatCurrency(parseFloat(unitCost))}</span>
                       </div>
-                      <div className="col-span-2 pt-2 border-t border-blue-200">
-                        <span className="text-blue-900 font-semibold">Total Cost:</span>
+                      <div className="col-span-2 pt-3 border-t border-blue-200">
+                        <span className="text-blue-900 font-bold">Total Cost:</span>
                         <span className="font-bold text-lg ml-2">{formatCurrency(totalCost)}</span>
                       </div>
                     </div>
@@ -376,12 +412,19 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
 
                 {/* Preview */}
                 {restockQty > 0 && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                    <p className="text-sm font-medium text-green-900 mb-1">Restock Preview</p>
-                    <p className="text-sm">
-                      <span className="font-medium">{item.quantity} {item.unit}</span>
+                  <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="p-1.5 bg-green-500 rounded-lg">
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <p className="text-sm font-bold text-green-900">Restock Preview</p>
+                    </div>
+                    <p className="text-sm font-semibold">
+                      <span className="font-bold">{item.quantity} {item.unit}</span>
                       {' + '}
-                      <span className="font-medium text-green-700">{restockQty} {item.unit}</span>
+                      <span className="font-bold text-green-700">{restockQty} {item.unit}</span>
                       {' = '}
                       <span className="font-bold text-lg">{newQuantity} {item.unit}</span>
                     </p>
@@ -389,19 +432,19 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
                 )}
 
                 {/* Form Actions */}
-                <hr className="border-gray-300" />
-                <div className="flex justify-end gap-2">
+                <hr className="border-gray-200" />
+                <div className="flex justify-end gap-3 pt-2">
                   <button
                     type="button"
                     onClick={handleCancel}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition-colors"
+                    className="px-4 py-2.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors border border-gray-200"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={submitting || !restockQuantity || parseFloat(restockQuantity) <= 0}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2.5 text-sm bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg font-semibold transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submitting ? 'Restocking...' : 'Restock Item'}
                   </button>

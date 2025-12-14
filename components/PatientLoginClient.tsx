@@ -6,6 +6,22 @@ import Link from 'next/link';
 
 type QRInputMethod = 'scan' | 'upload' | 'paste';
 
+interface Clinic {
+  _id: string;
+  name: string;
+  displayName: string;
+  subdomain: string;
+  email?: string;
+  phone?: string;
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+  };
+}
+
 export default function PatientLoginClient() {
   const [loginMethod, setLoginMethod] = useState<'code' | 'qr'>('code');
   const [qrInputMethod, setQrInputMethod] = useState<QRInputMethod>('scan');
@@ -15,17 +31,140 @@ export default function PatientLoginClient() {
   const [error, setError] = useState<string | null>(null);
   const [scannerReady, setScannerReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [hasSubdomain, setHasSubdomain] = useState(false);
+  const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null);
+  const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
+  const [loadingClinics, setLoadingClinics] = useState(true);
+  const [showClinicSelection, setShowClinicSelection] = useState(false);
   const router = useRouter();
   
   const scannerRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Check for subdomain on mount and get tenant info
+  useEffect(() => {
+    const checkSubdomain = async () => {
+      if (typeof window !== 'undefined') {
+        const hostname = window.location.hostname;
+        const parts = hostname.split('.');
+        // If hostname has more than 2 parts (e.g., clinic.localhost or clinic.example.com), we have a subdomain
+        const hasSubdomain = parts.length > 2 || (parts.length === 2 && parts[0] !== 'localhost' && parts[0] !== 'www');
+        setHasSubdomain(hasSubdomain);
+        
+        if (!hasSubdomain) {
+          // No subdomain, fetch available clinics
+          fetchClinics();
+          setShowClinicSelection(true);
+        } else {
+          // Has subdomain, get tenant info
+          try {
+            const subdomain = parts[0];
+            const res = await fetch(`/api/tenants/public?subdomain=${subdomain}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.success && data.tenant) {
+                setSelectedClinic(data.tenant);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to fetch tenant info:', error);
+          }
+        }
+        setLoadingClinics(false);
+      }
+    };
+    
+    checkSubdomain();
+  }, []);
+
+  const fetchClinics = async () => {
+    try {
+      setLoadingClinics(true);
+      const res = await fetch('/api/tenants/public');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.tenants) {
+          setAvailableClinics(data.tenants);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch clinics:', error);
+    } finally {
+      setLoadingClinics(false);
+    }
+  };
+
+  const handleClinicSelect = (clinic: Clinic) => {
+    setSelectedClinic(clinic);
+    // Redirect to clinic's subdomain for login
+    if (typeof window !== 'undefined') {
+      const protocol = window.location.protocol;
+      const rootDomain = window.location.hostname.split('.').slice(-2).join('.');
+      const port = window.location.port ? `:${window.location.port}` : '';
+      const loginUrl = `${protocol}//${clinic.subdomain}.${rootDomain}${port}/patient/login`;
+      window.location.href = loginUrl;
+    }
+  };
+
+  const performQRLogin = useCallback(async (qrData: string) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Parse QR data to add tenantId if needed
+      let parsedQrData = qrData;
+      try {
+        const qrObj = typeof qrData === 'string' ? JSON.parse(qrData) : qrData;
+        if (selectedClinic && !qrObj.tenantId) {
+          qrObj.tenantId = selectedClinic._id;
+          parsedQrData = JSON.stringify(qrObj);
+        }
+      } catch (e) {
+        // If parsing fails, use original data
+      }
+
+      const res = await fetch('/api/patients/qr-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          qrCode: parsedQrData,
+          ...(selectedClinic && { tenantId: selectedClinic._id }),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        router.push('/patient/portal');
+      } else {
+        setError(data.error || 'Invalid QR code. Please try again.');
+      }
+    } catch (error: any) {
+      console.error('QR login error:', error);
+      setError(`Login failed: ${error.message || 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedClinic, router]);
+
+  const handleQRScanned = useCallback(async (decodedText: string) => {
+    // Stop scanner after successful scan
+    if (scannerRef.current && scannerRef.current.isScanning) {
+      await scannerRef.current.stop().catch(console.error);
+      setScannerReady(false);
+    }
+    
+    setQrCode(decodedText);
+    // Auto-submit after scanning
+    await performQRLogin(decodedText);
+  }, [performQRLogin]);
 
   // Initialize scanner when QR tab and scan method are selected
   useEffect(() => {
     let html5QrCode: any = null;
 
     const initScanner = async () => {
-      if (loginMethod === 'qr' && qrInputMethod === 'scan') {
+      if (loginMethod === 'qr' && qrInputMethod === 'scan' && !showClinicSelection) {
         try {
           const { Html5Qrcode } = await import('html5-qrcode');
           
@@ -69,19 +208,7 @@ export default function PatientLoginClient() {
       scannerRef.current = null;
       setScannerReady(false);
     };
-  }, [loginMethod, qrInputMethod]);
-
-  const handleQRScanned = useCallback(async (decodedText: string) => {
-    // Stop scanner after successful scan
-    if (scannerRef.current && scannerRef.current.isScanning) {
-      await scannerRef.current.stop().catch(console.error);
-      setScannerReady(false);
-    }
-    
-    setQrCode(decodedText);
-    // Auto-submit after scanning
-    await performQRLogin(decodedText);
-  }, []);
+  }, [loginMethod, qrInputMethod, showClinicSelection, handleQRScanned]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -122,13 +249,17 @@ export default function PatientLoginClient() {
         patientCode: patientCode,
         type: 'patient_login',
         timestamp: Date.now(),
+        ...(selectedClinic && { tenantId: selectedClinic._id }),
       });
 
       // Use QR login endpoint directly - it supports lookup by patientCode
       const loginRes = await fetch('/api/patients/qr-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qrCode: qrData }),
+        body: JSON.stringify({ 
+          qrCode: qrData,
+          ...(selectedClinic && { tenantId: selectedClinic._id }),
+        }),
       });
 
       const loginData = await loginRes.json();
@@ -147,32 +278,6 @@ export default function PatientLoginClient() {
     }
   };
 
-  const performQRLogin = async (qrData: string) => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const res = await fetch('/api/patients/qr-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qrCode: qrData }),
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        router.push('/patient/portal');
-      } else {
-        setError(data.error || 'Invalid QR code. Please try again.');
-      }
-    } catch (error: any) {
-      console.error('QR login error:', error);
-      setError(`Login failed: ${error.message || 'Unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleQRLogin = async (e: FormEvent) => {
     e.preventDefault();
     await performQRLogin(qrCode);
@@ -184,6 +289,89 @@ export default function PatientLoginClient() {
       setScannerReady(false);
     }
   };
+
+  // Show clinic selection if no subdomain
+  if (showClinicSelection && !hasSubdomain) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl shadow-lg mb-4">
+              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Patient Portal Login</h1>
+            <p className="text-gray-600">Select your clinic to continue</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-6">
+            {loadingClinics ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="flex flex-col items-center gap-4">
+                  <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <p className="text-base text-gray-600">Loading clinics...</p>
+                </div>
+              </div>
+            ) : availableClinics.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600 mb-4">No clinics available at the moment.</p>
+                <Link href="/tenant-onboard" className="text-blue-600 hover:text-blue-700 font-semibold">
+                  Register a new clinic
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {availableClinics.map((clinic) => (
+                  <button
+                    key={clinic._id}
+                    type="button"
+                    onClick={() => handleClinicSelect(clinic)}
+                    className="w-full p-4 border-2 border-gray-200 rounded-lg text-left hover:border-blue-300 hover:bg-blue-50 transition-all"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-900 mb-1">{clinic.displayName || clinic.name}</h4>
+                        {clinic.address && (clinic.address.city || clinic.address.state) && (
+                          <p className="text-sm text-gray-600 mb-1">
+                            {[clinic.address.city, clinic.address.state].filter(Boolean).join(', ')}
+                          </p>
+                        )}
+                        {clinic.phone && (
+                          <p className="text-xs text-gray-500">📞 {clinic.phone}</p>
+                        )}
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <p className="text-sm text-gray-600 text-center">
+                Don&apos;t see your clinic?{' '}
+                <Link href="/tenant-onboard" className="text-blue-600 hover:text-blue-700 font-semibold">
+                  Register a new clinic
+                </Link>
+              </p>
+            </div>
+          </div>
+
+          <div className="text-center mt-6">
+            <Link href="/" className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+              Back to Home
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">

@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Membership from '@/models/Membership';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(
   request: NextRequest,
@@ -16,11 +18,56 @@ export async function GET(
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const { id } = await params;
-    const membership = await Membership.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone')
-      .populate('referredBy', 'firstName lastName patientCode')
-      .populate('referrals', 'firstName lastName patientCode');
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode email phone',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const referredByPopulateOptions: any = {
+      path: 'referredBy',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      referredByPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      referredByPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const referralsPopulateOptions: any = {
+      path: 'referrals',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      referralsPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      referralsPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const membership = await Membership.findOne(query)
+      .populate(patientPopulateOptions)
+      .populate(referredByPopulateOptions)
+      .populate(referralsPopulateOptions);
 
     if (!membership) {
       return NextResponse.json(
@@ -51,15 +98,54 @@ export async function PUT(
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const { id } = await params;
     const body = await request.json();
 
-    const membership = await Membership.findByIdAndUpdate(id, body, {
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    // Ensure tenantId is preserved in update
+    if (tenantId && !body.tenantId) {
+      body.tenantId = new Types.ObjectId(tenantId);
+    }
+
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const referredByPopulateOptions: any = {
+      path: 'referredBy',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      referredByPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      referredByPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
+    const membership = await Membership.findOneAndUpdate(query, body, {
       new: true,
       runValidators: true,
     })
-      .populate('patient', 'firstName lastName patientCode')
-      .populate('referredBy', 'firstName lastName patientCode');
+      .populate(patientPopulateOptions)
+      .populate(referredByPopulateOptions);
 
     if (!membership) {
       return NextResponse.json(

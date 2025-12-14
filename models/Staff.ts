@@ -27,13 +27,12 @@ const StaffSchema: Schema = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'User reference is required'],
-      unique: true,
-      index: true,
+      unique: true, // unique: true automatically creates an index, so index: true is redundant
     },
     employeeId: {
       type: String,
       trim: true,
-      sparse: true,
+      // sparse index is created explicitly below via StaffSchema.index()
     },
     department: {
       type: String,

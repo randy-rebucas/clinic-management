@@ -187,11 +187,13 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
 
   if (loading) {
     return (
-      <section className="py-12 px-4">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-emerald-50/30 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-3" style={{ minHeight: '50vh', justifyContent: 'center' }}>
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="text-gray-700">Loading memberships...</p>
+          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
+            <div className="relative">
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-emerald-100 border-t-emerald-600"></div>
+            </div>
+            <p className="text-gray-600 font-medium">Loading memberships...</p>
           </div>
         </div>
       </section>
@@ -199,72 +201,132 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
   }
 
   return (
-    <section className="py-12 px-4">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-emerald-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
           {/* Error/Success Messages */}
           {message && (
-            <div className={`rounded-md p-3 ${message.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-              <p className={`text-sm ${message.type === 'success' ? 'text-green-800' : 'text-red-800'}`}>{message.text}</p>
+            <div className={`rounded-xl p-4 shadow-sm ${message.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+              <div className="flex items-start gap-3">
+                {message.type === 'success' ? (
+                  <div className="p-2 bg-green-500 rounded-lg flex-shrink-0">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                ) : (
+                  <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
+                    <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
+                <p className={`text-sm font-semibold ${message.type === 'success' ? 'text-green-800' : 'text-red-800'}`}>{message.text}</p>
+              </div>
             </div>
           )}
 
           {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
-            <div>
-              <h1 className="text-3xl font-bold mb-1">Memberships</h1>
-              <p className="text-sm text-gray-500">Manage patient loyalty program memberships</p>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-md">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Memberships</h1>
+                <p className="text-sm sm:text-base text-gray-600 mt-1">Manage patient loyalty program memberships</p>
+              </div>
             </div>
           </div>
 
           {/* Quick Stats */}
-          <div className="flex gap-2 mb-3 flex-wrap">
-            <div className="bg-white border border-gray-200 rounded-lg p-2 flex-1 min-w-[100px]">
-              <div className="p-2">
-                <div className="text-xs text-gray-500 mb-1">Total</div>
-                <div className="text-2xl font-bold">{stats.total}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 bg-emerald-500 rounded-lg">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+                <div className="text-xs font-semibold text-gray-500 uppercase">Total</div>
               </div>
+              <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-lg p-2 flex-1 min-w-[100px]">
-              <div className="p-2">
-                <div className="text-xs text-gray-500 mb-1">Active</div>
-                <div className="text-2xl font-bold text-green-600">{stats.active}</div>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 bg-green-500 rounded-lg">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="text-xs font-semibold text-gray-500 uppercase">Active</div>
               </div>
+              <div className="text-2xl font-bold text-green-600">{stats.active}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-lg p-2 flex-1 min-w-[100px]">
-              <div className="p-2">
-                <div className="text-xs text-gray-500 mb-1">Bronze</div>
-                <div className="text-2xl font-bold text-amber-600">{stats.byTier.bronze || 0}</div>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 bg-amber-500 rounded-lg">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                </div>
+                <div className="text-xs font-semibold text-gray-500 uppercase">Bronze</div>
               </div>
+              <div className="text-2xl font-bold text-amber-600">{stats.byTier.bronze || 0}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-lg p-2 flex-1 min-w-[100px]">
-              <div className="p-2">
-                <div className="text-xs text-gray-500 mb-1">Silver</div>
-                <div className="text-2xl font-bold text-gray-600">{stats.byTier.silver || 0}</div>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 bg-gray-500 rounded-lg">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                </div>
+                <div className="text-xs font-semibold text-gray-500 uppercase">Silver</div>
               </div>
+              <div className="text-2xl font-bold text-gray-600">{stats.byTier.silver || 0}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-lg p-2 flex-1 min-w-[100px]">
-              <div className="p-2">
-                <div className="text-xs text-gray-500 mb-1">Gold</div>
-                <div className="text-2xl font-bold text-yellow-600">{stats.byTier.gold || 0}</div>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 bg-yellow-500 rounded-lg">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                </div>
+                <div className="text-xs font-semibold text-gray-500 uppercase">Gold</div>
               </div>
+              <div className="text-2xl font-bold text-yellow-600">{stats.byTier.gold || 0}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-lg p-2 flex-1 min-w-[100px]">
-              <div className="p-2">
-                <div className="text-xs text-gray-500 mb-1">Platinum</div>
-                <div className="text-2xl font-bold text-purple-600">{stats.byTier.platinum || 0}</div>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 bg-purple-500 rounded-lg">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                </div>
+                <div className="text-xs font-semibold text-gray-500 uppercase">Platinum</div>
               </div>
+              <div className="text-2xl font-bold text-purple-600">{stats.byTier.platinum || 0}</div>
             </div>
           </div>
 
           {/* Search and Filter Bar */}
-          <div className="bg-white border border-gray-200 rounded-lg">
-            <div className="p-3">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+            <div className="p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-emerald-500 rounded-lg">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <h2 className="text-lg font-bold text-gray-900">Search & Filter</h2>
+              </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex-1" style={{ minWidth: 0 }}>
                   <div className="relative w-full">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <svg className="w-4 h-4 text-gray-400" viewBox="0 0 16 16" fill="none">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <svg className="w-5 h-5 text-gray-400" viewBox="0 0 16 16" fill="none">
                         <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
                       </svg>
                     </div>
@@ -273,15 +335,15 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                       placeholder="Search by member name..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      className="w-full pl-12 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
                     />
                   </div>
                 </div>
-                <div style={{ minWidth: '140px' }}>
+                <div style={{ minWidth: '160px' }}>
                   <select
                     value={tierFilter}
                     onChange={(e) => setTierFilter(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
                   >
                     <option value="">All Tiers</option>
                     {TIERS.map(tier => (
@@ -289,11 +351,11 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                     ))}
                   </select>
                 </div>
-                <div style={{ minWidth: '140px' }}>
+                <div style={{ minWidth: '160px' }}>
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
                   >
                     <option value="">All Status</option>
                     {STATUS_OPTIONS.map(status => (
@@ -307,30 +369,30 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
 
           {/* Memberships Table */}
           {memberships.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-lg">
-              <div className="p-8 text-center">
-                <div className="mb-3">
-                  <svg className="w-12 h-12 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+              <div className="p-12 text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                 </div>
-                <h2 className="text-xl font-semibold mb-1">No memberships found</h2>
-                <p className="text-sm text-gray-500">No membership records match your filters.</p>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">No memberships found</h2>
+                <p className="text-sm text-gray-600 font-medium">No membership records match your filters.</p>
               </div>
             </div>
           ) : (
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Membership #</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Points</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Member</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Membership #</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Tier</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Points</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Discount</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Expiry</th>
+                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -368,7 +430,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button
                           onClick={() => handleViewDetails(membership)}
-                          className="text-blue-600 hover:text-blue-900 mr-3"
+                          className="px-3 py-1.5 text-xs font-semibold bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors mr-2"
                         >
                           View
                         </button>
@@ -377,7 +439,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                             if (e.target.value) handleUpgradeTier(membership, e.target.value);
                             e.target.value = '';
                           }}
-                          className="text-sm border-gray-300 rounded"
+                          className="px-3 py-1.5 text-xs font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
                           defaultValue=""
                         >
                           <option value="">Upgrade</option>
@@ -396,10 +458,17 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
           {/* Membership Details Modal */}
           {showModal && selectedMembership && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-                <div className="p-6 border-b flex justify-between items-center">
-                  <h2 className="text-xl font-semibold">Membership Details</h2>
-                  <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-emerald-100/50 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-emerald-500 rounded-lg">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900">Membership Details</h2>
+                  </div>
+                  <button onClick={() => setShowModal(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -428,7 +497,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                       </div>
                       <button
                         onClick={() => setShowPointsModal(true)}
-                        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        className="mt-4 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-md"
                       >
                         Adjust Points
                       </button>
@@ -497,17 +566,24 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
           {/* Points Adjustment Modal */}
           {showPointsModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-                <div className="p-6 border-b">
-                  <h2 className="text-xl font-semibold">Adjust Points</h2>
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+                <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-emerald-100/50">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-emerald-500 rounded-lg">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900">Adjust Points</h2>
+                  </div>
                 </div>
                 <div className="p-6 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Transaction Type</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Transaction Type</label>
                     <select
                       value={pointsForm.type}
                       onChange={(e) => setPointsForm({ ...pointsForm, type: e.target.value as any })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
                     >
                       <option value="earn">Earn (Add Points)</option>
                       <option value="redeem">Redeem (Use Points)</option>
@@ -515,36 +591,36 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Points</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Points</label>
                     <input
                       type="number"
                       value={pointsForm.points}
                       onChange={(e) => setPointsForm({ ...pointsForm, points: parseInt(e.target.value) || 0 })}
                       min="0"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
                     <input
                       type="text"
                       value={pointsForm.description}
                       onChange={(e) => setPointsForm({ ...pointsForm, description: e.target.value })}
                       placeholder="e.g., Visit reward, Manual adjustment"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
                     />
                   </div>
                 </div>
-                <div className="px-6 py-4 border-t flex justify-end gap-4">
+                <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
                   <button
                     onClick={() => setShowPointsModal(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-semibold"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleAddPoints}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-md"
                   >
                     Save
                   </button>

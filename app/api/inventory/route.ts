@@ -6,6 +6,8 @@ import Medicine from '@/models/Medicine';
 import User from '@/models/User';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -30,12 +32,24 @@ export async function GET(request: NextRequest) {
       const _ = User;
     }
     
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const category = searchParams.get('category');
     const status = searchParams.get('status');
     const lowStock = searchParams.get('lowStock') === 'true';
 
     let query: any = {};
+    
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
     if (category) {
       query.category = category;
     }
@@ -46,8 +60,19 @@ export async function GET(request: NextRequest) {
       query.status = { $in: ['low-stock', 'out-of-stock'] };
     }
 
+    // Build populate options with tenant filter
+    const medicinePopulateOptions: any = {
+      path: 'medicineId',
+      select: 'name genericName',
+    };
+    if (tenantId) {
+      medicinePopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      medicinePopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
     const items = await InventoryItem.find(query)
-      .populate('medicineId', 'name genericName')
+      .populate(medicinePopulateOptions)
       .populate('lastRestockedBy', 'name')
       .sort({ name: 1 })
       .lean()
@@ -93,9 +118,46 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Validate that the medicine belongs to the tenant
+    if (body.medicineId && tenantId) {
+      const medicineQuery: any = {
+        _id: body.medicineId,
+        tenantId: new Types.ObjectId(tenantId),
+      };
+      const medicine = await Medicine.findOne(medicineQuery);
+      if (!medicine) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid medicine selected. Please select a medicine from this clinic.' },
+          { status: 400 }
+        );
+      }
+    }
 
-    const item = await InventoryItem.create(body);
-    await item.populate('medicineId', 'name genericName');
+    // Ensure inventory item is created with tenantId
+    const itemData: any = { ...body };
+    if (tenantId && !itemData.tenantId) {
+      itemData.tenantId = new Types.ObjectId(tenantId);
+    }
+
+    const item = await InventoryItem.create(itemData);
+    
+    // Build populate options with tenant filter
+    const medicinePopulateOptions: any = {
+      path: 'medicineId',
+      select: 'name genericName',
+    };
+    if (tenantId) {
+      medicinePopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      medicinePopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await item.populate(medicinePopulateOptions);
     await item.populate('lastRestockedBy', 'name');
 
     return NextResponse.json({ success: true, data: item }, { status: 201 });

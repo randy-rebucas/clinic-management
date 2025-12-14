@@ -2,6 +2,9 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 export interface IAdmin extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   firstName: string;
   lastName: string;
   email: string;
@@ -30,6 +33,13 @@ export interface IAdmin extends Document {
 
 const AdminSchema: Schema = new Schema(
   {
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
     firstName: {
       type: String,
       required: [true, 'First name is required'],
@@ -43,7 +53,6 @@ const AdminSchema: Schema = new Schema(
     email: {
       type: String,
       required: [true, 'Email is required'],
-      unique: true,
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
@@ -87,11 +96,11 @@ const AdminSchema: Schema = new Schema(
   }
 );
 
-// Indexes for efficient queries
-AdminSchema.index({ email: 1 }); // Additional index (unique already creates one)
-AdminSchema.index({ status: 1 });
-AdminSchema.index({ department: 1, status: 1 }); // For department-based queries
-AdminSchema.index({ accessLevel: 1, status: 1 }); // For access level queries
+// Indexes for efficient queries (tenant-scoped)
+AdminSchema.index({ tenantId: 1, email: 1 }, { unique: true, sparse: true }); // Tenant-scoped unique email
+AdminSchema.index({ tenantId: 1, status: 1 });
+AdminSchema.index({ tenantId: 1, department: 1, status: 1 }); // For department-based queries
+AdminSchema.index({ tenantId: 1, accessLevel: 1, status: 1 }); // For access level queries
 
 // Register Admin model immediately after schema definition
 if (!mongoose.models.Admin) {
@@ -130,8 +139,35 @@ AdminSchema.post('save', async function (doc: IAdmin) {
     const existingUserByEmail = await User.findOne({ email: doc.email.toLowerCase().trim() });
     
     if (!existingUserByEmail) {
-      // Find the admin role
-      const adminRole = await Role.findOne({ name: 'admin' });
+      // Find the admin role (tenant-scoped if tenantId exists)
+      let adminRole;
+      if (doc.tenantId) {
+        // First try to find tenant-scoped admin role
+        adminRole = await Role.findOne({ 
+          name: 'admin',
+          tenantId: doc.tenantId 
+        });
+        
+        // If no tenant-scoped role, try global admin role
+        if (!adminRole) {
+          adminRole = await Role.findOne({ 
+            name: 'admin',
+            $or: [
+              { tenantId: { $exists: false } },
+              { tenantId: null }
+            ]
+          });
+        }
+      } else {
+        // No tenant, look for global admin role
+        adminRole = await Role.findOne({ 
+          name: 'admin',
+          $or: [
+            { tenantId: { $exists: false } },
+            { tenantId: null }
+          ]
+        });
+      }
       
       if (!adminRole) {
         console.warn(`⚠️  Admin role not found. User not created for admin: ${doc.email}`);
@@ -142,15 +178,22 @@ AdminSchema.post('save', async function (doc: IAdmin) {
       const defaultPassword = `Admin${doc.firstName.slice(0, 2).toUpperCase()}${doc.phone?.slice(-4) || '1234'}!`;
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
-      // Create the user
-      const user = await User.create({
+      // Create the user with tenantId if admin has one
+      const userData: any = {
         name: `${doc.firstName} ${doc.lastName}`.trim(),
         email: doc.email.toLowerCase().trim(),
         password: hashedPassword,
         role: adminRole._id,
         adminProfile: doc._id,
         status: doc.status === 'active' ? 'active' : 'inactive',
-      });
+      };
+      
+      // Add tenantId if admin has one
+      if (doc.tenantId) {
+        userData.tenantId = doc.tenantId;
+      }
+
+      const user = await User.create(userData);
 
       console.log(`✅ Created user account for admin: ${doc.email} (default password: ${defaultPassword})`);
     } else {

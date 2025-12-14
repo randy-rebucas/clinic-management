@@ -88,24 +88,41 @@ export async function GET(request: NextRequest) {
       },
     };
 
-    // Fetch data based on permissions
+    // Get tenant context from session or headers
+    const { getTenantContext } = await import('@/lib/tenant');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const { Types } = await import('mongoose');
+
+    // Build tenant filter
+    const tenantFilter: any = {};
+    if (tenantId) {
+      tenantFilter.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    // Fetch data based on permissions (tenant-scoped)
     const promises: Promise<any>[] = [];
 
     if (canViewPatients) {
-      promises.push(Patient.countDocuments().then(count => ({ totalPatients: count })));
+      promises.push(Patient.countDocuments(tenantFilter).then(count => ({ totalPatients: count })));
     }
 
     if (canViewDoctors) {
-      promises.push(Doctor.countDocuments({ status: 'active' }).then(count => ({ totalDoctors: count })));
+      const doctorQuery: any = { status: 'active', ...tenantFilter };
+      promises.push(Doctor.countDocuments(doctorQuery).then(count => ({ totalDoctors: count })));
     }
 
     if (canViewAppointments) {
       promises.push(
         Appointment.countDocuments({
+          ...tenantFilter,
           appointmentDate: { $gte: todayStart, $lte: todayEnd },
           status: { $in: ['scheduled', 'confirmed'] },
         }).then(count => ({ todayAppointments: count })),
         Appointment.countDocuments({
+          ...tenantFilter,
           appointmentDate: { $gte: dateRange.start, $lte: dateRange.end },
         }).then(count => ({ periodAppointments: count }))
       );
@@ -114,6 +131,7 @@ export async function GET(request: NextRequest) {
     if (canViewVisits) {
       promises.push(
         Visit.countDocuments({
+          ...tenantFilter,
           date: { $gte: dateRange.start, $lte: dateRange.end },
           status: { $ne: 'cancelled' },
         }).then(count => ({ periodVisits: count }))
@@ -123,6 +141,7 @@ export async function GET(request: NextRequest) {
     if (canViewInvoices) {
       promises.push(
         Invoice.find({
+          ...tenantFilter,
           createdAt: { $gte: dateRange.start, $lte: dateRange.end },
         }).then(invoices => {
           const periodRevenue = invoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
@@ -130,6 +149,7 @@ export async function GET(request: NextRequest) {
           return { periodInvoices: invoices, periodRevenue, periodBilled };
         }),
         Invoice.find({
+          ...tenantFilter,
           status: { $in: ['unpaid', 'partial'] },
         }).then(invoices => {
           const totalOutstanding = invoices.reduce((sum: number, inv: any) => sum + (inv.outstandingBalance || 0), 0);
@@ -157,13 +177,35 @@ export async function GET(request: NextRequest) {
     overview.totalOutstanding = parseFloat((overview.totalOutstanding || 0).toFixed(2));
     overview.outstandingInvoiceCount = overview.outstandingInvoiceCount || 0;
 
-    // Fetch appointments if permitted
+    // Fetch appointments if permitted (tenant-scoped)
     if (canViewAppointments) {
+      // Build populate options with tenant filter
+      const patientPopulateOptions: any = {
+        path: 'patient',
+        select: 'firstName lastName',
+      };
+      if (tenantId) {
+        patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      } else {
+        patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      }
+      
+      const doctorPopulateOptions: any = {
+        path: 'doctor',
+        select: 'firstName lastName',
+      };
+      if (tenantId) {
+        doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      } else {
+        doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      }
+      
       const recentAppointments = await Appointment.find({
+        ...tenantFilter,
         appointmentDate: { $gte: todayStart, $lte: todayEnd },
       })
-        .populate('patient', 'firstName lastName')
-        .populate('doctor', 'firstName lastName')
+        .populate(patientPopulateOptions)
+        .populate(doctorPopulateOptions)
         .sort({ appointmentTime: 1 })
         .limit(10)
         .lean();
@@ -171,11 +213,12 @@ export async function GET(request: NextRequest) {
       const nextWeek = new Date(now);
       nextWeek.setDate(now.getDate() + 7);
       const upcomingAppointments = await Appointment.find({
+        ...tenantFilter,
         appointmentDate: { $gte: todayEnd, $lte: nextWeek },
         status: { $in: ['scheduled', 'confirmed'] },
       })
-        .populate('patient', 'firstName lastName')
-        .populate('doctor', 'firstName lastName')
+        .populate(patientPopulateOptions)
+        .populate(doctorPopulateOptions)
         .sort({ appointmentDate: 1, appointmentTime: 1 })
         .limit(10)
         .lean();
@@ -218,7 +261,7 @@ export async function GET(request: NextRequest) {
       data.paymentMethodBreakdown = {};
     }
 
-    // Role-specific data
+    // Role-specific data (tenant-scoped)
     if (session.role === 'doctor') {
       // Doctor-specific: My appointments, my visits, my prescriptions
       const doctorUser = await import('@/models/User').then(m => m.default);
@@ -226,20 +269,33 @@ export async function GET(request: NextRequest) {
       const staffId = (user as any)?.staff?._id;
 
       if (staffId) {
+        // Build populate options with tenant filter
+        const patientPopulateOptions: any = {
+          path: 'patient',
+          select: 'firstName lastName',
+        };
+        if (tenantId) {
+          patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+        } else {
+          patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+        }
+        
         const myAppointments = await Appointment.find({
+          ...tenantFilter,
           doctor: staffId,
           appointmentDate: { $gte: todayStart, $lte: todayEnd },
         })
-          .populate('patient', 'firstName lastName')
+          .populate(patientPopulateOptions)
           .sort({ appointmentTime: 1 })
           .limit(5)
           .lean();
 
         const myVisits = await Visit.find({
-          doctor: staffId,
+          ...tenantFilter,
+          provider: staffId,
           date: { $gte: dateRange.start, $lte: dateRange.end },
         })
-          .populate('patient', 'firstName lastName')
+          .populate(patientPopulateOptions)
           .sort({ date: -1 })
           .limit(5)
           .lean();
@@ -268,8 +324,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (session.role === 'accountant') {
-      // Accountant-specific: Financial summary
+      // Accountant-specific: Financial summary (tenant-scoped)
       const allInvoices = await Invoice.find({
+        ...tenantFilter,
         createdAt: { $gte: dateRange.start, $lte: dateRange.end },
       }).lean();
 

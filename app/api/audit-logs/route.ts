@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import AuditLog from '@/models/AuditLog';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -21,6 +23,11 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const userId = searchParams.get('userId');
     const resource = searchParams.get('resource');
@@ -34,6 +41,13 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10);
 
     let query: any = {};
+    
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
 
     if (userId) {
       query.userId = userId;
@@ -73,10 +87,21 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * limit;
 
+    // Build populate options with tenant filter
+    const dataSubjectPopulateOptions: any = {
+      path: 'dataSubject',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      dataSubjectPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      dataSubjectPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
     const [logs, total] = await Promise.all([
       AuditLog.find(query)
         .populate('userId', 'name email role')
-        .populate('dataSubject', 'firstName lastName patientCode')
+        .populate(dataSubjectPopulateOptions)
         .sort({ timestamp: -1 })
         .limit(limit)
         .skip(skip),

@@ -9,6 +9,7 @@ export interface AuditLogOptions {
   userId: string | Types.ObjectId;
   userEmail?: string;
   userRole?: string;
+  tenantId?: string | Types.ObjectId; // Tenant ID for multi-tenant support
   action: 'create' | 'read' | 'update' | 'delete' | 'login' | 'logout' | 'export' | 'print' | 'download' | 'view' | 'access_denied' | 'password_change' | 'permission_change' | 'backup' | 'restore' | 'data_export' | 'data_deletion';
   resource: 'patient' | 'visit' | 'appointment' | 'prescription' | 'lab_result' | 'invoice' | 'document' | 'user' | 'doctor' | 'room' | 'service' | 'notification' | 'system';
   resourceId?: string | Types.ObjectId;
@@ -32,7 +33,20 @@ export async function createAuditLog(options: AuditLogOptions): Promise<void> {
   try {
     await connectDB();
     
-    await AuditLog.create({
+    // Get tenantId from options or try to get from context
+    let tenantId = options.tenantId;
+    if (!tenantId) {
+      try {
+        const { getTenantContext } = await import('./tenant');
+        const tenantContext = await getTenantContext();
+        tenantId = tenantContext.tenantId || undefined;
+      } catch (error) {
+        // If tenant context can't be retrieved, continue without tenantId
+        console.warn('Could not get tenant context for audit log');
+      }
+    }
+    
+    const auditLogData: any = {
       userId: options.userId,
       userEmail: options.userEmail,
       userRole: options.userRole,
@@ -51,7 +65,13 @@ export async function createAuditLog(options: AuditLogOptions): Promise<void> {
       isSensitive: options.isSensitive || false,
       dataSubject: options.dataSubject,
       timestamp: new Date(),
-    });
+    };
+    
+    if (tenantId) {
+      auditLogData.tenantId = typeof tenantId === 'string' ? new Types.ObjectId(tenantId) : tenantId;
+    }
+    
+    await AuditLog.create(auditLogData);
   } catch (error) {
     // Don't throw - audit logging should not break the application
     console.error('Error creating audit log:', error);
@@ -66,12 +86,14 @@ export async function logLogin(
   userEmail: string,
   userRole: string,
   ipAddress?: string,
-  userAgent?: string
+  userAgent?: string,
+  tenantId?: string | Types.ObjectId
 ): Promise<void> {
   await createAuditLog({
     userId,
     userEmail,
     userRole,
+    tenantId,
     action: 'login',
     resource: 'system',
     ipAddress,
@@ -87,12 +109,14 @@ export async function logLogout(
   userId: string | Types.ObjectId,
   userEmail: string,
   userRole: string,
-  ipAddress?: string
+  ipAddress?: string,
+  tenantId?: string | Types.ObjectId
 ): Promise<void> {
   await createAuditLog({
     userId,
     userEmail,
     userRole,
+    tenantId,
     action: 'logout',
     resource: 'system',
     ipAddress,
@@ -112,12 +136,14 @@ export async function logDataAccess(
   dataSubject: string | Types.ObjectId, // Patient ID
   ipAddress?: string,
   userAgent?: string,
-  requestPath?: string
+  requestPath?: string,
+  tenantId?: string | Types.ObjectId
 ): Promise<void> {
   await createAuditLog({
     userId,
     userEmail,
     userRole,
+    tenantId,
     action: 'read',
     resource,
     resourceId,
@@ -142,12 +168,14 @@ export async function logDataModification(
   changes: Array<{ field: string; oldValue?: any; newValue?: any }>,
   dataSubject?: string | Types.ObjectId,
   ipAddress?: string,
-  requestPath?: string
+  requestPath?: string,
+  tenantId?: string | Types.ObjectId
 ): Promise<void> {
   await createAuditLog({
     userId,
     userEmail,
     userRole,
+    tenantId,
     action: 'update',
     resource,
     resourceId,
@@ -171,12 +199,14 @@ export async function logDataDeletion(
   resourceId: string | Types.ObjectId,
   dataSubject?: string | Types.ObjectId,
   ipAddress?: string,
-  requestPath?: string
+  requestPath?: string,
+  tenantId?: string | Types.ObjectId
 ): Promise<void> {
   await createAuditLog({
     userId,
     userEmail,
     userRole,
+    tenantId,
     action: 'delete',
     resource,
     resourceId,
@@ -199,12 +229,14 @@ export async function logAccessDenied(
   resourceId?: string | Types.ObjectId,
   ipAddress?: string,
   requestPath?: string,
-  reason?: string
+  reason?: string,
+  tenantId?: string | Types.ObjectId
 ): Promise<void> {
   await createAuditLog({
     userId,
     userEmail,
     userRole,
+    tenantId,
     action: 'access_denied',
     resource,
     resourceId,
@@ -225,12 +257,14 @@ export async function logDataExport(
   resource: AuditLogOptions['resource'],
   dataSubject?: string | Types.ObjectId,
   ipAddress?: string,
-  metadata?: { [key: string]: any }
+  metadata?: { [key: string]: any },
+  tenantId?: string | Types.ObjectId
 ): Promise<void> {
   await createAuditLog({
     userId,
     userEmail,
     userRole,
+    tenantId,
     action: 'data_export',
     resource,
     dataSubject,

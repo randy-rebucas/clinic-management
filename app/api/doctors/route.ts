@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET() {
   // User authentication check
@@ -20,7 +22,21 @@ export async function GET() {
 
   try {
     await connectDB();
-    const doctors = await Doctor.find({}).sort({ createdAt: -1 });
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build doctor query with tenant filter
+    const doctorQuery: any = {};
+    if (tenantId) {
+      doctorQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      // If no tenant, get doctors without tenantId (backward compatibility)
+      doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const doctors = await Doctor.find(doctorQuery).sort({ createdAt: -1 });
     return NextResponse.json({ success: true, data: doctors });
   } catch (error: any) {
     console.error('Error fetching doctors:', error);
@@ -48,6 +64,16 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Ensure doctor is created with tenantId
+    if (tenantId && !body.tenantId) {
+      body.tenantId = new Types.ObjectId(tenantId);
+    }
+    
     const doctor = await Doctor.create(body);
     return NextResponse.json({ success: true, data: doctor }, { status: 201 });
   } catch (error: any) {

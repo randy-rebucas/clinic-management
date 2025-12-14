@@ -5,6 +5,8 @@ import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -15,12 +17,25 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
     const tier = searchParams.get('tier');
     const status = searchParams.get('status');
 
     let query: any = {};
+    
+    // Add tenant filter
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
     if (patientId) {
       query.patient = patientId;
     }
@@ -31,9 +46,30 @@ export async function GET(request: NextRequest) {
       query.status = status;
     }
 
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const referredByPopulateOptions: any = {
+      path: 'referredBy',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      referredByPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      referredByPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
     const memberships = await Membership.find(query)
-      .populate('patient', 'firstName lastName patientCode')
-      .populate('referredBy', 'firstName lastName patientCode')
+      .populate(patientPopulateOptions)
+      .populate(referredByPopulateOptions)
       .sort({ createdAt: -1 });
 
     return NextResponse.json({ success: true, data: memberships });
@@ -55,6 +91,11 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const body = await request.json();
     const { patientId, tier, referredBy } = body;
 
@@ -65,8 +106,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if patient already has membership
-    const existing = await Membership.findOne({ patient: patientId });
+    // Validate that the patient belongs to the tenant
+    const patientQuery: any = { _id: patientId };
+    if (tenantId) {
+      patientQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const patient = await Patient.findOne(patientQuery);
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: 'Patient not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check if patient already has membership (tenant-scoped)
+    const existingQuery: any = { patient: patientId };
+    if (tenantId) {
+      existingQuery.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      existingQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+    
+    const existing = await Membership.findOne(existingQuery);
     if (existing) {
       return NextResponse.json(
         { success: false, error: 'Patient already has a membership' },
@@ -74,15 +138,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const membership = await Membership.create({
+    const membershipData: any = {
       patient: patientId,
       tier: tier || 'bronze',
       referredBy: referredBy || undefined,
-    });
+    };
+    
+    if (tenantId) {
+      membershipData.tenantId = new Types.ObjectId(tenantId);
+    }
 
-    // Update referring patient's referrals list if applicable
+    const membership = await Membership.create(membershipData);
+
+    // Update referring patient's referrals list if applicable (tenant-scoped)
     if (referredBy) {
-      const referringMembership = await Membership.findOne({ patient: referredBy });
+      const referringQuery: any = { patient: referredBy };
+      if (tenantId) {
+        referringQuery.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        referringQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      const referringMembership = await Membership.findOne(referringQuery);
       if (referringMembership) {
         referringMembership.referrals.push(patientId);
         referringMembership.transactions.push({
@@ -108,14 +185,36 @@ export async function POST(request: NextRequest) {
       await membership.save();
     }
 
-    await membership.populate('patient', 'firstName lastName patientCode');
-    await membership.populate('referredBy', 'firstName lastName patientCode');
+    // Populate with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    const referredByPopulateOptions: any = {
+      path: 'referredBy',
+      select: 'firstName lastName patientCode',
+    };
+    if (tenantId) {
+      referredByPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      referredByPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await membership.populate(patientPopulateOptions);
+    await membership.populate(referredByPopulateOptions);
 
     // Log membership creation
     await createAuditLog({
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
+      tenantId: tenantId,
       action: 'create',
       resource: 'patient',
       resourceId: membership.patient,

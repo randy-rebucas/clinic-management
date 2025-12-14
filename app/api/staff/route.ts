@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { Nurse, Receptionist, Accountant, User } from '@/models';
 import { verifySession } from '@/app/lib/dal';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 // GET /api/staff - Get all staff members (nurses, receptionists, accountants)
 export async function GET(request: NextRequest) {
@@ -12,6 +14,10 @@ export async function GET(request: NextRequest) {
     }
 
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
 
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type'); // 'nurse', 'receptionist', 'accountant', or 'all'
@@ -21,15 +27,35 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20');
     const skip = (page - 1) * limit;
 
-    // Build query filters
+    // Build query filters with tenant filter
     const buildQuery = (baseQuery: any) => {
+      // Add tenant filter
+      if (tenantId) {
+        baseQuery.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        baseQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
       if (status) baseQuery.status = status;
       if (search) {
-        baseQuery.$or = [
+        const searchConditions = [
           { firstName: { $regex: search, $options: 'i' } },
           { lastName: { $regex: search, $options: 'i' } },
           { email: { $regex: search, $options: 'i' } },
           { employeeId: { $regex: search, $options: 'i' } },
+        ];
+        
+        // Combine tenant filter with search conditions
+        const tenantFilter: any = {};
+        if (tenantId) {
+          tenantFilter.tenantId = new Types.ObjectId(tenantId);
+        } else {
+          tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+        }
+        
+        baseQuery.$and = [
+          tenantFilter,
+          { $or: searchConditions }
         ];
       }
       return baseQuery;
@@ -130,6 +156,10 @@ export async function POST(request: NextRequest) {
     }
 
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
 
     const body = await request.json();
     const { staffType, ...staffData } = body;
@@ -141,6 +171,11 @@ export async function POST(request: NextRequest) {
     // Required fields validation
     if (!staffData.firstName || !staffData.lastName || !staffData.email || !staffData.phone) {
       return NextResponse.json({ error: 'First name, last name, email, and phone are required' }, { status: 400 });
+    }
+
+    // Ensure staff is created with tenantId
+    if (tenantId && !staffData.tenantId) {
+      staffData.tenantId = new Types.ObjectId(tenantId);
     }
 
     let staff;

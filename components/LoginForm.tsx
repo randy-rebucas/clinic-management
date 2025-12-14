@@ -1,11 +1,161 @@
 'use client';
 
 import { login } from '@/app/actions/auth';
-import { useActionState } from 'react';
+import { useActionState, useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+
+interface Clinic {
+  _id: string;
+  name: string;
+  displayName: string;
+  subdomain: string;
+  email?: string;
+  phone?: string;
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+  };
+}
 
 export default function LoginForm() {
   const [state, action, pending] = useActionState(login, undefined);
+  const [hasSubdomain, setHasSubdomain] = useState(false);
+  const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null);
+  const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
+  const [loadingClinics, setLoadingClinics] = useState(true);
+  const [showClinicSelection, setShowClinicSelection] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    const checkSubdomain = async () => {
+      if (typeof window !== 'undefined') {
+        const hostname = window.location.hostname;
+        const parts = hostname.split('.');
+        // If hostname has more than 2 parts (e.g., clinic.localhost or clinic.example.com), we have a subdomain
+        const hasSubdomain = parts.length > 2 || (parts.length === 2 && parts[0] !== 'localhost' && parts[0] !== 'www');
+        setHasSubdomain(hasSubdomain);
+        
+        if (!hasSubdomain) {
+          // No subdomain, fetch available clinics
+          fetchClinics();
+          setShowClinicSelection(true);
+        } else {
+          // Has subdomain, get tenant info
+          try {
+            const subdomain = parts[0];
+            const res = await fetch(`/api/tenants/public?subdomain=${subdomain}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.success && data.tenant) {
+                setSelectedClinic(data.tenant);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to fetch tenant info:', error);
+          }
+        }
+      }
+    };
+    
+    checkSubdomain();
+  }, []);
+
+  const fetchClinics = async () => {
+    try {
+      setLoadingClinics(true);
+      const res = await fetch('/api/tenants/public');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.tenants) {
+          setAvailableClinics(data.tenants);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch clinics:', error);
+    } finally {
+      setLoadingClinics(false);
+    }
+  };
+
+  const handleClinicSelect = (clinic: Clinic) => {
+    setSelectedClinic(clinic);
+    // Redirect to clinic's subdomain for login
+    if (typeof window !== 'undefined') {
+      const protocol = window.location.protocol;
+      const rootDomain = window.location.hostname.split('.').slice(-2).join('.');
+      const port = window.location.port ? `:${window.location.port}` : '';
+      const loginUrl = `${protocol}//${clinic.subdomain}.${rootDomain}${port}/login`;
+      window.location.href = loginUrl;
+    }
+  };
+
+  // If showing clinic selection, render that instead
+  if (showClinicSelection && !hasSubdomain) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Select Your Clinic</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Please select the clinic you want to log in to.
+          </p>
+          
+          {loadingClinics ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : availableClinics.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-gray-600 mb-4">No clinics available at the moment.</p>
+              <Link href="/tenant-onboard" className="text-blue-600 hover:text-blue-700 font-semibold text-sm">
+                Register a new clinic
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {availableClinics.map((clinic) => (
+                <button
+                  key={clinic._id}
+                  type="button"
+                  onClick={() => handleClinicSelect(clinic)}
+                  className="w-full p-4 border-2 border-gray-200 rounded-lg text-left hover:border-blue-300 hover:bg-blue-50 transition-all"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-900 mb-1">{clinic.displayName || clinic.name}</h4>
+                      {clinic.address && (clinic.address.city || clinic.address.state) && (
+                        <p className="text-sm text-gray-600 mb-1">
+                          {[clinic.address.city, clinic.address.state].filter(Boolean).join(', ')}
+                        </p>
+                      )}
+                      {clinic.phone && (
+                        <p className="text-xs text-gray-500">📞 {clinic.phone}</p>
+                      )}
+                    </div>
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        <div className="pt-4 border-t border-gray-200">
+          <p className="text-sm text-gray-600 text-center">
+            Don&apos;t see your clinic?{' '}
+            <Link href="/tenant-onboard" className="text-blue-600 hover:text-blue-700 font-semibold">
+              Register a new clinic
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form action={action} className="space-y-6">

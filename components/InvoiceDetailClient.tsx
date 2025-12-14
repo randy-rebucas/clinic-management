@@ -212,11 +212,13 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
 
   if (loading) {
     return (
-      <section className="py-12 px-4">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-emerald-50/30 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center justify-center gap-3 min-h-[256px]">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="text-gray-500">Loading invoice...</p>
+          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
+            <div className="relative">
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-emerald-100 border-t-emerald-600"></div>
+            </div>
+            <p className="text-gray-600 font-medium">Loading invoice...</p>
           </div>
         </div>
       </section>
@@ -225,19 +227,21 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
 
   if (error || !invoice) {
     return (
-      <section className="py-12 px-4">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-emerald-50/30 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <div className="flex items-start gap-2">
-              <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-              <div>
-                <h3 className="text-sm font-medium text-red-800">Error</h3>
-                <p className="text-sm text-red-700 mt-1">{error || 'Invoice not found'}</p>
+          <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-6 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="inline-flex items-center justify-center w-12 h-12 bg-red-100 rounded-full flex-shrink-0">
+                <svg className="w-6 h-6 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-red-800 mb-1">Error</h3>
+                <p className="text-sm text-red-700 mb-4">{error || 'Invoice not found'}</p>
                 <button
                   onClick={() => router.push('/invoices')}
-                  className="mt-3 text-sm text-red-600 hover:text-red-800 underline"
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold"
                 >
                   ← Back to Invoices
                 </button>
@@ -250,107 +254,130 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
   }
 
   return (
-    <section className="py-12 px-4">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-emerald-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
           {/* Header */}
-          <div className="flex items-center gap-2">
-            <Link
-              href="/invoices"
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <div className="flex-1">
-              <h1 className="text-3xl font-bold mb-1">Invoice Details</h1>
-              <p className="text-sm text-gray-600">Invoice #{invoice.invoiceNumber}</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={handlePrintReceipt}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+            <div className="flex items-center gap-4">
+              <Link
+                href="/invoices"
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                Print Receipt
-              </button>
+              </Link>
+              <div className="flex items-center gap-3 flex-1">
+                <div className="p-2 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-md">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Invoice Details</h1>
+                  <p className="text-sm sm:text-base text-gray-600 mt-1">Invoice #{invoice.invoiceNumber}</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handlePrintReceipt}
+                  className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all flex items-center gap-2 text-sm font-semibold shadow-md"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  Print Receipt
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Invoice Info Card */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+            <div className="p-6 sm:p-8">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Left Column */}
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <h2 className="text-lg font-semibold mb-3">Invoice Information</h2>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Invoice Number:</span>
-                        <span className="font-medium">{invoice.invoiceNumber}</span>
+                <div className="flex flex-col gap-6">
+                  <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="p-2 bg-emerald-500 rounded-lg">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
                       </div>
+                      <h2 className="text-lg font-bold text-gray-900">Invoice Information</h2>
+                    </div>
+                    <div className="space-y-3 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Status:</span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(invoice.status)}`}>
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Invoice Number:</span>
+                        <span className="font-bold text-gray-900">{invoice.invoiceNumber}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Status:</span>
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusColor(invoice.status)}`}>
                           {invoice.status.toUpperCase()}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Date Created:</span>
-                        <span className="font-medium">{formatDate(invoice.createdAt)}</span>
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Date Created:</span>
+                        <span className="font-medium text-gray-900">{formatDate(invoice.createdAt)}</span>
                       </div>
                       {invoice.visit && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Visit:</span>
-                          <Link href={`/visits/${invoice.visit._id}`} className="font-medium text-blue-600 hover:underline">
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Visit:</span>
+                          <Link href={`/visits/${invoice.visit._id}`} className="font-bold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors">
                             {invoice.visit.visitCode}
                           </Link>
                         </div>
                       )}
                       {invoice.createdBy && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Created By:</span>
-                          <span className="font-medium">{invoice.createdBy.name}</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Created By:</span>
+                          <span className="font-medium text-gray-900">{invoice.createdBy.name}</span>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  <div>
-                    <h2 className="text-lg font-semibold mb-3">Patient Information</h2>
-                    <div className="space-y-2 text-sm">
+                  <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 border border-cyan-200 rounded-xl p-5">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="p-2 bg-cyan-500 rounded-lg">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      </div>
+                      <h2 className="text-lg font-bold text-gray-900">Patient Information</h2>
+                    </div>
+                    <div className="space-y-3 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Patient:</span>
-                        <Link href={`/patients/${invoice.patient._id}`} className="font-medium text-blue-600 hover:underline">
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Patient:</span>
+                        <Link href={`/patients/${invoice.patient._id}`} className="font-bold text-cyan-600 hover:text-cyan-700 hover:underline transition-colors">
                           {invoice.patient.firstName} {invoice.patient.lastName}
                         </Link>
                       </div>
                       {invoice.patient.patientCode && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Patient Code:</span>
-                          <span className="font-medium">{invoice.patient.patientCode}</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Patient Code:</span>
+                          <span className="font-medium text-gray-900">{invoice.patient.patientCode}</span>
                         </div>
                       )}
                       {invoice.patient.email && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Email:</span>
-                          <span className="font-medium">{invoice.patient.email}</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Email:</span>
+                          <span className="font-medium text-gray-900">{invoice.patient.email}</span>
                         </div>
                       )}
                       {invoice.patient.phone && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Phone:</span>
-                          <span className="font-medium">{invoice.patient.phone}</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Phone:</span>
+                          <span className="font-medium text-gray-900">{invoice.patient.phone}</span>
                         </div>
                       )}
                       {invoice.patient.address && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Address:</span>
-                          <span className="font-medium text-right">
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Address:</span>
+                          <span className="font-medium text-gray-900 text-right">
                             {[
                               invoice.patient.address.street,
                               invoice.patient.address.city,
@@ -365,47 +392,54 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
                 </div>
 
                 {/* Right Column - Financial Summary */}
-                <div>
-                  <h2 className="text-lg font-semibold mb-3">Financial Summary</h2>
-                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-purple-500 rounded-lg">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <h2 className="text-lg font-bold text-gray-900">Financial Summary</h2>
+                  </div>
+                  <div className="bg-white rounded-lg p-5 space-y-3 border border-purple-200">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Subtotal:</span>
-                      <span className="font-medium">{formatCurrency(invoice.subtotal || 0)}</span>
+                      <span className="font-semibold text-gray-700">Subtotal:</span>
+                      <span className="font-bold text-gray-900">{formatCurrency(invoice.subtotal || 0)}</span>
                     </div>
                     {invoice.discounts && invoice.discounts.length > 0 && (
-                      <div className="space-y-1">
+                      <div className="space-y-2">
                         {invoice.discounts.map((discount, idx) => (
                           <div key={idx} className="flex justify-between text-sm">
-                            <span className="text-gray-600">
+                            <span className="font-semibold text-gray-700">
                               Discount ({discount.type === 'pwd' ? 'PWD' : discount.type === 'senior' ? 'Senior' : discount.type === 'membership' ? 'Membership' : discount.reason || 'Other'}):
                             </span>
-                            <span className="font-medium text-red-600">-{formatCurrency(discount.amount)}</span>
+                            <span className="font-bold text-red-600">-{formatCurrency(discount.amount)}</span>
                           </div>
                         ))}
                       </div>
                     )}
                     {invoice.tax && invoice.tax > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Tax:</span>
-                        <span className="font-medium">{formatCurrency(invoice.tax)}</span>
+                        <span className="font-semibold text-gray-700">Tax:</span>
+                        <span className="font-bold text-gray-900">{formatCurrency(invoice.tax)}</span>
                       </div>
                     )}
-                    <div className="border-t border-gray-300 pt-3">
+                    <div className="border-t-2 border-gray-300 pt-3">
                       <div className="flex justify-between">
-                        <span className="font-semibold">Total:</span>
-                        <span className="font-bold text-lg">{formatCurrency(invoice.total || 0)}</span>
+                        <span className="text-lg font-bold text-gray-900">Total:</span>
+                        <span className="text-lg font-bold text-emerald-600">{formatCurrency(invoice.total || 0)}</span>
                       </div>
                     </div>
                     {invoice.totalPaid !== undefined && invoice.totalPaid > 0 && (
-                      <div className="flex justify-between text-sm pt-2 border-t border-gray-200">
-                        <span className="text-gray-600">Total Paid:</span>
-                        <span className="font-medium text-green-600">{formatCurrency(invoice.totalPaid)}</span>
+                      <div className="flex justify-between text-sm pt-3 border-t border-gray-200">
+                        <span className="font-semibold text-gray-700">Total Paid:</span>
+                        <span className="font-bold text-green-600">{formatCurrency(invoice.totalPaid)}</span>
                       </div>
                     )}
                     {invoice.outstandingBalance !== undefined && invoice.outstandingBalance > 0 && (
                       <div className="flex justify-between text-sm pt-2">
-                        <span className="text-gray-600">Outstanding Balance:</span>
-                        <span className="font-medium text-red-600">{formatCurrency(invoice.outstandingBalance)}</span>
+                        <span className="font-semibold text-gray-700">Outstanding Balance:</span>
+                        <span className="font-bold text-red-600">{formatCurrency(invoice.outstandingBalance)}</span>
                       </div>
                     )}
                   </div>
@@ -415,34 +449,43 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
           </div>
 
           {/* Items Table */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Invoice Items</h2>
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+            <div className="p-5 border-b border-gray-200 bg-gray-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-500 rounded-lg">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </div>
+                <h2 className="text-lg font-bold text-gray-900">Invoice Items</h2>
+              </div>
+            </div>
+            <div className="p-5">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Code</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Description</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Category</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Quantity</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Unit Price</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Total</th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Code</th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Description</th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Category</th>
+                      <th className="px-5 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Quantity</th>
+                      <th className="px-5 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Unit Price</th>
+                      <th className="px-5 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Total</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="bg-white divide-y divide-gray-200">
                     {invoice.items.map((item, idx) => {
                       const serviceName = typeof item.serviceId === 'object' && item.serviceId?.name 
                         ? item.serviceId.name 
                         : item.description || 'Service';
                       return (
-                        <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm">{item.code || '—'}</td>
-                          <td className="px-4 py-3 text-sm font-medium">{serviceName}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{item.category || '—'}</td>
-                          <td className="px-4 py-3 text-sm text-right">{item.quantity || 1}</td>
-                          <td className="px-4 py-3 text-sm text-right">{formatCurrency(item.unitPrice)}</td>
-                          <td className="px-4 py-3 text-sm font-medium text-right">{formatCurrency(item.total)}</td>
+                        <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-5 py-4 text-sm font-medium text-gray-900">{item.code || '—'}</td>
+                          <td className="px-5 py-4 text-sm font-bold text-gray-900">{serviceName}</td>
+                          <td className="px-5 py-4 text-sm text-gray-600">{item.category || '—'}</td>
+                          <td className="px-5 py-4 text-sm text-right font-medium">{item.quantity || 1}</td>
+                          <td className="px-5 py-4 text-sm text-right font-medium">{formatCurrency(item.unitPrice)}</td>
+                          <td className="px-5 py-4 text-sm font-bold text-right text-gray-900">{formatCurrency(item.total)}</td>
                         </tr>
                       );
                     })}
@@ -454,49 +497,59 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
 
           {/* Payments */}
           {invoice.payments && invoice.payments.length > 0 && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="p-6">
-                <h2 className="text-lg font-semibold mb-4">Payments</h2>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-500 rounded-lg">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-lg font-bold text-gray-900">Payments</h2>
+                </div>
+              </div>
+              <div className="p-5">
                 <div className="space-y-3">
                   {invoice.payments.map((payment, idx) => (
-                    <div key={idx} className="border border-gray-200 rounded-lg p-4">
+                    <div key={idx} className="bg-gradient-to-r from-white to-green-50/50 border border-green-200 rounded-lg p-5 hover:shadow-md transition-all">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                         <div>
                           <div className="flex justify-between mb-2">
-                            <span className="text-gray-600">Payment Method:</span>
-                            <span className="font-medium">{formatPaymentMethod(payment.method)}</span>
+                            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Payment Method:</span>
+                            <span className="font-bold text-gray-900">{formatPaymentMethod(payment.method)}</span>
                           </div>
                           <div className="flex justify-between mb-2">
-                            <span className="text-gray-600">Amount:</span>
-                            <span className="font-medium text-green-600">{formatCurrency(payment.amount)}</span>
+                            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Amount:</span>
+                            <span className="font-bold text-green-600">{formatCurrency(payment.amount)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-gray-600">Date:</span>
-                            <span className="font-medium">{formatDateTime(payment.date)}</span>
+                            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Date:</span>
+                            <span className="font-medium text-gray-900">{formatDateTime(payment.date)}</span>
                           </div>
                         </div>
                         <div>
                           {payment.receiptNo && (
                             <div className="flex justify-between mb-2">
-                              <span className="text-gray-600">Receipt No:</span>
-                              <span className="font-medium">{payment.receiptNo}</span>
+                              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Receipt No:</span>
+                              <span className="font-medium text-gray-900">{payment.receiptNo}</span>
                             </div>
                           )}
                           {payment.referenceNo && (
                             <div className="flex justify-between mb-2">
-                              <span className="text-gray-600">Reference No:</span>
-                              <span className="font-medium">{payment.referenceNo}</span>
+                              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Reference No:</span>
+                              <span className="font-medium text-gray-900">{payment.referenceNo}</span>
                             </div>
                           )}
                           {payment.processedBy && (
                             <div className="flex justify-between">
-                              <span className="text-gray-600">Processed By:</span>
-                              <span className="font-medium">{payment.processedBy.name}</span>
+                              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Processed By:</span>
+                              <span className="font-medium text-gray-900">{payment.processedBy.name}</span>
                             </div>
                           )}
                           {payment.notes && (
-                            <div className="mt-2 pt-2 border-t border-gray-200">
-                              <span className="text-gray-600 text-xs">Notes: {payment.notes}</span>
+                            <div className="mt-3 pt-3 border-t border-gray-200">
+                              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Notes:</span>
+                              <p className="text-sm text-gray-900 mt-1">{payment.notes}</p>
                             </div>
                           )}
                         </div>
@@ -510,64 +563,74 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
 
           {/* Insurance Information */}
           {invoice.insurance && invoice.insurance.provider && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="p-6">
-                <h2 className="text-lg font-semibold mb-4">Insurance/HMO Information</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div className="space-y-2">
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-500 rounded-lg">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-lg font-bold text-gray-900">Insurance/HMO Information</h2>
+                </div>
+              </div>
+              <div className="p-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                  <div className="space-y-3">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Provider:</span>
-                      <span className="font-medium">{invoice.insurance.provider}</span>
+                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Provider:</span>
+                      <span className="font-bold text-gray-900">{invoice.insurance.provider}</span>
                     </div>
                     {invoice.insurance.policyNumber && (
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Policy Number:</span>
-                        <span className="font-medium">{invoice.insurance.policyNumber}</span>
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Policy Number:</span>
+                        <span className="font-medium text-gray-900">{invoice.insurance.policyNumber}</span>
                       </div>
                     )}
                     {invoice.insurance.memberId && (
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Member ID:</span>
-                        <span className="font-medium">{invoice.insurance.memberId}</span>
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Member ID:</span>
+                        <span className="font-medium text-gray-900">{invoice.insurance.memberId}</span>
                       </div>
                     )}
                     {invoice.insurance.coverageType && (
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Coverage Type:</span>
-                        <span className="font-medium capitalize">{invoice.insurance.coverageType}</span>
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Coverage Type:</span>
+                        <span className="font-medium text-gray-900 capitalize">{invoice.insurance.coverageType}</span>
                       </div>
                     )}
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {invoice.insurance.coverageAmount && (
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Coverage Amount:</span>
-                        <span className="font-medium">{formatCurrency(invoice.insurance.coverageAmount)}</span>
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Coverage Amount:</span>
+                        <span className="font-bold text-gray-900">{formatCurrency(invoice.insurance.coverageAmount)}</span>
                       </div>
                     )}
                     {invoice.insurance.claimNumber && (
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Claim Number:</span>
-                        <span className="font-medium">{invoice.insurance.claimNumber}</span>
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Claim Number:</span>
+                        <span className="font-medium text-gray-900">{invoice.insurance.claimNumber}</span>
                       </div>
                     )}
                     {invoice.insurance.status && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Status:</span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Status:</span>
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
                           invoice.insurance.status === 'approved' || invoice.insurance.status === 'paid'
-                            ? 'bg-green-100 text-green-800'
+                            ? 'bg-green-100 text-green-700 border-green-200'
                             : invoice.insurance.status === 'rejected'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-yellow-100 text-yellow-800'
+                            ? 'bg-red-100 text-red-700 border-red-200'
+                            : 'bg-yellow-100 text-yellow-700 border-yellow-200'
                         }`}>
                           {invoice.insurance.status.toUpperCase()}
                         </span>
                       </div>
                     )}
                     {invoice.insurance.notes && (
-                      <div className="mt-2 pt-2 border-t border-gray-200">
-                        <span className="text-gray-600 text-xs">Notes: {invoice.insurance.notes}</span>
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Notes:</span>
+                        <p className="text-sm text-gray-900 mt-1">{invoice.insurance.notes}</p>
                       </div>
                     )}
                   </div>

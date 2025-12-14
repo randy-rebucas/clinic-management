@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import connectDB from '@/lib/mongodb';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
 
 // This is a placeholder for pharmacy integration
 // In production, this would connect to actual pharmacy APIs or a pharmacy database
@@ -41,9 +43,17 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search');
 
+    // Note: Pharmacies are currently mock data. In production, they should be stored in a database with tenantId
+    // For now, we return all pharmacies as they're typically shared across tenants
     let pharmacies = MOCK_PHARMACIES;
 
     if (search) {

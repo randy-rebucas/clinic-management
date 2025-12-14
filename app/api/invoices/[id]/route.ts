@@ -4,6 +4,8 @@ import mongoose from 'mongoose';
 import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 export async function GET(
   request: NextRequest,
@@ -32,8 +34,31 @@ export async function GET(
       );
     }
 
-    let invoice = await Invoice.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth address')
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode email phone dateOfBirth address',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+
+    let invoice = await Invoice.findOne(query)
+      .populate(patientPopulateOptions)
       .populate('visit', 'visitCode date visitType')
       .populate('createdBy', 'name email');
 
@@ -116,9 +141,21 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    
+    // Build query with tenant filter
+    const query: any = { _id: id };
+    if (tenantId) {
+      query.tenantId = new Types.ObjectId(tenantId);
+    } else {
+      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    }
+
     // Recalculate totals if items or discounts changed
     if (body.items || body.discounts) {
-      const currentInvoice = await Invoice.findById(id);
+      const currentInvoice = await Invoice.findOne(query);
       const items = body.items || currentInvoice?.items || [];
       const discounts = body.discounts || currentInvoice?.discounts || [];
 
@@ -146,13 +183,32 @@ export async function PUT(
       }
     }
 
-    const invoice = await Invoice.findByIdAndUpdate(id, body, {
+    const invoice = await Invoice.findOneAndUpdate(query, body, {
       new: true,
       runValidators: true,
-    })
-      .populate('patient', 'firstName lastName patientCode email phone')
-      .populate('visit', 'visitCode date')
-      .populate('createdBy', 'name email');
+    });
+    
+    if (!invoice) {
+      return NextResponse.json(
+        { success: false, error: 'Invoice not found' },
+        { status: 404 }
+      );
+    }
+    
+    // Build populate options with tenant filter
+    const patientPopulateOptions: any = {
+      path: 'patient',
+      select: 'firstName lastName patientCode email phone',
+    };
+    if (tenantId) {
+      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+    } else {
+      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    }
+    
+    await invoice.populate(patientPopulateOptions);
+    await invoice.populate('visit', 'visitCode date');
+    await invoice.populate('createdBy', 'name email');
 
     if (!invoice) {
       return NextResponse.json(

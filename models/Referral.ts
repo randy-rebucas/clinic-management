@@ -4,6 +4,9 @@ export type ReferralStatus = 'pending' | 'accepted' | 'completed' | 'declined' |
 export type ReferralType = 'doctor_to_doctor' | 'patient_to_patient' | 'external';
 
 export interface IReferral extends Document {
+  // Tenant reference for multi-tenant support
+  tenantId?: Types.ObjectId;
+  
   // Referral identification
   referralCode: string; // Unique referral code
   type: ReferralType;
@@ -73,7 +76,14 @@ export interface IReferral extends Document {
 
 const ReferralSchema: Schema = new Schema(
   {
-    referralCode: { type: String, unique: true, index: true },
+    // Tenant reference for multi-tenant support
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      index: true,
+    },
+    
+    referralCode: { type: String, index: true },
     type: {
       type: String,
       enum: ['doctor_to_doctor', 'patient_to_patient', 'external'],
@@ -135,13 +145,14 @@ const ReferralSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Indexes
-ReferralSchema.index({ referringDoctor: 1, status: 1 });
-ReferralSchema.index({ receivingDoctor: 1, status: 1 });
-ReferralSchema.index({ patient: 1, status: 1 });
-ReferralSchema.index({ status: 1, referredDate: -1 });
-ReferralSchema.index({ type: 1, status: 1 });
-ReferralSchema.index({ 'feedback.submittedBy': 1 });
+// Indexes (tenant-scoped)
+ReferralSchema.index({ tenantId: 1, referringDoctor: 1, status: 1 });
+ReferralSchema.index({ tenantId: 1, receivingDoctor: 1, status: 1 });
+ReferralSchema.index({ tenantId: 1, patient: 1, status: 1 });
+ReferralSchema.index({ tenantId: 1, status: 1, referredDate: -1 });
+ReferralSchema.index({ tenantId: 1, type: 1, status: 1 });
+ReferralSchema.index({ tenantId: 1, 'feedback.submittedBy': 1 });
+ReferralSchema.index({ tenantId: 1, referralCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped referral code
 
 // Pre-validate hook to clean up referringContact before validation
 ReferralSchema.pre('validate', function (this: IReferral, next) {
