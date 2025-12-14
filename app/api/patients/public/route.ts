@@ -89,8 +89,7 @@ export async function POST(request: NextRequest) {
         
         // Find the highest patient code number (tenant-scoped)
         const codeQuery: any = { 
-          patientCode: { $exists: true, $ne: null },
-          patientCode: { $regex: /^CLINIC-\d+$/ }
+          patientCode: { $exists: true, $ne: null, $regex: /^CLINIC-\d+$/ }
         };
         if (tenantId) {
           codeQuery.tenantId = tenantId;
@@ -159,8 +158,7 @@ export async function POST(request: NextRequest) {
           
           // Generate a new patient code (tenant-scoped)
           const codeQuery: any = { 
-            patientCode: { $exists: true, $ne: null },
-            patientCode: { $regex: /^CLINIC-\d+$/ }
+            patientCode: { $exists: true, $ne: null, $regex: /^CLINIC-\d+$/ }
           };
           if (tenantId) {
             codeQuery.tenantId = tenantId;

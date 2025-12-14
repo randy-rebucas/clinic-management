@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
         .select('name displayName subdomain email phone address')
         .lean();
 
-      if (!tenant) {
+      if (!tenant || Array.isArray(tenant)) {
         return NextResponse.json(
           {
             success: false,
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         tenant: {
-          _id: tenant._id.toString(),
+          _id: String(tenant._id),
           name: tenant.name,
           displayName: tenant.displayName || tenant.name,
           subdomain: tenant.subdomain,
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       tenants: tenants.map(tenant => ({
-        _id: tenant._id.toString(),
+        _id: String(tenant._id),
         name: tenant.name,
         displayName: tenant.displayName || tenant.name,
         subdomain: tenant.subdomain,

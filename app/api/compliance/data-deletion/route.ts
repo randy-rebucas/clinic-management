@@ -4,6 +4,8 @@ import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, isAdmin } from '@/app/lib/auth-helpers';
 import { createAuditLog, logDataDeletion } from '@/lib/audit';
+import { getTenantContext } from '@/lib/tenant';
+import { Types } from 'mongoose';
 
 /**
  * Delete patient data (PH DPA - Right to be Forgotten)
@@ -26,6 +28,11 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
+    
+    // Get tenant context from session or headers
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
+    
     const body = await request.json();
     const { patientId, reason, confirm } = body;
 

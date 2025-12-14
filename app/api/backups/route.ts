@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
+    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
     
     // Get all collections
     const db = mongoose.connection.db;
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
     
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
+    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
     
     const body = await request.json();
     const { backupData } = body;

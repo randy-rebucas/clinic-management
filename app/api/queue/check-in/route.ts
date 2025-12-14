@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     // Get tenant context from headers (public endpoint)
     const tenantContext = await getTenantContext();
-    const tenantId = tenantContext.tenantId;
+    const tenantId = tenantContext.tenantId || undefined;
     
     // Build query with tenant filter
     const query: any = { _id: queueId };

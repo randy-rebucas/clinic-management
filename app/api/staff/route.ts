@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       message: `${staffType.charAt(0).toUpperCase() + staffType.slice(1)} created successfully`,
       staff: { ...staff.toObject(), staffType },
-      user: user ? { email: user.email, name: user.name } : null,
+      user: user && !Array.isArray(user) ? { email: user.email, name: user.name } : null,
     }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating staff:', error);

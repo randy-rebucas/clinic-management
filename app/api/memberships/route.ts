@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
+    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
     
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
+    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
     
     const body = await request.json();
     const { patientId, tier, referredBy } = body;

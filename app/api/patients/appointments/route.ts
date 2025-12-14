@@ -184,15 +184,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Get tenantId from patient
-    const Patient = (await import('@/models/Patient')).default;
-    const patient = await Patient.findById(sessionData.patientId);
-    if (!patient) {
-      return NextResponse.json(
-        { success: false, error: 'Patient not found' },
-        { status: 404 }
-      );
-    }
-    
     const patientTenantId = patient.tenantId;
 
     // Check for conflicts (tenant-scoped)
