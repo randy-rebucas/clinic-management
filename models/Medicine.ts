@@ -83,6 +83,9 @@ const MedicineSchema: Schema = new Schema(
 // Indexes for efficient searching
 MedicineSchema.index({ name: 'text', genericName: 'text', brandNames: 'text' });
 MedicineSchema.index({ category: 1, active: 1 });
+MedicineSchema.index({ active: 1 }); // For active medicine queries
+MedicineSchema.index({ requiresPrescription: 1, active: 1 }); // For prescription-required queries
+MedicineSchema.index({ controlledSubstance: 1 }); // For controlled substance queries
 
 export default mongoose.models.Medicine || mongoose.model<IMedicine>('Medicine', MedicineSchema);
 

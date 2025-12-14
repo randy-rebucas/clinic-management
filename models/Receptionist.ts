@@ -167,10 +167,11 @@ const ReceptionistSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-ReceptionistSchema.index({ email: 1 });
+ReceptionistSchema.index({ email: 1 }); // Additional index (unique already creates one)
 ReceptionistSchema.index({ employeeId: 1 }, { sparse: true });
-ReceptionistSchema.index({ department: 1 });
-ReceptionistSchema.index({ status: 1 });
+ReceptionistSchema.index({ department: 1, status: 1 }); // For department-based queries
+ReceptionistSchema.index({ status: 1 }); // For status-based queries
+ReceptionistSchema.index({ createdAt: -1 }); // For sorting by creation date
 
 // Register Receptionist model immediately after schema definition
 if (!mongoose.models.Receptionist) {

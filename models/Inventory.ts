@@ -58,7 +58,10 @@ InventoryItemSchema.index({ name: 'text' });
 InventoryItemSchema.index({ status: 1 });
 InventoryItemSchema.index({ expiryDate: 1 });
 InventoryItemSchema.index({ medicineId: 1 });
+InventoryItemSchema.index({ medicineId: 1, status: 1 }); // For medicine-specific status queries
 InventoryItemSchema.index({ lastRestockedBy: 1 });
+InventoryItemSchema.index({ status: 1, expiryDate: 1 }); // For low-stock/expired queries
+InventoryItemSchema.index({ sku: 1 }); // For SKU lookups (sparse already set)
 
 // Pre-save hook to update status based on quantity and expiry
 InventoryItemSchema.pre('save', function (this: IInventoryItem, next) {

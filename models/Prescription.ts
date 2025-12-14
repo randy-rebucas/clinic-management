@@ -168,6 +168,9 @@ PrescriptionSchema.index({ patient: 1, issuedAt: -1 });
 PrescriptionSchema.index({ visit: 1 });
 PrescriptionSchema.index({ prescribedBy: 1 });
 PrescriptionSchema.index({ status: 1 });
+PrescriptionSchema.index({ prescribedBy: 1, issuedAt: -1 }); // For prescriber history
+PrescriptionSchema.index({ status: 1, issuedAt: -1 }); // For status-based date queries
+PrescriptionSchema.index({ patient: 1, status: 1 }); // For patient's active prescriptions
 // prescriptionCode is already indexed via unique: true
 
 export default mongoose.models.Prescription || mongoose.model<IPrescription>('Prescription', PrescriptionSchema);

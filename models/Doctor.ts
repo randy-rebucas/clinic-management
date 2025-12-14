@@ -147,6 +147,13 @@ const DoctorSchema: Schema = new Schema(
   }
 );
 
+// Indexes for efficient queries
+DoctorSchema.index({ email: 1 }); // Additional index (unique already creates one)
+DoctorSchema.index({ licenseNumber: 1 }); // Additional index (unique already creates one)
+DoctorSchema.index({ specialization: 1, status: 1 }); // For specialization-based queries
+DoctorSchema.index({ department: 1, status: 1 }); // For department-based queries
+DoctorSchema.index({ status: 1 }); // For status-based queries
+
 // Register Doctor model immediately after schema definition
 // This ensures it's available when other models (like User) reference it via ref: 'Doctor'
 // Must be registered before the post-save hook that imports User model

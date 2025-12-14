@@ -95,6 +95,8 @@ const RoomSchema: Schema = new Schema(
 // Indexes for efficient queries
 RoomSchema.index({ roomType: 1, status: 1 });
 RoomSchema.index({ status: 1 });
+RoomSchema.index({ roomType: 1 }); // For room type queries
+RoomSchema.index({ name: 1 }); // Additional index for name lookups (unique already creates one)
 // name is already indexed via unique: true
 
 export default mongoose.models.Room || mongoose.model<IRoom>('Room', RoomSchema);

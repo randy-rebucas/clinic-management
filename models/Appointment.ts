@@ -149,6 +149,15 @@ AppointmentSchema.index({ provider: 1, scheduledAt: 1 });
 AppointmentSchema.index({ patient: 1, status: 1 });
 AppointmentSchema.index({ status: 1 });
 AppointmentSchema.index({ room: 1, appointmentDate: 1, appointmentTime: 1 });
+AppointmentSchema.index({ doctor: 1 }); // For doctor lookups
+AppointmentSchema.index({ provider: 1 }); // For provider lookups
+AppointmentSchema.index({ createdBy: 1 }); // For audit queries
+AppointmentSchema.index({ patient: 1, createdAt: -1 }); // For patient history
+AppointmentSchema.index({ status: 1, scheduledAt: 1 }); // For status-based date queries
+AppointmentSchema.index({ appointmentDate: 1, status: 1 }); // For date + status queries (dashboard, today's appointments)
+AppointmentSchema.index({ isWalkIn: 1, appointmentDate: 1 }); // For walk-in queries
+AppointmentSchema.index({ room: 1, status: 1 }); // For room-based status queries
+AppointmentSchema.index({ patient: 1, appointmentDate: -1 }); // For patient appointment history by date
 
 // Virtual for computed scheduledAt from appointmentDate + appointmentTime
 AppointmentSchema.virtual('computedScheduledAt').get(function (this: IAppointment) {

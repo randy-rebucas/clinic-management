@@ -180,11 +180,12 @@ const AccountantSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-AccountantSchema.index({ email: 1 });
+AccountantSchema.index({ email: 1 }); // Additional index (unique already creates one)
 AccountantSchema.index({ employeeId: 1 }, { sparse: true });
 AccountantSchema.index({ licenseNumber: 1 }, { sparse: true });
-AccountantSchema.index({ department: 1 });
-AccountantSchema.index({ status: 1 });
+AccountantSchema.index({ department: 1, status: 1 }); // For department-based queries
+AccountantSchema.index({ status: 1 }); // For status-based queries
+AccountantSchema.index({ createdAt: -1 }); // For sorting by creation date
 
 // Register Accountant model immediately after schema definition
 if (!mongoose.models.Accountant) {

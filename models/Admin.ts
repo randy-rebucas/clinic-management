@@ -88,9 +88,10 @@ const AdminSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-AdminSchema.index({ email: 1 });
+AdminSchema.index({ email: 1 }); // Additional index (unique already creates one)
 AdminSchema.index({ status: 1 });
-AdminSchema.index({ department: 1 });
+AdminSchema.index({ department: 1, status: 1 }); // For department-based queries
+AdminSchema.index({ accessLevel: 1, status: 1 }); // For access level queries
 
 // Register Admin model immediately after schema definition
 if (!mongoose.models.Admin) {

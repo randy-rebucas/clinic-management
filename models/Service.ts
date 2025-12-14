@@ -78,6 +78,9 @@ const ServiceSchema: Schema = new Schema(
 // Indexes for efficient queries
 ServiceSchema.index({ category: 1, active: 1 });
 ServiceSchema.index({ name: 'text', description: 'text' });
+ServiceSchema.index({ active: 1 }); // For active service queries
+ServiceSchema.index({ requiresDoctor: 1, active: 1 }); // For doctor-required services
+ServiceSchema.index({ code: 1 }); // Additional index for code lookups (unique already creates one)
 
 export default mongoose.models.Service || mongoose.model<IService>('Service', ServiceSchema);
 

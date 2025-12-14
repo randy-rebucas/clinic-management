@@ -84,6 +84,11 @@ UserSchema.index({ nurseProfile: 1 });
 UserSchema.index({ receptionistProfile: 1 });
 UserSchema.index({ accountantProfile: 1 });
 UserSchema.index({ medicalRepresentativeProfile: 1 });
+UserSchema.index({ role: 1, status: 1 }); // For role-based status queries
+UserSchema.index({ status: 1 }); // For status-based queries
+UserSchema.index({ email: 1 }); // Additional index for email lookups (unique already creates one, but explicit is better)
+UserSchema.index({ lastLogin: -1 }); // For recent login queries
+UserSchema.index({ createdAt: -1 }); // For sorting by creation date
 
 // Validation: Ensure role consistency with all profile types
 UserSchema.pre('save', async function (next) {

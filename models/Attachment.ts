@@ -25,6 +25,9 @@ export const AttachmentSchema: Schema = new Schema(
   { _id: true }
 );
 
+// Note: AttachmentSchema is typically embedded, so indexes are usually not needed
+// If used as a standalone model, indexes would be added to the parent schema
+
 // Export model (optional, if you want to use Attachment as a standalone model)
 export default mongoose.models.Attachment || mongoose.model<IAttachment>('Attachment', AttachmentSchema);
 

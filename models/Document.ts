@@ -191,7 +191,10 @@ DocumentSchema.index({ title: 'text', description: 'text', ocrText: 'text' }); /
 DocumentSchema.index({ uploadDate: -1 });
 DocumentSchema.index({ expiryDate: 1 });
 DocumentSchema.index({ uploadedBy: 1 });
+DocumentSchema.index({ uploadedBy: 1, uploadDate: -1 }); // For uploader history
 DocumentSchema.index({ lastModifiedBy: 1 });
+DocumentSchema.index({ visit: 1, category: 1 }); // For visit-related documents
+DocumentSchema.index({ appointment: 1, category: 1 }); // For appointment-related documents
 
 // Pre-save hook to generate document code
 DocumentSchema.pre('save', async function (next) {

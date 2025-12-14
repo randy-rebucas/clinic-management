@@ -183,11 +183,13 @@ const NurseSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-NurseSchema.index({ email: 1 });
+NurseSchema.index({ email: 1 }); // Additional index (unique already creates one)
 NurseSchema.index({ employeeId: 1 }, { sparse: true });
 NurseSchema.index({ licenseNumber: 1 }, { sparse: true });
-NurseSchema.index({ department: 1 });
-NurseSchema.index({ status: 1 });
+NurseSchema.index({ department: 1, status: 1 }); // For department-based queries
+NurseSchema.index({ specialization: 1, status: 1 }); // For specialization-based queries
+NurseSchema.index({ status: 1 }); // For status-based queries
+NurseSchema.index({ createdAt: -1 }); // For sorting by creation date
 
 // Register Nurse model immediately after schema definition
 if (!mongoose.models.Nurse) {

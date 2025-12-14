@@ -32,6 +32,8 @@ const ProcedureSchema: Schema = new Schema(
 ProcedureSchema.index({ patient: 1, date: -1 });
 ProcedureSchema.index({ visit: 1 });
 ProcedureSchema.index({ performedBy: 1 });
+ProcedureSchema.index({ performedBy: 1, date: -1 }); // For performer history
+ProcedureSchema.index({ type: 1, date: -1 }); // For procedure type queries
 
 export default mongoose.models.Procedure || mongoose.model<IProcedure>('Procedure', ProcedureSchema);
 

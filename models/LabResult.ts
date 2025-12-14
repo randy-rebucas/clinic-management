@@ -135,6 +135,9 @@ LabResultSchema.index({ visit: 1 });
 LabResultSchema.index({ orderedBy: 1 });
 LabResultSchema.index({ reviewedBy: 1 });
 LabResultSchema.index({ status: 1 });
+LabResultSchema.index({ orderedBy: 1, orderDate: -1 }); // For orderer history
+LabResultSchema.index({ status: 1, orderDate: -1 }); // For status-based date queries
+LabResultSchema.index({ patient: 1, status: 1 }); // For patient's pending results
 
 export default mongoose.models.LabResult || mongoose.model<ILabResult>('LabResult', LabResultSchema);
 

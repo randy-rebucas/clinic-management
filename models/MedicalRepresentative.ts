@@ -137,9 +137,10 @@ const MedicalRepresentativeSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries
-MedicalRepresentativeSchema.index({ email: 1 });
-MedicalRepresentativeSchema.index({ company: 1 });
-MedicalRepresentativeSchema.index({ status: 1 });
+MedicalRepresentativeSchema.index({ email: 1 }); // Additional index (unique already creates one)
+MedicalRepresentativeSchema.index({ company: 1, status: 1 }); // For company-based queries
+MedicalRepresentativeSchema.index({ status: 1 }); // For status-based queries
+MedicalRepresentativeSchema.index({ createdAt: -1 }); // For sorting by creation date
 
 // Register MedicalRepresentative model immediately after schema definition
 if (!mongoose.models.MedicalRepresentative) {

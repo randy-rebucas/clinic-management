@@ -295,6 +295,12 @@ const PatientSchema: Schema = new Schema(
 
 // Indexes
 PatientSchema.index({ lastName: 1, firstName: 1 });
+PatientSchema.index({ dateOfBirth: 1 }); // For age-based queries
+PatientSchema.index({ sex: 1 }); // For gender-based queries
+PatientSchema.index({ active: 1 }); // For active patient queries
+PatientSchema.index({ 'identifiers.philHealth': 1 }); // For PhilHealth lookups
+PatientSchema.index({ 'identifiers.govId': 1 }); // For government ID lookups
+PatientSchema.index({ createdAt: -1 }); // For registration date queries
 // email is already indexed via unique: true
 // patientCode is already indexed via index: true and unique: true
 

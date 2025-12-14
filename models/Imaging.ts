@@ -42,6 +42,10 @@ ImagingSchema.index({ visit: 1 });
 ImagingSchema.index({ orderedBy: 1 });
 ImagingSchema.index({ reportedBy: 1 });
 ImagingSchema.index({ status: 1 });
+ImagingSchema.index({ orderedBy: 1, orderDate: -1 }); // For orderer history
+ImagingSchema.index({ status: 1, orderDate: -1 }); // For status-based date queries
+ImagingSchema.index({ patient: 1, status: 1 }); // For patient's pending imaging
+ImagingSchema.index({ modality: 1 }); // For modality-based queries
 
 export default mongoose.models.Imaging || mongoose.model<IImaging>('Imaging', ImagingSchema);
 

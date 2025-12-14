@@ -69,6 +69,8 @@ const RoleSchema: Schema = new Schema(
 // Indexes for efficient queries
 RoleSchema.index({ name: 1, isActive: 1 });
 RoleSchema.index({ level: -1 });
+RoleSchema.index({ isActive: 1 }); // For active role queries
+RoleSchema.index({ name: 1 }); // Additional index for name lookups (unique already creates one)
 
 // Prevent re-compilation during development
 const Role = mongoose.models.Role || mongoose.model<IRole>('Role', RoleSchema);

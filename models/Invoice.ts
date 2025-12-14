@@ -133,6 +133,12 @@ InvoiceSchema.index({ visit: 1 });
 InvoiceSchema.index({ status: 1 });
 InvoiceSchema.index({ invoiceNumber: 1 });
 InvoiceSchema.index({ createdBy: 1 });
+InvoiceSchema.index({ createdBy: 1, createdAt: -1 }); // For creator history
+InvoiceSchema.index({ status: 1, createdAt: -1 }); // For status-based date queries
+InvoiceSchema.index({ patient: 1, status: 1 }); // For patient's unpaid invoices
+InvoiceSchema.index({ 'insurance.status': 1 }); // For insurance claim queries
+InvoiceSchema.index({ createdAt: 1, status: 1 }); // For period + status queries (dashboard, reports)
+InvoiceSchema.index({ visit: 1, status: 1 }); // For visit's invoices by status
 
 export default mongoose.models.Invoice || mongoose.model<IInvoice>('Invoice', InvoiceSchema);
 

@@ -215,6 +215,12 @@ const VisitSchema: Schema = new Schema(
 
 VisitSchema.index({ patient: 1, date: -1 });
 VisitSchema.index({ provider: 1 });
+VisitSchema.index({ provider: 1, date: -1 }); // For provider's visit history
+VisitSchema.index({ status: 1, date: -1 }); // For status-based queries
+VisitSchema.index({ visitCode: 1 }); // For visit code lookups
+VisitSchema.index({ visitType: 1, date: -1 }); // For visit type queries
+VisitSchema.index({ date: 1, status: 1 }); // For date range + status queries (dashboard, period reports)
+VisitSchema.index({ patient: 1, status: 1 }); // For patient's visits by status
 
 // Pre-validate hook: if digitalSignature is provided (has any field), all required fields must be present
 VisitSchema.pre('validate', function(next) {
