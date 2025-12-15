@@ -8,11 +8,27 @@ import { createAuditLog } from '@/lib/audit';
  * Configure in vercel.json or your cron service
  */
 export async function GET(request: NextRequest) {
-  // Verify cron secret (for Vercel Cron)
+  // Authenticate request
+  // Vercel Cron sends 'x-vercel-cron' header for internal authentication
+  // External cron services should use 'Authorization: Bearer CRON_SECRET'
+  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
   const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = process.env.CRON_SECRET;
+  
+  // If CRON_SECRET is set, require authentication (unless it's Vercel Cron)
+  if (cronSecret && !isVercelCron) {
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+  }
+  
+  // If no CRON_SECRET is set and it's not Vercel Cron, reject in production
+  if (!cronSecret && !isVercelCron && process.env.NODE_ENV === 'production') {
     return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
+      { success: false, error: 'Unauthorized: CRON_SECRET must be set for external cron services' },
       { status: 401 }
     );
   }
