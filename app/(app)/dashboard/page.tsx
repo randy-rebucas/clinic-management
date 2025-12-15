@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import { isSetupComplete } from '@/lib/setup';
 import AdminDashboard from '@/components/dashboards/AdminDashboard';
 import DoctorDashboard from '@/components/dashboards/DoctorDashboard';
 import NurseDashboard from '@/components/dashboards/NurseDashboard';
@@ -8,12 +7,6 @@ import ReceptionistDashboard from '@/components/dashboards/ReceptionistDashboard
 import AccountantDashboard from '@/components/dashboards/AccountantDashboard';
 
 export default async function Dashboard() {
-  // Check if setup is complete first
-  const setupComplete = await isSetupComplete();
-  if (!setupComplete) {
-    redirect('/setup');
-  }
-
   const session = await verifySession();
   
   if (!session) {

@@ -11,7 +11,7 @@ interface LayoutWrapperProps {
 
 export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   const pathname = usePathname();
-  const isAuthPage = pathname === '/login' || pathname === '/book' || pathname === '/setup' || pathname === '/onboard' || pathname === '/patient/login';
+  const isAuthPage = pathname === '/login' || pathname === '/book' || pathname === '/onboard' || pathname === '/patient/login';
   const [user, setUser] = useState<{ name: string; role: string; email?: string } | null>(null);
 
   useEffect(() => {

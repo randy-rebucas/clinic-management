@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import connectDB from '@/lib/mongodb';
-import { isSetupComplete } from '@/lib/setup';
 import { validateEnv } from '@/lib/env-validation';
 
 /**
@@ -21,7 +20,6 @@ export async function GET() {
       environmentConfigured: false,
       databaseConnected: false,
       databaseReset: false,
-      setupComplete: false,
       errors: [] as string[],
       warnings: [] as string[],
     };
@@ -92,13 +90,9 @@ export async function GET() {
         const Role = (await import('@/models/Role')).default;
         const roleCount = await Role.countDocuments({});
         checks.databaseReset = roleCount === 0;
-        
-        // Check if setup is complete
-        checks.setupComplete = await isSetupComplete();
       } catch (error) {
-        // If we can't check, assume not reset and not complete
+        // If we can't check, assume not reset
         checks.databaseReset = false;
-        checks.setupComplete = false;
       }
     }
 

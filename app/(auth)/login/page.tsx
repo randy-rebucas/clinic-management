@@ -1,15 +1,8 @@
 import LoginForm from '@/components/LoginForm';
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import { isSetupComplete } from '@/lib/setup';
 
 export default async function LoginPage() {
-  // Check if setup is complete, redirect to setup if not
-  const setupComplete = await isSetupComplete();
-  if (!setupComplete) {
-    redirect('/setup');
-  }
-
   const session = await verifySession();
   
   // If user is already logged in, redirect to dashboard

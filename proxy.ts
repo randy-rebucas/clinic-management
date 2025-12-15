@@ -25,7 +25,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/signup', '/setup', '/onboard', '/book', '/patient/login', '/tenant-onboard', '/subscription'];
+  const publicRoutes = ['/login', '/signup', '/onboard', '/book', '/patient/login', '/tenant-onboard', '/subscription'];
   const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + '/'));
 
   // If no subdomain, allow normal access (root domain)
@@ -69,8 +69,8 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Block access to admin/setup routes from subdomains (these should be on root domain only)
-  if (pathname.startsWith('/admin') || pathname.startsWith('/setup')) {
+  // Block access to admin routes from subdomains (these should be on root domain only)
+  if (pathname.startsWith('/admin')) {
     const response = NextResponse.redirect(new URL('/', request.url));
     addSecurityHeaders(request, response);
     return response;

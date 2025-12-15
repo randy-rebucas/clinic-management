@@ -2,7 +2,6 @@ import { existsSync } from 'fs';
 import { resolve } from 'path';
 import InstallClient from '@/components/InstallClient';
 import connectDB from '@/lib/mongodb';
-import { isSetupComplete } from '@/lib/setup';
 import { validateEnv } from '@/lib/env-validation';
 
 interface InstallCheck {
@@ -13,7 +12,6 @@ interface InstallCheck {
   environmentConfigured: boolean;
   databaseConnected: boolean;
   databaseReset: boolean;
-  setupComplete: boolean;
   errors: string[];
   warnings: string[];
 }
@@ -30,7 +28,6 @@ async function performInstallChecks(): Promise<InstallCheck> {
     environmentConfigured: false,
     databaseConnected: false,
     databaseReset: false,
-    setupComplete: false,
     errors: [],
     warnings: [],
   };
@@ -101,13 +98,9 @@ async function performInstallChecks(): Promise<InstallCheck> {
       const Role = (await import('@/models/Role')).default;
       const roleCount = await Role.countDocuments({});
       checks.databaseReset = roleCount === 0;
-      
-      // Check if setup is complete
-      checks.setupComplete = await isSetupComplete();
     } catch (error) {
-      // If we can't check, assume not reset and not complete
+      // If we can't check, assume not reset
       checks.databaseReset = false;
-      checks.setupComplete = false;
     }
   }
 

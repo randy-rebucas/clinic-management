@@ -11,7 +11,6 @@ interface InstallCheck {
   environmentConfigured: boolean;
   databaseConnected: boolean;
   databaseReset: boolean;
-  setupComplete: boolean;
   errors: string[];
   warnings: string[];
 }
@@ -36,8 +35,6 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
       setCurrentStep(3);
     } else if (currentStep === 3 && checks.databaseReset) {
       setCurrentStep(4);
-    } else if (currentStep === 4 && checks.setupComplete) {
-      setCurrentStep(5);
     }
   }, [checks, currentStep]);
 
@@ -98,8 +95,7 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
     { number: 1, title: 'Prerequisites', description: 'Check system requirements' },
     { number: 2, title: 'Environment', description: 'Configure environment variables' },
     { number: 3, title: 'Database', description: 'Reset & test connection' },
-    { number: 4, title: 'Setup', description: 'Initialize system' },
-    { number: 5, title: 'Complete', description: 'Installation finished' },
+    { number: 4, title: 'Complete', description: 'Installation finished' },
   ];
 
   return (
@@ -501,62 +497,14 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
                         disabled={!checks.databaseConnected || !checks.databaseReset}
                         className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
                       >
-                        Continue
+                        Complete Installation
                       </button>
                     </div>
                   </div>
                 )}
 
-                {/* Step 4: System Setup */}
+                {/* Step 4: Complete */}
                 {currentStep === 4 && (
-                  <div className="space-y-6">
-                    <div>
-                      <h2 className="text-2xl font-semibold mb-2">Step 4: System Setup</h2>
-                      <p className="text-gray-600">
-                        Initialize the system with default roles, permissions, and settings.
-                      </p>
-                    </div>
-
-                    <div className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold">System Setup</span>
-                        {checks.setupComplete ? (
-                          <span className="text-green-600 text-sm font-medium flex items-center gap-1">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            Complete
-                          </span>
-                        ) : (
-                          <span className="text-yellow-600 text-sm font-medium">Not Complete</span>
-                        )}
-                      </div>
-                      {!checks.setupComplete && (
-                        <p className="text-sm text-gray-600 mt-2">
-                          Click the button below to proceed to the setup page where you'll create your admin account.
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setCurrentStep(3)}
-                        className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                      >
-                        Back
-                      </button>
-                      <button
-                        onClick={() => router.push('/setup')}
-                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                      >
-                        {checks.setupComplete ? 'Go to Login' : 'Go to Setup Page'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Step 5: Complete */}
-                {currentStep === 5 && (
                   <div className="space-y-6 text-center">
                     <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-4">
                       <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

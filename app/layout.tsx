@@ -26,7 +26,7 @@ export const metadata: Metadata = {
  * 
  * Route Groups:
  * - (public): Public pages with PublicLayout (onboard, book, patient/login)
- * - (auth): Authentication pages (login, setup)
+ * - (auth): Authentication pages (login)
  * - (app): Authenticated app pages with sidebar (dashboard, patients, etc.)
  */
 export default function RootLayout({
