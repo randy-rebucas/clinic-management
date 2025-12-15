@@ -93,7 +93,6 @@ export function extractSubdomain(host?: string | null): string | null {
   const isSubdomain =
     hostname !== rootDomainFormatted &&
     hostname !== `www.${rootDomainFormatted}` &&
-    hostname !== `clinic-management-alpha.${rootDomainFormatted}` &&
     hostname.endsWith(`.${rootDomainFormatted}`);
 
   return isSubdomain ? hostname.replace(`.${rootDomainFormatted}`, '') : null;
