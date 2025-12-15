@@ -7,7 +7,7 @@ export interface IDoctor extends Document {
   lastName: string;
   email: string;
   phone: string;
-  specialization: string;
+  specializationId: Types.ObjectId; // Reference to Specialization model
   licenseNumber: string;
   
   // Schedule and availability
@@ -85,10 +85,11 @@ const DoctorSchema: Schema = new Schema(
       required: [true, 'Phone number is required'],
       trim: true,
     },
-    specialization: {
-      type: String,
+    specializationId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Specialization',
       required: [true, 'Specialization is required'],
-      trim: true,
+      index: true,
     },
     licenseNumber: {
       type: String,
@@ -154,7 +155,7 @@ const DoctorSchema: Schema = new Schema(
 // Indexes for efficient queries
 DoctorSchema.index({ tenantId: 1, email: 1 }, { unique: true, sparse: true }); // Tenant-scoped unique email
 DoctorSchema.index({ tenantId: 1, licenseNumber: 1 }, { unique: true, sparse: true }); // Tenant-scoped unique license
-DoctorSchema.index({ tenantId: 1, specialization: 1, status: 1 }); // Tenant-scoped specialization queries
+DoctorSchema.index({ tenantId: 1, specializationId: 1, status: 1 }); // Tenant-scoped specialization reference queries
 DoctorSchema.index({ tenantId: 1, department: 1, status: 1 }); // Tenant-scoped department queries
 DoctorSchema.index({ tenantId: 1, status: 1 }); // Tenant-scoped status queries
 

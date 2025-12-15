@@ -73,7 +73,11 @@ export async function GET(request: NextRequest) {
     // Build populate options with tenant filter for doctor
     const doctorPopulateOptions: any = {
       path: 'doctor',
-      select: 'firstName lastName specialization',
+      select: 'firstName lastName specializationId',
+      populate: {
+        path: 'specializationId',
+        select: 'name',
+      },
     };
     if (tenantId) {
       doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
@@ -233,7 +237,11 @@ export async function POST(request: NextRequest) {
     // Build populate options with tenant filter for doctor
     const doctorPopulateOptions: any = {
       path: 'doctor',
-      select: 'firstName lastName specialization',
+      select: 'firstName lastName specializationId',
+      populate: {
+        path: 'specializationId',
+        select: 'name',
+      },
     };
     if (tenantId) {
       doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };

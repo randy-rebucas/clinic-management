@@ -37,7 +37,8 @@ export async function GET(
       doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
     }
 
-    const doctor = await Doctor.findOne(doctorQuery);
+    const doctor = await Doctor.findOne(doctorQuery)
+      .populate('specializationId', 'name');
     if (!doctor) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },
@@ -109,7 +110,7 @@ export async function GET(
         doctor: {
           _id: doctor._id,
           name: `${doctor.firstName} ${doctor.lastName}`,
-          specialization: doctor.specialization,
+          specialization: (doctor.specializationId as any)?.name || 'Unknown',
         },
         metrics: {
           totalAppointments,

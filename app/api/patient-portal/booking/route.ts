@@ -64,7 +64,11 @@ export async function GET(request: NextRequest) {
     // Build populate options with tenant filter for doctor
     const doctorPopulateOptions: any = {
       path: 'doctor',
-      select: 'firstName lastName specialization',
+      select: 'firstName lastName specializationId',
+      populate: {
+        path: 'specializationId',
+        select: 'name',
+      },
     };
     if (tenantId) {
       doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
@@ -97,7 +101,8 @@ export async function GET(request: NextRequest) {
       doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
     }
     const doctors = await Doctor.find(doctorQuery)
-      .select('firstName lastName specialization schedule');
+      .select('firstName lastName specializationId schedule')
+      .populate('specializationId', 'name');
 
     return NextResponse.json({
       success: true,
@@ -208,7 +213,11 @@ export async function POST(request: NextRequest) {
     // Build populate options with tenant filter for doctor
     const doctorPopulateOptions: any = {
       path: 'doctor',
-      select: 'firstName lastName specialization',
+      select: 'firstName lastName specializationId',
+      populate: {
+        path: 'specializationId',
+        select: 'name',
+      },
     };
     if (tenantId) {
       doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };

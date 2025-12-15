@@ -477,6 +477,7 @@ export default function RolesManagementClient() {
                   <option value="nurse">Nurse</option>
                   <option value="receptionist">Receptionist</option>
                   <option value="accountant">Accountant</option>
+                  <option value="medical-representative">Medical Representative</option>
                 </select>
               </div>
 

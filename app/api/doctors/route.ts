@@ -36,7 +36,9 @@ export async function GET() {
       doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
     }
     
-    const doctors = await Doctor.find(doctorQuery).sort({ createdAt: -1 });
+    const doctors = await Doctor.find(doctorQuery)
+      .populate('specializationId', 'name description category')
+      .sort({ createdAt: -1 });
     return NextResponse.json({ success: true, data: doctors });
   } catch (error: any) {
     console.error('Error fetching doctors:', error);

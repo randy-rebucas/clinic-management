@@ -15,7 +15,7 @@ export interface PermissionData {
 // Default permissions for each role (used as fallback)
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
   admin: [
-    { resource: '*', actions: ['*'] }, // Full access to everything
+    { resource: '*', actions: ['*'] }, // Full access to everything (tenant-scoped at API level)
   ],
   doctor: [
     { resource: 'patients', actions: ['read', 'write', 'update'] },
@@ -28,6 +28,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
     { resource: 'reports', actions: ['read'] },
     { resource: 'queue', actions: ['read', 'write', 'update'] },
     { resource: 'referrals', actions: ['read', 'write', 'update'] },
+    { resource: 'documents', actions: ['read', 'write', 'update'] },
+    { resource: 'inventory', actions: ['read'] },
+    { resource: 'medicines', actions: ['read', 'write', 'update'] },
     { resource: 'notifications', actions: ['read', 'update'] },
   ],
   nurse: [
@@ -39,6 +42,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
     { resource: 'invoices', actions: ['read'] },
     { resource: 'doctors', actions: ['read'] },
     { resource: 'queue', actions: ['read', 'write', 'update'] },
+    { resource: 'documents', actions: ['read', 'write', 'update'] },
+    { resource: 'inventory', actions: ['read'] },
+    { resource: 'medicines', actions: ['read', 'write', 'update'] },
     { resource: 'notifications', actions: ['read', 'update'] },
   ],
   receptionist: [
@@ -48,6 +54,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
     { resource: 'invoices', actions: ['read', 'write', 'update'] },
     { resource: 'doctors', actions: ['read'] },
     { resource: 'queue', actions: ['read', 'write', 'update'] },
+    { resource: 'documents', actions: ['read', 'write', 'update'] },
+    { resource: 'inventory', actions: ['read', 'write', 'update'] },
+    { resource: 'medicines', actions: ['read'] },
     { resource: 'notifications', actions: ['read', 'update'] },
   ],
   accountant: [
@@ -55,12 +64,16 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
     { resource: 'invoices', actions: ['read', 'write', 'update'] },
     { resource: 'appointments', actions: ['read'] },
     { resource: 'reports', actions: ['read'] },
+    { resource: 'documents', actions: ['read'] },
+    { resource: 'inventory', actions: ['read', 'write', 'update'] },
+    { resource: 'medicines', actions: ['read'] },
     { resource: 'notifications', actions: ['read', 'update'] },
   ],
   'medical-representative': [
     { resource: 'doctors', actions: ['read'] },
     { resource: 'patients', actions: ['read'] },
     { resource: 'appointments', actions: ['read'] },
+    { resource: 'medicines', actions: ['read'] },
     { resource: 'notifications', actions: ['read', 'update'] },
   ],
 };
@@ -252,7 +265,7 @@ export function hasPermissionByRole(
   action: string,
   customPermissions?: PermissionData[]
 ): boolean {
-  // Admin has full access
+  // Admin has full access (tenant-scoped at API level)
   if (roleName === 'admin') {
     return true;
   }

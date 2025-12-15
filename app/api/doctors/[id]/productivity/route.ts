@@ -25,7 +25,8 @@ export async function GET(
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
-    const doctor = await Doctor.findById(id);
+    const doctor = await Doctor.findById(id)
+      .populate('specializationId', 'name');
     if (!doctor) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },
@@ -153,7 +154,7 @@ export async function GET(
       doctor: {
         _id: doctor._id,
         name: `${doctor.firstName} ${doctor.lastName}`,
-        specialization: doctor.specialization,
+        specialization: (doctor.specializationId as any)?.name || 'Unknown',
         status: doctor.status,
       },
       period: startDate && endDate ? { startDate, endDate } : { allTime: true },

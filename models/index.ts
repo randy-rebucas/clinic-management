@@ -58,6 +58,7 @@
  * ├── Medicine
  * ├── Service
  * ├── Room
+ * ├── Specialization
  * └── Settings (singleton)
  * 
  * AUDIT & NOTIFICATIONS:
@@ -87,6 +88,9 @@ export type { IService } from './Service';
 
 export { default as Room } from './Room';
 export type { IRoom } from './Room';
+
+export { default as Specialization } from './Specialization';
+export type { ISpecialization } from './Specialization';
 
 export { default as Settings } from './Settings';
 export type { ISettings, IBusinessHours } from './Settings';
@@ -216,6 +220,7 @@ export function registerAllModels(): void {
   require('./Medicine');
   require('./Service');
   require('./Room');
+  require('./Specialization');
   require('./Settings');
   
   // Auth models
@@ -268,6 +273,7 @@ const models = {
   Medicine: require('./Medicine').default,
   Service: require('./Service').default,
   Room: require('./Room').default,
+  Specialization: require('./Specialization').default,
   Settings: require('./Settings').default,
   
   // Auth

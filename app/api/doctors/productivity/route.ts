@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
-    const doctors = await Doctor.find({ status: 'active' });
+    const doctors = await Doctor.find({ status: 'active' })
+      .populate('specializationId', 'name');
 
     // Import models for productivity calculation
     const Appointment = (await import('@/models/Appointment')).default;
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
             doctor: {
               _id: doctor._id,
               name: `${doctor.firstName} ${doctor.lastName}`,
-              specialization: doctor.specialization,
+              specialization: (doctor.specializationId as any)?.name || 'Unknown',
             },
             error: 'Failed to calculate productivity',
           };

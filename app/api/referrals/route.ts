@@ -74,7 +74,11 @@ export async function GET(request: NextRequest) {
     
     const doctorPopulateOptions: any = {
       path: 'referringDoctor',
-      select: 'firstName lastName specialization',
+      select: 'firstName lastName specializationId',
+      populate: {
+        path: 'specializationId',
+        select: 'name',
+      },
     };
     if (tenantId) {
       doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
@@ -84,7 +88,11 @@ export async function GET(request: NextRequest) {
     
     const receivingDoctorPopulateOptions: any = {
       path: 'receivingDoctor',
-      select: 'firstName lastName specialization',
+      select: 'firstName lastName specializationId',
+      populate: {
+        path: 'specializationId',
+        select: 'name',
+      },
     };
     if (tenantId) {
       receivingDoctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
@@ -240,7 +248,11 @@ export async function POST(request: NextRequest) {
     
     const doctorPopulateOptions: any = {
       path: 'referringDoctor',
-      select: 'firstName lastName specialization',
+      select: 'firstName lastName specializationId',
+      populate: {
+        path: 'specializationId',
+        select: 'name',
+      },
     };
     if (tenantId) {
       doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
@@ -250,7 +262,11 @@ export async function POST(request: NextRequest) {
     
     const receivingDoctorPopulateOptions: any = {
       path: 'receivingDoctor',
-      select: 'firstName lastName specialization',
+      select: 'firstName lastName specializationId',
+      populate: {
+        path: 'specializationId',
+        select: 'name',
+      },
     };
     if (tenantId) {
       receivingDoctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };

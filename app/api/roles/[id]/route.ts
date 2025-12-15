@@ -144,6 +144,14 @@ export async function DELETE(
       );
     }
 
+    // Prevent deletion of admin role
+    if (role.name === 'admin') {
+      return NextResponse.json(
+        { success: false, error: 'Cannot delete system role (admin)' },
+        { status: 400 }
+      );
+    }
+
     // Check if any users have this role
     const User = (await import('@/models/User')).default;
     const usersWithRole = await User.countDocuments({ role: id });

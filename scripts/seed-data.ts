@@ -22,6 +22,7 @@ import {
   Medicine,
   InventoryItem,
   Room,
+  Specialization,
   Appointment,
   Visit,
   Prescription,
@@ -38,6 +39,29 @@ import {
   AuditLog,
 } from '../models';
 import { DEFAULT_ROLE_PERMISSIONS } from '../lib/permissions';
+
+/**
+ * Seed Data Script for Initial Tenant Setup
+ * 
+ * This script creates a complete set of seed data for a tenant, including:
+ * - Tenant record (or uses existing default tenant)
+ * - All roles with proper permissions (admin, doctor, nurse, receptionist, accountant, medical-representative)
+ * - Staff profiles (admins, doctors, nurses, receptionists, accountants, medical representatives)
+ * - Patients with complete medical records
+ * - Clinical data (appointments, visits, prescriptions, lab results, imaging, procedures)
+ * - Billing data (invoices, memberships)
+ * - Catalog data (services, medicines, inventory, rooms, specializations)
+ * - Queue entries, documents, referrals
+ * - Settings and audit logs
+ * 
+ * Usage:
+ *   npm run seed
+ *   or
+ *   ts-node scripts/seed-data.ts
+ * 
+ * Note: This script is tenant-scoped and will create/use a default tenant.
+ * For production, ensure proper tenant isolation.
+ */
 
 // Load environment variables
 config({ path: resolve(process.cwd(), '.env.local') });
@@ -60,6 +84,7 @@ const seedData: {
   medicines: any[];
   inventory: any[];
   rooms: any[];
+  specializations: any[];
   appointments: any[];
   visits: any[];
   prescriptions: any[];
@@ -88,6 +113,7 @@ const seedData: {
   medicines: [],
   inventory: [],
   rooms: [],
+  specializations: [],
   appointments: [],
   visits: [],
   prescriptions: [],
@@ -179,6 +205,7 @@ async function seedDataScript() {
       Medicine.deleteMany({ tenantId }),
       Service.deleteMany({ tenantId }),
       Room.deleteMany({ tenantId }),
+      Specialization.deleteMany({ tenantId }),
       // Patient
       Patient.deleteMany({ tenantId }),
       // Profile models (these have post-save hooks that create Users)
@@ -208,12 +235,10 @@ async function seedDataScript() {
         name: 'admin',
         tenantId,
         displayName: 'Administrator',
-        description: 'Full system access with all permissions',
+        description: 'Full system access with all permissions (tenant-scoped)',
         level: 100,
         isActive: true,
-        defaultPermissions: [
-          { resource: '*', actions: ['*'] },
-        ],
+        defaultPermissions: DEFAULT_ROLE_PERMISSIONS.admin,
       },
       { upsert: true, new: true }
     );
@@ -479,55 +504,8 @@ async function seedDataScript() {
     }
     console.log('✅ Admin profiles created\n');
 
-    // 3. Create Doctor Profiles (auto-creates User via post-save hook)
-    console.log('🩺 Creating doctor profiles...');
-    const doctorsData = [
-      { firstName: 'John', lastName: 'Smith', email: 'doctor1@clinic.com', specialization: 'General Medicine' },
-      { firstName: 'Sarah', lastName: 'Johnson', email: 'doctor2@clinic.com', specialization: 'Cardiology' },
-    ];
-
-    for (let i = 0; i < doctorsData.length; i++) {
-      const docData = doctorsData[i];
-      const doctor = await Doctor.create({
-        firstName: docData.firstName,
-        lastName: docData.lastName,
-        email: docData.email,
-        phone: `+1-555-${String(3000 + i).padStart(4, '0')}`,
-        tenantId,
-        specialization: docData.specialization,
-        licenseNumber: `LIC-${String(1000 + i).padStart(6, '0')}`,
-        schedule: [
-          { dayOfWeek: 1, startTime: '09:00', endTime: '17:00', isAvailable: true },
-          { dayOfWeek: 2, startTime: '09:00', endTime: '17:00', isAvailable: true },
-          { dayOfWeek: 3, startTime: '09:00', endTime: '17:00', isAvailable: true },
-          { dayOfWeek: 4, startTime: '09:00', endTime: '17:00', isAvailable: true },
-          { dayOfWeek: 5, startTime: '09:00', endTime: '17:00', isAvailable: true },
-        ],
-        title: 'Dr.',
-        qualifications: ['MD', 'Board Certified'],
-        bio: `Experienced ${docData.specialization} specialist`,
-        department: docData.specialization,
-        status: 'active',
-        performanceMetrics: {
-          totalAppointments: 0,
-          completedAppointments: 0,
-          cancelledAppointments: 0,
-          noShowAppointments: 0,
-          lastUpdated: new Date(),
-        },
-      });
-      seedData.doctors.push(doctor);
-      
-      // Get the auto-created user
-      const user = await User.findOne({ doctorProfile: doctor._id });
-      if (user) {
-        seedData.users.push(user);
-        console.log(`   ✓ Created doctor: Dr. ${doctor.firstName} ${doctor.lastName} (user auto-created: ${user.email})`);
-      } else {
-        console.log(`   ✓ Created doctor: Dr. ${doctor.firstName} ${doctor.lastName} (user creation pending)`);
-      }
-    }
-    console.log('✅ Doctor profiles created\n');
+    // 3. Create Doctor Profiles (will be created after specializations at step 9.7)
+    // Note: Doctors are now created after specializations since specializationId is required
 
     // 4. Create Nurse Profiles (auto-creates User via post-save hook)
     console.log('💉 Creating nurse profiles...');
@@ -846,6 +824,140 @@ async function seedDataScript() {
       console.log(`   ✓ Created service: ${service.name}`);
     }
     console.log('✅ Services created\n');
+
+    // 9.5. Create Specializations
+    console.log('🏥 Creating specializations...');
+    const specializationsData = [
+      'General Practice / Family Medicine',
+      'Internal Medicine',
+      'Pediatrics',
+      'Obstetrics and Gynecology',
+      'Surgery',
+      'Orthopedic Surgery',
+      'Cardiology',
+      'Dermatology',
+      'Neurology',
+      'Psychiatry',
+      'Ophthalmology',
+      'ENT (Ear, Nose, and Throat)',
+      'Urology',
+      'Oncology',
+      'Radiology',
+      'Anesthesiology',
+      'Emergency Medicine',
+      'Pathology',
+      'Pulmonology',
+      'Gastroenterology',
+      'Endocrinology',
+      'Rheumatology',
+      'Nephrology',
+      'Hematology',
+      'Infectious Disease',
+      'Physical Medicine and Rehabilitation',
+      'Sports Medicine',
+      'Geriatrics',
+      'Allergy and Immunology',
+      'Critical Care Medicine',
+      'Plastic Surgery',
+      'Neurosurgery',
+      'Cardiothoracic Surgery',
+      'Vascular Surgery',
+      'Pediatric Surgery',
+      'Other',
+    ];
+
+    // Helper function to categorize specializations
+    const categorizeSpecialization = (name: string): string => {
+      if (name.includes('Surgery') || name === 'Plastic Surgery' || name === 'Neurosurgery' || name === 'Cardiothoracic Surgery' || name === 'Vascular Surgery' || name === 'Pediatric Surgery') {
+        return 'Surgery';
+      }
+      if (name === 'Radiology' || name === 'Pathology' || name === 'Anesthesiology') {
+        return 'Diagnostic';
+      }
+      if (name === 'Emergency Medicine' || name === 'Critical Care Medicine') {
+        return 'Emergency';
+      }
+      if (name === 'General Practice / Family Medicine' || name === 'Internal Medicine' || name === 'Pediatrics' || name === 'Geriatrics') {
+        return 'Primary Care';
+      }
+      return 'Specialty';
+    };
+
+    for (const specName of specializationsData) {
+      const specialization = await Specialization.create({
+        name: specName,
+        tenantId,
+        category: categorizeSpecialization(specName),
+        description: `Medical specialization in ${specName}`,
+        active: true,
+      });
+      seedData.specializations.push(specialization);
+      console.log(`   ✓ Created specialization: ${specialization.name}`);
+    }
+    console.log('✅ Specializations created\n');
+
+    // 9.6. Create Doctor Profiles (auto-creates User via post-save hook)
+    console.log('🩺 Creating doctor profiles...');
+    const doctorsData = [
+      { firstName: 'John', lastName: 'Smith', email: 'doctor1@clinic.com', specializationName: 'General Practice / Family Medicine' },
+      { firstName: 'Sarah', lastName: 'Johnson', email: 'doctor2@clinic.com', specializationName: 'Cardiology' },
+    ];
+
+    for (let i = 0; i < doctorsData.length; i++) {
+      const docData = doctorsData[i];
+      
+      // Find the specialization by name
+      const specialization = seedData.specializations.find(
+        spec => spec.name.toLowerCase() === docData.specializationName.toLowerCase() ||
+                spec.name.toLowerCase().includes(docData.specializationName.toLowerCase()) ||
+                docData.specializationName.toLowerCase().includes(spec.name.toLowerCase())
+      ) || seedData.specializations.find(spec => spec.name === 'Other');
+      
+      if (!specialization) {
+        console.warn(`   ⚠️  Could not find specialization for ${docData.specializationName}, skipping doctor creation`);
+        continue;
+      }
+      
+      const doctor = await Doctor.create({
+        firstName: docData.firstName,
+        lastName: docData.lastName,
+        email: docData.email,
+        phone: `+1-555-${String(3000 + i).padStart(4, '0')}`,
+        tenantId,
+        specializationId: specialization._id,
+        licenseNumber: `LIC-${String(1000 + i).padStart(6, '0')}`,
+        schedule: [
+          { dayOfWeek: 1, startTime: '09:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 2, startTime: '09:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 3, startTime: '09:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 4, startTime: '09:00', endTime: '17:00', isAvailable: true },
+          { dayOfWeek: 5, startTime: '09:00', endTime: '17:00', isAvailable: true },
+        ],
+        title: 'Dr.',
+        qualifications: ['MD', 'Board Certified'],
+        bio: `Experienced ${specialization.name} specialist`,
+        department: specialization.name,
+        status: 'active',
+        performanceMetrics: {
+          totalAppointments: 0,
+          completedAppointments: 0,
+          cancelledAppointments: 0,
+          noShowAppointments: 0,
+          lastUpdated: new Date(),
+        },
+      });
+      seedData.doctors.push(doctor);
+      
+      // Get the auto-created user
+      const user = await User.findOne({ doctorProfile: doctor._id });
+      if (user) {
+        seedData.users.push(user);
+        console.log(`   ✓ Created doctor: Dr. ${doctor.firstName} ${doctor.lastName} (${specialization.name}, user auto-created: ${user.email})`);
+      } else {
+        console.log(`   ✓ Created doctor: Dr. ${doctor.firstName} ${doctor.lastName} (${specialization.name}, user creation pending)`);
+      }
+    }
+    console.log('✅ Doctor profiles created\n');
 
     // 10. Create Medicines
     console.log('💊 Creating medicines...');
@@ -1597,6 +1709,7 @@ async function seedDataScript() {
     console.log(`   Medicines: ${seedData.medicines.length}`);
     console.log(`   Inventory Items: ${seedData.inventory.length}`);
     console.log(`   Rooms: ${seedData.rooms.length}`);
+    console.log(`   Specializations: ${seedData.specializations.length}`);
     console.log('   --- Queue & Documents ---');
     console.log(`   Queue Entries: ${seedData.queues.length}`);
     console.log(`   Documents: ${seedData.documents.length}`);

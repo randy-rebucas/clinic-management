@@ -306,7 +306,11 @@ export async function POST(request: NextRequest) {
     
     const doctorPopulateOptions: any = {
       path: 'doctor',
-      select: 'firstName lastName specialization',
+      select: 'firstName lastName specializationId',
+      populate: {
+        path: 'specializationId',
+        select: 'name',
+      },
     };
     if (patientTenantId) {
       doctorPopulateOptions.match = { tenantId: patientTenantId };
