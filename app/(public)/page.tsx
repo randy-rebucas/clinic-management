@@ -183,7 +183,14 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
             {/* Feature 1 */}
             <div className="group relative bg-white/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100/50 hover:border-blue-300 hover:-translate-y-2">
-              <div className="relative h-48 sm:h-56 overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600">
+              <div className="relative h-48 sm:h-56 overflow-hidden">
+                <Image
+                  src="https://images.unsplash.com/photo-1551601651-2a8555f1a136?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80"
+                  alt="Patient care and management"
+                  fill
+                  className="object-cover group-hover:scale-110 transition-transform duration-700"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-blue-600/90 via-blue-600/50 to-transparent"></div>
                 <div className="absolute bottom-4 left-4 right-4">
                   <div className="w-12 h-12 bg-white/95 backdrop-blur-sm rounded-xl flex items-center justify-center shadow-lg">
@@ -203,7 +210,14 @@ export default async function HomePage() {
 
             {/* Feature 2 */}
             <div className="group relative bg-white/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100/50 hover:border-indigo-300 hover:-translate-y-2">
-              <div className="relative h-48 sm:h-56 overflow-hidden bg-gradient-to-br from-indigo-500 to-indigo-600">
+              <div className="relative h-48 sm:h-56 overflow-hidden">
+                <Image
+                  src="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80"
+                  alt="Appointment scheduling"
+                  fill
+                  className="object-cover group-hover:scale-110 transition-transform duration-700"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-indigo-600/90 via-indigo-600/50 to-transparent"></div>
                 <div className="absolute bottom-4 left-4 right-4">
                   <div className="w-12 h-12 bg-white/95 backdrop-blur-sm rounded-xl flex items-center justify-center shadow-lg">
@@ -223,7 +237,14 @@ export default async function HomePage() {
 
             {/* Feature 3 */}
             <div className="group relative bg-white/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100/50 hover:border-purple-300 hover:-translate-y-2">
-              <div className="relative h-48 sm:h-56 overflow-hidden bg-gradient-to-br from-purple-500 to-purple-600">
+              <div className="relative h-48 sm:h-56 overflow-hidden">
+                <Image
+                  src="https://images.unsplash.com/photo-1450101499163-c8848c66ca85?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80"
+                  alt="Medical records"
+                  fill
+                  className="object-cover group-hover:scale-110 transition-transform duration-700"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-purple-600/90 via-purple-600/50 to-transparent"></div>
                 <div className="absolute bottom-4 left-4 right-4">
                   <div className="w-12 h-12 bg-white/95 backdrop-blur-sm rounded-xl flex items-center justify-center shadow-lg">
@@ -243,7 +264,14 @@ export default async function HomePage() {
 
             {/* Feature 4 */}
             <div className="group relative bg-white/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100/50 hover:border-green-300 hover:-translate-y-2">
-              <div className="relative h-48 sm:h-56 overflow-hidden bg-gradient-to-br from-green-500 to-green-600">
+              <div className="relative h-48 sm:h-56 overflow-hidden">
+                <Image
+                  src="https://images.unsplash.com/photo-1554224155-6726b3ff858f?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80"
+                  alt="Billing and invoicing"
+                  fill
+                  className="object-cover group-hover:scale-110 transition-transform duration-700"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-green-600/90 via-green-600/50 to-transparent"></div>
                 <div className="absolute bottom-4 left-4 right-4">
                   <div className="w-12 h-12 bg-white/95 backdrop-blur-sm rounded-xl flex items-center justify-center shadow-lg">
@@ -263,7 +291,14 @@ export default async function HomePage() {
 
             {/* Feature 5 */}
             <div className="group relative bg-white/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100/50 hover:border-orange-300 hover:-translate-y-2">
-              <div className="relative h-48 sm:h-56 overflow-hidden bg-gradient-to-br from-orange-500 to-orange-600">
+              <div className="relative h-48 sm:h-56 overflow-hidden">
+                <Image
+                  src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80"
+                  alt="Analytics and reports"
+                  fill
+                  className="object-cover group-hover:scale-110 transition-transform duration-700"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-orange-600/90 via-orange-600/50 to-transparent"></div>
                 <div className="absolute bottom-4 left-4 right-4">
                   <div className="w-12 h-12 bg-white/95 backdrop-blur-sm rounded-xl flex items-center justify-center shadow-lg">
@@ -283,7 +318,14 @@ export default async function HomePage() {
 
             {/* Feature 6 */}
             <div className="group relative bg-white/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100/50 hover:border-cyan-300 hover:-translate-y-2">
-              <div className="relative h-48 sm:h-56 overflow-hidden bg-gradient-to-br from-cyan-500 to-cyan-600">
+              <div className="relative h-48 sm:h-56 overflow-hidden">
+                <Image
+                  src="https://images.unsplash.com/photo-1563013544-824ae1b704d3?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80"
+                  alt="Security and compliance"
+                  fill
+                  className="object-cover group-hover:scale-110 transition-transform duration-700"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-cyan-600/90 via-cyan-600/50 to-transparent"></div>
                 <div className="absolute bottom-4 left-4 right-4">
                   <div className="w-12 h-12 bg-white/95 backdrop-blur-sm rounded-xl flex items-center justify-center shadow-lg">
