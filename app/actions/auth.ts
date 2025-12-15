@@ -8,6 +8,7 @@ import { sanitizeEmail, checkRateLimit, resetRateLimit } from '@/app/lib/securit
 import { getTenantContext } from '@/lib/tenant';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
+import Role from '@/models/Role';
 import bcrypt from 'bcryptjs';
 
 export async function signup(
@@ -61,7 +62,6 @@ export async function signup(
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Get or create default role if role is provided as string
-    const Role = (await import('@/models/Role')).default;
     let roleDoc;
     
     if (role && typeof role === 'string' && role !== 'user') {
@@ -195,7 +195,6 @@ export async function login(
     resetRateLimit(sanitizedEmail);
 
     // Get role name from populated role or fallback
-    const Role = (await import('@/models/Role')).default;
     let roleName: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative' = 'receptionist';
     let roleId: string | undefined;
     
