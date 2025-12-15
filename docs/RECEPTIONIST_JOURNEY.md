@@ -1,7 +1,7 @@
 # Receptionist Journey - Start to Finish
 
 ## Overview
-This document outlines the complete receptionist journey through the Clinic Management System, covering patient registration, appointment scheduling, queue management, and billing support.
+This document outlines the complete receptionist journey through MyClinicSoft, covering patient registration, appointment scheduling, queue management, and billing support.
 
 ---
 

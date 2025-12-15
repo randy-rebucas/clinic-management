@@ -1,5 +1,5 @@
 /**
- * Clinic Management System - Models Index
+ * MyClinicSoft - Models Index
  * 
  * This file exports all Mongoose models in the correct order to ensure
  * proper model registration and avoid circular dependency issues.

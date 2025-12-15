@@ -1,6 +1,6 @@
 # Dashboard & Reporting System
 
-This document describes the Dashboard & Reporting features implemented in the clinic management system.
+This document describes the Dashboard & Reporting features implemented in MyClinicSoft.
 
 ## Features Overview
 

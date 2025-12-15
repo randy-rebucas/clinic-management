@@ -2,7 +2,7 @@
 
 ## Overview
 
-The clinic management system now supports multi-tenancy, allowing multiple clinics to operate independently on the same application instance. Each tenant is identified by a unique subdomain (e.g., `clinic1.example.com`, `clinic2.example.com`).
+MyClinicSoft now supports multi-tenancy, allowing multiple clinics to operate independently on the same application instance. Each tenant is identified by a unique subdomain (e.g., `clinic1.example.com`, `clinic2.example.com`).
 
 ## Architecture
 

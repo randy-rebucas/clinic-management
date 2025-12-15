@@ -1,6 +1,6 @@
 # Notifications & Communication System
 
-This document describes the Notifications & Communication features implemented in the clinic management system.
+This document describes the Notifications & Communication features implemented in MyClinicSoft.
 
 ## Features Overview
 

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Patient Login | ClinicHub",
+  title: "Patient Login | MyClinicSoft",
   description: "Login to your patient portal",
 };
 

@@ -1,7 +1,7 @@
 # Admin Journey - Start to Finish
 
 ## Overview
-This document outlines the complete admin journey through the Clinic Management System, covering system administration, user management, configuration, and oversight responsibilities.
+This document outlines the complete admin journey through MyClinicSoft, covering system administration, user management, configuration, and oversight responsibilities.
 
 ---
 

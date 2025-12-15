@@ -1,7 +1,7 @@
 # Medical Representative Journey - Start to Finish
 
 ## Overview
-This document outlines the complete medical representative journey through the Clinic Management System, covering doctor visits, product information, and relationship management.
+This document outlines the complete medical representative journey through MyClinicSoft, covering doctor visits, product information, and relationship management.
 
 ---
 

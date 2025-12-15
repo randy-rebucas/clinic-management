@@ -1,7 +1,7 @@
 # Nurse Journey - Start to Finish
 
 ## Overview
-This document outlines the complete nurse journey through the Clinic Management System, covering patient care support, vital signs recording, visit assistance, and clinical documentation.
+This document outlines the complete nurse journey through MyClinicSoft, covering patient care support, vital signs recording, visit assistance, and clinical documentation.
 
 ---
 

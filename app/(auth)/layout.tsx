@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "ClinicHub - Authentication",
-  description: "Login to ClinicHub",
+  title: "MyClinicSoft - Authentication",
+  description: "Login to MyClinicSoft",
 };
 
 export default function AuthLayout({

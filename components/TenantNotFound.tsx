@@ -210,7 +210,7 @@ export default function TenantNotFound({ subdomain }: TenantNotFoundProps) {
         {/* Decorative Elements */}
         <div className="mt-8 text-center">
           <p className="text-sm text-gray-400">
-            © {new Date().getFullYear()} ClinicHub. All rights reserved.
+            © {new Date().getFullYear()} MyClinicSoft. All rights reserved.
           </p>
         </div>
       </div>

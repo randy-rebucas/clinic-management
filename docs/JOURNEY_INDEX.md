@@ -1,7 +1,7 @@
 # Journey Documentation Index
 
 ## Overview
-This index provides quick access to all role-based journey documentation in the Clinic Management System. Each document outlines the complete workflow for a specific role from onboarding to daily operations.
+This index provides quick access to all role-based journey documentation in MyClinicSoft. Each document outlines the complete workflow for a specific role from onboarding to daily operations.
 
 ---
 

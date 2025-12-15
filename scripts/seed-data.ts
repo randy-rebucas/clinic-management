@@ -1615,7 +1615,7 @@ async function seedDataScript() {
         tenantId,
         type: 'system',
         priority: 'normal',
-        title: 'Welcome to Clinic Management System',
+        title: 'Welcome to MyClinicSoft',
         message: 'Your account has been set up successfully',
         read: false,
       });

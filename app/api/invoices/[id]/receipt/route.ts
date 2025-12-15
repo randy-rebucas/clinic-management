@@ -91,7 +91,7 @@ export async function GET(
 async function generateReceiptHTML(invoice: any): Promise<string> {
   const settings = await getSettings();
   const currency = settings.billingSettings?.currency || 'PHP';
-  const clinicName = settings.clinicName || 'Clinic Management System';
+  const clinicName = settings.clinicName || 'MyClinicSoft';
   const clinicAddress = settings.clinicAddress || '';
   const clinicPhone = settings.clinicPhone || '';
   const clinicEmail = settings.clinicEmail || '';

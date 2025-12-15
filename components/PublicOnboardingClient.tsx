@@ -454,25 +454,45 @@ export default function PublicOnboardingClient() {
   const progress = visibleSteps.length > 0 ? ((currentStepIndex + 1) / visibleSteps.length) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 w-full">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 w-full">
+    <div className="min-h-screen relative overflow-hidden w-full">
+      {/* Abstract Background Elements */}
+      <div className="fixed inset-0 -z-10">
+        {/* Base gradient */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>
+        
+        {/* Animated gradient orbs */}
+        <div className="absolute top-0 -left-4 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+        <div className="absolute top-0 -right-4 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+        <div className="absolute -bottom-8 left-20 w-96 h-96 bg-indigo-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
+        
+        {/* Geometric shapes */}
+        <div className="absolute top-20 right-10 w-72 h-72 border-4 border-blue-200/20 rotate-45 rounded-3xl"></div>
+        <div className="absolute bottom-20 left-10 w-96 h-96 border-4 border-indigo-200/15 rotate-12 rounded-full"></div>
+        
+        {/* Grid pattern overlay */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      </div>
+
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12 w-full relative z-10">
         <div className="max-w-4xl mx-auto w-full">
-          {/* Header - Mobile Optimized */}
-          <div className="text-center mb-6 sm:mb-8">
-            <div className="inline-flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 bg-blue-600 rounded-full mb-3 sm:mb-4">
-              <svg className="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Header - Modern Design */}
+          <div className="text-center mb-6 sm:mb-8 lg:mb-10">
+            <div className="inline-flex items-center justify-center w-14 h-14 sm:w-18 sm:h-18 lg:w-20 lg:h-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl sm:rounded-3xl mb-4 sm:mb-6 shadow-xl transform hover:scale-105 transition-transform">
+              <svg className="w-7 h-7 sm:w-9 sm:h-9 lg:w-10 lg:h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
               </svg>
             </div>
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">Patient Registration</h1>
-            <p className="text-sm sm:text-base lg:text-lg text-gray-600 px-4">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 mb-3 sm:mb-4 tracking-tight">
+              Patient Registration
+            </h1>
+            <p className="text-base sm:text-lg lg:text-xl text-gray-600 px-4 max-w-2xl mx-auto">
               Welcome! Please complete the form below to register as a new patient.
             </p>
           </div>
 
           {/* Success Message */}
           {success && (
-            <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4 sm:p-6 mb-6 animate-fade-in">
+            <div className="bg-white/90 backdrop-blur-sm border-2 border-green-200 rounded-2xl sm:rounded-3xl p-6 sm:p-8 mb-6 shadow-2xl animate-fade-in">
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0">
                   <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
@@ -535,13 +555,13 @@ export default function PublicOnboardingClient() {
                   <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4">
                     <Link
                       href="/book"
-                      className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-center"
+                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:scale-105 text-center"
                     >
                       Book an Appointment
                     </Link>
                     <Link
                       href="/"
-                      className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors text-center"
+                      className="px-6 py-3 bg-white/80 backdrop-blur-sm border-2 border-gray-300 hover:border-gray-400 text-gray-700 rounded-xl font-semibold transition-all hover:shadow-lg transform hover:scale-105 text-center"
                     >
                       Go to Home
                     </Link>
@@ -553,7 +573,7 @@ export default function PublicOnboardingClient() {
 
           {/* Error Message */}
           {error && !success && (
-            <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-4 sm:mb-6 animate-fade-in">
+            <div className="bg-white/90 backdrop-blur-sm border-2 border-red-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-xl animate-fade-in">
               <div className="flex items-start gap-2">
                 <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
@@ -568,18 +588,18 @@ export default function PublicOnboardingClient() {
 
           {/* Form Card */}
           {!success && (
-            <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+            <div className="bg-white/90 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-200/50 overflow-hidden">
               {/* Progress Bar */}
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 sm:px-6 py-4">
+              <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-4 sm:px-6 py-5 sm:py-6">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-lg sm:text-xl font-semibold text-white">
                     Step {currentStepIndex + 1} of {visibleSteps.length}
                   </h2>
                   <span className="text-sm text-blue-100">{Math.round(progress)}%</span>
                 </div>
-                <div className="w-full bg-blue-500/30 rounded-full h-2.5">
+                <div className="w-full bg-white/20 rounded-full h-3 sm:h-3.5 overflow-hidden">
                   <div
-                    className="bg-white h-2.5 rounded-full transition-all duration-300 ease-out"
+                    className="bg-white h-full rounded-full transition-all duration-500 ease-out shadow-lg"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
@@ -589,16 +609,16 @@ export default function PublicOnboardingClient() {
               </div>
 
               {/* Step Indicators - Mobile */}
-              <div className="px-4 sm:px-6 py-3 bg-gray-50 border-b border-gray-200 sm:hidden">
+              <div className="px-4 sm:px-6 py-4 bg-gradient-to-r from-gray-50 to-blue-50/30 border-b border-gray-200/50 sm:hidden">
                 <div className="flex justify-between items-center">
                   {STEPS.filter(step => hasSubdomain ? step.id !== 0 : true).map((step, index) => (
                     <div key={step.id} className="flex-1 flex flex-col items-center">
                       <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
+                        className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all shadow-md ${
                           currentStep > step.id
-                            ? 'bg-green-500 text-white'
+                            ? 'bg-gradient-to-br from-green-500 to-emerald-500 text-white'
                             : currentStep === step.id
-                            ? 'bg-blue-600 text-white'
+                            ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white ring-2 ring-blue-300 ring-offset-2'
                             : 'bg-gray-300 text-gray-600'
                         }`}
                       >
@@ -617,17 +637,17 @@ export default function PublicOnboardingClient() {
               </div>
 
               {/* Step Indicators - Desktop */}
-              <div className="hidden sm:block px-6 py-4 bg-gray-50 border-b border-gray-200">
+              <div className="hidden sm:block px-6 py-5 bg-gradient-to-r from-gray-50 to-blue-50/30 border-b border-gray-200/50">
                 <div className="flex justify-between">
                   {STEPS.filter(step => hasSubdomain ? step.id !== 0 : true).map((step, index) => (
                     <div key={step.id} className="flex-1 flex items-center">
                       <div className="flex items-center flex-1">
                         <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
+                          className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold transition-all shadow-lg ${
                             currentStep > step.id
-                              ? 'bg-green-500 text-white'
+                              ? 'bg-gradient-to-br from-green-500 to-emerald-500 text-white'
                               : currentStep === step.id
-                              ? 'bg-blue-600 text-white'
+                              ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white ring-2 ring-blue-300 ring-offset-2 scale-110'
                               : 'bg-gray-300 text-gray-600'
                           }`}
                         >
@@ -646,8 +666,8 @@ export default function PublicOnboardingClient() {
                       </div>
                       {index < STEPS.length - 1 && (
                         <div
-                          className={`flex-1 h-0.5 mx-4 ${
-                            currentStep > step.id ? 'bg-green-500' : 'bg-gray-300'
+                          className={`flex-1 h-1 mx-4 rounded-full transition-all ${
+                            currentStep > step.id ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gray-300'
                           }`}
                         />
                       )}
@@ -686,10 +706,10 @@ export default function PublicOnboardingClient() {
                                 key={clinic._id}
                                 type="button"
                                 onClick={() => handleClinicSelect(clinic)}
-                                className={`p-6 border-2 rounded-xl text-left transition-all hover:shadow-lg ${
+                                className={`p-6 sm:p-8 border-2 rounded-2xl text-left transition-all hover:shadow-xl transform hover:scale-[1.02] ${
                                   selectedClinic?._id === clinic._id
-                                    ? 'border-blue-600 bg-blue-50'
-                                    : 'border-gray-200 hover:border-blue-300 bg-white'
+                                    ? 'border-blue-600 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg'
+                                    : 'border-gray-200 hover:border-blue-300 bg-white/80 backdrop-blur-sm'
                                 }`}
                               >
                                 <div className="flex items-start justify-between mb-3">
@@ -739,7 +759,7 @@ export default function PublicOnboardingClient() {
                                 required
                                 value={formData.firstName}
                                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                 placeholder="John"
                               />
                             </div>
@@ -749,7 +769,7 @@ export default function PublicOnboardingClient() {
                                 type="text"
                                 value={formData.middleName}
                                 onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                 placeholder="Michael"
                               />
                             </div>
@@ -762,7 +782,7 @@ export default function PublicOnboardingClient() {
                                 required
                                 value={formData.lastName}
                                 onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                 placeholder="Doe"
                               />
                             </div>
@@ -772,7 +792,7 @@ export default function PublicOnboardingClient() {
                                 type="text"
                                 value={formData.suffix}
                                 onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                 placeholder="Jr., Sr., III"
                               />
                             </div>
@@ -788,7 +808,7 @@ export default function PublicOnboardingClient() {
                                 value={formData.dateOfBirth}
                                 onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
                                 max={new Date().toISOString().split('T')[0]}
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                               />
                             </div>
                             <div>
@@ -796,7 +816,7 @@ export default function PublicOnboardingClient() {
                               <select
                                 value={formData.sex}
                                 onChange={(e) => setFormData({ ...formData, sex: e.target.value as any })}
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base bg-white"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base bg-white/50 backdrop-blur-sm hover:border-blue-300 transition-all"
                               >
                                 <option value="unknown">Unknown</option>
                                 <option value="male">Male</option>
@@ -810,7 +830,7 @@ export default function PublicOnboardingClient() {
                                 type="text"
                                 value={formData.civilStatus}
                                 onChange={(e) => setFormData({ ...formData, civilStatus: e.target.value })}
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                 placeholder="Single, Married, etc."
                               />
                             </div>
@@ -820,7 +840,7 @@ export default function PublicOnboardingClient() {
                                 type="text"
                                 value={formData.nationality}
                                 onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                 placeholder="Filipino, American, etc."
                               />
                             </div>
@@ -830,7 +850,7 @@ export default function PublicOnboardingClient() {
                                 type="text"
                                 value={formData.occupation}
                                 onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                 placeholder="Your occupation"
                               />
                             </div>
@@ -856,7 +876,7 @@ export default function PublicOnboardingClient() {
                                 type="email"
                                 value={formData.email}
                                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                 placeholder="john.doe@example.com"
                               />
                             </div>
@@ -869,7 +889,7 @@ export default function PublicOnboardingClient() {
                                 required
                                 value={formData.phone}
                                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                 placeholder="+1234567890"
                               />
                             </div>
@@ -891,7 +911,7 @@ export default function PublicOnboardingClient() {
                                       address: { ...formData.address, street: e.target.value },
                                     })
                                   }
-                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                   placeholder="123 Main Street"
                                 />
                               </div>
@@ -910,7 +930,7 @@ export default function PublicOnboardingClient() {
                                         address: { ...formData.address, city: e.target.value },
                                       })
                                     }
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                     placeholder="Manila"
                                   />
                                 </div>
@@ -928,7 +948,7 @@ export default function PublicOnboardingClient() {
                                         address: { ...formData.address, state: e.target.value },
                                       })
                                     }
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                     placeholder="Metro Manila"
                                   />
                                 </div>
@@ -946,7 +966,7 @@ export default function PublicOnboardingClient() {
                                         address: { ...formData.address, zipCode: e.target.value },
                                       })
                                     }
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                     placeholder="1000"
                                   />
                                 </div>
@@ -982,7 +1002,7 @@ export default function PublicOnboardingClient() {
                                       emergencyContact: { ...formData.emergencyContact, name: e.target.value },
                                     })
                                   }
-                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                   placeholder="Jane Doe"
                                 />
                               </div>
@@ -1000,7 +1020,7 @@ export default function PublicOnboardingClient() {
                                       emergencyContact: { ...formData.emergencyContact, phone: e.target.value },
                                     })
                                   }
-                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                   placeholder="+1234567890"
                                 />
                               </div>
@@ -1021,7 +1041,7 @@ export default function PublicOnboardingClient() {
                                       },
                                     })
                                   }
-                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                   placeholder="Spouse, Parent, etc."
                                 />
                               </div>
@@ -1041,7 +1061,7 @@ export default function PublicOnboardingClient() {
                                       identifiers: { ...formData.identifiers, philHealth: e.target.value },
                                     })
                                   }
-                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                   placeholder="PhilHealth number"
                                 />
                               </div>
@@ -1056,7 +1076,7 @@ export default function PublicOnboardingClient() {
                                       identifiers: { ...formData.identifiers, govId: e.target.value },
                                     })
                                   }
-                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
                                   placeholder="Government ID number"
                                 />
                               </div>
@@ -1093,7 +1113,7 @@ export default function PublicOnboardingClient() {
                               <button
                                 type="button"
                                 onClick={addAllergy}
-                                className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-medium transition-colors text-sm"
+                                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl font-semibold transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
                               >
                                 + Add Allergy
                               </button>
@@ -1145,7 +1165,7 @@ export default function PublicOnboardingClient() {
                                         <button
                                           type="button"
                                           onClick={() => removeAllergy(index)}
-                                          className="mt-6 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition-colors text-sm font-medium"
+                                          className="mt-6 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl transition-all shadow-sm hover:shadow-md text-sm font-semibold"
                                         >
                                           Remove
                                         </button>
@@ -1164,7 +1184,7 @@ export default function PublicOnboardingClient() {
                               <button
                                 type="button"
                                 onClick={addCondition}
-                                className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-medium transition-colors text-sm"
+                                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl font-semibold transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
                               >
                                 + Add Condition
                               </button>
@@ -1213,7 +1233,7 @@ export default function PublicOnboardingClient() {
                                         <button
                                           type="button"
                                           onClick={() => removeCondition(index)}
-                                          className="mt-6 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition-colors text-sm font-medium"
+                                          className="mt-6 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl transition-all shadow-sm hover:shadow-md text-sm font-semibold"
                                         >
                                           Remove
                                         </button>
@@ -1232,7 +1252,7 @@ export default function PublicOnboardingClient() {
                               <button
                                 type="button"
                                 onClick={addFamilyHistory}
-                                className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-medium transition-colors text-sm"
+                                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl font-semibold transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
                               >
                                 + Add History
                               </button>
@@ -1252,7 +1272,7 @@ export default function PublicOnboardingClient() {
                                     <button
                                       type="button"
                                       onClick={() => removeFamilyHistory(condition)}
-                                      className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition-colors text-sm font-medium"
+                                      className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl transition-all shadow-sm hover:shadow-md text-sm font-semibold"
                                     >
                                       Remove
                                     </button>
@@ -1267,19 +1287,19 @@ export default function PublicOnboardingClient() {
                   )}
 
                   {/* Navigation Buttons */}
-                  <div className="flex flex-col sm:flex-row justify-between gap-3 pt-6 border-t border-gray-200 mt-6">
+                  <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-4 pt-6 border-t border-gray-200/50 mt-6">
                     <button
                       type="button"
                       onClick={prevStep}
                       disabled={currentStep === (hasSubdomain ? 1 : 0)}
-                      className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                      className={`px-6 py-3 rounded-xl font-semibold transition-all ${
                         currentStep === (hasSubdomain ? 1 : 0)
                           ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                          : 'bg-white/80 backdrop-blur-sm border-2 border-gray-300 hover:border-gray-400 text-gray-700 hover:shadow-lg transform hover:scale-105'
                       }`}
                     >
                       <span className="flex items-center justify-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                         </svg>
                         Previous
@@ -1289,11 +1309,11 @@ export default function PublicOnboardingClient() {
                       <button
                         type="button"
                         onClick={nextStep}
-                        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex-1 sm:flex-initial"
+                        className="px-6 sm:px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex-1 sm:flex-initial"
                       >
                         <span className="flex items-center justify-center gap-2">
                           Next
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                           </svg>
                         </span>
@@ -1302,7 +1322,7 @@ export default function PublicOnboardingClient() {
                       <button
                         type="submit"
                         disabled={submitting}
-                        className="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg font-medium transition-colors flex-1 sm:flex-initial disabled:cursor-not-allowed"
+                        className="px-6 sm:px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-green-400 disabled:to-emerald-400 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex-1 sm:flex-initial disabled:cursor-not-allowed disabled:transform-none"
                       >
                         {submitting ? (
                           <span className="flex items-center justify-center gap-2">

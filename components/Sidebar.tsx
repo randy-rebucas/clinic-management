@@ -94,7 +94,7 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
                 </svg>
               </div>
               <span className="text-base font-bold bg-gradient-to-r from-blue-700 to-blue-800 bg-clip-text text-transparent overflow-hidden text-ellipsis whitespace-nowrap">
-                ClinicHub
+                MyClinicSoft
               </span>
             </div>
           </Link>

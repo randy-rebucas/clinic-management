@@ -2,7 +2,7 @@
 
 ## Overview
 
-The clinic management system implements a secure authentication system following Next.js 16 best practices with JWT-based session management.
+MyClinicSoft implements a secure authentication system following Next.js 16 best practices with JWT-based session management.
 
 ## Architecture
 

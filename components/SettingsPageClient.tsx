@@ -91,7 +91,7 @@ const DAYS = [
 // Default settings - matches getDefaultSettings() from lib/settings.ts
 // Used as fallback when API fails
 const defaultSettingsFallback: Settings = {
-  clinicName: 'Clinic Management System',
+  clinicName: 'MyClinicSoft',
   clinicAddress: '',
   clinicPhone: '',
   clinicEmail: '',

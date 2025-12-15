@@ -1,6 +1,6 @@
 # Membership & Loyalty Program
 
-This document describes the Membership & Loyalty Program features implemented in the clinic management system.
+This document describes the Membership & Loyalty Program features implemented in MyClinicSoft.
 
 ## Features Overview
 

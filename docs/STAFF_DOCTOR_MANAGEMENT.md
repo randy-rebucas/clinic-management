@@ -1,6 +1,6 @@
 # Staff & Doctor Management System
 
-This document describes the Staff & Doctor Management features implemented in the clinic management system.
+This document describes the Staff & Doctor Management features implemented in MyClinicSoft.
 
 ## Features Overview
 

@@ -1,6 +1,6 @@
 # Billing & Payments System
 
-This document describes the Billing & Payments features implemented in the clinic management system.
+This document describes the Billing & Payments features implemented in MyClinicSoft.
 
 ## Features Overview
 

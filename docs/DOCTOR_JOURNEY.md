@@ -1,7 +1,7 @@
 # Doctor Journey - Start to Finish
 
 ## Overview
-This document outlines the complete doctor journey through the Clinic Management System, from onboarding to daily practice management, including all workflows, responsibilities, and system interactions.
+This document outlines the complete doctor journey through MyClinicSoft, from onboarding to daily practice management, including all workflows, responsibilities, and system interactions.
 
 ---
 

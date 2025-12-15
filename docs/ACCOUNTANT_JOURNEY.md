@@ -1,7 +1,7 @@
 # Accountant Journey - Start to Finish
 
 ## Overview
-This document outlines the complete accountant journey through the Clinic Management System, covering financial management, invoice processing, payment tracking, and financial reporting.
+This document outlines the complete accountant journey through MyClinicSoft, covering financial management, invoice processing, payment tracking, and financial reporting.
 
 ---
 

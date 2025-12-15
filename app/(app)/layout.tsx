@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Clinic Management System",
+  title: "MyClinicSoft",
   description: "Manage patients, appointments, and doctors",
 };
 

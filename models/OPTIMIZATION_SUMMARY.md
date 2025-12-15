@@ -1,7 +1,7 @@
 # Model Optimization Summary
 
 ## Overview
-All models in the clinic management system have been reviewed and optimized for:
+All models in MyClinicSoft have been reviewed and optimized for:
 1. **Proper Relations/References** - All ObjectId references have correct `ref` attributes
 2. **Indexes** - Comprehensive indexing strategy for query performance
 3. **Optimization** - Compound indexes for common query patterns

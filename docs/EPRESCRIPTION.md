@@ -1,6 +1,6 @@
 # ePrescription (Electronic Prescription) Features
 
-This document describes the ePrescription features implemented in the clinic management system.
+This document describes the ePrescription features implemented in MyClinicSoft.
 
 ## Features Overview
 

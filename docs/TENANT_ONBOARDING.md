@@ -1,6 +1,6 @@
 # Tenant Onboarding Process
 
-This guide explains how to onboard a new tenant (clinic) into the multi-tenant clinic management system.
+This guide explains how to onboard a new tenant (clinic) into the multi-tenant MyClinicSoft system.
 
 ## Overview
 

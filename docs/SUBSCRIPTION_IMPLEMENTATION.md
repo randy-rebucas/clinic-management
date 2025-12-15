@@ -1,7 +1,7 @@
 # Subscription & Trial Period Implementation
 
 ## Overview
-This document describes the subscription and trial period implementation for the multi-tenant clinic management system.
+This document describes the subscription and trial period implementation for the multi-tenant MyClinicSoft system.
 
 ## Features Implemented
 

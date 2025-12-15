@@ -1,7 +1,7 @@
 # Patient Journey - Start to Finish
 
 ## Overview
-This document outlines the complete patient journey through the Clinic Management System, from initial registration to final visit completion, including all steps, status transitions, and data models involved.
+This document outlines the complete patient journey through MyClinicSoft, from initial registration to final visit completion, including all steps, status transitions, and data models involved.
 
 ---
 

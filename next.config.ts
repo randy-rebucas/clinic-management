@@ -21,6 +21,11 @@ const nextConfig: NextConfig = {
         hostname: 'images.unsplash.com',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'static.vecteezy.com',
+        pathname: '/**',
+      },
     ],
   },
   

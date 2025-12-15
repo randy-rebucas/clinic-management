@@ -76,7 +76,7 @@ interface SettingsContextType {
 // Default settings - matches getDefaultSettings() from lib/settings.ts
 // Note: This is a client-side fallback. Server-side should use getDefaultSettings() from lib/settings.ts
 const defaultSettings: Settings = {
-  clinicName: 'Clinic Management System',
+  clinicName: 'MyClinicSoft',
   clinicAddress: '',
   clinicPhone: '',
   clinicEmail: '',

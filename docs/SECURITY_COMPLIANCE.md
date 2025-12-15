@@ -1,6 +1,6 @@
 # Security & Compliance System
 
-This document describes the Security & Compliance features implemented in the clinic management system, including role-based access control, audit trails, data encryption, backups, and PH Data Privacy Act alignment.
+This document describes the Security & Compliance features implemented in MyClinicSoft, including role-based access control, audit trails, data encryption, backups, and PH Data Privacy Act alignment.
 
 ## Features Overview
 

@@ -123,8 +123,8 @@ function createEnvFile(): boolean {
   } else {
     // Create a basic template
     template = `# MongoDB Connection
-MONGODB_URI=mongodb://localhost:27017/clinic-management
-# Or use MongoDB Atlas: mongodb+srv://username:password@cluster.mongodb.net/clinic-management
+MONGODB_URI=mongodb://localhost:27017/myclinicsoft
+# Or use MongoDB Atlas: mongodb+srv://username:password@cluster.mongodb.net/myclinicsoft
 
 # Session Secret (generate with: openssl rand -base64 32)
 SESSION_SECRET=your-session-secret-here-minimum-32-characters-long
@@ -273,7 +273,7 @@ async function createBaseSettings(): Promise<boolean> {
 
     // Create default base settings
     const defaultSettings = {
-      clinicName: 'Clinic Management System',
+      clinicName: 'MyClinicSoft',
       clinicAddress: '',
       clinicPhone: '',
       clinicEmail: '',
@@ -468,7 +468,7 @@ async function resetDatabase(): Promise<boolean> {
 
 async function main() {
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('🚀 Clinic Management System - Installation');
+  console.log('🚀 MyClinicSoft - Installation');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   // Check if user wants to reset database

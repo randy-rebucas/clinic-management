@@ -76,7 +76,7 @@ export async function getSettings(tenantId?: string | null) {
  */
 export function getDefaultSettings() {
   return {
-    clinicName: 'Clinic Management System',
+    clinicName: 'MyClinicSoft',
     clinicAddress: '',
     clinicPhone: '',
     clinicEmail: '',

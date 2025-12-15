@@ -94,7 +94,7 @@ export async function createPayPalOrder(
         purchase_units: [
           {
             reference_id: `subscription-${tenantId}-${Date.now()}`,
-            description: `Clinic Management Subscription - ${planName}`,
+            description: `MyClinicSoft Subscription - ${planName}`,
             amount: {
               currency_code: currency,
               value: amount.toFixed(2),
@@ -102,7 +102,7 @@ export async function createPayPalOrder(
           },
         ],
         application_context: {
-          brand_name: 'Clinic Management System',
+          brand_name: 'MyClinicSoft',
           landing_page: 'BILLING',
           user_action: 'PAY_NOW',
           return_url: `${appUrl}/subscription/success?plan=${planName}`,

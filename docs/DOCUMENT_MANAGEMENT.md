@@ -1,6 +1,6 @@
 # Document Management System
 
-This document describes the Document Management features implemented in the clinic management system.
+This document describes the Document Management features implemented in MyClinicSoft.
 
 ## Features Overview
 

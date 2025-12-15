@@ -110,7 +110,7 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
           </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-3">Installation Wizard</h1>
           <p className="text-gray-600 text-lg">
-            Welcome to Clinic Management System installation
+            Welcome to MyClinicSoft installation
           </p>
         </div>
 
@@ -300,7 +300,7 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
                         <div>
                           <label className="text-sm font-medium text-blue-800">MONGODB_URI</label>
                           <p className="text-xs text-blue-700 mt-1">
-                            Your MongoDB connection string (e.g., <code>mongodb://localhost:27017/clinic-management</code> or MongoDB Atlas connection string)
+                            Your MongoDB connection string (e.g., <code>mongodb://localhost:27017/myclinicsoft</code> or MongoDB Atlas connection string)
                           </p>
                         </div>
                         <div>
@@ -513,7 +513,7 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
                     </div>
                     <h2 className="text-2xl font-semibold mb-2">Installation Complete!</h2>
                     <p className="text-gray-600 mb-6">
-                      Your clinic management system has been successfully installed and configured.
+                      MyClinicSoft has been successfully installed and configured.
                     </p>
                     <div className="flex gap-3 justify-center">
                       <button

@@ -1,6 +1,6 @@
 # Laboratory & Diagnostic Requests System
 
-This document describes the Laboratory & Diagnostic Requests features implemented in the clinic management system.
+This document describes the Laboratory & Diagnostic Requests features implemented in MyClinicSoft.
 
 ## Features Overview
 

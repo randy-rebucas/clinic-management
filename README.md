@@ -1,4 +1,4 @@
-# Clinic Management System
+# MyClinicSoft
 
 A comprehensive, modern clinic management application built with Next.js 16 and MongoDB. Features a complete patient management system, appointment scheduling, billing, prescriptions, lab results, and more.
 
@@ -117,7 +117,7 @@ This script will:
 
 1. Clone or navigate to the project directory:
    ```bash
-   cd clinic-management
+   cd myclinicsoft
    ```
 
 2. Install dependencies:
@@ -211,7 +211,7 @@ This project uses Next.js environment variables. According to the [Next.js docum
 3. Get your connection string
 4. Update `MONGODB_URI` in `.env.local`:
    ```
-   MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/clinic-management?retryWrites=true&w=majority
+   MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/myclinicsoft?retryWrites=true&w=majority
    ```
 
 ### Option 2: Local MongoDB
@@ -220,13 +220,13 @@ This project uses Next.js environment variables. According to the [Next.js docum
 2. Start MongoDB service
 3. Update `MONGODB_URI` in `.env.local`:
    ```
-   MONGODB_URI=mongodb://localhost:27017/clinic-management
+   MONGODB_URI=mongodb://localhost:27017/myclinicsoft
    ```
 
 ## Project Structure
 
 ```
-clinic-management/
+myclinicsoft/
 ├── app/
 │   ├── api/                    # API routes
 │   │   ├── appointments/       # Appointment management

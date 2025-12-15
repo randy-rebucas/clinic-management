@@ -110,7 +110,7 @@ const SettingsSchema = new Schema<ISettings>(
     clinicName: {
       type: String,
       required: true,
-      default: 'Clinic Management System',
+      default: 'MyClinicSoft',
     },
     clinicAddress: { type: String, default: '' },
     clinicPhone: { type: String, default: '' },

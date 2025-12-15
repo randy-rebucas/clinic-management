@@ -230,21 +230,37 @@ export default function TenantOnboardClient() {
     const accessUrl = `${protocol}://${tenantData.subdomain}.${rootDomain}${port}`;
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-2xl w-full">
-          <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 p-8 sm:p-10">
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full mb-6">
-                <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="min-h-screen relative overflow-hidden flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        {/* Abstract Background */}
+        <div className="fixed inset-0 -z-10">
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>
+          <div className="absolute top-0 -left-4 w-96 h-96 bg-green-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+          <div className="absolute top-0 -right-4 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+          <div className="absolute -bottom-8 left-20 w-96 h-96 bg-indigo-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+        </div>
+
+        <div className="max-w-2xl w-full relative z-10">
+          <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-200/50 p-8 sm:p-10 lg:p-12">
+            <div className="text-center mb-8 sm:mb-10">
+              <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl sm:rounded-3xl mb-6 shadow-xl transform hover:scale-105 transition-transform">
+                <svg className="w-10 h-10 sm:w-12 sm:h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Tenant Created Successfully!</h1>
-              <p className="text-gray-600">Your clinic has been onboarded and is ready to use.</p>
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 mb-3 tracking-tight">Tenant Created Successfully!</h1>
+              <p className="text-base sm:text-lg text-gray-600">Your clinic has been onboarded and is ready to use.</p>
             </div>
 
-            <div className="bg-gray-50 rounded-xl p-6 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Tenant Details</h2>
+            <div className="bg-gradient-to-br from-gray-50 to-blue-50/30 rounded-2xl p-6 sm:p-8 mb-6 border border-gray-200/50">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 sm:mb-6 flex items-center gap-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+                Tenant Details
+              </h2>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Name:</span>
@@ -261,8 +277,15 @@ export default function TenantOnboardClient() {
               </div>
             </div>
 
-            <div className="bg-blue-50 rounded-xl p-6 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Access Information</h2>
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50/30 rounded-2xl p-6 sm:p-8 mb-6 border border-blue-200/50">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 sm:mb-6 flex items-center gap-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                </div>
+                Access Information
+              </h2>
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Access URL</label>
@@ -271,14 +294,14 @@ export default function TenantOnboardClient() {
                       type="text"
                       readOnly
                       value={accessUrl}
-                      className="flex-1 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-mono"
+                      className="flex-1 px-4 py-3 bg-white/80 backdrop-blur-sm border-2 border-gray-300 rounded-xl text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                     <button
                       onClick={() => {
                         navigator.clipboard.writeText(accessUrl);
                         alert('URL copied to clipboard!');
                       }}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                      className="px-4 sm:px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105 text-sm font-semibold"
                     >
                       Copy
                     </button>
@@ -286,14 +309,14 @@ export default function TenantOnboardClient() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Admin Email</label>
-                  <p className="text-sm text-gray-900 font-mono bg-white px-4 py-2 rounded-lg border border-gray-300">
+                  <p className="text-sm text-gray-900 font-mono bg-white/80 backdrop-blur-sm px-4 py-3 rounded-xl border-2 border-gray-300">
                     {tenantData.adminEmail}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+            <div className="bg-yellow-50/90 backdrop-blur-sm border-2 border-yellow-200 rounded-2xl p-5 sm:p-6 mb-6 shadow-lg">
               <div className="flex items-start">
                 <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -310,18 +333,18 @@ export default function TenantOnboardClient() {
               </div>
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row gap-4">
               <a
                 href={accessUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold text-center hover:shadow-lg transform hover:scale-105 transition-all"
+                className="flex-1 px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold text-center hover:shadow-xl transform hover:scale-105 transition-all shadow-lg"
               >
                 Go to Your Clinic
               </a>
               <Link
                 href="/"
-                className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
+                className="px-6 sm:px-8 py-3 sm:py-4 bg-white/80 backdrop-blur-sm border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-center"
               >
                 Back to Home
               </Link>
@@ -333,46 +356,58 @@ export default function TenantOnboardClient() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
+    <div className="min-h-screen relative overflow-hidden py-12 px-4 sm:px-6 lg:px-8">
+      {/* Abstract Background Elements */}
+      <div className="fixed inset-0 -z-10">
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>
+        <div className="absolute top-0 -left-4 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+        <div className="absolute top-0 -right-4 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+        <div className="absolute -bottom-8 left-20 w-96 h-96 bg-indigo-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
+        <div className="absolute top-20 right-10 w-72 h-72 border-4 border-blue-200/20 rotate-45 rounded-3xl"></div>
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      </div>
+
+      <div className="max-w-3xl mx-auto relative z-10">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-3xl shadow-xl mb-6">
-            <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="text-center mb-8 sm:mb-10">
+          <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-3xl shadow-xl mb-6 transform hover:scale-105 transition-transform">
+            <svg className="w-12 h-12 sm:w-14 sm:h-14 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
             </svg>
           </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-3">Register Your Clinic</h1>
-          <p className="text-lg text-gray-600">Get started with ClinicHub in minutes</p>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-3 sm:mb-4 tracking-tight">Register Your Clinic</h1>
+          <p className="text-lg sm:text-xl text-gray-600">Get started with MyClinicSoft in minutes</p>
         </div>
 
         {/* Progress Steps */}
-        <div className="mb-8">
+        <div className="mb-8 sm:mb-10">
           <div className="flex items-center justify-between">
             {[1, 2, 3].map((s) => (
               <div key={s} className="flex items-center flex-1">
                 <div className="flex flex-col items-center flex-1">
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${
+                    className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center font-bold transition-all shadow-lg ${
                       step >= s
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white ring-2 ring-blue-300 ring-offset-2'
                         : 'bg-gray-200 text-gray-500'
-                    }`}
+                    } ${step === s ? 'scale-110' : ''}`}
                   >
                     {step > s ? (
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                     ) : (
-                      s
+                      <span className="text-base sm:text-lg">{s}</span>
                     )}
                   </div>
-                  <span className={`mt-2 text-xs font-medium ${step >= s ? 'text-blue-600' : 'text-gray-500'}`}>
+                  <span className={`mt-2 sm:mt-3 text-xs sm:text-sm font-semibold ${step >= s ? 'text-blue-600' : 'text-gray-500'}`}>
                     {s === 1 ? 'Clinic Info' : s === 2 ? 'Contact' : 'Admin'}
                   </span>
                 </div>
                 {s < 3 && (
-                  <div className={`flex-1 h-1 mx-2 ${step > s ? 'bg-blue-600' : 'bg-gray-200'}`} />
+                  <div className={`flex-1 h-1 sm:h-1.5 mx-2 sm:mx-4 rounded-full transition-all ${
+                    step > s ? 'bg-gradient-to-r from-blue-600 to-indigo-600' : 'bg-gray-200'
+                  }`} />
                 )}
               </div>
             ))}
@@ -380,17 +415,29 @@ export default function TenantOnboardClient() {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-2xl border border-gray-100 p-8 sm:p-10">
+        <form onSubmit={handleSubmit} className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-200/50 p-6 sm:p-8 lg:p-10">
           {errors.general && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
-              {errors.general}
+            <div className="mb-6 p-4 sm:p-5 bg-red-50/90 backdrop-blur-sm border-2 border-red-200 rounded-xl sm:rounded-2xl text-red-800 text-sm sm:text-base shadow-lg">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <p className="font-semibold">{errors.general}</p>
+              </div>
             </div>
           )}
 
           {/* Step 1: Clinic Information */}
           {step === 1 && (
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Clinic Information</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6 sm:mb-8 flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+                Clinic Information
+              </h2>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -400,7 +447,7 @@ export default function TenantOnboardClient() {
                   type="text"
                   value={formData.tenantName}
                   onChange={(e) => handleInputChange('tenantName', e.target.value)}
-                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base ${
                     errors.tenantName ? 'border-red-300' : 'border-gray-300'
                   }`}
                   placeholder="City Medical Clinic"
@@ -418,7 +465,7 @@ export default function TenantOnboardClient() {
                   type="text"
                   value={formData.displayName}
                   onChange={(e) => handleInputChange('displayName', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
                   placeholder="City Medical"
                 />
               </div>
@@ -432,7 +479,7 @@ export default function TenantOnboardClient() {
                     type="text"
                     value={formData.subdomain}
                     onChange={(e) => handleInputChange('subdomain', e.target.value.toLowerCase())}
-                    className={`flex-1 px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    className={`flex-1 px-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base ${
                       errors.subdomain ? 'border-red-300' : 'border-gray-300'
                     }`}
                     placeholder="citymedical"
@@ -464,7 +511,14 @@ export default function TenantOnboardClient() {
           {/* Step 2: Contact Information */}
           {step === 2 && (
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Contact Information</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6 sm:mb-8 flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                Contact Information
+              </h2>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
@@ -475,7 +529,7 @@ export default function TenantOnboardClient() {
                     type="email"
                     value={formData.email}
                     onChange={(e) => handleInputChange('email', e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base ${
                       errors.email ? 'border-red-300' : 'border-gray-300'
                     }`}
                     placeholder="contact@clinic.com"
@@ -493,7 +547,7 @@ export default function TenantOnboardClient() {
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => handleInputChange('phone', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
                     placeholder="+1-555-0123"
                   />
                 </div>
@@ -506,7 +560,7 @@ export default function TenantOnboardClient() {
                     type="text"
                     value={formData.street}
                     onChange={(e) => handleInputChange('street', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
                     placeholder="Street Address"
                   />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -514,14 +568,14 @@ export default function TenantOnboardClient() {
                       type="text"
                       value={formData.city}
                       onChange={(e) => handleInputChange('city', e.target.value)}
-                      className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
                       placeholder="City"
                     />
                     <input
                       type="text"
                       value={formData.state}
                       onChange={(e) => handleInputChange('state', e.target.value)}
-                      className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
                       placeholder="State/Province"
                     />
                   </div>
@@ -530,7 +584,7 @@ export default function TenantOnboardClient() {
                       type="text"
                       value={formData.zipCode}
                       onChange={(e) => handleInputChange('zipCode', e.target.value)}
-                      className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
                       placeholder="Zip/Postal Code"
                     />
                     <input
@@ -538,7 +592,7 @@ export default function TenantOnboardClient() {
                       value={formData.country}
                       onChange={(e) => handleInputChange('country', e.target.value)}
                       disabled={detectingCountry}
-                      className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base disabled:opacity-50 disabled:cursor-not-allowed"
                       placeholder={detectingCountry ? "Detecting..." : "Country"}
                     />
                   </div>
@@ -563,7 +617,7 @@ export default function TenantOnboardClient() {
                       value={formData.timezone}
                       onChange={(e) => handleInputChange('timezone', e.target.value)}
                       disabled={detectingCountry}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="UTC">UTC</option>
                       <option value="Asia/Manila">Asia/Manila (Philippines)</option>
@@ -603,7 +657,7 @@ export default function TenantOnboardClient() {
                       value={formData.currency}
                       onChange={(e) => handleInputChange('currency', e.target.value)}
                       disabled={detectingCountry}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="PHP">PHP (Philippine Peso)</option>
                       <option value="USD">USD (US Dollar)</option>
@@ -635,7 +689,7 @@ export default function TenantOnboardClient() {
                       value={formData.dateFormat}
                       onChange={(e) => handleInputChange('dateFormat', e.target.value)}
                       disabled={detectingCountry}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="MM/DD/YYYY">MM/DD/YYYY</option>
                       <option value="DD/MM/YYYY">DD/MM/YYYY</option>
@@ -651,14 +705,14 @@ export default function TenantOnboardClient() {
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
+                  className="px-6 sm:px-8 py-3 sm:py-4 bg-white/80 backdrop-blur-sm border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-base sm:text-lg"
                 >
                   Back
                 </button>
                 <button
                   type="button"
                   onClick={handleNext}
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:shadow-lg transform hover:scale-105 transition-all"
+                  className="flex-1 px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:shadow-xl transform hover:scale-105 transition-all shadow-lg text-base sm:text-lg"
                 >
                   Next
                 </button>
@@ -669,7 +723,14 @@ export default function TenantOnboardClient() {
           {/* Step 3: Admin User */}
           {step === 3 && (
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Create Admin Account</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6 sm:mb-8 flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                Create Admin Account
+              </h2>
               <p className="text-gray-600 mb-6">
                 Create the administrator account for your clinic. You'll use these credentials to log in and manage your clinic.
               </p>
@@ -682,9 +743,9 @@ export default function TenantOnboardClient() {
                   type="text"
                   value={formData.adminName}
                   onChange={(e) => handleInputChange('adminName', e.target.value)}
-                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errors.adminName ? 'border-red-300' : 'border-gray-300'
-                  }`}
+                    className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base ${
+                      errors.adminName ? 'border-red-300' : 'border-gray-300'
+                    }`}
                   placeholder="Dr. John Smith"
                 />
                 {errors.adminName && (
@@ -700,9 +761,9 @@ export default function TenantOnboardClient() {
                   type="email"
                   value={formData.adminEmail}
                   onChange={(e) => handleInputChange('adminEmail', e.target.value)}
-                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errors.adminEmail ? 'border-red-300' : 'border-gray-300'
-                  }`}
+                    className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base ${
+                      errors.adminEmail ? 'border-red-300' : 'border-gray-300'
+                    }`}
                   placeholder="admin@clinic.com"
                 />
                 {errors.adminEmail && (
@@ -719,7 +780,7 @@ export default function TenantOnboardClient() {
                     type="password"
                     value={formData.adminPassword}
                     onChange={(e) => handleInputChange('adminPassword', e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base ${
                       errors.adminPassword ? 'border-red-300' : 'border-gray-300'
                     }`}
                     placeholder="Min 8 characters"
@@ -737,7 +798,7 @@ export default function TenantOnboardClient() {
                     type="password"
                     value={formData.confirmPassword}
                     onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
                     placeholder="Confirm password"
                   />
                 </div>
@@ -747,16 +808,23 @@ export default function TenantOnboardClient() {
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
+                  className="px-6 sm:px-8 py-3 sm:py-4 bg-white/80 backdrop-blur-sm border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-base sm:text-lg"
                 >
                   Back
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:shadow-lg transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-semibold hover:shadow-xl transform hover:scale-105 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-base sm:text-lg"
                 >
-                  {loading ? 'Creating...' : 'Create Clinic'}
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Creating...
+                    </span>
+                  ) : (
+                    'Create Clinic'
+                  )}
                 </button>
               </div>
             </div>

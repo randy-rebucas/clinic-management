@@ -1,7 +1,7 @@
 # PayPal Integration Setup Guide
 
 ## Overview
-This guide explains how to set up PayPal payment integration for subscription payments in the clinic management system.
+This guide explains how to set up PayPal payment integration for subscription payments in MyClinicSoft.
 
 ## Prerequisites
 1. PayPal Business Account
@@ -16,7 +16,7 @@ This guide explains how to set up PayPal payment integration for subscription pa
 3. Navigate to **Dashboard** > **My Apps & Credentials**
 4. Click **Create App**
 5. Fill in:
-   - **App Name**: Clinic Management System
+   - **App Name**: MyClinicSoft
    - **Merchant**: Your business account
    - **Features**: Checkout
 6. Click **Create App**

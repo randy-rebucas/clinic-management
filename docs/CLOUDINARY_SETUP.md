@@ -1,6 +1,6 @@
 # Cloudinary Setup Guide
 
-This guide explains how to set up Cloudinary for file storage in the clinic management system.
+This guide explains how to set up Cloudinary for file storage in MyClinicSoft.
 
 ## Overview
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import PublicLayout from "@/components/PublicLayout";
 
 export const metadata: Metadata = {
-  title: "ClinicHub - Healthcare Management",
+  title: "MyClinicSoft - Healthcare Management",
   description: "Access healthcare services and manage your appointments",
 };
 
