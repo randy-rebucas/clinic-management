@@ -193,7 +193,7 @@ export default function AdminDashboard() {
   const quickActions = [
     {
       title: 'Manage Users',
-      href: '/admin/users',
+      href: '/users',
       description: 'Manage user accounts and roles',
       iconColor: 'blue',
       icon: (
@@ -204,7 +204,7 @@ export default function AdminDashboard() {
     },
     {
       title: 'Roles & Permissions',
-      href: '/admin/roles',
+      href: '/roles',
       description: 'Configure roles and permissions',
       iconColor: 'purple',
       icon: (

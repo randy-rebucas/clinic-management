@@ -47,14 +47,14 @@ All pages in `app/(app)` follow this pattern:
 - ✅ `/inventory/[id]` - Uses `InventoryDetailClient` → `/api/inventory/[id]` (tenant-scoped)
 
 ### Admin Pages
-- ✅ `/admin/users` - Uses `UserRoleManagementClient` → `/api/users` (tenant-scoped)
-- ✅ `/admin/staff` - Uses `StaffManagementClient` → `/api/staff` (tenant-scoped)
-- ✅ `/admin/services` - Uses `ServicesManagementClient` → `/api/services` (tenant-scoped)
-- ✅ `/admin/medicines` - Uses `MedicinesManagementClient` → `/api/medicines` (tenant-scoped)
-- ✅ `/admin/rooms` - Uses `RoomsManagementClient` → `/api/rooms` (tenant-scoped)
-- ✅ `/admin/roles` - Uses `RolesManagementClient` → `/api/roles` (tenant-scoped)
-- ✅ `/admin/medical-reps` - Uses `MedicalRepsManagementClient` → `/api/medical-representatives` (tenant-scoped)
-- ✅ `/admin/audit-logs` - Uses `AuditLogsClient` → `/api/audit-logs` (tenant-scoped)
+- ✅ `/users` - Uses `UserRoleManagementClient` → `/api/users` (tenant-scoped)
+- ✅ `/staff` - Uses `StaffManagementClient` → `/api/staff` (tenant-scoped)
+- ✅ `/services` - Uses `ServicesManagementClient` → `/api/services` (tenant-scoped)
+- ✅ `/medicines` - Uses `MedicinesManagementClient` → `/api/medicines` (tenant-scoped)
+- ✅ `/rooms` - Uses `RoomsManagementClient` → `/api/rooms` (tenant-scoped)
+- ✅ `/roles` - Uses `RolesManagementClient` → `/api/roles` (tenant-scoped)
+- ✅ `/medical-reps` - Uses `MedicalRepsManagementClient` → `/api/medical-representatives` (tenant-scoped)
+- ✅ `/audit-logs` - Uses `AuditLogsClient` → `/api/audit-logs` (tenant-scoped)
 
 ### New/Create Pages
 - ✅ `/appointments/new` - Uses `AppointmentsPageClient` (form mode) → `/api/appointments` (tenant-scoped)

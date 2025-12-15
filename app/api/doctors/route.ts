@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
+import Specialization from '@/models/Specialization';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
@@ -74,6 +75,53 @@ export async function POST(request: NextRequest) {
     // Ensure doctor is created with tenantId
     if (tenantId && !body.tenantId) {
       body.tenantId = new Types.ObjectId(tenantId);
+    }
+    
+    // Handle specialization: convert specialization string to specializationId
+    if (body.specialization && !body.specializationId) {
+      const specializationName = body.specialization.trim();
+      
+      if (!specializationName) {
+        return NextResponse.json(
+          { success: false, error: 'Specialization is required' },
+          { status: 400 }
+        );
+      }
+      
+      // Find or create specialization for this tenant
+      let specialization;
+      const specializationQuery: any = { name: specializationName };
+      if (tenantId) {
+        specializationQuery.tenantId = new Types.ObjectId(tenantId);
+      } else {
+        specializationQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      }
+      
+      specialization = await Specialization.findOne(specializationQuery);
+      
+      if (!specialization) {
+        // Create new specialization if it doesn't exist
+        const newSpecializationData: any = {
+          name: specializationName,
+          active: true,
+        };
+        if (tenantId) {
+          newSpecializationData.tenantId = new Types.ObjectId(tenantId);
+        }
+        specialization = await Specialization.create(newSpecializationData);
+      }
+      
+      // Replace specialization string with specializationId
+      body.specializationId = specialization._id;
+      delete body.specialization;
+    }
+    
+    // Validate that specializationId exists
+    if (!body.specializationId) {
+      return NextResponse.json(
+        { success: false, error: 'Specialization is required' },
+        { status: 400 }
+      );
     }
     
     const doctor = await Doctor.create(body);

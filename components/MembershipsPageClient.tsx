@@ -59,6 +59,8 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
   const [showPointsModal, setShowPointsModal] = useState(false);
   const [pointsForm, setPointsForm] = useState({ type: 'earn', points: 0, description: '' });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [currentUserMembership, setCurrentUserMembership] = useState<Membership | null>(null);
+  const [loadingUserMembership, setLoadingUserMembership] = useState(true);
 
   const fetchMemberships = useCallback(async () => {
     try {
@@ -71,7 +73,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
       const response = await fetch(`/api/memberships?${params.toString()}`);
       if (response.ok) {
         const data = await response.json();
-        setMemberships(Array.isArray(data) ? data : data.memberships || []);
+        setMemberships(data.success ? (Array.isArray(data.data) ? data.data : []) : []);
       }
     } catch (error) {
       console.error('Error fetching memberships:', error);
@@ -80,16 +82,78 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
     }
   }, [tierFilter, statusFilter, search]);
 
+  const fetchCurrentUserMembership = useCallback(async () => {
+    try {
+      setLoadingUserMembership(true);
+      // First, get the current user's email
+      const userRes = await fetch('/api/user/me');
+      if (!userRes.ok) {
+        setLoadingUserMembership(false);
+        return;
+      }
+      
+      const userData = await userRes.json();
+      if (!userData.success || !userData.user?.email) {
+        setLoadingUserMembership(false);
+        return;
+      }
+
+      // Find patient by email using search parameter
+      const patientRes = await fetch(`/api/patients?search=${encodeURIComponent(userData.user.email)}`);
+      if (!patientRes.ok) {
+        setLoadingUserMembership(false);
+        return;
+      }
+
+      const patientData = await patientRes.json();
+      if (!patientData.success || !patientData.data || patientData.data.length === 0) {
+        setLoadingUserMembership(false);
+        return;
+      }
+
+      const patient = Array.isArray(patientData.data) ? patientData.data[0] : patientData.data;
+      const patientId = patient._id || patient.id;
+
+      // Fetch membership for this patient
+      const membershipRes = await fetch(`/api/memberships?patientId=${patientId}&status=active`);
+      if (membershipRes.ok) {
+        const membershipData = await membershipRes.json();
+        if (membershipData.success && membershipData.data) {
+          const memberships = Array.isArray(membershipData.data) ? membershipData.data : [membershipData.data];
+          if (memberships.length > 0) {
+            // Ensure we have the full membership object with all fields
+            const membership = memberships[0];
+            setCurrentUserMembership(membership);
+          } else {
+            setCurrentUserMembership(null);
+          }
+        } else {
+          setCurrentUserMembership(null);
+        }
+      } else {
+        setCurrentUserMembership(null);
+      }
+    } catch (error) {
+      console.error('Error fetching current user membership:', error);
+    } finally {
+      setLoadingUserMembership(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchMemberships();
   }, [fetchMemberships]);
+
+  useEffect(() => {
+    fetchCurrentUserMembership();
+  }, []);
 
   const handleViewDetails = async (membership: Membership) => {
     try {
       const response = await fetch(`/api/memberships/${membership._id}`);
       if (response.ok) {
         const data = await response.json();
-        setSelectedMembership(data);
+        setSelectedMembership(data.success ? data.data : data);
         setShowModal(true);
       }
     } catch (error) {
@@ -108,17 +172,33 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
       });
 
       if (response.ok) {
+        const data = await response.json();
+        // Update the current user membership if it's the one being updated
+        if (currentUserMembership && selectedMembership && currentUserMembership._id === selectedMembership._id) {
+          // Fetch updated membership details
+          const updatedRes = await fetch(`/api/memberships/${selectedMembership._id}`);
+          if (updatedRes.ok) {
+            const updatedData = await updatedRes.json();
+            if (updatedData.success && updatedData.data) {
+              setCurrentUserMembership(updatedData.data);
+            }
+          }
+        }
         setMessage({ type: 'success', text: 'Points updated successfully' });
+        setTimeout(() => setMessage(null), 5000);
         setShowPointsModal(false);
         setPointsForm({ type: 'earn', points: 0, description: '' });
         fetchMemberships();
+        fetchCurrentUserMembership(); // Refresh current user's membership
         handleViewDetails(selectedMembership);
       } else {
         const data = await response.json();
         setMessage({ type: 'error', text: data.error || 'Failed to update points' });
+        setTimeout(() => setMessage(null), 5000);
       }
     } catch (error) {
       setMessage({ type: 'error', text: 'An error occurred' });
+      setTimeout(() => setMessage(null), 5000);
     }
   };
 
@@ -130,15 +210,27 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
         body: JSON.stringify({ tier: newTier }),
       });
 
-      if (response.ok) {
+      const data = await response.json();
+      
+      if (response.ok && data.success && data.data) {
+        // Immediately update the current user membership if it's the one being upgraded
+        if (currentUserMembership && currentUserMembership._id === membership._id) {
+          setCurrentUserMembership(data.data);
+        }
         setMessage({ type: 'success', text: 'Membership tier updated successfully' });
+        setTimeout(() => setMessage(null), 5000);
+        // Refresh the memberships list
         fetchMemberships();
+        // Also refresh current user membership to ensure we have the latest data
+        await fetchCurrentUserMembership();
       } else {
-        const data = await response.json();
         setMessage({ type: 'error', text: data.error || 'Failed to update tier' });
+        setTimeout(() => setMessage(null), 5000);
       }
     } catch (error) {
-      setMessage({ type: 'error', text: 'An error occurred' });
+      console.error('Error upgrading tier:', error);
+      setMessage({ type: 'error', text: 'An error occurred while upgrading tier' });
+      setTimeout(() => setMessage(null), 5000);
     }
   };
 
@@ -240,6 +332,108 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
               </div>
             </div>
           </div>
+
+          {/* Current User's Active Membership */}
+          {!loadingUserMembership && currentUserMembership && (
+            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-2 border-emerald-200 rounded-xl shadow-lg p-6 sm:p-8">
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl shadow-md">
+                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Your Active Membership</h2>
+                    <p className="text-sm text-gray-600 mt-1">Membership #{currentUserMembership.membershipNumber}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedMembership(currentUserMembership);
+                    setShowModal(true);
+                  }}
+                  className="px-4 py-2 text-sm font-semibold bg-white text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors border border-emerald-200"
+                >
+                  View Details
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white rounded-lg p-4 border border-emerald-200">
+                  <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Tier</div>
+                  <div className="text-lg font-bold text-gray-900">{getTierBadge(currentUserMembership.tier)}</div>
+                </div>
+                <div className="bg-white rounded-lg p-4 border border-emerald-200">
+                  <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Current Points</div>
+                  <div className="text-2xl font-bold text-emerald-600">{currentUserMembership.points.toLocaleString()}</div>
+                </div>
+                <div className="bg-white rounded-lg p-4 border border-emerald-200">
+                  <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Discount</div>
+                  <div className="text-2xl font-bold text-green-600">{currentUserMembership.discountPercentage}%</div>
+                </div>
+                <div className="bg-white rounded-lg p-4 border border-emerald-200">
+                  <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Status</div>
+                  <div className="text-lg font-bold">{getStatusBadge(currentUserMembership.status)}</div>
+                </div>
+              </div>
+
+              {/* Upgrade Section */}
+              {currentUserMembership.tier !== 'platinum' && (
+                <div className="bg-white rounded-lg p-6 border border-emerald-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900 mb-1">Upgrade Your Membership</h3>
+                      <p className="text-sm text-gray-600">Unlock more benefits and higher discounts</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {TIERS.filter(tier => {
+                      const currentTierIndex = TIERS.findIndex(t => t.value === currentUserMembership.tier);
+                      const tierIndex = TIERS.findIndex(t => t.value === tier.value);
+                      return tierIndex > currentTierIndex;
+                    }).map(tier => (
+                      <div key={tier.value} className="border-2 border-gray-200 rounded-lg p-4 hover:border-emerald-300 transition-colors">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className={`px-3 py-1 text-sm font-semibold rounded-full ${tier.color}`}>
+                            {tier.label}
+                          </span>
+                          <span className="text-sm font-bold text-gray-700">{tier.discount}% OFF</span>
+                        </div>
+                        <div className="space-y-2 mb-4">
+                          <div className="text-xs text-gray-600">• Higher discount rate</div>
+                          <div className="text-xs text-gray-600">• Priority booking</div>
+                          <div className="text-xs text-gray-600">• Exclusive benefits</div>
+                        </div>
+                        <button
+                          onClick={() => handleUpgradeTier(currentUserMembership, tier.value)}
+                          className="w-full px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold text-sm shadow-md"
+                        >
+                          Upgrade to {tier.label}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {currentUserMembership.tier === 'platinum' && (
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-6 border border-purple-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-500 rounded-lg">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">You're at the Highest Tier!</h3>
+                      <p className="text-sm text-gray-600">You're already enjoying all the premium benefits of Platinum membership.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Quick Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
