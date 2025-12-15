@@ -70,19 +70,27 @@ export default function PublicBookingClient() {
       if (typeof window !== 'undefined') {
         const hostname = window.location.hostname;
         const parts = hostname.split('.');
-        // If hostname has more than 2 parts (e.g., clinic.localhost or clinic.example.com), we have a subdomain
-        const hasSubdomain = parts.length > 2 || (parts.length === 2 && parts[0] !== 'localhost' && parts[0] !== 'www');
+        // Extract potential subdomain (first part)
+        const firstPart = parts[0]?.toLowerCase();
+        // 'www' is not a subdomain - treat it as root domain
+        const isWww = firstPart === 'www';
+        // If hostname has more than 2 parts AND first part is not 'www', we have a subdomain
+        // Or if 2 parts and first is not 'localhost' or 'www'
+        const hasSubdomain = !isWww && (
+          (parts.length > 2) || 
+          (parts.length === 2 && firstPart !== 'localhost')
+        );
         setHasSubdomain(hasSubdomain);
         
         if (!hasSubdomain) {
-          // No subdomain, fetch available clinics
+          // No subdomain (including www), fetch available clinics
           fetchClinics();
           setShowClinicSelection(true);
           setLoading(false);
         } else {
           // Has subdomain, get tenant info and fetch doctors
           try {
-            const subdomain = parts[0];
+            const subdomain = firstPart;
             const res = await fetch(`/api/tenants/public?subdomain=${subdomain}`);
             if (res.ok) {
               const data = await res.json();

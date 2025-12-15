@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
     const subdomain = searchParams.get('subdomain');
 
     // If subdomain is provided, return that specific tenant
-    if (subdomain) {
+    // Note: 'www' is not a valid subdomain - treat it as root domain
+    if (subdomain && subdomain.toLowerCase() !== 'www') {
       const tenant = await Tenant.findOne({
         subdomain: subdomain.toLowerCase(),
         status: 'active'
@@ -46,6 +47,8 @@ export async function GET(request: NextRequest) {
         },
       });
     }
+    
+    // If subdomain is 'www' or empty, treat as root domain and return all tenants
 
     // Get all active tenants
     const tenants = await Tenant.find({ 
