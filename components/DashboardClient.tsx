@@ -356,19 +356,22 @@ export default function DashboardClient() {
           </div>
 
           {/* Stats Grid */}
-          <div className="flex gap-3 flex-wrap">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
             {statCards.map((card) => (
-              <Link key={card.title} href={card.href} className="flex-1 min-w-[250px]">
-                <div className="bg-white border border-gray-200 rounded-lg p-4 relative overflow-hidden hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="flex-1">
-                      <div className="text-xs text-gray-500 mb-1">{card.title}</div>
-                      <div className="text-2xl font-bold">{card.value}</div>
+              <Link key={card.title} href={card.href} className="min-w-0">
+                <div className="bg-white border border-gray-200 rounded-lg p-4 h-full relative overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+                  <div className="flex justify-between items-start gap-3 flex-1">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-gray-500 mb-1.5">{card.title}</div>
+                      <div className="text-2xl font-bold leading-tight mb-0.5">{card.value}</div>
                       {card.subtitle && (
                         <div className="text-xs text-gray-500 mt-1">{card.subtitle}</div>
                       )}
+                      {!card.subtitle && (
+                        <div className="h-4"></div>
+                      )}
                     </div>
-                    <div className="rounded-lg p-2 bg-gray-100">
+                    <div className="rounded-lg p-2 bg-gray-100 flex-shrink-0">
                       <div className={`rounded-lg p-1.5 flex items-center justify-center ${getIconBgColor(card.iconColor)} text-white`}>
                         {card.icon}
                       </div>

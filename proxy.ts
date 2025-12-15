@@ -25,7 +25,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/signup', '/onboard', '/book', '/patient/login', '/tenant-onboard', '/subscription'];
+  const publicRoutes = ['/login', '/signup', '/onboard', '/book', '/patient/login', '/tenant-onboard', '/subscription', '/tenant-not-found'];
   const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + '/'));
 
   // If no subdomain, allow normal access (root domain)
@@ -49,17 +49,24 @@ export async function proxy(request: NextRequest) {
   const tenant = await verifyTenant(subdomain);
   
   if (!tenant) {
-    // Tenant not found or inactive
-    const response = NextResponse.redirect(new URL('/', request.url));
+    // Tenant not found or inactive - redirect to tenant-not-found page
+    // Only redirect to tenant-not-found if not already on that page
+    if (!pathname.startsWith('/tenant-not-found')) {
+      const response = NextResponse.redirect(new URL('/tenant-not-found', request.url));
+      addSecurityHeaders(request, response);
+      return response;
+    }
+    // If already on tenant-not-found page, allow it to render
+    const response = NextResponse.next();
     addSecurityHeaders(request, response);
     return response;
   }
 
   // Check subscription status and redirect to subscription page if expired
   // Allow access to subscription page, login, and public routes
-  const subscriptionRoutes = ['/subscription', '/login', '/signup', '/tenant-onboard'];
+  const subscriptionRoutes = ['/subscription', '/login', '/signup', '/tenant-onboard', '/tenant-not-found'];
   const isSubscriptionRoute = subscriptionRoutes.some((route) => pathname === route || pathname.startsWith(route + '/'));
-  
+
   if (!isSubscriptionRoute && !isPublicRoute) {
     const needsRedirect = await requiresSubscriptionRedirect(tenant._id);
     if (needsRedirect) {

@@ -35,7 +35,89 @@ export async function requireRole(allowedRoles: ('admin' | 'doctor' | 'nurse' | 
  * @returns SessionPayload if authenticated and is admin
  */
 export async function requireAdmin() {
-  return requireRole(['admin']);
+  const session = await requireAuth();
+  
+  // Check session role first (fast check)
+  if (session.role === 'admin') {
+    console.log('✅ Admin access granted via session role');
+    return session;
+  }
+  
+  // If session role is not admin, double-check against database
+  // This handles cases where user role was updated but session wasn't refreshed
+  try {
+    await connectDB();
+    
+    // Register models to ensure they're available
+    const { registerAllModels } = await import('@/models');
+    registerAllModels();
+    
+    const User = (await import('@/models/User')).default;
+    const Role = (await import('@/models/Role')).default;
+    
+    // Get user with populated role
+    const user = await User.findById(session.userId)
+      .populate('role', 'name')
+      .lean();
+    
+    if (!user) {
+      console.log('❌ User not found in database');
+      redirect('/dashboard');
+    }
+    
+    // Extract role name from various possible formats
+    let roleName: string | null = null;
+    
+    if ((user as any).role) {
+      const role = (user as any).role;
+      
+      // Case 1: Role is populated object with name property
+      if (typeof role === 'object' && role !== null && 'name' in role) {
+        roleName = role.name;
+      }
+      // Case 2: Role is a string (legacy or direct assignment)
+      else if (typeof role === 'string') {
+        roleName = role;
+      }
+      // Case 3: Role is an ObjectId - need to look it up
+      else if (role && typeof role.toString === 'function') {
+        try {
+          const roleDoc = await Role.findById(role).select('name').lean();
+          if (roleDoc && !Array.isArray(roleDoc)) {
+            roleName = (roleDoc as any).name;
+          }
+        } catch (lookupError) {
+          console.error('Error looking up role by ID:', lookupError);
+        }
+      }
+    }
+    
+    console.log('🔍 Role check - session.role:', session.role, 'database roleName:', roleName);
+    
+    // Check if role name is 'admin'
+    if (roleName === 'admin') {
+      console.log('✅ Admin access granted via database role check');
+      return session;
+    }
+    
+    // Fallback: Use getUser() which has more robust role handling
+    const { getUser } = await import('@/app/lib/dal');
+    const userFromGetUser = await getUser();
+    
+    if (userFromGetUser && userFromGetUser.role === 'admin') {
+      console.log('✅ Admin access granted via getUser() fallback');
+      return session;
+    }
+    
+    console.log('❌ User is not admin - session.role:', session.role, 'userFromGetUser.role:', userFromGetUser?.role);
+  } catch (error) {
+    console.error('❌ Error checking user role in requireAdmin:', error);
+    // Don't redirect on error - let it fall through to show the error
+  }
+  
+  // Not admin - redirect to dashboard
+  console.log('❌ User is not admin - redirecting to dashboard');
+  redirect('/dashboard');
 }
 
 /**

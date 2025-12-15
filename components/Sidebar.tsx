@@ -68,10 +68,13 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
     return acc;
   }, {} as Record<string, NavItem[]>);
 
-  // If no user, don't render sidebar (will redirect to login)
-  if (!user) {
+  // If no nav items, don't render sidebar
+  if (filteredItems.length === 0) {
     return null;
   }
+
+  // If no user but we have nav items (like dashboard), still render sidebar
+  // The dashboard will redirect to login if needed
 
   return (
     <div
@@ -96,6 +99,16 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
             </div>
           </Link>
         </div>
+
+        {/* Show message if no user */}
+        {!user && (
+          <div className="px-3 py-2 border-b border-gray-200 bg-blue-50">
+            <div className="text-xs text-blue-700">
+              <p className="font-semibold mb-1">Not logged in</p>
+              <p>Please log in to access all features</p>
+            </div>
+          </div>
+        )}
 
         {/* Navigation Items */}
         <div className="flex-1 overflow-y-auto py-3 px-2">

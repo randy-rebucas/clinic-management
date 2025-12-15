@@ -193,12 +193,16 @@ const navItems = [
 
 export default async function Navigation() {
   let user: { _id: string; name: string; role: string; [key: string]: any } | null = null;
+  let navError: Error | null = null;
+  
   try {
     user = await getUser() as { _id: string; name: string; role: string; [key: string]: any } | null;
   } catch (error) {
     console.error('Error getting user in Navigation:', error);
+    navError = error instanceof Error ? error : new Error('Unknown error getting user');
     // Continue without user - will show login button
   }
+
 
   // Filter navigation items based on permissions
   const filteredNavItems = [];
@@ -210,7 +214,16 @@ export default async function Navigation() {
       role: user.role as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant',
     };
 
+    // Tenant owner (admin) has access to all menus
+    const isAdmin = user.role === 'admin';
+
     for (const item of navItems) {
+      // If user is admin, show all items
+      if (isAdmin) {
+        filteredNavItems.push(item);
+        continue;
+      }
+
       // Check admin-only items
       if (item.adminOnly && user.role !== 'admin') {
         continue;
@@ -238,5 +251,13 @@ export default async function Navigation() {
 
   // Ensure user is a plain object before passing to Sidebar
   const safeUser = user ? JSON.parse(JSON.stringify(user)) : null;
+  
+  // Always render Sidebar if we have nav items, even if there's an error or no user
+  // This ensures navigation is always visible
+  if (filteredNavItems.length === 0 && navError) {
+    // If we have an error and no items, at least show dashboard
+    filteredNavItems.push(navItems[0]);
+  }
+  
   return <Sidebar navItems={filteredNavItems} user={safeUser} />;
 }

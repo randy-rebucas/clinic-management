@@ -6,6 +6,7 @@ import Role from '@/models/Role';
 import Permission from '@/models/Permission';
 import Medicine from '@/models/Medicine';
 import Settings from '@/models/Settings';
+import Admin from '@/models/Admin';
 import bcrypt from 'bcryptjs';
 import { DEFAULT_ROLE_PERMISSIONS } from '@/lib/permissions';
 
@@ -259,15 +260,120 @@ export async function POST(request: NextRequest) {
       throw new Error('Admin role not found after creation');
     }
 
-    // Create admin user
-    const hashedPassword = await bcrypt.hash(admin.password, 10);
-    const adminUser = await User.create({
-      name: admin.name.trim(),
-      email: admin.email.toLowerCase().trim(),
-      password: hashedPassword,
-      role: adminRole._id,
+    console.log('Creating admin profile and user...');
+    
+    // Validate admin password
+    if (!admin.password || admin.password.length < 8) {
+      throw new Error('Admin password must be at least 8 characters long');
+    }
+
+    // Split admin name into first and last name
+    const nameParts = admin.name.trim().split(/\s+/);
+    const firstName = nameParts[0] || 'Admin';
+    const lastName = nameParts.slice(1).join(' ') || 'User';
+
+    // Check if Admin already exists (from Tenant post-save hook)
+    let adminProfile = await Admin.findOne({ 
       tenantId: tenant._id,
-      status: 'active',
+      email: admin.email.toLowerCase().trim(),
+    });
+
+    if (!adminProfile) {
+      // Create Admin profile first
+      console.log('Creating Admin profile...');
+      try {
+        adminProfile = await Admin.create({
+          tenantId: tenant._id,
+          firstName: firstName,
+          lastName: lastName,
+          email: admin.email.toLowerCase().trim(),
+          phone: admin.phone || undefined,
+          department: 'Administration',
+          accessLevel: 'full',
+          status: 'active',
+        });
+        console.log('✅ Admin profile created:', adminProfile._id.toString());
+      } catch (adminError: any) {
+        console.error('❌ Error creating Admin profile:', adminError);
+        throw new Error(`Failed to create Admin profile: ${adminError.message}`);
+      }
+    } else {
+      console.log('ℹ️  Admin profile already exists:', adminProfile._id.toString());
+    }
+
+    // Check if User already exists (might have been created by Admin post-save hook)
+    let adminUser = await User.findOne({ 
+      email: admin.email.toLowerCase().trim(),
+    });
+
+    if (!adminUser) {
+      // Create User manually with the provided password
+      console.log('Creating User account...');
+      try {
+        const hashedPassword = await bcrypt.hash(admin.password, 10);
+        adminUser = await User.create({
+          name: admin.name.trim(),
+          email: admin.email.toLowerCase().trim(),
+          password: hashedPassword,
+          role: adminRole._id,
+          tenantId: tenant._id,
+          adminProfile: adminProfile._id,
+          status: 'active',
+        });
+        console.log('✅ User created successfully:', {
+          id: adminUser._id.toString(),
+          email: adminUser.email,
+          role: adminRole.name,
+        });
+      } catch (userError: any) {
+        console.error('❌ Error creating User:', userError);
+        console.error('Error details:', {
+          message: userError.message,
+          name: userError.name,
+          code: userError.code,
+          keyPattern: userError.keyPattern,
+          keyValue: userError.keyValue,
+        });
+        
+        // If it's a duplicate key error, provide a better message
+        if (userError.code === 11000) {
+          const field = Object.keys(userError.keyPattern || {})[0] || 'field';
+          throw new Error(`User with this ${field} already exists`);
+        }
+        
+        throw new Error(`Failed to create User: ${userError.message}`);
+      }
+    } else {
+      // User exists, update password and link to admin profile if needed
+      console.log('ℹ️  User already exists, updating password and profile link...');
+      const hashedPassword = await bcrypt.hash(admin.password, 10);
+      adminUser.password = hashedPassword;
+      adminUser.role = adminRole._id;
+      adminUser.tenantId = tenant._id;
+      adminUser.adminProfile = adminProfile._id;
+      adminUser.status = 'active';
+      await adminUser.save();
+      console.log('✅ User updated successfully');
+    }
+
+    // Verify user was created/updated
+    if (!adminUser || !adminUser._id) {
+      throw new Error('User creation/update failed - user object is invalid');
+    }
+
+    // Verify user can be retrieved
+    const verifyUser = await User.findById(adminUser._id)
+      .populate('role', 'name')
+      .populate('adminProfile');
+    if (!verifyUser) {
+      throw new Error('User was created but cannot be retrieved from database');
+    }
+    
+    console.log('✅ User verified in database:', {
+      id: verifyUser._id.toString(),
+      email: verifyUser.email,
+      role: (verifyUser as any).role?.name,
+      hasAdminProfile: !!(verifyUser as any).adminProfile,
     });
 
     // Create medicines

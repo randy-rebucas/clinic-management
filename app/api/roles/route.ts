@@ -16,10 +16,53 @@ export async function GET(request: NextRequest) {
     return unauthorizedResponse();
   }
 
+  // Debug logging
+  console.log('=== ROLES API DEBUG ===');
+  console.log('Session role:', session.role);
+  console.log('Session role type:', typeof session.role);
+  console.log('Is admin check:', session.role === 'admin');
+  
   // Only admin can view roles
-  if (session.role !== 'admin') {
+  let isAdmin = session.role === 'admin';
+  
+  if (!isAdmin) {
+    // Double-check against database (handles session role mismatch)
+    try {
+      const User = (await import('@/models/User')).default;
+      const user = await User.findById(session.userId)
+        .populate('role', 'name')
+        .lean();
+      
+      if (user && (user as any).role) {
+        const roleName = typeof (user as any).role === 'object' && 'name' in (user as any).role
+          ? (user as any).role.name
+          : null;
+        
+        console.log('Database role check:', roleName);
+        
+        if (roleName === 'admin') {
+          console.log('⚠️  Session role mismatch - allowing access based on DB role');
+          isAdmin = true; // Allow access if user is admin in database
+        } else {
+          console.log('❌ User is not admin in database');
+          return forbiddenResponse('Admin access required');
+        }
+      } else {
+        console.log('❌ Could not verify user role from database');
+        return forbiddenResponse('Admin access required');
+      }
+    } catch (error) {
+      console.error('Error checking user role:', error);
+      return forbiddenResponse('Admin access required');
+    }
+  }
+  
+  if (!isAdmin) {
     return forbiddenResponse('Admin access required');
   }
+  
+  console.log('✅ Admin access granted');
+  console.log('======================');
 
   try {
     await connectDB();
