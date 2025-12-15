@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { extractSubdomain, getRootDomain, verifyTenant } from '@/lib/tenant';
 import { requiresSubscriptionRedirect } from '@/lib/subscription';
+import { SUPER_ADMIN_CONFIG } from '@/lib/super-admin';
 
 /**
  * Proxy middleware for multi-tenant support and security headers
@@ -20,6 +21,83 @@ export async function proxy(request: NextRequest) {
     pathname.match(/\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/)
   ) {
     const response = NextResponse.next();
+    addSecurityHeaders(request, response);
+    return response;
+  }
+
+  // Handle backoffice subdomain routing (super-admin)
+  // Check for backoffice subdomain - handle both 'backoffice.localhost' and 'backoffice.localhost:3000'
+  const isBackofficeSubdomain = 
+    subdomain === SUPER_ADMIN_CONFIG.backofficeSubdomain || 
+    host === `${SUPER_ADMIN_CONFIG.backofficeSubdomain}.localhost` ||
+    host === `${SUPER_ADMIN_CONFIG.backofficeSubdomain}.localhost:3000` ||
+    host.startsWith(`${SUPER_ADMIN_CONFIG.backofficeSubdomain}.`) ||
+    host.startsWith(`${SUPER_ADMIN_CONFIG.backofficeSubdomain}:`);
+  
+  if (isBackofficeSubdomain) {
+    // On backoffice subdomain, rewrite paths without /backoffice prefix to /backoffice/* internally
+    // e.g., /signin -> /backoffice/signin, /overview -> /backoffice/overview
+    const backofficeRoutes = ['/signin', '/overview', '/tenants', '/system'];
+    const isBackofficeRoute = backofficeRoutes.some(route => 
+      pathname === route || pathname.startsWith(route + '/')
+    );
+    
+    if (isBackofficeRoute) {
+      // Rewrite to internal /backoffice/* path
+      // Use rewrite to serve the content without changing the URL in the browser
+      const rewritePath = `/backoffice${pathname}`;
+      const rewriteUrl = new URL(rewritePath, request.url);
+      const response = NextResponse.rewrite(rewriteUrl);
+      addSecurityHeaders(request, response);
+      return response;
+    }
+    
+    // Redirect root path to overview
+    if (pathname === '/') {
+      const url = request.nextUrl.clone();
+      url.pathname = '/overview';
+      const response = NextResponse.redirect(url);
+      addSecurityHeaders(request, response);
+      return response;
+    }
+    
+    // If accessing /backoffice/* directly on backoffice subdomain, rewrite to remove prefix
+    if (pathname.startsWith('/backoffice')) {
+      const newPathname = pathname.replace(/^\/backoffice/, '') || '/overview';
+      const url = request.nextUrl.clone();
+      url.pathname = newPathname;
+      const response = NextResponse.redirect(url);
+      addSecurityHeaders(request, response);
+      return response;
+    }
+    
+    // Block other routes on backoffice subdomain, redirect to overview
+    const url = request.nextUrl.clone();
+    url.pathname = '/overview';
+    const response = NextResponse.redirect(url);
+    addSecurityHeaders(request, response);
+    return response;
+  }
+  
+  // If it's a backoffice route but not on backoffice subdomain, redirect in production
+  // In development, allow access for easier testing
+  const backofficeRoutes = ['/signin', '/overview', '/tenants', '/system'];
+  const isBackofficeRoute = backofficeRoutes.some(route => 
+    pathname === route || pathname.startsWith(route + '/')
+  );
+  
+  if (isBackofficeRoute && !isBackofficeSubdomain) {
+    if (process.env.NODE_ENV === 'production') {
+      const url = request.nextUrl.clone();
+      url.host = `${SUPER_ADMIN_CONFIG.backofficeSubdomain}.${rootDomain}`;
+      const response = NextResponse.redirect(url);
+      addSecurityHeaders(request, response);
+      return response;
+    }
+    // In development, rewrite to backoffice routes for easier testing
+    const rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = `/backoffice${pathname}`;
+    const response = NextResponse.rewrite(rewriteUrl);
     addSecurityHeaders(request, response);
     return response;
   }

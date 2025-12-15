@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Role from '@/models/Role';
 import User from '@/models/User';
 import { DEFAULT_ROLE_PERMISSIONS } from '@/lib/permissions';
+import { SUPER_ADMIN_CONFIG } from '@/lib/super-admin';
 import bcrypt from 'bcryptjs';
 
 interface SetupData {
@@ -152,6 +153,11 @@ export async function POST(request: NextRequest) {
         rolesCreated: roles.length,
         permissionsCreated: permissionsCount,
         settingsCreated,
+        superAdmin: {
+          note: 'Super-admin access is available at backoffice subdomain',
+          subdomain: `${SUPER_ADMIN_CONFIG.backofficeSubdomain}.${process.env.ROOT_DOMAIN || 'localhost:3000'}`,
+          email: SUPER_ADMIN_CONFIG.email,
+        },
       },
     }, { status: 201 });
   } catch (error: any) {

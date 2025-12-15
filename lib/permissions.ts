@@ -229,15 +229,20 @@ export async function getUserPermissions(userId: string | Types.ObjectId, tenant
 }
 
 /**
- * Check if user has permission for a resource and action
+ * Check if user has permission for a resource and action (tenant-scoped)
+ * @param userId User ID
+ * @param resource Resource name
+ * @param action Action name
+ * @param tenantId Optional tenant ID for tenant-scoped permission lookup
  */
 export async function hasPermission(
   userId: string | Types.ObjectId,
   resource: string,
-  action: string
+  action: string,
+  tenantId?: string | null
 ): Promise<boolean> {
   try {
-    const permissions = await getUserPermissions(userId);
+    const permissions = await getUserPermissions(userId, tenantId);
     
     for (const perm of permissions) {
       // Check if resource matches (wildcard or exact)
@@ -265,6 +270,11 @@ export function hasPermissionByRole(
   action: string,
   customPermissions?: PermissionData[]
 ): boolean {
+  // Super-admin has full access across all tenants
+  if (roleName === 'super-admin') {
+    return true;
+  }
+  
   // Admin has full access (tenant-scoped at API level)
   if (roleName === 'admin') {
     return true;

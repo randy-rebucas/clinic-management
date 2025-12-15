@@ -2,6 +2,7 @@ import { SignJWT, jwtVerify, JWTPayload } from 'jose';
 import { cookies } from 'next/headers';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
+import { SUPER_ADMIN_CONFIG, SuperAdminSessionPayload } from '@/lib/super-admin';
 
 const secretKey = process.env.SESSION_SECRET;
 // Only enforce SESSION_SECRET at runtime, not during build
@@ -281,4 +282,107 @@ export async function getUser() {
 export async function getCurrentUserId(): Promise<string | null> {
   const session = await verifySession();
   return session?.userId || null;
+}
+
+// ==================== Super Admin Session Management ====================
+
+/**
+ * Create super-admin session (separate from regular user sessions)
+ */
+export async function createSuperAdminSession(email: string): Promise<void> {
+  try {
+    const expiresAt = new Date(Date.now() + SUPER_ADMIN_CONFIG.sessionDuration);
+    const payload: SuperAdminSessionPayload = {
+      email,
+      role: 'super-admin',
+      expiresAt,
+      isSuperAdmin: true,
+    };
+    
+    const jwtPayload: JWTPayload = {
+      ...payload,
+      expiresAt: expiresAt.getTime() / 1000,
+    };
+    
+    const session = await new SignJWT(jwtPayload)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('7d')
+      .sign(encodedKey);
+
+    const cookieStore = await cookies();
+    cookieStore.set(SUPER_ADMIN_CONFIG.sessionCookieName, session, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      expires: expiresAt,
+      sameSite: 'lax',
+      path: '/',
+    });
+  } catch (error) {
+    console.error('Error creating super-admin session:', error);
+    throw error;
+  }
+}
+
+/**
+ * Verify super-admin session
+ */
+export async function verifySuperAdminSession(): Promise<SuperAdminSessionPayload | null> {
+  try {
+    const cookieStore = await cookies();
+    if (!cookieStore) {
+      return null;
+    }
+    
+    const cookie = cookieStore.get(SUPER_ADMIN_CONFIG.sessionCookieName)?.value;
+    
+    if (!cookie) {
+      return null;
+    }
+    
+    const { payload } = await jwtVerify(cookie, encodedKey, {
+      algorithms: ['HS256'],
+    });
+    
+    // Validate payload structure
+    if (
+      typeof payload !== 'object' ||
+      !payload ||
+      typeof (payload as any).email !== 'string' ||
+      (payload as any).role !== 'super-admin' ||
+      !(payload as any).isSuperAdmin
+    ) {
+      return null;
+    }
+    
+    const sessionPayload = payload as unknown as SuperAdminSessionPayload;
+    
+    // Check if session has expired
+    const expiresAt = typeof sessionPayload.expiresAt === 'number' 
+      ? new Date(sessionPayload.expiresAt * 1000) 
+      : new Date(sessionPayload.expiresAt);
+    
+    if (expiresAt && expiresAt < new Date()) {
+      // Session expired - delete it
+      await deleteSuperAdminSession();
+      return null;
+    }
+    
+    return sessionPayload;
+  } catch (error) {
+    // Silently fail - super-admin is not authenticated
+    return null;
+  }
+}
+
+/**
+ * Delete super-admin session
+ */
+export async function deleteSuperAdminSession(): Promise<void> {
+  try {
+    const cookieStore = await cookies();
+    cookieStore.delete(SUPER_ADMIN_CONFIG.sessionCookieName);
+  } catch (error) {
+    console.error('Error deleting super-admin session:', error);
+  }
 }

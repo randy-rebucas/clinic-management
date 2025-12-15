@@ -1,8 +1,16 @@
-import { getUser } from '@/app/lib/dal';
+import { getUser, verifySession } from '@/app/lib/dal';
 import { hasPermission } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
 import Sidebar from './Sidebar';
 
-// Navigation items - organized by category with permission requirements
+/**
+ * Navigation items - organized by category with permission requirements
+ * 
+ * All navigation items are tenant-scoped:
+ * - Permission checks use tenant-specific roles and permissions
+ * - Admin-only items are shown only to users with 'admin' role for their tenant
+ * - Permission requirements are checked against tenant-scoped permissions
+ */
 const navItems = [
   // Main Dashboard
   { 
@@ -192,31 +200,50 @@ const navItems = [
 ];
 
 export default async function Navigation() {
-  let user: { _id: string; name: string; role: string; [key: string]: any } | null = null;
+  let user: { _id: string; name: string; role: string; tenantId?: string; [key: string]: any } | null = null;
+  let tenantId: string | null = null;
+  
   try {
-    user = await getUser() as { _id: string; name: string; role: string; [key: string]: any } | null;
+    // Get session to retrieve tenantId
+    const session = await verifySession();
+    
+    // Get tenant context (fallback if session doesn't have tenantId)
+    const tenantContext = await getTenantContext();
+    tenantId = session?.tenantId || tenantContext.tenantId || null;
+    
+    // Get user data
+    user = await getUser() as { _id: string; name: string; role: string; tenantId?: string; [key: string]: any } | null;
+    
+    // Ensure tenantId is included in user object if available
+    if (user && tenantId) {
+      user.tenantId = tenantId;
+    }
   } catch (error) {
     console.error('Error getting user in Navigation:', error);
     // Continue without user - will show login button
   }
 
-  // Filter navigation items based on permissions
+  // Filter navigation items based on permissions (tenant-scoped)
   const filteredNavItems = [];
   
   if (user) {
-    // Create a session-like object for permission checking
+    // Create a session-like object for permission checking with tenant context
     const session = {
       userId: user._id,
-      role: user.role as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant',
+      role: user.role as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative',
+      roleId: (user as any).roleId,
+      tenantId: tenantId || undefined,
     };
 
     for (const item of navItems) {
       // Check admin-only items
+      // Note: Admin role is tenant-scoped - if user.role === 'admin', they are admin for their tenant
       if (item.adminOnly && user.role !== 'admin') {
         continue;
       }
 
-      // Check permission requirements
+      // Check permission requirements (tenant-scoped)
+      // The hasPermission function will use tenantId from session to check tenant-specific permissions
       if (item.requiresPermission) {
         const hasAccess = await hasPermission(
           session,

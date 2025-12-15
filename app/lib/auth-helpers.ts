@@ -1,4 +1,4 @@
-import { verifySession } from './dal';
+import { verifySession, verifySuperAdminSession } from './dal';
 import { redirect } from 'next/navigation';
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
@@ -86,7 +86,7 @@ export function isAdmin(session: { role: 'admin' | 'doctor' | 'nurse' | 'recepti
  * @returns true if user has permission
  */
 export async function hasPermission(
-  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative'; userId: string; roleId?: string } | null,
+  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative'; userId: string; roleId?: string; tenantId?: string } | null,
   resource: string,
   action: string
 ): Promise<boolean> {
@@ -96,12 +96,17 @@ export async function hasPermission(
   const { hasPermission: checkPermission, hasPermissionByRole } = await import('@/lib/permissions');
   
   // Use faster role-based check first (uses defaults)
+  // Note: Role-based check uses default permissions which are tenant-agnostic
+  // Custom permissions stored in database are tenant-scoped
   if (hasPermissionByRole(session.role, resource, action)) {
-    return true;
+    // If role-based check passes, still verify with tenant-scoped permissions
+    // This ensures custom tenant-specific permissions override defaults if needed
+    // Pass tenantId to checkPermission for tenant-scoped lookup
+    return await checkPermission(session.userId, resource, action, session.tenantId);
   }
   
-  // If role-based check fails, do full database check (for custom permissions)
-  return await checkPermission(session.userId, resource, action);
+  // If role-based check fails, do full database check (for custom permissions, tenant-scoped)
+  return await checkPermission(session.userId, resource, action, session.tenantId);
 }
 
 /**
@@ -146,5 +151,41 @@ export async function requirePermission(
   }
   
   return null;
+}
+
+// ==================== Super Admin Helpers ====================
+
+/**
+ * Require super-admin authentication - redirects to login if not authenticated
+ * @returns SuperAdminSessionPayload if authenticated
+ */
+export async function requireSuperAdmin() {
+  const session = await verifySuperAdminSession();
+  if (!session) {
+    redirect('/signin');
+  }
+  return session;
+}
+
+/**
+ * Check if current session is super-admin (for API routes)
+ */
+export async function isSuperAdmin(): Promise<boolean> {
+  const session = await verifySuperAdminSession();
+  return !!session;
+}
+
+/**
+ * Check if user has super-admin access (works with both regular and super-admin sessions)
+ */
+export async function hasSuperAdminAccess(): Promise<boolean> {
+  // Check super-admin session first
+  const superAdminSession = await verifySuperAdminSession();
+  if (superAdminSession) {
+    return true;
+  }
+  
+  // Super-admin has access to everything, so always return true if super-admin session exists
+  return false;
 }
 
