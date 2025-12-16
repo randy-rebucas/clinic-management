@@ -204,59 +204,75 @@ export default async function Navigation() {
     // Continue without user - will show login button
   }
 
-
   // Filter navigation items based on permissions
   const filteredNavItems = [];
   
-  if (user) {
-    // Create a session-like object for permission checking
-    const session = {
-      userId: user._id,
-      role: user.role as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant',
-    };
+  try {
+    if (user) {
+      // Create a session-like object for permission checking
+      const session = {
+        userId: user._id,
+        role: user.role as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant',
+      };
 
-    // Tenant owner (admin) has access to all menus
-    const isAdmin = user.role === 'admin';
+      // Tenant owner (admin) has access to all menus
+      const isAdmin = user.role === 'admin';
 
-    for (const item of navItems) {
-      // If user is admin, show all items
-      if (isAdmin) {
-        filteredNavItems.push(item);
-        continue;
-      }
-
-      // Check admin-only items
-      if (item.adminOnly && user.role !== 'admin') {
-        continue;
-      }
-
-      // Check permission requirements
-      if (item.requiresPermission) {
-        const hasAccess = await hasPermission(
-          session,
-          item.requiresPermission.resource,
-          item.requiresPermission.action
-        );
-        if (!hasAccess) {
+      for (const item of navItems) {
+        // If user is admin, show all items
+        if (isAdmin) {
+          filteredNavItems.push(item);
           continue;
         }
-      }
 
-      // If no permission requirement or permission check passed, include the item
-      filteredNavItems.push(item);
+        // Check admin-only items
+        if (item.adminOnly && user.role !== 'admin') {
+          continue;
+        }
+
+        // Check permission requirements
+        if (item.requiresPermission) {
+          try {
+            const hasAccess = await hasPermission(
+              session,
+              item.requiresPermission.resource,
+              item.requiresPermission.action
+            );
+            if (!hasAccess) {
+              continue;
+            }
+          } catch (permError) {
+            console.error('Error checking permission:', permError);
+            // On permission check error, exclude the item for safety
+            continue;
+          }
+        }
+
+        // If no permission requirement or permission check passed, include the item
+        filteredNavItems.push(item);
+      }
+    } else {
+      // If no user, only show dashboard (which will redirect to login)
+      filteredNavItems.push(navItems[0]);
     }
-  } else {
-    // If no user, only show dashboard (which will redirect to login)
+  } catch (error) {
+    console.error('Error filtering navigation items:', error);
+    // On error, at least show dashboard
     filteredNavItems.push(navItems[0]);
   }
 
   // Ensure user is a plain object before passing to Sidebar
-  const safeUser = user ? JSON.parse(JSON.stringify(user)) : null;
+  let safeUser = null;
+  try {
+    safeUser = user ? JSON.parse(JSON.stringify(user)) : null;
+  } catch (error) {
+    console.error('Error serializing user:', error);
+    // If serialization fails, pass user as-is (Sidebar should handle it)
+    safeUser = user;
+  }
   
-  // Always render Sidebar if we have nav items, even if there's an error or no user
-  // This ensures navigation is always visible
-  if (filteredNavItems.length === 0 && navError) {
-    // If we have an error and no items, at least show dashboard
+  // Always ensure we have at least one nav item (dashboard)
+  if (filteredNavItems.length === 0) {
     filteredNavItems.push(navItems[0]);
   }
   

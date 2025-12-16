@@ -68,9 +68,17 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
     return acc;
   }, {} as Record<string, NavItem[]>);
 
-  // If no nav items, don't render sidebar
+  // Always render sidebar with at least dashboard
+  // If no nav items, show dashboard as fallback
   if (filteredItems.length === 0) {
-    return null;
+    // Fallback: show at least dashboard
+    const dashboardItem: NavItem = {
+      href: '/',
+      label: 'Dashboard',
+      icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
+      category: 'Main'
+    };
+    filteredItems.push(dashboardItem);
   }
 
   // If no user but we have nav items (like dashboard), still render sidebar
