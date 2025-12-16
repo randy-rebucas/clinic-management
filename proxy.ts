@@ -101,21 +101,27 @@ export async function proxy(request: NextRequest) {
  * Add security headers to response
  */
 function addSecurityHeaders(request: NextRequest, response: NextResponse) {
-  // Security headers for production
+  // Security headers - apply in all environments for consistency
+  // Prevent clickjacking
+  response.headers.set('X-Frame-Options', 'DENY');
+  
+  // Prevent MIME type sniffing
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  
+  // Enable XSS protection
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+  
+  // Referrer policy
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // DNS prefetch control
+  response.headers.set('X-DNS-Prefetch-Control', 'on');
+  
+  // Permissions policy
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  
+  // Content Security Policy (adjust as needed for your app)
   if (process.env.NODE_ENV === 'production') {
-    // Prevent clickjacking
-    response.headers.set('X-Frame-Options', 'DENY');
-    
-    // Prevent MIME type sniffing
-    response.headers.set('X-Content-Type-Options', 'nosniff');
-    
-    // Enable XSS protection
-    response.headers.set('X-XSS-Protection', '1; mode=block');
-    
-    // Referrer policy
-    response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-    
-    // Content Security Policy (adjust as needed for your app)
     const csp = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // 'unsafe-eval' and 'unsafe-inline' needed for Next.js
@@ -129,7 +135,7 @@ function addSecurityHeaders(request: NextRequest, response: NextResponse) {
     
     // Strict Transport Security (HSTS) - only if using HTTPS
     if (request.nextUrl.protocol === 'https:') {
-      response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+      response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
     }
   }
 }

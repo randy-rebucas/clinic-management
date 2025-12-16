@@ -41,7 +41,11 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ success: true, data: service });
+    return NextResponse.json({ 
+      success: true, 
+      data: service,
+      message: 'Service updated successfully'
+    });
   } catch (error: any) {
     console.error('Error fetching service:', error);
     return NextResponse.json(
@@ -97,7 +101,11 @@ export async function PUT(
       );
     }
 
-    return NextResponse.json({ success: true, data: service });
+    return NextResponse.json({ 
+      success: true, 
+      data: service,
+      message: 'Service updated successfully'
+    });
   } catch (error: any) {
     console.error('Error updating service:', error);
     if (error.name === 'ValidationError') {
@@ -158,7 +166,11 @@ export async function DELETE(
       );
     }
 
-    return NextResponse.json({ success: true, data: service });
+    return NextResponse.json({ 
+      success: true, 
+      data: service,
+      message: 'Service updated successfully'
+    });
   } catch (error: any) {
     console.error('Error deleting service:', error);
     return NextResponse.json(

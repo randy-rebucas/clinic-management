@@ -68,6 +68,9 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [medicineSuggestions, setMedicineSuggestions] = useState<Medicine[]>([]);
+  const [showMedicineSuggestions, setShowMedicineSuggestions] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [formData, setFormData] = useState({
     name: '',
     genericName: '',
@@ -100,7 +103,19 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
       const response = await fetch(`/api/medicines?${params.toString()}`);
       if (response.ok) {
         const data = await response.json();
-        setMedicines(Array.isArray(data) ? data : data.medicines || []);
+        // Handle both array response and object with data property
+        if (data.success && data.data) {
+          setMedicines(Array.isArray(data.data) ? data.data : []);
+        } else if (Array.isArray(data)) {
+          setMedicines(data);
+        } else if (data.medicines) {
+          setMedicines(Array.isArray(data.medicines) ? data.medicines : []);
+        } else {
+          setMedicines([]);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.error || 'Failed to load medicines');
       }
     } catch (err) {
       console.error('Error fetching medicines:', err);
@@ -114,10 +129,66 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
     fetchMedicines();
   }, [fetchMedicines]);
 
+  // Fetch medicine suggestions for autocomplete
+  useEffect(() => {
+    if (formData.name.length >= 2 && !editingMedicine) {
+      const timer = setTimeout(() => {
+        const params = new URLSearchParams();
+        params.set('search', formData.name);
+        params.set('active', 'true');
+        
+        fetch(`/api/medicines?${params.toString()}`)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success && data.data) {
+              // Filter out exact matches and limit to 10 suggestions
+              const suggestions = data.data
+                .filter((m: Medicine) => 
+                  m.name.toLowerCase() !== formData.name.toLowerCase() &&
+                  m.name.toLowerCase().includes(formData.name.toLowerCase())
+                )
+                .slice(0, 10);
+              setMedicineSuggestions(suggestions);
+              setShowMedicineSuggestions(suggestions.length > 0);
+            } else {
+              setMedicineSuggestions([]);
+              setShowMedicineSuggestions(false);
+            }
+          })
+          .catch(() => {
+            setMedicineSuggestions([]);
+            setShowMedicineSuggestions(false);
+          });
+      }, 300); // Debounce for 300ms
+      
+      return () => clearTimeout(timer);
+    } else {
+      setMedicineSuggestions([]);
+      setShowMedicineSuggestions(false);
+    }
+  }, [formData.name, editingMedicine]);
+
+  // Handle click outside to close suggestions
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.medicine-name-autocomplete')) {
+        setShowMedicineSuggestions(false);
+        setHighlightedIndex(-1);
+      }
+    };
+
+    if (showMedicineSuggestions) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showMedicineSuggestions]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setError(null);
+    setSuccess(null);
 
     try {
       const payload = {
@@ -139,8 +210,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
       const data = await response.json();
 
-      if (response.ok) {
-        setSuccess(data.message || 'Medicine saved successfully');
+      if (response.ok && data.success) {
+        setSuccess(editingMedicine ? 'Medicine updated successfully' : 'Medicine created successfully');
         setTimeout(() => setSuccess(null), 3000);
         setShowModal(false);
         resetForm();
@@ -149,8 +220,9 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
         setError(data.error || 'Failed to save medicine');
         setTimeout(() => setError(null), 5000);
       }
-    } catch (err) {
-      setError('An error occurred');
+    } catch (err: any) {
+      console.error('Error saving medicine:', err);
+      setError(err.message || 'An error occurred while saving the medicine');
       setTimeout(() => setError(null), 5000);
     } finally {
       setSaving(false);
@@ -162,18 +234,19 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
     try {
       const response = await fetch(`/api/medicines/${medicine._id}`, { method: 'DELETE' });
+      const data = await response.json();
 
-      if (response.ok) {
-        setSuccess('Medicine deleted successfully');
+      if (response.ok && data.success) {
+        setSuccess(data.message || 'Medicine deleted successfully');
         setTimeout(() => setSuccess(null), 3000);
         fetchMedicines();
       } else {
-        const data = await response.json();
         setError(data.error || 'Failed to delete medicine');
         setTimeout(() => setError(null), 5000);
       }
-    } catch (err) {
-      setError('An error occurred');
+    } catch (err: any) {
+      console.error('Error deleting medicine:', err);
+      setError(err.message || 'An error occurred while deleting the medicine');
       setTimeout(() => setError(null), 5000);
     }
   };
@@ -203,6 +276,52 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
     setShowModal(true);
   };
 
+  const selectMedicineSuggestion = (medicine: Medicine) => {
+    setFormData({
+      ...formData,
+      name: medicine.name,
+      genericName: medicine.genericName || '',
+      brandNames: medicine.brandNames?.join(', ') || '',
+      form: medicine.form,
+      strength: medicine.strength,
+      unit: medicine.unit,
+      route: medicine.route,
+      category: medicine.category,
+      indications: medicine.indications?.join(', ') || '',
+      contraindications: medicine.contraindications?.join(', ') || '',
+      sideEffects: medicine.sideEffects?.join(', ') || '',
+      standardDosage: medicine.standardDosage || '',
+      standardFrequency: medicine.standardFrequency || '',
+      duration: medicine.duration || '',
+      requiresPrescription: medicine.requiresPrescription,
+      controlledSubstance: medicine.controlledSubstance || false,
+      schedule: medicine.schedule || '',
+      active: medicine.active,
+    });
+    setShowMedicineSuggestions(false);
+    setHighlightedIndex(-1);
+  };
+
+  const handleMedicineNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showMedicineSuggestions || medicineSuggestions.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => 
+        prev < medicineSuggestions.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : -1));
+    } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+      e.preventDefault();
+      selectMedicineSuggestion(medicineSuggestions[highlightedIndex]);
+    } else if (e.key === 'Escape') {
+      setShowMedicineSuggestions(false);
+      setHighlightedIndex(-1);
+    }
+  };
+
   const resetForm = () => {
     setEditingMedicine(null);
     setFormData({
@@ -225,6 +344,9 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
       schedule: '',
       active: true,
     });
+    setMedicineSuggestions([]);
+    setShowMedicineSuggestions(false);
+    setHighlightedIndex(-1);
   };
 
   if (loading) {
@@ -525,15 +647,57 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
               <form onSubmit={handleSubmit} className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Name */}
-                  <div className="col-span-2">
+                  <div className="col-span-2 medicine-name-autocomplete relative">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Medicine Name *</label>
                     <input
                       type="text"
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      onChange={(e) => {
+                        setFormData({ ...formData, name: e.target.value });
+                        setShowMedicineSuggestions(true);
+                        setHighlightedIndex(-1);
+                      }}
+                      onFocus={() => {
+                        if (medicineSuggestions.length > 0 && formData.name.length >= 2) {
+                          setShowMedicineSuggestions(true);
+                        }
+                      }}
+                      onKeyDown={handleMedicineNameKeyDown}
                       required
+                      placeholder="Start typing to see suggestions..."
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                     />
+                    {showMedicineSuggestions && medicineSuggestions.length > 0 && !editingMedicine && (
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                        {medicineSuggestions.map((medicine, index) => (
+                          <button
+                            key={medicine._id}
+                            type="button"
+                            onClick={() => selectMedicineSuggestion(medicine)}
+                            onMouseEnter={() => setHighlightedIndex(index)}
+                            className={`w-full text-left px-4 py-3 hover:bg-indigo-50 rounded transition-colors ${
+                              highlightedIndex === index ? 'bg-indigo-50' : ''
+                            }`}
+                          >
+                            <div className="flex flex-col items-start gap-1">
+                              <span className="font-semibold text-sm text-gray-900">{medicine.name}</span>
+                              {medicine.genericName && (
+                                <span className="text-xs text-gray-600 italic">{medicine.genericName}</span>
+                              )}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs text-gray-500">
+                                  {FORMS.find(f => f.value === medicine.form)?.label || medicine.form}
+                                </span>
+                                <span className="text-xs text-gray-400">•</span>
+                                <span className="text-xs text-gray-500">{medicine.strength}</span>
+                                <span className="text-xs text-gray-400">•</span>
+                                <span className="text-xs text-gray-500">{medicine.category}</span>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Category */}

@@ -11,16 +11,30 @@ interface Company {
 
 interface MedicalRep {
   _id: string;
-  repCode: string;
+  repCode?: string;
   firstName: string;
   lastName: string;
   email: string;
   phone?: string;
-  company: Company;
-  territory: string[];
-  products: string[];
+  company: string | Company; // Can be string (from model) or object (legacy)
+  territory?: string | string[]; // Can be string (from model) or array (legacy)
+  products?: string[];
   notes?: string;
-  status: 'active' | 'inactive';
+  title?: string; // Mr., Ms., etc.
+  bio?: string;
+  status: 'active' | 'inactive' | 'on-leave';
+  availability?: {
+    dayOfWeek: number;
+    startTime: string;
+    endTime: string;
+    isAvailable: boolean;
+  }[];
+  performanceMetrics?: {
+    totalVisits: number;
+    completedVisits: number;
+    cancelledVisits: number;
+    lastUpdated: Date;
+  };
   userId?: {
     _id: string;
     name: string;
@@ -31,6 +45,7 @@ interface MedicalRep {
 }
 
 interface FormData {
+  title: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -40,10 +55,13 @@ interface FormData {
   companyEmail: string;
   territory: string;
   products: string;
+  bio: string;
   notes: string;
+  status: 'active' | 'inactive' | 'on-leave';
 }
 
 const initialFormData: FormData = {
+  title: '',
   firstName: '',
   lastName: '',
   email: '',
@@ -53,7 +71,9 @@ const initialFormData: FormData = {
   companyEmail: '',
   territory: '',
   products: '',
+  bio: '',
   notes: '',
+  status: 'active',
 };
 
 export default function MedicalRepsManagementClient() {
@@ -69,6 +89,7 @@ export default function MedicalRepsManagementClient() {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
   const fetchReps = useCallback(async () => {
     try {
@@ -101,17 +122,36 @@ export default function MedicalRepsManagementClient() {
   const handleOpenModal = (rep?: MedicalRep) => {
     if (rep) {
       setEditingRep(rep);
+      // Handle company as string or object
+      const companyName = typeof rep.company === 'string' 
+        ? rep.company 
+        : (rep.company as Company)?.name || '';
+      const companyPhone = typeof rep.company === 'object' 
+        ? (rep.company as Company)?.phone || '' 
+        : '';
+      const companyEmail = typeof rep.company === 'object' 
+        ? (rep.company as Company)?.email || '' 
+        : '';
+      
+      // Handle territory as string or array
+      const territoryString = typeof rep.territory === 'string' 
+        ? rep.territory 
+        : (Array.isArray(rep.territory) ? rep.territory.join(', ') : '');
+      
       setFormData({
+        title: rep.title || '',
         firstName: rep.firstName,
         lastName: rep.lastName,
         email: rep.email,
         phone: rep.phone || '',
-        companyName: rep.company?.name || '',
-        companyPhone: rep.company?.phone || '',
-        companyEmail: rep.company?.email || '',
-        territory: rep.territory?.join(', ') || '',
+        companyName,
+        companyPhone,
+        companyEmail,
+        territory: territoryString,
         products: rep.products?.join(', ') || '',
+        bio: rep.bio || '',
         notes: rep.notes || '',
+        status: rep.status || 'active',
       });
     } else {
       setEditingRep(null);
@@ -133,6 +173,7 @@ export default function MedicalRepsManagementClient() {
 
     try {
       const payload = {
+        title: formData.title || undefined,
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
@@ -144,7 +185,9 @@ export default function MedicalRepsManagementClient() {
         },
         territory: formData.territory ? formData.territory.split(',').map(t => t.trim()).filter(Boolean) : [],
         products: formData.products ? formData.products.split(',').map(p => p.trim()).filter(Boolean) : [],
+        bio: formData.bio || undefined,
         notes: formData.notes || undefined,
+        status: formData.status,
       };
 
       const url = editingRep
@@ -199,7 +242,15 @@ export default function MedicalRepsManagementClient() {
   };
 
   const handleToggleStatus = async (rep: MedicalRep) => {
-    const newStatus = rep.status === 'active' ? 'inactive' : 'active';
+    // Cycle through: active -> on-leave -> inactive -> active
+    let newStatus: 'active' | 'inactive' | 'on-leave';
+    if (rep.status === 'active') {
+      newStatus = 'on-leave';
+    } else if (rep.status === 'on-leave') {
+      newStatus = 'inactive';
+    } else {
+      newStatus = 'active';
+    }
     
     try {
       const response = await fetch(`/api/medical-representatives/${rep._id}`, {
@@ -211,7 +262,12 @@ export default function MedicalRepsManagementClient() {
       const data = await response.json();
 
       if (data.success) {
-        setSuccess(`Medical representative ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`);
+        const statusMessages = {
+          'active': 'activated',
+          'inactive': 'deactivated',
+          'on-leave': 'marked as on leave'
+        };
+        setSuccess(`Medical representative ${statusMessages[newStatus]} successfully`);
         setTimeout(() => setSuccess(null), 3000);
         fetchReps();
       } else {
@@ -294,7 +350,7 @@ export default function MedicalRepsManagementClient() {
           </div>
 
           {/* Quick Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
               <div className="flex items-center gap-3 mb-2">
                 <div className="p-2 bg-amber-500 rounded-lg">
@@ -327,6 +383,17 @@ export default function MedicalRepsManagementClient() {
                 <div className="text-xs font-semibold text-gray-500 uppercase">Inactive</div>
               </div>
               <div className="text-3xl font-bold text-gray-600">{reps.filter(r => r.status === 'inactive').length}</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-yellow-500 rounded-lg">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="text-xs font-semibold text-gray-500 uppercase">On Leave</div>
+              </div>
+              <div className="text-3xl font-bold text-yellow-600">{reps.filter(r => r.status === 'on-leave').length}</div>
             </div>
           </div>
 
@@ -376,6 +443,7 @@ export default function MedicalRepsManagementClient() {
                     <option value="all">All Status</option>
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
+                    <option value="on-leave">On Leave</option>
                   </select>
                 </div>
               </div>
@@ -406,7 +474,6 @@ export default function MedicalRepsManagementClient() {
               <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Code</th>
                 <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Name</th>
                 <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Company</th>
                 <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Contact</th>
@@ -419,14 +486,20 @@ export default function MedicalRepsManagementClient() {
               {reps.map((rep) => (
                 <tr key={rep._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-mono text-gray-600">{rep.repCode}</span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{rep.firstName} {rep.lastName}</div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {rep.title ? `${rep.title} ` : ''}{rep.firstName} {rep.lastName}
+                    </div>
                     <div className="text-sm text-gray-500">{rep.email}</div>
+                    {rep.bio && (
+                      <div className="text-xs text-gray-400 mt-1 line-clamp-1">{rep.bio}</div>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{rep.company?.name || '-'}</div>
+                    <div className="text-sm text-gray-900">
+                      {typeof rep.company === 'string' 
+                        ? rep.company 
+                        : (rep.company as Company)?.name || '-'}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">{rep.phone || '-'}</div>
@@ -439,7 +512,7 @@ export default function MedicalRepsManagementClient() {
                         </span>
                       ))}
                       {(rep.products || []).length > 3 && (
-                        <span className="text-xs text-gray-500">+{rep.products.length - 3} more</span>
+                        <span className="text-xs text-gray-500">+{(rep.products || []).length - 3} more</span>
                       )}
                     </div>
                   </td>
@@ -449,10 +522,12 @@ export default function MedicalRepsManagementClient() {
                       className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold cursor-pointer hover:opacity-80 border ${
                         rep.status === 'active'
                           ? 'bg-green-100 text-green-800 border-green-200'
+                          : rep.status === 'on-leave'
+                          ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
                           : 'bg-gray-100 text-gray-800 border-gray-200'
                       }`}
                     >
-                      {rep.status}
+                      {rep.status === 'on-leave' ? 'On Leave' : rep.status}
                     </button>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -507,6 +582,34 @@ export default function MedicalRepsManagementClient() {
                       <h3 className="text-sm font-bold text-gray-900">Personal Information</h3>
                     </div>
                   </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                  <select
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                  >
+                    <option value="">None</option>
+                    <option value="Mr.">Mr.</option>
+                    <option value="Ms.">Ms.</option>
+                    <option value="Mrs.">Mrs.</option>
+                    <option value="Dr.">Dr.</option>
+                    <option value="Prof.">Prof.</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                  <select
+                    value={formData.status}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'inactive' | 'on-leave' })}
+                    required
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="on-leave">On Leave</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
@@ -623,11 +726,22 @@ export default function MedicalRepsManagementClient() {
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
+                  <textarea
+                    value={formData.bio}
+                    onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                    rows={3}
+                    placeholder="Brief biography or description..."
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Internal Notes</label>
                   <textarea
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     rows={3}
+                    placeholder="Internal notes (staff-only)..."
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                   />
                 </div>

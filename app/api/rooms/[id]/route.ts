@@ -41,7 +41,11 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ success: true, data: room });
+    return NextResponse.json({ 
+      success: true, 
+      data: room,
+      message: 'Room updated successfully'
+    });
   } catch (error: any) {
     console.error('Error fetching room:', error);
     return NextResponse.json(
@@ -90,7 +94,11 @@ export async function PUT(
       );
     }
 
-    return NextResponse.json({ success: true, data: room });
+    return NextResponse.json({ 
+      success: true, 
+      data: room,
+      message: 'Room updated successfully'
+    });
   } catch (error: any) {
     console.error('Error updating room:', error);
     if (error.name === 'ValidationError') {
@@ -140,7 +148,11 @@ export async function DELETE(
       );
     }
 
-    return NextResponse.json({ success: true, data: {} });
+    return NextResponse.json({ 
+      success: true, 
+      data: {},
+      message: 'Room deleted successfully'
+    });
   } catch (error: any) {
     console.error('Error deleting room:', error);
     return NextResponse.json(

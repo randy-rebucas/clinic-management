@@ -105,7 +105,11 @@ export async function POST(request: NextRequest) {
     }
     
     const medicine = await Medicine.create(medicineData);
-    return NextResponse.json({ success: true, data: medicine }, { status: 201 });
+    return NextResponse.json({ 
+      success: true, 
+      data: medicine,
+      message: 'Medicine created successfully'
+    }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating medicine:', error);
     if (error.name === 'ValidationError') {

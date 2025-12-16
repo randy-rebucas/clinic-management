@@ -5,6 +5,9 @@ export interface IMedicalRepresentative extends Document {
   // Tenant reference for multi-tenant support
   tenantId?: Types.ObjectId;
   
+  // User account reference (reverse reference from User.medicalRepresentativeProfile)
+  userId?: Types.ObjectId;
+  
   firstName: string;
   lastName: string;
   email: string;
@@ -63,6 +66,13 @@ const MedicalRepresentativeSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
+      index: true,
+    },
+    
+    // User account reference (reverse reference from User.medicalRepresentativeProfile)
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
       index: true,
     },
     
@@ -142,6 +152,7 @@ const MedicalRepresentativeSchema: Schema = new Schema(
   },
   {
     timestamps: true,
+    strictPopulate: false, // Allow populating fields that may not be in the schema (for backward compatibility during schema updates)
   }
 );
 
@@ -150,11 +161,15 @@ MedicalRepresentativeSchema.index({ tenantId: 1, email: 1 }, { unique: true, spa
 MedicalRepresentativeSchema.index({ tenantId: 1, company: 1, status: 1 }); // For company-based queries
 MedicalRepresentativeSchema.index({ tenantId: 1, status: 1 }); // For status-based queries
 MedicalRepresentativeSchema.index({ tenantId: 1, createdAt: -1 }); // For sorting by creation date
+MedicalRepresentativeSchema.index({ userId: 1 }); // For user lookup
 
 // Register MedicalRepresentative model immediately after schema definition
-if (!mongoose.models.MedicalRepresentative) {
-  mongoose.model<IMedicalRepresentative>('MedicalRepresentative', MedicalRepresentativeSchema);
+// This ensures it's available when other models (like User) reference it via ref: 'MedicalRepresentative'
+// Delete and re-register to ensure schema changes are picked up (important for development)
+if (mongoose.models.MedicalRepresentative) {
+  delete mongoose.models.MedicalRepresentative;
 }
+mongoose.model<IMedicalRepresentative>('MedicalRepresentative', MedicalRepresentativeSchema);
 
 // Post-save hook to automatically create a User when a MedicalRepresentative is created
 MedicalRepresentativeSchema.post('save', async function (doc: IMedicalRepresentative) {
@@ -180,7 +195,11 @@ MedicalRepresentativeSchema.post('save', async function (doc: IMedicalRepresenta
     const existingUserByProfile = await User.findOne({ medicalRepresentativeProfile: doc._id });
     
     if (existingUserByProfile) {
-      // User already linked to this medical representative, skip
+      // User already linked to this medical representative, ensure userId is set
+      if (!doc.userId || doc.userId.toString() !== existingUserByProfile._id.toString()) {
+        doc.userId = existingUserByProfile._id;
+        await doc.save();
+      }
       return;
     }
 
@@ -210,6 +229,10 @@ MedicalRepresentativeSchema.post('save', async function (doc: IMedicalRepresenta
         status: doc.status === 'active' ? 'active' : 'inactive',
       });
 
+      // Update the medical representative with the userId reference
+      doc.userId = user._id;
+      await doc.save();
+
       console.log(`✅ Created user account for medical representative: ${doc.email} (default password: ${defaultPassword})`);
     } else {
       // User exists, but update the medicalRepresentativeProfile reference if not set
@@ -217,6 +240,11 @@ MedicalRepresentativeSchema.post('save', async function (doc: IMedicalRepresenta
         existingUserByEmail.medicalRepresentativeProfile = doc._id;
         await existingUserByEmail.save();
         console.log(`✅ Linked existing user to medical representative: ${doc.email}`);
+      }
+      // Update the medical representative with the userId reference
+      if (!doc.userId) {
+        doc.userId = existingUserByEmail._id;
+        await doc.save();
       }
     }
   } catch (error: any) {
@@ -226,6 +254,7 @@ MedicalRepresentativeSchema.post('save', async function (doc: IMedicalRepresenta
 });
 
 // Register MedicalRepresentative model immediately to ensure it's available when other models reference it
+// Get the model (it should already be registered above, but fallback to creating it if needed)
 const MedicalRepresentativeModel = mongoose.models.MedicalRepresentative || mongoose.model<IMedicalRepresentative>('MedicalRepresentative', MedicalRepresentativeSchema);
 
 export default MedicalRepresentativeModel;

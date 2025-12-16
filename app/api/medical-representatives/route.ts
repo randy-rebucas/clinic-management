@@ -39,13 +39,13 @@ export async function GET(request: NextRequest) {
     }
     
     if (status) query.status = status;
-    if (company) query['company.name'] = { $regex: company, $options: 'i' };
+    if (company) query.company = { $regex: company, $options: 'i' };
     if (search) {
       const searchConditions = [
         { firstName: { $regex: search, $options: 'i' } },
         { lastName: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
-        { 'company.name': { $regex: search, $options: 'i' } },
+        { company: { $regex: search, $options: 'i' } },
       ];
       
       // Combine tenant filter with search conditions
@@ -141,14 +141,24 @@ export async function POST(request: NextRequest) {
 
     // Create medical representative
     // The post-save hook will automatically create the User account
+    // Convert company object to string (use name field)
+    const companyString = typeof company === 'object' && company !== null 
+      ? (company.name || '') 
+      : (company || '');
+    
+    // Convert territory array to string (join with comma)
+    const territoryString = Array.isArray(territory) 
+      ? territory.join(', ') 
+      : (territory || '');
+    
     const repData: any = {
       repCode,
       firstName,
       lastName,
       email: email.toLowerCase().trim(),
       phone,
-      company: company || {},
-      territory: territory || [],
+      company: companyString,
+      territory: territoryString,
       products: products || [],
       notes,
       status: 'active',

@@ -130,7 +130,11 @@ export async function POST(request: NextRequest) {
     }
 
     const service = await Service.create(serviceData);
-    return NextResponse.json({ success: true, data: service }, { status: 201 });
+    return NextResponse.json({ 
+      success: true, 
+      data: service,
+      message: 'Service created successfully'
+    }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating service:', error);
     if (error.name === 'ValidationError') {

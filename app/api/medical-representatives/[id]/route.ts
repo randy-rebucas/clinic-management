@@ -84,8 +84,18 @@ export async function PUT(
     if (lastName) representative.lastName = lastName;
     if (email) representative.email = email.toLowerCase().trim();
     if (phone) representative.phone = phone;
-    if (company) representative.company = company;
-    if (territory) representative.territory = territory;
+    // Convert company object to string (use name field)
+    if (company !== undefined) {
+      representative.company = typeof company === 'object' && company !== null 
+        ? (company.name || '') 
+        : company;
+    }
+    // Convert territory array to string (join with comma)
+    if (territory !== undefined) {
+      representative.territory = Array.isArray(territory) 
+        ? territory.join(', ') 
+        : territory;
+    }
     if (products) representative.products = products;
     if (notes !== undefined) representative.notes = notes;
     if (status) representative.status = status;

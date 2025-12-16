@@ -67,7 +67,19 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
       const response = await fetch(`/api/services?${params.toString()}`);
       if (response.ok) {
         const data = await response.json();
-        setServices(Array.isArray(data) ? data : data.services || []);
+        // Handle both array response and object with data property
+        if (data.success && data.data) {
+          setServices(Array.isArray(data.data) ? data.data : []);
+        } else if (Array.isArray(data)) {
+          setServices(data);
+        } else if (data.services) {
+          setServices(Array.isArray(data.services) ? data.services : []);
+        } else {
+          setServices([]);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.error || 'Failed to load services');
       }
     } catch (err) {
       console.error('Error fetching services:', err);
@@ -85,21 +97,28 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
     e.preventDefault();
     setSaving(true);
     setError(null);
+    setSuccess(null);
 
     try {
       const url = editingService ? `/api/services/${editingService._id}` : '/api/services';
       const method = editingService ? 'PUT' : 'POST';
 
+      // Prepare form data - remove empty code if not provided (API will auto-generate)
+      const submitData = { ...formData };
+      if (!submitData.code || submitData.code.trim() === '') {
+        delete submitData.code; // Let API auto-generate
+      }
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(submitData),
       });
 
       const data = await response.json();
 
-      if (response.ok) {
-        setSuccess(data.message || 'Service saved successfully');
+      if (response.ok && data.success) {
+        setSuccess(editingService ? 'Service updated successfully' : 'Service created successfully');
         setTimeout(() => setSuccess(null), 3000);
         setShowModal(false);
         resetForm();
@@ -108,8 +127,9 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
         setError(data.error || 'Failed to save service');
         setTimeout(() => setError(null), 5000);
       }
-    } catch (err) {
-      setError('An error occurred');
+    } catch (err: any) {
+      console.error('Error saving service:', err);
+      setError(err.message || 'An error occurred while saving the service');
       setTimeout(() => setError(null), 5000);
     } finally {
       setSaving(false);
@@ -491,13 +511,15 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Code */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Service Code *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Service Code
+                      <span className="text-xs text-gray-500 ml-1">(leave empty to auto-generate)</span>
+                    </label>
                     <input
                       type="text"
                       value={formData.code}
                       onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                      required
-                      placeholder="e.g., CONSULT-001"
+                      placeholder="e.g., CONSULT-001 (auto-generated if empty)"
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
                     />
                   </div>

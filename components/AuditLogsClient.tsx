@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 interface AuditLog {
   _id: string;
-  userId: string;
+  userId: string | { _id: string; name?: string; email?: string; role?: string };
   userEmail?: string;
   userRole?: string;
   action: string;
@@ -16,9 +16,11 @@ interface AuditLog {
   requestMethod?: string;
   requestPath?: string;
   changes?: Array<{ field: string; oldValue?: any; newValue?: any }>;
+  metadata?: { [key: string]: any };
   success: boolean;
   errorMessage?: string;
   isSensitive?: boolean;
+  dataSubject?: string | { _id: string; firstName?: string; lastName?: string; patientCode?: string };
   timestamp: string;
   createdAt: string;
 }
@@ -54,6 +56,7 @@ export default function AuditLogsClient({ user }: AuditLogsClientProps) {
     isSensitive: '',
   });
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
+  const [previewLog, setPreviewLog] = useState<AuditLog | null>(null);
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -74,8 +77,12 @@ export default function AuditLogsClient({ user }: AuditLogsClientProps) {
       if (response.ok) {
         const data = await response.json();
         // API returns { success: true, data: logs[], pagination: {...} }
-        const logsArray = Array.isArray(data) ? data : (data.data || data.logs || []);
-        setLogs(logsArray);
+        if (data.success && data.data) {
+          setLogs(Array.isArray(data.data) ? data.data : []);
+        } else {
+          const logsArray = Array.isArray(data) ? data : (data.logs || []);
+          setLogs(logsArray);
+        }
         if (data.pagination) {
           setPagination(prev => ({ 
             ...prev, 
@@ -85,6 +92,9 @@ export default function AuditLogsClient({ user }: AuditLogsClientProps) {
             limit: data.pagination.limit || 50,
           }));
         }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to fetch audit logs:', errorData);
       }
     } catch (error) {
       console.error('Error fetching audit logs:', error);
@@ -260,22 +270,23 @@ export default function AuditLogsClient({ user }: AuditLogsClientProps) {
               </div>
             ) : (
               <>
+                <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Timestamp</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">User</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Action</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Resource</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Description</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">IP</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Details</th>
+                      <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Timestamp</th>
+                      <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">User</th>
+                      <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Action</th>
+                      <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Resource</th>
+                      <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Description</th>
+                      <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">IP</th>
+                      <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider sticky right-0 bg-gray-50 z-10">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {(Array.isArray(logs) ? logs : []).map((log) => (
                       <React.Fragment key={log._id}>
-                        <tr className={`hover:bg-gray-50 ${!log.success ? 'bg-red-50' : ''}`}>
+                        <tr className={`hover:bg-gray-50 ${!log.success ? 'bg-red-50' : ''} group`}>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                             {formatDate(log.timestamp || log.createdAt)}
                           </td>
@@ -307,13 +318,34 @@ export default function AuditLogsClient({ user }: AuditLogsClientProps) {
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 font-mono">
                             {log.ipAddress || '-'}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <button
-                              onClick={() => setExpandedLog(expandedLog === log._id ? null : log._id)}
-                              className="px-3 py-1.5 text-xs font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
-                            >
-                              {expandedLog === log._id ? 'Hide' : 'View'}
-                            </button>
+                          <td className={`px-4 py-3 whitespace-nowrap sticky right-0 z-10 ${!log.success ? 'bg-red-50' : 'bg-white'} group-hover:bg-gray-50`}>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setExpandedLog(expandedLog === log._id ? null : log._id)}
+                                className="px-3 py-1.5 text-xs font-semibold bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-1.5 shadow-sm"
+                                title={expandedLog === log._id ? 'Hide details' : 'View inline details'}
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  {expandedLog === log._id ? (
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                  ) : (
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  )}
+                                </svg>
+                                {expandedLog === log._id ? 'Hide' : 'View'}
+                              </button>
+                              <button
+                                onClick={() => setPreviewLog(log)}
+                                className="px-3 py-1.5 text-xs font-semibold bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors flex items-center gap-1.5 shadow-sm"
+                                title="Preview full details in modal"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                                Preview
+                              </button>
+                            </div>
                           </td>
                         </tr>
                         {expandedLog === log._id && (
@@ -365,6 +397,7 @@ export default function AuditLogsClient({ user }: AuditLogsClientProps) {
                     ))}
                   </tbody>
                 </table>
+                </div>
 
                 {/* Pagination */}
                 {pagination.pages > 1 && (
@@ -397,6 +430,222 @@ export default function AuditLogsClient({ user }: AuditLogsClientProps) {
             )}
           </div>
         </div>
+
+        {/* Preview Modal */}
+        {previewLog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-slate-50 to-slate-100/50 sticky top-0 bg-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-slate-500 rounded-lg">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900">Audit Log Details</h2>
+                  </div>
+                  <button
+                    onClick={() => setPreviewLog(null)}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Basic Information */}
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 uppercase mb-3">Basic Information</h3>
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs text-gray-500 uppercase mb-1">Timestamp</div>
+                          <div className="text-sm font-mono text-gray-900">
+                            {formatDate(previewLog.timestamp || previewLog.createdAt)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 uppercase mb-1">Action</div>
+                          <div>{getActionBadge(previewLog.action, previewLog.success)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 uppercase mb-1">Resource</div>
+                          <div className="text-sm font-semibold text-gray-900">{previewLog.resource}</div>
+                          {previewLog.resourceId && (
+                            <div className="text-xs text-gray-500 font-mono mt-1">{previewLog.resourceId}</div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 uppercase mb-1">Status</div>
+                          <div className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${
+                            previewLog.success 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {previewLog.success ? 'Success' : 'Failed'}
+                          </div>
+                        </div>
+                        {previewLog.isSensitive && (
+                          <div>
+                            <div className="text-xs text-gray-500 uppercase mb-1">Sensitivity</div>
+                            <div className="inline-flex px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">
+                              Sensitive Data Access
+                            </div>
+                          </div>
+                        )}
+                        {previewLog.dataSubject && (
+                          <div>
+                            <div className="text-xs text-gray-500 uppercase mb-1">Data Subject (PH DPA)</div>
+                            <div className="text-sm text-gray-900">
+                              {typeof previewLog.dataSubject === 'object' && previewLog.dataSubject !== null
+                                ? `${previewLog.dataSubject.firstName || ''} ${previewLog.dataSubject.lastName || ''}`.trim() || 
+                                  previewLog.dataSubject.patientCode || 
+                                  previewLog.dataSubject._id
+                                : previewLog.dataSubject}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* User Information */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 uppercase mb-3">User Information</h3>
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs text-gray-500 uppercase mb-1">Email</div>
+                          <div className="text-sm text-gray-900">{previewLog.userEmail || '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 uppercase mb-1">Role</div>
+                          <div className="text-sm text-gray-900">{previewLog.userRole || '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 uppercase mb-1">User ID</div>
+                          <div className="text-xs font-mono text-gray-500">
+                            {typeof previewLog.userId === 'string' 
+                              ? previewLog.userId 
+                              : previewLog.userId?._id || '-'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Request Information */}
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 uppercase mb-3">Request Information</h3>
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs text-gray-500 uppercase mb-1">IP Address</div>
+                          <div className="text-sm font-mono text-gray-900">{previewLog.ipAddress || '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 uppercase mb-1">Request Method</div>
+                          <div className="text-sm font-mono text-gray-900">{previewLog.requestMethod || '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 uppercase mb-1">Request Path</div>
+                          <div className="text-sm font-mono text-gray-900 break-all">{previewLog.requestPath || '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 uppercase mb-1">User Agent</div>
+                          <div className="text-xs text-gray-600 break-all">{previewLog.userAgent || '-'}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Description */}
+                    {previewLog.description && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 uppercase mb-3">Description</h3>
+                        <div className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                          {previewLog.description}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Error Message */}
+                    {previewLog.errorMessage && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 uppercase mb-3">Error Message</h3>
+                        <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-200">
+                          {previewLog.errorMessage}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Changes */}
+                {previewLog.changes && previewLog.changes.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase mb-3">Field Changes</h3>
+                    <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+                      <div className="space-y-3">
+                        {previewLog.changes.map((change, i) => (
+                          <div key={i} className="bg-white rounded border border-gray-200 p-3">
+                            <div className="text-sm font-semibold text-gray-900 mb-2">{change.field}</div>
+                            <div className="grid grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <div className="text-gray-500 uppercase mb-1">Old Value</div>
+                                <div className="font-mono text-red-600 bg-red-50 p-2 rounded break-all">
+                                  {change.oldValue !== undefined && change.oldValue !== null
+                                    ? typeof change.oldValue === 'object'
+                                      ? JSON.stringify(change.oldValue, null, 2)
+                                      : String(change.oldValue)
+                                    : 'null'}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-gray-500 uppercase mb-1">New Value</div>
+                                <div className="font-mono text-green-600 bg-green-50 p-2 rounded break-all">
+                                  {change.newValue !== undefined && change.newValue !== null
+                                    ? typeof change.newValue === 'object'
+                                      ? JSON.stringify(change.newValue, null, 2)
+                                      : String(change.newValue)
+                                    : 'null'}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Metadata */}
+                {previewLog.metadata && Object.keys(previewLog.metadata).length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase mb-3">Metadata</h3>
+                    <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+                      <pre className="text-xs font-mono text-gray-700 overflow-x-auto">
+                        {JSON.stringify(previewLog.metadata, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+
+                {/* Close Button */}
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={() => setPreviewLog(null)}
+                    className="px-5 py-2.5 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors font-semibold"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

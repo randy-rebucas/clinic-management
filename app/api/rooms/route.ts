@@ -80,7 +80,11 @@ export async function POST(request: NextRequest) {
     const room = await Room.create(roomData);
 
     return NextResponse.json(
-      { success: true, data: room },
+      { 
+        success: true, 
+        data: room,
+        message: 'Room created successfully'
+      },
       { status: 201 }
     );
   } catch (error: any) {

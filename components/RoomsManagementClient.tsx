@@ -69,7 +69,19 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
       const response = await fetch(`/api/rooms?${params.toString()}`);
       if (response.ok) {
         const data = await response.json();
-        setRooms(Array.isArray(data) ? data : data.rooms || []);
+        // Handle both array response and object with data property
+        if (data.success && data.data) {
+          setRooms(Array.isArray(data.data) ? data.data : []);
+        } else if (Array.isArray(data)) {
+          setRooms(data);
+        } else if (data.rooms) {
+          setRooms(Array.isArray(data.rooms) ? data.rooms : []);
+        } else {
+          setRooms([]);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.error || 'Failed to load rooms');
       }
     } catch (err) {
       console.error('Error fetching rooms:', err);
@@ -87,6 +99,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
     e.preventDefault();
     setSaving(true);
     setError(null);
+    setSuccess(null);
 
     try {
       const payload = {
@@ -106,8 +119,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
       const data = await response.json();
 
-      if (response.ok) {
-        setSuccess(data.message || 'Room saved successfully');
+      if (response.ok && data.success) {
+        setSuccess(editingRoom ? 'Room updated successfully' : 'Room created successfully');
         setTimeout(() => setSuccess(null), 3000);
         setShowModal(false);
         resetForm();
@@ -116,8 +129,9 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
         setError(data.error || 'Failed to save room');
         setTimeout(() => setError(null), 5000);
       }
-    } catch (err) {
-      setError('An error occurred');
+    } catch (err: any) {
+      console.error('Error saving room:', err);
+      setError(err.message || 'An error occurred while saving the room');
       setTimeout(() => setError(null), 5000);
     } finally {
       setSaving(false);
@@ -129,18 +143,19 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
     try {
       const response = await fetch(`/api/rooms/${room._id}`, { method: 'DELETE' });
+      const data = await response.json();
 
-      if (response.ok) {
-        setSuccess('Room deleted successfully');
+      if (response.ok && data.success) {
+        setSuccess(data.message || 'Room deleted successfully');
         setTimeout(() => setSuccess(null), 3000);
         fetchRooms();
       } else {
-        const data = await response.json();
         setError(data.error || 'Failed to delete room');
         setTimeout(() => setError(null), 5000);
       }
-    } catch (err) {
-      setError('An error occurred');
+    } catch (err: any) {
+      console.error('Error deleting room:', err);
+      setError(err.message || 'An error occurred while deleting the room');
       setTimeout(() => setError(null), 5000);
     }
   };
