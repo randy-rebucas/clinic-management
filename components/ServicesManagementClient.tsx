@@ -104,10 +104,10 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
       const method = editingService ? 'PUT' : 'POST';
 
       // Prepare form data - remove empty code if not provided (API will auto-generate)
-      const submitData = { ...formData };
-      if (!submitData.code || submitData.code.trim() === '') {
-        delete submitData.code; // Let API auto-generate
-      }
+      const { code, ...restData } = formData;
+      const submitData = (!code || code.trim() === '') 
+        ? restData 
+        : { ...formData };
 
       const response = await fetch(url, {
         method,

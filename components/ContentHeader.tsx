@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { logout } from '@/app/actions/auth';
 import Link from 'next/link';
 
@@ -13,8 +14,12 @@ interface ContentHeaderProps {
 }
 
 export default function ContentHeader({ user }: ContentHeaderProps) {
+  const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  
+  const isKnowledgeBaseActive = pathname?.startsWith('/knowledge-base');
+  const isNotificationsActive = pathname === '/notifications';
 
   useEffect(() => {
     if (!user) return;
@@ -49,12 +54,44 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
         {/* Left side - can be used for page title or breadcrumbs */}
         <div className="flex-1"></div>
 
-        {/* Right side - User info, notifications, logout */}
-        <div className="flex items-center gap-3">
+        {/* Right side - Knowledge base, notifications, user info, logout */}
+        <div className="flex items-center gap-2">
+          {/* Knowledge Base Icon */}
+          <Link
+            href="/knowledge-base"
+            className={`relative p-2 rounded-lg transition-all duration-200 ${
+              isKnowledgeBaseActive
+                ? 'text-blue-600 bg-blue-50'
+                : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
+            }`}
+            title="Knowledge Base"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+              />
+            </svg>
+            {isKnowledgeBaseActive && (
+              <span className="absolute bottom-0.5 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-blue-600 rounded-full" />
+            )}
+          </Link>
+
           {/* Notification Icon */}
           <Link
             href="/notifications"
-            className="relative p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            className={`relative p-2 rounded-lg transition-all duration-200 ${
+              isNotificationsActive
+                ? 'text-blue-600 bg-blue-50'
+                : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
+            }`}
             title="Notifications"
           >
             <svg
@@ -71,11 +108,17 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
               />
             </svg>
             {unreadCount > 0 && (
-              <span className="absolute top-0 right-0 flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full">
+              <span className="absolute top-0 right-0 flex items-center justify-center min-w-[1.25rem] h-5 px-1 text-xs font-bold text-white bg-red-500 rounded-full">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
+            {isNotificationsActive && unreadCount === 0 && (
+              <span className="absolute bottom-0.5 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-blue-600 rounded-full" />
+            )}
           </Link>
+
+          {/* Divider */}
+          <div className="w-px h-6 bg-gray-300 mx-1" />
 
           {/* User Info */}
           <div className="flex items-center gap-3">

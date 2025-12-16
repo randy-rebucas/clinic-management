@@ -97,7 +97,7 @@ const AuditLogSchema: Schema = new Schema(
       index: true,
     },
     
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     userEmail: { type: String, index: true },
     userRole: { type: String, index: true },
     action: {

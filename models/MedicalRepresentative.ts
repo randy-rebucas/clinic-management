@@ -73,7 +73,6 @@ const MedicalRepresentativeSchema: Schema = new Schema(
     userId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      index: true,
     },
     
     firstName: {
