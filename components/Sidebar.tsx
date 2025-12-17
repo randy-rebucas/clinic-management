@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { logout } from '@/app/actions/auth';
 
 interface PermissionRequirement {
   resource: string;
@@ -113,7 +114,18 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
           <div className="px-3 py-2 border-b border-gray-200 bg-blue-50">
             <div className="text-xs text-blue-700">
               <p className="font-semibold mb-1">Not logged in</p>
-              <p>Please log in to access all features</p>
+              <p className="mb-2">Please log in to access all features</p>
+              <form action={logout}>
+                <button
+                  type="submit"
+                  className="w-full mt-2 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 font-medium rounded-md transition-colors text-xs flex items-center justify-center gap-1.5 border border-red-200"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Clear Session
+                </button>
+              </form>
             </div>
           </div>
         )}
