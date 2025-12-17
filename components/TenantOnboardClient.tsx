@@ -170,40 +170,69 @@ export default function TenantOnboardClient() {
     setErrors({});
 
     try {
+      // Helper to filter out empty strings for optional fields
+      const cleanOptional = (value: string | undefined) => {
+        return value && value.trim() ? value.trim() : undefined;
+      };
+
+      const requestBody = {
+        name: formData.tenantName?.trim(),
+        displayName: formData.displayName?.trim() || formData.tenantName?.trim(),
+        subdomain: formData.subdomain?.trim().toLowerCase(),
+        email: cleanOptional(formData.email),
+        phone: cleanOptional(formData.phone),
+        address: (formData.street || formData.city || formData.state || formData.zipCode || formData.country) ? {
+          street: cleanOptional(formData.street),
+          city: cleanOptional(formData.city),
+          state: cleanOptional(formData.state),
+          zipCode: cleanOptional(formData.zipCode),
+          country: cleanOptional(formData.country),
+        } : undefined,
+        settings: {
+          timezone: formData.timezone || 'UTC',
+          currency: formData.currency || 'USD',
+          dateFormat: formData.dateFormat || 'MM/DD/YYYY',
+        },
+        admin: {
+          name: formData.adminName?.trim(),
+          email: formData.adminEmail?.trim(),
+          password: formData.adminPassword, // Don't trim password
+        },
+      };
+
+      console.log('Sending onboarding request:', {
+        hasName: !!requestBody.name,
+        hasSubdomain: !!requestBody.subdomain,
+        hasAdmin: !!requestBody.admin,
+        hasAdminName: !!requestBody.admin.name,
+        hasAdminEmail: !!requestBody.admin.email,
+        hasAdminPassword: !!requestBody.admin.password,
+      });
+
       const response = await fetch('/api/tenants/onboard', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name: formData.tenantName,
-          displayName: formData.displayName || formData.tenantName,
-          subdomain: formData.subdomain.toLowerCase(),
-          email: formData.email || undefined,
-          phone: formData.phone || undefined,
-          address: (formData.street || formData.city || formData.state || formData.zipCode || formData.country) ? {
-            street: formData.street || undefined,
-            city: formData.city || undefined,
-            state: formData.state || undefined,
-            zipCode: formData.zipCode || undefined,
-            country: formData.country || undefined,
-          } : undefined,
-          settings: {
-            timezone: formData.timezone,
-            currency: formData.currency,
-            dateFormat: formData.dateFormat,
-          },
-          admin: {
-            name: formData.adminName,
-            email: formData.adminEmail,
-            password: formData.adminPassword,
-          },
-        }),
+        body: JSON.stringify(requestBody),
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('Failed to parse response:', jsonError);
+        setErrors({ general: `Server error (${response.status}). Please try again.` });
+        setLoading(false);
+        return;
+      }
 
       if (!response.ok) {
+        console.error('Onboarding failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          data,
+        });
         if (data.errors) {
           setErrors(data.errors);
         } else {

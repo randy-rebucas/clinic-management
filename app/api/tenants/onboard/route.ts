@@ -46,7 +46,31 @@ function validateSubdomain(subdomain: string): { valid: boolean; error?: string 
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError: any) {
+      console.error('Failed to parse request body:', parseError);
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Invalid request body. Expected JSON.',
+          errors: {
+            general: ['Invalid request format. Please try again.'],
+          },
+        },
+        { status: 400 }
+      );
+    }
+    console.log('Received onboarding request:', {
+      hasName: !!body.name,
+      hasSubdomain: !!body.subdomain,
+      hasAdmin: !!body.admin,
+      hasAdminName: !!body.admin?.name,
+      hasAdminEmail: !!body.admin?.email,
+      hasAdminPassword: !!body.admin?.password,
+    });
+    
     const {
       name,
       displayName,
@@ -60,12 +84,20 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!name || !subdomain || !admin?.name || !admin?.email || !admin?.password) {
+      const missingFields = [];
+      if (!name) missingFields.push('name');
+      if (!subdomain) missingFields.push('subdomain');
+      if (!admin?.name) missingFields.push('admin.name');
+      if (!admin?.email) missingFields.push('admin.email');
+      if (!admin?.password) missingFields.push('admin.password');
+      
+      console.error('Missing required fields:', missingFields);
       return NextResponse.json(
         { 
           success: false, 
           message: 'Missing required fields',
           errors: {
-            general: ['Name, subdomain, and admin credentials are required'],
+            general: [`Missing required fields: ${missingFields.join(', ')}`],
           },
         },
         { status: 400 }
