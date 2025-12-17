@@ -23,6 +23,8 @@ export default function TenantOnboardClient() {
   const [success, setSuccess] = useState(false);
   const [tenantData, setTenantData] = useState<any>(null);
   const [detectingCountry, setDetectingCountry] = useState(true);
+  const [rootDomain, setRootDomain] = useState('localhost');
+  const [protocol, setProtocol] = useState('http');
 
   const [formData, setFormData] = useState({
     // Tenant Info
@@ -76,6 +78,17 @@ export default function TenantOnboardClient() {
       });
     }
   };
+
+  // Set root domain and protocol on mount (client-side only)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      const root = hostname.split('.').slice(-2).join('.');
+      const proto = window.location.protocol.slice(0, -1);
+      setRootDomain(root);
+      setProtocol(proto);
+    }
+  }, []);
 
   // Detect country and auto-fill form fields on mount
   useEffect(() => {
@@ -253,8 +266,6 @@ export default function TenantOnboardClient() {
   };
 
   if (success && tenantData) {
-    const rootDomain = typeof window !== 'undefined' ? window.location.hostname.split('.').slice(-2).join('.') : 'localhost';
-    const protocol = typeof window !== 'undefined' ? window.location.protocol.slice(0, -1) : 'http';
     const port = process.env.NODE_ENV === 'production' ? '' : ':3000';
     const accessUrl = `${protocol}://${tenantData.subdomain}.${rootDomain}${port}`;
 
@@ -514,7 +525,7 @@ export default function TenantOnboardClient() {
                     placeholder="citymedical"
                   />
                   <span className="text-gray-500 whitespace-nowrap">
-                    .{typeof window !== 'undefined' ? window.location.hostname.split('.').slice(-2).join('.') : 'localhost'}
+                    .{rootDomain}
                   </span>
                 </div>
                 {errors.subdomain && (

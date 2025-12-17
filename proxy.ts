@@ -28,8 +28,29 @@ export async function proxy(request: NextRequest) {
   const publicRoutes = ['/login', '/signup', '/onboard', '/book', '/patient/login', '/tenant-onboard', '/subscription', '/tenant-not-found'];
   const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + '/'));
 
-  // If no subdomain, allow normal access (root domain)
+  // If no subdomain, handle root domain access
   if (!subdomain) {
+    // In production, redirect root domain (without www) to www
+    if (process.env.NODE_ENV === 'production') {
+      const hostname = host.split(':')[0]; // Remove port if present
+      const rootDomainFormatted = rootDomain.split(':')[0];
+      
+      // Check if we're on the root domain without www (and not localhost/127.0.0.1)
+      const isRootDomain = hostname === rootDomainFormatted;
+      const isNotLocalhost = !hostname.includes('localhost') && !hostname.includes('127.0.0.1');
+      const isNotWww = !hostname.startsWith('www.');
+      
+      if (isRootDomain && isNotLocalhost && isNotWww) {
+        // Redirect to www version
+        const protocol = request.nextUrl.protocol;
+        const port = host.includes(':') ? `:${host.split(':')[1]}` : '';
+        const wwwUrl = `${protocol}//www.${rootDomainFormatted}${port}${pathname}${request.nextUrl.search}`;
+        const response = NextResponse.redirect(wwwUrl, 301); // 301 permanent redirect
+        addSecurityHeaders(request, response);
+        return response;
+      }
+    }
+    
     // Block access to tenant-specific routes on root domain (except tenant-onboard)
     if (pathname.startsWith('/tenant') && !pathname.startsWith('/tenant-onboard')) {
       const response = NextResponse.redirect(new URL('/', request.url));
