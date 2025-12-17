@@ -159,6 +159,10 @@ export async function PUT(
       patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
     }
     
+    // Get old appointment to check status change
+    const oldAppointment = await Appointment.findOne(query);
+    const statusChangedToCancelled = oldAppointment && oldAppointment.status !== 'cancelled' && body.status === 'cancelled';
+
     const appointment = await Appointment.findOneAndUpdate(query, body, {
       new: true,
       runValidators: true,
@@ -175,6 +179,19 @@ export async function PUT(
     // Send reminder if status changed to confirmed
     if (body.status === 'confirmed' && appointment.patient) {
       sendAppointmentReminder(appointment).catch(console.error);
+    }
+
+    // Check if appointment was cancelled - try to fill from waitlist
+    if (statusChangedToCancelled) {
+      import('@/lib/automations/waitlist-management').then(({ fillCancelledSlot }) => {
+        fillCancelledSlot(appointment._id, tenantId ? new Types.ObjectId(tenantId) : undefined)
+          .catch((error) => {
+            console.error('Error filling cancelled slot from waitlist:', error);
+            // Don't fail appointment update if waitlist fill fails
+          });
+      }).catch((error) => {
+        console.error('Error loading waitlist management module:', error);
+      });
     }
     
     return NextResponse.json({ success: true, data: appointment });

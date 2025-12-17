@@ -5,6 +5,74 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/cron/payment-reminders",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/inventory-alerts",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/expiry-monitoring",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/prescription-refills",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/followup-scheduling",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/daily-reports",
+      "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/no-show-handling",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/waitlist-management",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/birthday-greetings",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/health-reminders",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/feedback-collection",
+      "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/recurring-appointments",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/medication-reminders",
+      "schedule": "0 8,12,16,20 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-reports",
+      "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/cron/monthly-reports",
+      "schedule": "0 8 1 * *"
+    },
+    {
+      "path": "/api/cron/weekly-staff-performance",
+      "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/cron/monthly-staff-performance",
+      "schedule": "0 9 1 * *"
+    },
+    {
       "path": "/api/cron/backup",
       "schedule": "0 2 * * *"
     }

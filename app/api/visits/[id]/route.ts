@@ -157,6 +157,10 @@ export async function PUT(
       body.visitCode = `VISIT-${String(nextNumber).padStart(6, '0')}`;
     }
     
+    // Get old visit to check status change
+    const oldVisit = await Visit.findOne(query);
+    const statusChangedToClosed = oldVisit && oldVisit.status !== 'closed' && body.status === 'closed';
+    
     // Handle digital signature - add provider ID and IP address
     if (body.digitalSignature) {
       const clientIp = request.headers.get('x-forwarded-for') || 
@@ -195,6 +199,59 @@ export async function PUT(
     
     await visit.populate(patientPopulateOptions);
     await visit.populate('provider', 'name email');
+    
+    // Check if visit status changed to 'closed' - trigger automatic invoice generation
+    if (statusChangedToClosed) {
+      // Import and trigger automatic invoice generation (async, don't wait)
+      import('@/lib/automations/invoice-generation').then(({ generateInvoiceForVisit }) => {
+        generateInvoiceForVisit({
+          visitId: visit._id,
+          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          createdBy: session.userId,
+          sendNotification: true,
+          sendEmail: true,
+        }).catch((error) => {
+          console.error('Error generating automatic invoice:', error);
+          // Don't fail the visit update if invoice generation fails
+        });
+      }).catch((error) => {
+        console.error('Error loading invoice generation module:', error);
+      });
+
+      // Check if visit has follow-up date - trigger automatic follow-up scheduling
+      if (visit.followUpDate) {
+        import('@/lib/automations/followup-scheduling').then(({ scheduleFollowupAppointment }) => {
+          scheduleFollowupAppointment({
+            visitId: visit._id,
+            tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+            sendNotification: true,
+            sendEmail: true,
+            sendSMS: true,
+          }).catch((error) => {
+            console.error('Error scheduling follow-up appointment:', error);
+            // Don't fail the visit update if follow-up scheduling fails
+          });
+        }).catch((error) => {
+          console.error('Error loading follow-up scheduling module:', error);
+        });
+      }
+
+      // Send visit summary to patient (async, don't wait)
+      import('@/lib/automations/visit-summaries').then(({ sendVisitSummary }) => {
+        sendVisitSummary({
+          visitId: visit._id,
+          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          sendSMS: true,
+          sendEmail: true,
+          sendNotification: true,
+        }).catch((error) => {
+          console.error('Error sending visit summary:', error);
+          // Don't fail the visit update if summary sending fails
+        });
+      }).catch((error) => {
+        console.error('Error loading visit summaries module:', error);
+      });
+    }
     
     // Send follow-up reminder if followUpDate is set and not sent yet
     if (visit.followUpDate && !visit.followUpReminderSent) {

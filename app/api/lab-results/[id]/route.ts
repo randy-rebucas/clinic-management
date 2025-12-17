@@ -120,6 +120,10 @@ export async function PUT(
       query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
     }
 
+    // Get old lab result to check status change
+    const oldLabResult = await LabResult.findOne(query);
+    const statusChangedToCompleted = oldLabResult && oldLabResult.status !== 'completed' && body.status === 'completed';
+
     const labResult = await LabResult.findOneAndUpdate(query, body, {
       new: true,
       runValidators: true,
@@ -148,11 +152,23 @@ export async function PUT(
     await labResult.populate('orderedBy', 'name email');
     await labResult.populate('reviewedBy', 'name email');
 
-    if (!labResult) {
-      return NextResponse.json(
-        { success: false, error: 'Lab result not found' },
-        { status: 404 }
-      );
+    // Check if status changed to 'completed' - trigger automatic notification
+    if (statusChangedToCompleted && !labResult.notificationSent) {
+      // Import and trigger automatic notification (async, don't wait)
+      import('@/lib/automations/lab-notifications').then(({ sendLabResultNotification }) => {
+        sendLabResultNotification({
+          labResultId: labResult._id,
+          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          sendSMS: true,
+          sendEmail: true,
+          sendNotification: true,
+        }).catch((error) => {
+          console.error('Error sending automatic lab result notification:', error);
+          // Don't fail the lab result update if notification fails
+        });
+      }).catch((error) => {
+        console.error('Error loading lab notifications module:', error);
+      });
     }
 
     return NextResponse.json({ success: true, data: labResult });

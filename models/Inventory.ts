@@ -92,5 +92,27 @@ InventoryItemSchema.pre('save', function (this: IInventoryItem, next) {
   next();
 });
 
+// Post-save hook to trigger alerts (runs after save, can be async)
+InventoryItemSchema.post('save', function (this: IInventoryItem) {
+  // Trigger alert if status is low-stock, out-of-stock, or expired
+  // Do this asynchronously to avoid blocking
+  if (this.status === 'low-stock' || this.status === 'out-of-stock' || this.status === 'expired') {
+    // Schedule alert (don't wait)
+    import('@/lib/automations/inventory-alerts').then(({ sendLowStockAlert }) => {
+      sendLowStockAlert({
+        inventoryId: this._id,
+        tenantId: this.tenantId,
+        alertType: this.status as 'low-stock' | 'out-of-stock' | 'expired',
+        sendEmail: true,
+        sendNotification: true,
+      }).catch((error) => {
+        console.error('Error sending inventory alert:', error);
+      });
+    }).catch((error) => {
+      console.error('Error loading inventory alerts module:', error);
+    });
+  }
+});
+
 export default mongoose.models.InventoryItem || mongoose.model<IInventoryItem>('InventoryItem', InventoryItemSchema);
 

@@ -199,6 +199,22 @@ export async function POST(request: NextRequest) {
       patientCode: patient.patientCode,
       email: patient.email,
     });
+
+    // Send welcome message (async, don't wait)
+    import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
+      sendWelcomeMessage({
+        patientId: patient._id,
+        tenantId: patient.tenantId,
+        sendSMS: true,
+        sendEmail: true,
+        sendNotification: false,
+      }).catch((error) => {
+        console.error('Error sending welcome message:', error);
+        // Don't fail patient creation if welcome message fails
+      });
+    }).catch((error) => {
+      console.error('Error loading welcome messages module:', error);
+    });
     
     return NextResponse.json({ 
       success: true, 

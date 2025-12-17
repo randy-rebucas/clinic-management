@@ -77,6 +77,31 @@ export interface ISettings extends Document {
     smtpEnabled: boolean;
   };
 
+  // Automation Settings
+  automationSettings: {
+    autoInvoiceGeneration: boolean;
+    autoPaymentReminders: boolean;
+    autoLowStockAlerts: boolean;
+    autoLabNotifications: boolean;
+    autoExpiryMonitoring: boolean;
+    autoAppointmentConfirmation: boolean;
+    autoPrescriptionRefills: boolean;
+    autoFollowupScheduling: boolean;
+    autoDailyReports: boolean;
+    autoWelcomeMessages: boolean;
+    autoVisitSummaries: boolean;
+    autoNoShowHandling: boolean;
+    autoWaitlistManagement: boolean;
+    autoBirthdayGreetings: boolean;
+    autoHealthReminders: boolean;
+    autoFeedbackCollection: boolean;
+    autoRecurringAppointments: boolean;
+    autoMedicationAdherence: boolean;
+    autoBroadcastMessaging: boolean;
+    autoPeriodicReports: boolean;
+    autoStaffPerformanceReports: boolean;
+  };
+
   // Display Settings
   displaySettings: {
     theme: 'light' | 'dark' | 'auto';
@@ -178,6 +203,30 @@ const SettingsSchema = new Schema<ISettings>(
       cloudinaryEnabled: { type: Boolean, default: false },
       twilioEnabled: { type: Boolean, default: false },
       smtpEnabled: { type: Boolean, default: false },
+    },
+
+    automationSettings: {
+      autoInvoiceGeneration: { type: Boolean, default: true },
+      autoPaymentReminders: { type: Boolean, default: true },
+      autoLowStockAlerts: { type: Boolean, default: true },
+      autoLabNotifications: { type: Boolean, default: true },
+      autoExpiryMonitoring: { type: Boolean, default: true },
+      autoAppointmentConfirmation: { type: Boolean, default: true },
+      autoPrescriptionRefills: { type: Boolean, default: true },
+      autoFollowupScheduling: { type: Boolean, default: true },
+      autoDailyReports: { type: Boolean, default: true },
+      autoWelcomeMessages: { type: Boolean, default: true },
+      autoVisitSummaries: { type: Boolean, default: true },
+      autoNoShowHandling: { type: Boolean, default: true },
+      autoWaitlistManagement: { type: Boolean, default: true },
+      autoBirthdayGreetings: { type: Boolean, default: true },
+      autoHealthReminders: { type: Boolean, default: true },
+      autoFeedbackCollection: { type: Boolean, default: true },
+      autoRecurringAppointments: { type: Boolean, default: true },
+      autoMedicationAdherence: { type: Boolean, default: true },
+      autoBroadcastMessaging: { type: Boolean, default: true },
+      autoPeriodicReports: { type: Boolean, default: true },
+      autoStaffPerformanceReports: { type: Boolean, default: true },
     },
 
     displaySettings: {

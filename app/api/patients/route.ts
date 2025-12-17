@@ -303,6 +303,23 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Send welcome message (async, don't wait)
+    import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
+      sendWelcomeMessage({
+        patientId: patient._id,
+        tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+        sendSMS: true,
+        sendEmail: true,
+        sendNotification: false,
+      }).catch((error) => {
+        console.error('Error sending welcome message:', error);
+        // Don't fail patient creation if welcome message fails
+      });
+    }).catch((error) => {
+      console.error('Error loading welcome messages module:', error);
+    });
+
     return NextResponse.json({ success: true, data: patient }, { status: 201 });
   } catch (error: any) {
     logger.error('Error creating patient', error as Error, {
