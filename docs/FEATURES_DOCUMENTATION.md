@@ -1463,5 +1463,54 @@ The system is designed to handle all aspects of clinic operations, from patient 
 
 ---
 
-**For detailed documentation on specific features, see the `docs/` directory.**
+## Additional Documentation
+
+### Quick Reference Guides
+
+- **`FEATURES_QUICK_REFERENCE.md`** - Quick lookup guide for common features and operations
+- **`API_QUICK_REFERENCE.md`** - Quick reference for all API endpoints
+- **`DATA_MODELS_REFERENCE.md`** - Complete reference for all data models and relationships
+- **`FEATURE_COMPARISON_MATRIX.md`** - Feature availability across subscription plans
+
+### Detailed Documentation
+
+For detailed documentation on specific features, see the `docs/` directory:
+
+- **Setup & Configuration**
+  - `MULTI_TENANT.md` - Multi-tenant architecture
+  - `CLOUDINARY_SETUP.md` - File storage setup
+  - `SMS_SETUP.md` - SMS integration
+  - `CRON_SETUP.md` - Scheduled tasks
+  - `PAYPAL_SETUP.md` - Payment integration
+
+- **Feature Documentation**
+  - `BILLING_PAYMENTS.md` - Billing system
+  - `DOCUMENT_MANAGEMENT.md` - Document management
+  - `EPRESCRIPTION.md` - E-prescription features
+  - `LABORATORY_DIAGNOSTIC.md` - Lab results
+  - `MEMBERSHIP_LOYALTY.md` - Membership programs
+  - `NOTIFICATIONS_COMMUNICATION.md` - Communication features
+  - `ROOM_MANAGEMENT.md` - Room management
+  - `DASHBOARD_REPORTING.md` - Reporting features
+
+- **User Journeys**
+  - `ADMIN_JOURNEY.md` - Admin user workflow
+  - `DOCTOR_JOURNEY.md` - Doctor workflow
+  - `NURSE_JOURNEY.md` - Nurse workflow
+  - `RECEPTIONIST_JOURNEY.md` - Receptionist workflow
+  - `ACCOUNTANT_JOURNEY.md` - Accountant workflow
+  - `PATIENT_JOURNEY.md` - Patient workflow
+
+- **Security & Compliance**
+  - `SECURITY_COMPLIANCE.md` - Security features
+  - `AUTHENTICATION.md` - Authentication system
+
+- **Automation**
+  - `AUTOMATION_COMPLETE_SUMMARY.md` - All automations
+  - `AUTOMATION_IMPLEMENTATION.md` - Implementation details
+  - `SUBSCRIPTION_AUTOMATION.md` - Subscription automations
+
+---
+
+**Last Updated:** 2024
 
