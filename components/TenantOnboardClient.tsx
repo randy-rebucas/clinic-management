@@ -25,6 +25,7 @@ export default function TenantOnboardClient() {
   const [detectingCountry, setDetectingCountry] = useState(true);
   const [rootDomain, setRootDomain] = useState('localhost');
   const [protocol, setProtocol] = useState('http');
+  const [lastGeneratedSubdomain, setLastGeneratedSubdomain] = useState('');
 
   const [formData, setFormData] = useState({
     // Tenant Info
@@ -98,7 +99,18 @@ export default function TenantOnboardClient() {
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    // Special handling for subdomain - normalize it as user types
+    if (field === 'subdomain') {
+      // Convert to lowercase and remove invalid characters in real-time
+      let normalized = value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      // Remove leading/trailing hyphens
+      normalized = normalized.replace(/^-+|-+$/g, '');
+      // Replace multiple consecutive hyphens with single hyphen
+      normalized = normalized.replace(/-+/g, '-');
+      setFormData(prev => ({ ...prev, [field]: normalized }));
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
     // Clear error for this field
     if (errors[field as keyof FormErrors]) {
       setErrors(prev => {
@@ -120,14 +132,22 @@ export default function TenantOnboardClient() {
     }
   }, []);
 
-  // Auto-generate subdomain from clinic name
+  // Auto-generate subdomain from clinic name (only if subdomain is empty or matches previous generated value)
   useEffect(() => {
     const generatedSubdomain = generateSubdomain(formData.tenantName);
-    setFormData(prev => ({
-      ...prev,
-      subdomain: generatedSubdomain,
-    }));
-  }, [formData.tenantName]);
+    setFormData(prev => {
+      // Only auto-generate if subdomain is empty or if it matches the last generated value
+      // This allows users to manually edit the subdomain without it being overwritten
+      if (!prev.subdomain || prev.subdomain === lastGeneratedSubdomain) {
+        setLastGeneratedSubdomain(generatedSubdomain);
+        return {
+          ...prev,
+          subdomain: generatedSubdomain,
+        };
+      }
+      return prev;
+    });
+  }, [formData.tenantName, lastGeneratedSubdomain]);
 
   // Detect country and auto-fill form fields on mount
   useEffect(() => {
@@ -227,10 +247,24 @@ export default function TenantOnboardClient() {
         return value && value.trim() ? value.trim() : undefined;
       };
 
+      // Helper to ensure non-empty strings, convert empty to undefined
+      const ensureValue = (value: string | undefined): string | undefined => {
+        const trimmed = value?.trim();
+        return trimmed && trimmed.length > 0 ? trimmed : undefined;
+      };
+
+      // Normalize subdomain one more time before sending
+      const normalizedSubdomain = formData.subdomain
+        ?.trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/^-+|-+$/g, '')
+        .replace(/-+/g, '-');
+
       const requestBody = {
-        name: formData.tenantName?.trim(),
-        displayName: formData.displayName?.trim() || formData.tenantName?.trim(),
-        subdomain: formData.subdomain?.trim().toLowerCase(),
+        name: ensureValue(formData.tenantName),
+        displayName: ensureValue(formData.displayName) || ensureValue(formData.tenantName),
+        subdomain: ensureValue(normalizedSubdomain),
         email: cleanOptional(formData.email),
         phone: cleanOptional(formData.phone),
         address: (formData.street || formData.city || formData.state || formData.zipCode || formData.country) ? {
@@ -246,19 +280,36 @@ export default function TenantOnboardClient() {
           dateFormat: formData.dateFormat || 'MM/DD/YYYY',
         },
         admin: {
-          name: formData.adminName?.trim(),
-          email: formData.adminEmail?.trim(),
+          name: ensureValue(formData.adminName),
+          email: ensureValue(formData.adminEmail),
           password: formData.adminPassword, // Don't trim password
         },
       };
 
+      // Final validation before sending
+      if (!requestBody.name || !requestBody.subdomain || !requestBody.admin?.name || !requestBody.admin?.email || !requestBody.admin?.password) {
+        const missingFields = [];
+        if (!requestBody.name) missingFields.push('Tenant name');
+        if (!requestBody.subdomain) missingFields.push('Subdomain');
+        if (!requestBody.admin?.name) missingFields.push('Admin name');
+        if (!requestBody.admin?.email) missingFields.push('Admin email');
+        if (!requestBody.admin?.password) missingFields.push('Admin password');
+        
+        setErrors({ 
+          general: `Please fill in all required fields: ${missingFields.join(', ')}` 
+        });
+        setLoading(false);
+        return;
+      }
+
       console.log('Sending onboarding request:', {
-        hasName: !!requestBody.name,
-        hasSubdomain: !!requestBody.subdomain,
+        name: requestBody.name,
+        subdomain: requestBody.subdomain,
         hasAdmin: !!requestBody.admin,
-        hasAdminName: !!requestBody.admin.name,
-        hasAdminEmail: !!requestBody.admin.email,
-        hasAdminPassword: !!requestBody.admin.password,
+        adminName: requestBody.admin?.name,
+        adminEmail: requestBody.admin?.email,
+        hasAdminPassword: !!requestBody.admin?.password,
+        fullRequestBody: requestBody,
       });
 
       const response = await fetch('/api/tenants/onboard', {
@@ -270,25 +321,64 @@ export default function TenantOnboardClient() {
       });
 
       let data;
+      let responseText = '';
       try {
-        data = await response.json();
+        responseText = await response.text();
+        data = responseText ? JSON.parse(responseText) : null;
       } catch (jsonError) {
-        console.error('Failed to parse response:', jsonError);
-        setErrors({ general: `Server error (${response.status}). Please try again.` });
+        const parseErrorDetails = {
+          status: response.status,
+          statusText: response.statusText,
+          responseText: responseText || '(empty response)',
+          jsonError: jsonError instanceof Error ? {
+            name: jsonError.name,
+            message: jsonError.message,
+            stack: jsonError.stack,
+          } : String(jsonError),
+          timestamp: new Date().toISOString(),
+        };
+        console.error('Failed to parse response:', parseErrorDetails);
+        console.error('Response text that failed to parse:', responseText);
+        setErrors({ 
+          general: `Server returned invalid response (${response.status}). Please try again or contact support.` 
+        });
         setLoading(false);
         return;
       }
 
       if (!response.ok) {
-        console.error('Onboarding failed:', {
+        // Create a detailed error object for logging
+        const errorDetails = {
           status: response.status,
           statusText: response.statusText,
-          data,
-        });
-        if (data.errors) {
+          url: response.url || '/api/tenants/onboard',
+          data: data || null,
+          dataStringified: data ? JSON.stringify(data, null, 2) : 'null',
+          requestBody: {
+            name: requestBody.name || 'missing',
+            subdomain: requestBody.subdomain || 'missing',
+            hasAdmin: !!requestBody.admin,
+            adminName: requestBody.admin?.name || 'missing',
+            adminEmail: requestBody.admin?.email || 'missing',
+            hasAdminPassword: !!requestBody.admin?.password,
+          },
+          timestamp: new Date().toISOString(),
+        };
+
+        // Log error with proper serialization
+        console.error('Onboarding failed:', errorDetails);
+        console.error('Error details (stringified):', JSON.stringify(errorDetails, null, 2));
+        
+        // Extract error message from response
+        const errorMessage = data?.message || 
+                            data?.error || 
+                            (data?.errors ? Object.values(data.errors).flat().join(', ') : null) ||
+                            `Failed to create tenant (${response.status} ${response.statusText})`;
+
+        if (data?.errors) {
           setErrors(data.errors);
         } else {
-          setErrors({ general: data.message || 'Failed to create tenant. Please try again.' });
+          setErrors({ general: errorMessage });
         }
         setLoading(false);
         return;
@@ -298,8 +388,37 @@ export default function TenantOnboardClient() {
       setSuccess(true);
       setLoading(false);
     } catch (error) {
-      console.error('Error creating tenant:', error);
-      setErrors({ general: 'An error occurred. Please try again.' });
+      // Create detailed error information
+      const errorInfo = {
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+        } : String(error),
+        errorStringified: error instanceof Error 
+          ? JSON.stringify({
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+            }, null, 2)
+          : JSON.stringify(error, null, 2),
+        timestamp: new Date().toISOString(),
+        formData: {
+          tenantName: formData.tenantName || 'unknown',
+          subdomain: formData.subdomain || 'unknown',
+        },
+      };
+
+      console.error('Error creating tenant:', errorInfo);
+      console.error('Error details (stringified):', errorInfo.errorStringified);
+      
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'An unexpected error occurred';
+      
+      setErrors({ 
+        general: `Network or system error: ${errorMessage}. Please check your connection and try again.` 
+      });
       setLoading(false);
     }
   };
@@ -557,8 +676,8 @@ export default function TenantOnboardClient() {
                   <input
                     type="text"
                     value={formData.subdomain}
-                    readOnly
-                    className={`flex-1 px-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-gray-50 backdrop-blur-sm text-base cursor-not-allowed ${
+                    onChange={(e) => handleInputChange('subdomain', e.target.value)}
+                    className={`flex-1 px-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base ${
                       errors.subdomain ? 'border-red-300' : 'border-gray-300'
                     }`}
                     placeholder="citymedical"

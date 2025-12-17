@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { Suspense } from "react";
 import Navigation from "@/components/Navigation";
@@ -9,16 +8,6 @@ import { SettingsProvider } from "@/components/SettingsContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { getTenantContext, extractSubdomain } from "@/lib/tenant";
 import TenantNotFound from "@/components/TenantNotFound";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "MyClinicSoft",

@@ -20,6 +20,7 @@
     "setup:admin": "tsx scripts/create-admin.ts",
     "seed": "tsx scripts/seed-data.ts",
     "tenant:onboard": "tsx scripts/onboard-tenant.ts",
+    "tenant:delete": "tsx scripts/delete-tenant.ts",
     "db:reset": "tsx scripts/reset-db.ts",
     "db:reset:all": "tsx scripts/reset-db.ts --all",
     "db:reset:selective": "tsx scripts/reset-db.ts --selective",

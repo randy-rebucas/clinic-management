@@ -85,18 +85,45 @@ export async function POST(request: NextRequest) {
     // Validate required fields
     if (!name || !subdomain || !admin?.name || !admin?.email || !admin?.password) {
       const missingFields = [];
-      if (!name) missingFields.push('name');
-      if (!subdomain) missingFields.push('subdomain');
-      if (!admin?.name) missingFields.push('admin.name');
-      if (!admin?.email) missingFields.push('admin.email');
-      if (!admin?.password) missingFields.push('admin.password');
+      const fieldErrors: any = {};
+      
+      if (!name || !name.trim()) {
+        missingFields.push('name');
+        fieldErrors.tenantName = ['Tenant name is required'];
+      }
+      if (!subdomain || !subdomain.trim()) {
+        missingFields.push('subdomain');
+        fieldErrors.subdomain = ['Subdomain is required'];
+      }
+      if (!admin?.name || !admin.name.trim()) {
+        missingFields.push('admin.name');
+        fieldErrors.adminName = ['Admin name is required'];
+      }
+      if (!admin?.email || !admin.email.trim()) {
+        missingFields.push('admin.email');
+        fieldErrors.adminEmail = ['Admin email is required'];
+      }
+      if (!admin?.password || !admin.password.trim()) {
+        missingFields.push('admin.password');
+        fieldErrors.adminPassword = ['Admin password is required'];
+      }
       
       console.error('Missing required fields:', missingFields);
+      console.error('Request body received:', {
+        name: name ? `${name.substring(0, 20)}...` : 'missing',
+        subdomain: subdomain ? `${subdomain.substring(0, 20)}...` : 'missing',
+        hasAdmin: !!admin,
+        adminName: admin?.name ? `${admin.name.substring(0, 20)}...` : 'missing',
+        adminEmail: admin?.email ? `${admin.email.substring(0, 20)}...` : 'missing',
+        hasAdminPassword: !!admin?.password,
+      });
+      
       return NextResponse.json(
         { 
           success: false, 
-          message: 'Missing required fields',
+          message: `Missing required fields: ${missingFields.join(', ')}`,
           errors: {
+            ...fieldErrors,
             general: [`Missing required fields: ${missingFields.join(', ')}`],
           },
         },
@@ -246,20 +273,83 @@ export async function POST(request: NextRequest) {
 
     const createdRoles: any[] = [];
     for (const roleData of rolesToCreate) {
-      // Create or update role
-      const role = await Role.findOneAndUpdate(
-        { name: roleData.name, tenantId },
-        {
-          name: roleData.name,
-          tenantId,
-          displayName: roleData.displayName,
-          description: roleData.description,
-          level: roleData.level,
-          isActive: true,
-          defaultPermissions: roleData.defaultPermissions,
-        },
-        { upsert: true, new: true }
-      );
+      let role;
+      try {
+        // First, try to find existing role with tenantId
+        role = await Role.findOne({ name: roleData.name, tenantId });
+        
+        if (!role) {
+          // If not found, check for role without tenantId (backward compatibility)
+          const existingRoleWithoutTenant = await Role.findOne({ 
+            name: roleData.name,
+            $or: [{ tenantId: { $exists: false } }, { tenantId: null }]
+          });
+          
+          if (existingRoleWithoutTenant) {
+            // Update existing role to include tenantId
+            existingRoleWithoutTenant.tenantId = tenantId;
+            existingRoleWithoutTenant.displayName = roleData.displayName;
+            existingRoleWithoutTenant.description = roleData.description;
+            existingRoleWithoutTenant.level = roleData.level;
+            existingRoleWithoutTenant.isActive = true;
+            existingRoleWithoutTenant.defaultPermissions = roleData.defaultPermissions;
+            await existingRoleWithoutTenant.save();
+            role = existingRoleWithoutTenant;
+          } else {
+            // Create new role
+            role = await Role.create({
+              name: roleData.name,
+              tenantId,
+              displayName: roleData.displayName,
+              description: roleData.description,
+              level: roleData.level,
+              isActive: true,
+              defaultPermissions: roleData.defaultPermissions,
+            });
+          }
+        } else {
+          // Update existing role
+          role.displayName = roleData.displayName;
+          role.description = roleData.description;
+          role.level = roleData.level;
+          role.isActive = true;
+          role.defaultPermissions = roleData.defaultPermissions;
+          await role.save();
+        }
+      } catch (error: any) {
+        // Handle duplicate key errors
+        if (error.code === 11000 || error.message?.includes('duplicate key')) {
+          console.warn(`Duplicate key error for role ${roleData.name}, attempting to find existing role...`);
+          // Try to find the existing role
+          role = await Role.findOne({ name: roleData.name, tenantId });
+          if (!role) {
+            // Try without tenantId
+            role = await Role.findOne({ 
+              name: roleData.name,
+              $or: [{ tenantId: { $exists: false } }, { tenantId: null }]
+            });
+            if (role) {
+              // Update to include tenantId
+              role.tenantId = tenantId;
+              await role.save();
+            }
+          }
+          
+          if (!role) {
+            throw new Error(`Failed to create or find role ${roleData.name}: ${error.message}`);
+          }
+          
+          // Update role properties
+          role.displayName = roleData.displayName;
+          role.description = roleData.description;
+          role.level = roleData.level;
+          role.isActive = true;
+          role.defaultPermissions = roleData.defaultPermissions;
+          await role.save();
+        } else {
+          throw error;
+        }
+      }
 
       // Clear existing permissions for this role
       await Permission.deleteMany({ role: role._id, tenantId });
@@ -487,15 +577,45 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('Error creating tenant:', error);
+    // Type guard for MongoDB errors
+    const isMongoError = error && typeof error === 'object' && 'code' in error;
+    const mongoError = isMongoError ? error as { code?: number; keyPattern?: Record<string, unknown>; keyValue?: Record<string, unknown> } : null;
+    
+    // Create detailed error information for logging
+    const errorDetails = {
+      error: error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      } : String(error),
+      errorCode: mongoError?.code,
+      keyPattern: mongoError?.keyPattern,
+      keyValue: mongoError?.keyValue,
+      errorStringified: error instanceof Error 
+        ? JSON.stringify({
+            name: error.name,
+            message: error.message,
+            code: mongoError?.code,
+            keyPattern: mongoError?.keyPattern,
+            keyValue: mongoError?.keyValue,
+            stack: error.stack,
+          }, null, 2)
+        : JSON.stringify(error, null, 2),
+      timestamp: new Date().toISOString(),
+    };
+
+    console.error('Error creating tenant:', errorDetails);
+    console.error('Error details (stringified):', errorDetails.errorStringified);
     
     // Handle duplicate key errors
-    if (error.code === 11000) {
-      const field = Object.keys(error.keyPattern)[0];
+    if (mongoError?.code === 11000 || error.message?.includes('duplicate key')) {
+      const field = mongoError?.keyPattern ? Object.keys(mongoError.keyPattern)[0] : 'field';
+      const value = mongoError?.keyValue ? Object.values(mongoError.keyValue)[0] : 'value';
+      
       return NextResponse.json(
         {
           success: false,
-          message: `${field} already exists`,
+          message: `${field} "${value}" already exists`,
           errors: {
             [field]: [`This ${field} is already taken`],
           },
