@@ -51,7 +51,7 @@ export async function sendExpiryAlert(options: ExpiryAlertOptions): Promise<{
     const inventory = await Inventory.findOne(inventoryQuery);
 
     if (!inventory) {
-      return { success: false, error: 'Inventory item not found' };
+      return { success: false, sent: false, error: 'Inventory item not found' };
     }
 
     // Check if item has expiry date
@@ -106,7 +106,7 @@ export async function sendExpiryAlert(options: ExpiryAlertOptions): Promise<{
     }
 
     if (alertRecipients.length === 0) {
-      return { success: false, error: 'No alert recipients found' };
+      return { success: false, sent: false, error: 'No alert recipients found' };
     }
 
     const alertMessage = generateExpiryMessage(inventory, daysUntilExpiry);
@@ -164,7 +164,8 @@ export async function sendExpiryAlert(options: ExpiryAlertOptions): Promise<{
   } catch (error: any) {
     console.error('Error sending expiry alert:', error);
     return { 
-      success: false, 
+      success: false,
+      sent: false,
       error: error.message || 'Failed to send expiry alert' 
     };
   }
@@ -199,8 +200,12 @@ export async function processExpiryAlerts(tenantId?: string | Types.ObjectId): P
     sevenDaysFromNow.setDate(today.getDate() + 7);
 
     const query: any = {
-      expiryDate: { $exists: true, $ne: null },
-      expiryDate: { $gte: today, $lte: thirtyDaysFromNow }, // Within 30 days
+      expiryDate: { 
+        $exists: true, 
+        $ne: null,
+        $gte: today, 
+        $lte: thirtyDaysFromNow 
+      }, // Within 30 days
       status: { $ne: 'expired' }, // Not already expired
     };
 

@@ -106,6 +106,24 @@ export async function POST(request: NextRequest) {
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
+
+    // Check subscription limit for creating visits
+    if (tenantId) {
+      const { checkSubscriptionLimit } = await import('@/lib/subscription-limits');
+      const limitCheck = await checkSubscriptionLimit(tenantId, 'createVisit');
+      if (!limitCheck.allowed) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: limitCheck.reason || 'Subscription limit exceeded',
+            limit: limitCheck.limit,
+            current: limitCheck.current,
+            remaining: limitCheck.remaining,
+          },
+          { status: 403 }
+        );
+      }
+    }
     
     // Validate that the patient belongs to the tenant
     if (body.patient && tenantId) {

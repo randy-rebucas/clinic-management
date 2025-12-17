@@ -78,6 +78,7 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
     const settings = await getSettings();
     const invoicePrefix = settings.billingSettings?.invoicePrefix || 'INV';
     const autoInvoiceEnabled = (settings.automationSettings as any)?.autoInvoiceGeneration !== false; // Default to true
+    const defaultConsultationFee = (settings.billingSettings as any)?.defaultConsultationFee || 500;
 
     if (!autoInvoiceEnabled) {
       return { 
@@ -164,9 +165,8 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
     const discountTotal = discounts.reduce((sum, disc) => sum + disc.amount, 0);
     const afterDiscount = subtotal - discountTotal;
     
-    // Get tax rate and default consultation fee from settings
+    // Get tax rate from settings
     const taxRate = settings.billingSettings?.taxRate || 0;
-    const defaultConsultationFee = (settings.billingSettings as any)?.defaultConsultationFee || 500;
     const tax = afterDiscount * (taxRate / 100);
     const total = afterDiscount + tax;
 

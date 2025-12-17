@@ -48,7 +48,7 @@ export async function sendVisitSummary(options: VisitSummaryOptions): Promise<{
       .populate('labsOrdered');
 
     if (!visit) {
-      return { success: false, error: 'Visit not found' };
+      return { success: false, sent: false, error: 'Visit not found' };
     }
 
     // Only send summary for closed visits
@@ -58,7 +58,7 @@ export async function sendVisitSummary(options: VisitSummaryOptions): Promise<{
 
     const patient = visit.patient as any;
     if (!patient) {
-      return { success: false, error: 'Patient not found' };
+      return { success: false, sent: false, error: 'Patient not found' };
     }
 
     const tenantId = options.tenantId 
@@ -145,7 +145,8 @@ export async function sendVisitSummary(options: VisitSummaryOptions): Promise<{
   } catch (error: any) {
     console.error('Error sending visit summary:', error);
     return { 
-      success: false, 
+      success: false,
+      sent: false,
       error: error.message || 'Failed to send visit summary' 
     };
   }

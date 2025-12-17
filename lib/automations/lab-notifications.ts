@@ -46,12 +46,12 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
       .populate('orderedBy', 'name email');
 
     if (!labResult) {
-      return { success: false, error: 'Lab result not found' };
+      return { success: false, sent: false, error: 'Lab result not found' };
     }
 
     // Check if lab result is completed
     if (labResult.status !== 'completed' && labResult.status !== 'reviewed') {
-      return { success: false, error: 'Lab result is not completed' };
+      return { success: false, sent: false, error: 'Lab result is not completed' };
     }
 
     // Check if already notified
@@ -61,7 +61,7 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
 
     const patient = labResult.patient as any;
     if (!patient) {
-      return { success: false, error: 'Patient not found' };
+      return { success: false, sent: false, error: 'Patient not found' };
     }
 
     const tenantId = options.tenantId 
@@ -156,7 +156,8 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
   } catch (error: any) {
     console.error('Error sending lab result notification:', error);
     return { 
-      success: false, 
+      success: false,
+      sent: false,
       error: error.message || 'Failed to send lab result notification' 
     };
   }

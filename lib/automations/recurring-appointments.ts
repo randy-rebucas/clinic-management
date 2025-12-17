@@ -20,6 +20,7 @@ export interface RecurringAppointmentConfig {
   reason?: string;
   notes?: string;
   tenantId?: Types.ObjectId;
+  sendNotification?: boolean;
 }
 
 export interface RecurringAppointmentOptions {
@@ -146,13 +147,13 @@ export async function createNextRecurringAppointment(
       codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
     }
 
-    const lastAppointment = await Appointment.findOne(codeQuery)
+    const lastAppointmentByCode = await Appointment.findOne(codeQuery)
       .sort({ appointmentCode: -1 })
       .exec();
 
     let nextNumber = 1;
-    if (lastAppointment?.appointmentCode) {
-      const match = lastAppointment.appointmentCode.match(/(\d+)$/);
+    if (lastAppointmentByCode?.appointmentCode) {
+      const match = lastAppointmentByCode.appointmentCode.match(/(\d+)$/);
       if (match) {
         nextNumber = parseInt(match[1], 10) + 1;
       }

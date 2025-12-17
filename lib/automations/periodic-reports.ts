@@ -84,8 +84,6 @@ export async function generatePeriodicReport(options: PeriodicReportOptions): Pr
       completedVisits,
       totalInvoices,
       invoices,
-      totalRevenue,
-      outstandingBalance,
       totalPrescriptions,
       totalLabResults,
       doctors,

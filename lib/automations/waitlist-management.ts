@@ -231,7 +231,7 @@ export async function fillCancelledSlot(
       .populate('doctor', 'firstName lastName');
 
     if (!appointment) {
-      return { success: false, error: 'Appointment not found' };
+      return { success: false, filled: false, error: 'Appointment not found' };
     }
 
     // Only fill if appointment is cancelled
@@ -253,7 +253,7 @@ export async function fillCancelledSlot(
     // Get patient
     const patient = await Patient.findById(waitlistEntry.patientId);
     if (!patient) {
-      return { success: false, error: 'Waitlist patient not found' };
+      return { success: false, filled: false, error: 'Waitlist patient not found' };
     }
 
     // Create new appointment with same slot

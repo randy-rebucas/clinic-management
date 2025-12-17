@@ -227,6 +227,9 @@ const SettingsSchema = new Schema<ISettings>(
       autoBroadcastMessaging: { type: Boolean, default: true },
       autoPeriodicReports: { type: Boolean, default: true },
       autoStaffPerformanceReports: { type: Boolean, default: true },
+      autoInsuranceVerification: { type: Boolean, default: true },
+      autoQueueOptimization: { type: Boolean, default: true },
+      autoDataRetention: { type: Boolean, default: true },
     },
 
     displaySettings: {

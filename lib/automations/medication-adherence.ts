@@ -93,7 +93,7 @@ export async function sendMedicationReminder(options: MedicationReminderOptions)
       .populate('prescribedBy', 'firstName lastName');
 
     if (!prescription) {
-      return { success: false, error: 'Prescription not found' };
+      return { success: false, sent: false, error: 'Prescription not found' };
     }
 
     // Only send reminders for active prescriptions
@@ -103,7 +103,7 @@ export async function sendMedicationReminder(options: MedicationReminderOptions)
 
     const patient = prescription.patient as any;
     if (!patient) {
-      return { success: false, error: 'Patient not found' };
+      return { success: false, sent: false, error: 'Patient not found' };
     }
 
     const tenantId = options.tenantId 
@@ -166,7 +166,7 @@ export async function sendMedicationReminder(options: MedicationReminderOptions)
         await createNotification({
           userId: patient._id,
           tenantId,
-          type: 'medication',
+          type: 'reminder',
           priority: 'normal',
           title: 'Medication Reminder',
           message: `Time to take your medication: ${medication.name}`,
@@ -186,7 +186,8 @@ export async function sendMedicationReminder(options: MedicationReminderOptions)
   } catch (error: any) {
     console.error('Error sending medication reminder:', error);
     return { 
-      success: false, 
+      success: false,
+      sent: false,
       error: error.message || 'Failed to send medication reminder' 
     };
   }

@@ -42,7 +42,7 @@ export async function sendBirthdayGreeting(options: BirthdayGreetingOptions): Pr
     const patient = await Patient.findById(patientId);
 
     if (!patient) {
-      return { success: false, error: 'Patient not found' };
+      return { success: false, sent: false, error: 'Patient not found' };
     }
 
     if (!patient.dateOfBirth) {
@@ -110,7 +110,8 @@ export async function sendBirthdayGreeting(options: BirthdayGreetingOptions): Pr
   } catch (error: any) {
     console.error('Error sending birthday greeting:', error);
     return { 
-      success: false, 
+      success: false,
+      sent: false,
       error: error.message || 'Failed to send birthday greeting' 
     };
   }

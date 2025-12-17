@@ -73,6 +73,26 @@
       "schedule": "0 9 1 * *"
     },
     {
+      "path": "/api/cron/trial-expiration",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/usage-alerts",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/insurance-verification",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/queue-optimization",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/data-retention",
+      "schedule": "0 2 * * 0"
+    },
+    {
       "path": "/api/cron/backup",
       "schedule": "0 2 * * *"
     }

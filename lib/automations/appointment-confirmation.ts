@@ -36,7 +36,7 @@ export async function sendConfirmationRequest(options: AppointmentConfirmationOp
       .populate('doctor', 'firstName lastName');
 
     if (!appointment) {
-      return { success: false, error: 'Appointment not found' };
+      return { success: false, sent: false, error: 'Appointment not found' };
     }
 
     // Only send confirmation request for scheduled appointments
@@ -46,7 +46,7 @@ export async function sendConfirmationRequest(options: AppointmentConfirmationOp
 
     const patient = appointment.patient as any;
     if (!patient) {
-      return { success: false, error: 'Patient not found' };
+      return { success: false, sent: false, error: 'Patient not found' };
     }
 
     const tenantId = options.tenantId 
@@ -110,7 +110,8 @@ export async function sendConfirmationRequest(options: AppointmentConfirmationOp
   } catch (error: any) {
     console.error('Error sending confirmation request:', error);
     return { 
-      success: false, 
+      success: false,
+      sent: false,
       error: error.message || 'Failed to send confirmation request' 
     };
   }

@@ -50,6 +50,36 @@ export default function TenantOnboardClient() {
     confirmPassword: '',
   });
 
+  const generateSubdomain = (name: string): string => {
+    if (!name || !name.trim()) return '';
+    
+    // Convert to lowercase, remove special characters, replace spaces with hyphens
+    let subdomain = name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special characters except spaces and hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+      .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+    
+    // Ensure it starts and ends with alphanumeric
+    subdomain = subdomain.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+    
+    // Limit length to 63 characters (max subdomain length)
+    if (subdomain.length > 63) {
+      subdomain = subdomain.substring(0, 63);
+      // Remove trailing hyphen if exists
+      subdomain = subdomain.replace(/-+$/, '');
+    }
+    
+    // Ensure minimum length of 2
+    if (subdomain.length < 2) {
+      subdomain = '';
+    }
+    
+    return subdomain;
+  };
+
   const validateSubdomain = (subdomain: string): string | null => {
     if (!subdomain || subdomain.length < 2) {
       return 'Subdomain must be at least 2 characters long';
@@ -89,6 +119,15 @@ export default function TenantOnboardClient() {
       setProtocol(proto);
     }
   }, []);
+
+  // Auto-generate subdomain from clinic name
+  useEffect(() => {
+    const generatedSubdomain = generateSubdomain(formData.tenantName);
+    setFormData(prev => ({
+      ...prev,
+      subdomain: generatedSubdomain,
+    }));
+  }, [formData.tenantName]);
 
   // Detect country and auto-fill form fields on mount
   useEffect(() => {
@@ -518,8 +557,8 @@ export default function TenantOnboardClient() {
                   <input
                     type="text"
                     value={formData.subdomain}
-                    onChange={(e) => handleInputChange('subdomain', e.target.value.toLowerCase())}
-                    className={`flex-1 px-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base ${
+                    readOnly
+                    className={`flex-1 px-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-gray-50 backdrop-blur-sm text-base cursor-not-allowed ${
                       errors.subdomain ? 'border-red-300' : 'border-gray-300'
                     }`}
                     placeholder="citymedical"
@@ -532,7 +571,7 @@ export default function TenantOnboardClient() {
                   <p className="mt-1 text-sm text-red-600">{errors.subdomain[0]}</p>
                 )}
                 <p className="mt-1 text-xs text-gray-500">
-                  This will be your clinic's unique URL. Only lowercase letters, numbers, and hyphens allowed.
+                  This will be your clinic's unique URL. Auto-generated from clinic name.
                 </p>
               </div>
 

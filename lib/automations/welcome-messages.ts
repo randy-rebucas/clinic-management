@@ -42,7 +42,7 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
     const patient = await Patient.findById(patientId);
 
     if (!patient) {
-      return { success: false, error: 'Patient not found' };
+      return { success: false, sent: false, error: 'Patient not found' };
     }
 
     const tenantId = options.tenantId 
@@ -108,7 +108,8 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
   } catch (error: any) {
     console.error('Error sending welcome message:', error);
     return { 
-      success: false, 
+      success: false,
+      sent: false,
       error: error.message || 'Failed to send welcome message' 
     };
   }

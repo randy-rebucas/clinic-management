@@ -47,7 +47,7 @@ export async function handleNoShow(options: NoShowHandlingOptions): Promise<{
       .populate('doctor', 'firstName lastName');
 
     if (!appointment) {
-      return { success: false, error: 'Appointment not found' };
+      return { success: false, handled: false, error: 'Appointment not found' };
     }
 
     // Only handle if status is no-show
@@ -57,7 +57,7 @@ export async function handleNoShow(options: NoShowHandlingOptions): Promise<{
 
     const patient = appointment.patient as any;
     if (!patient) {
-      return { success: false, error: 'Patient not found' };
+      return { success: false, handled: false, error: 'Patient not found' };
     }
 
     const tenantId = options.tenantId 

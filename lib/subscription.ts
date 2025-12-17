@@ -13,6 +13,7 @@ export interface SubscriptionStatus {
   expiresAt: Date | null;
   plan: string | null;
   daysRemaining: number | null;
+  status?: 'active' | 'cancelled' | 'expired';
 }
 
 /**
@@ -55,6 +56,7 @@ export async function checkSubscriptionStatus(tenantId: string | Types.ObjectId)
       expiresAt,
       plan: subscription.plan || null,
       daysRemaining,
+      status: subscription.status || 'expired',
     };
   } catch (error) {
     console.error('Error checking subscription status:', error);
@@ -74,5 +76,15 @@ export async function checkSubscriptionStatus(tenantId: string | Types.ObjectId)
  */
 export async function requiresSubscriptionRedirect(tenantId: string | Types.ObjectId): Promise<boolean> {
   const status = await checkSubscriptionStatus(tenantId);
+  
+  // Check grace period
+  const { checkGracePeriod } = await import('@/lib/subscription-grace-period');
+  const gracePeriod = await checkGracePeriod(tenantId);
+  
+  // Don't redirect if in grace period (read-only access allowed)
+  if (gracePeriod.isInGracePeriod) {
+    return false;
+  }
+  
   return status.isExpired || (!status.isActive && status.plan === 'trial');
 }

@@ -74,7 +74,7 @@ export async function sendRefillReminder(options: PrescriptionRefillOptions): Pr
       .populate('prescribedBy', 'name');
 
     if (!prescription) {
-      return { success: false, error: 'Prescription not found' };
+      return { success: false, sent: false, error: 'Prescription not found' };
     }
 
     // Only send reminders for active prescriptions
@@ -84,12 +84,12 @@ export async function sendRefillReminder(options: PrescriptionRefillOptions): Pr
 
     const patient = prescription.patient as any;
     if (!patient) {
-      return { success: false, error: 'Patient not found' };
+      return { success: false, sent: false, error: 'Patient not found' };
     }
 
     const refillDate = calculateRefillDate(prescription);
     if (!refillDate) {
-      return { success: false, error: 'Cannot calculate refill date' };
+      return { success: false, sent: false, error: 'Cannot calculate refill date' };
     }
 
     const today = new Date();
@@ -173,7 +173,8 @@ export async function sendRefillReminder(options: PrescriptionRefillOptions): Pr
   } catch (error: any) {
     console.error('Error sending refill reminder:', error);
     return { 
-      success: false, 
+      success: false,
+      sent: false,
       error: error.message || 'Failed to send refill reminder' 
     };
   }

@@ -55,7 +55,7 @@ export async function sendPaymentReminder(options: PaymentReminderOptions): Prom
       .populate('visit', 'visitCode date');
 
     if (!invoice) {
-      return { success: false, error: 'Invoice not found' };
+      return { success: false, sent: false, error: 'Invoice not found' };
     }
 
     // Check if invoice has outstanding balance
@@ -70,7 +70,7 @@ export async function sendPaymentReminder(options: PaymentReminderOptions): Prom
 
     const patient = invoice.patient as any;
     if (!patient) {
-      return { success: false, error: 'Patient not found' };
+      return { success: false, sent: false, error: 'Patient not found' };
     }
 
     // Calculate days overdue
@@ -147,7 +147,8 @@ export async function sendPaymentReminder(options: PaymentReminderOptions): Prom
   } catch (error: any) {
     console.error('Error sending payment reminder:', error);
     return { 
-      success: false, 
+      success: false,
+      sent: false,
       error: error.message || 'Failed to send payment reminder' 
     };
   }

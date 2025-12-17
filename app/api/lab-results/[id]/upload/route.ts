@@ -28,6 +28,27 @@ export async function POST(
       );
     }
 
+    // Get tenant context
+    const { getTenantContext } = await import('@/lib/tenant');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
+    // Check storage limit before uploading
+    if (tenantId) {
+      const { checkStorageLimit } = await import('@/lib/storage-tracking');
+      const storageCheck = await checkStorageLimit(tenantId, file.size);
+      if (!storageCheck.allowed) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: storageCheck.reason || 'Storage limit exceeded',
+            storageUsage: storageCheck.currentUsage,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     const labResult = await LabResult.findById(id);
     if (!labResult) {
       return NextResponse.json(

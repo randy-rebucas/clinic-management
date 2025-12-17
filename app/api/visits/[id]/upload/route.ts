@@ -35,6 +35,22 @@ export async function POST(
       );
     }
 
+    // Check storage limit before uploading
+    if (tenantId) {
+      const { checkStorageLimit } = await import('@/lib/storage-tracking');
+      const storageCheck = await checkStorageLimit(tenantId, file.size);
+      if (!storageCheck.allowed) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: storageCheck.reason || 'Storage limit exceeded',
+            storageUsage: storageCheck.currentUsage,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     // In a production environment, you would upload to S3, Cloudinary, or similar
     // For now, we'll store file metadata and a data URL
     const bytes = await file.arrayBuffer();

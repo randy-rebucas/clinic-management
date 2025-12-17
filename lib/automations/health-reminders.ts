@@ -133,7 +133,7 @@ export async function sendHealthReminder(options: HealthReminderOptions): Promis
     const patient = await Patient.findById(patientId);
 
     if (!patient) {
-      return { success: false, error: 'Patient not found' };
+      return { success: false, sent: false, error: 'Patient not found' };
     }
 
     const tenantId = options.tenantId 
@@ -209,7 +209,8 @@ export async function sendHealthReminder(options: HealthReminderOptions): Promis
   } catch (error: any) {
     console.error('Error sending health reminder:', error);
     return { 
-      success: false, 
+      success: false,
+      sent: false,
       error: error.message || 'Failed to send health reminder' 
     };
   }

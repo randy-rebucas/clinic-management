@@ -133,6 +133,24 @@ export async function POST(request: NextRequest) {
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
+
+    // Check subscription limit for creating appointments
+    if (tenantId) {
+      const { checkSubscriptionLimit } = await import('@/lib/subscription-limits');
+      const limitCheck = await checkSubscriptionLimit(tenantId, 'createAppointment');
+      if (!limitCheck.allowed) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: limitCheck.reason || 'Subscription limit exceeded',
+            limit: limitCheck.limit,
+            current: limitCheck.current,
+            remaining: limitCheck.remaining,
+          },
+          { status: 403 }
+        );
+      }
+    }
     
     // Validate that the doctor belongs to the tenant
     if (body.doctor && tenantId) {
@@ -162,6 +180,7 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+
     }
     
     // Get settings for defaults
@@ -267,6 +286,16 @@ export async function POST(request: NextRequest) {
     if (appointment.status === 'confirmed' && appointment.patient) {
       // Trigger email reminder (async, don't wait)
       sendAppointmentReminder(appointment).catch(console.error);
+    }
+    
+    // Auto-verify insurance if enabled (async, don't block response)
+    if (tenantId && appointment.patient) {
+      const { getSettings } = await import('@/lib/settings');
+      const settings = await getSettings(tenantId.toString());
+      if (settings?.automationSettings?.autoInsuranceVerification) {
+        const { autoVerifyInsuranceForAppointment } = await import('@/lib/automations/insurance-verification');
+        autoVerifyInsuranceForAppointment(appointment._id, tenantId).catch(console.error);
+      }
     }
     
     return NextResponse.json(

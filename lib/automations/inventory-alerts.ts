@@ -51,7 +51,7 @@ export async function sendLowStockAlert(options: InventoryAlertOptions): Promise
     const inventory = await Inventory.findOne(inventoryQuery);
 
     if (!inventory) {
-      return { success: false, error: 'Inventory item not found' };
+      return { success: false, sent: false, error: 'Inventory item not found' };
     }
 
     // Check if alert is appropriate
@@ -95,7 +95,7 @@ export async function sendLowStockAlert(options: InventoryAlertOptions): Promise
     }
 
     if (alertRecipients.length === 0) {
-      return { success: false, error: 'No alert recipients found' };
+      return { success: false, sent: false, error: 'No alert recipients found' };
     }
 
     const alertMessage = generateAlertMessage(inventory, options.alertType);
@@ -153,7 +153,8 @@ export async function sendLowStockAlert(options: InventoryAlertOptions): Promise
   } catch (error: any) {
     console.error('Error sending inventory alert:', error);
     return { 
-      success: false, 
+      success: false,
+      sent: false,
       error: error.message || 'Failed to send inventory alert' 
     };
   }

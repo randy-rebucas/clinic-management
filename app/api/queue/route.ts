@@ -278,6 +278,16 @@ export async function POST(request: NextRequest) {
       description: `Added patient to queue: ${queue.queueNumber}`,
     });
 
+    // Auto-optimize queue if enabled (async, don't block response)
+    if (tenantId) {
+      const { getSettings } = await import('@/lib/settings');
+      const settings = await getSettings(tenantId.toString());
+      if (settings?.automationSettings?.autoQueueOptimization) {
+        const { autoOptimizeQueueOnJoin } = await import('@/lib/automations/queue-optimization');
+        autoOptimizeQueueOnJoin(queue._id, tenantId).catch(console.error);
+      }
+    }
+
     return NextResponse.json({ success: true, data: queue }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating queue entry:', error);

@@ -43,7 +43,7 @@ export async function sendFeedbackRequest(options: FeedbackCollectionOptions): P
       .populate('provider', 'name');
 
     if (!visit) {
-      return { success: false, error: 'Visit not found' };
+      return { success: false, sent: false, error: 'Visit not found' };
     }
 
     // Only send feedback request for closed visits
@@ -53,7 +53,7 @@ export async function sendFeedbackRequest(options: FeedbackCollectionOptions): P
 
     const patient = visit.patient as any;
     if (!patient) {
-      return { success: false, error: 'Patient not found' };
+      return { success: false, sent: false, error: 'Patient not found' };
     }
 
     const tenantId = options.tenantId 
@@ -111,7 +111,8 @@ export async function sendFeedbackRequest(options: FeedbackCollectionOptions): P
   } catch (error: any) {
     console.error('Error sending feedback request:', error);
     return { 
-      success: false, 
+      success: false,
+      sent: false,
       error: error.message || 'Failed to send feedback request' 
     };
   }
