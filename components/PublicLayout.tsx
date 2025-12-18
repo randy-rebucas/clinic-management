@@ -136,9 +136,46 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
         </main>
 
         {/* Modern Footer */}
-        <footer className="bg-white/80 backdrop-blur-sm border-t border-gray-200/50 py-6 sm:py-8">
+        <footer className="bg-white/80 backdrop-blur-sm border-t border-gray-200/50 py-8 sm:py-12">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-4">Product</h3>
+                <ul className="space-y-2">
+                  <li><Link href="/features" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Features</Link></li>
+                  <li><Link href="/pricing" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Pricing</Link></li>
+                  <li><Link href="/demo" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Demo</Link></li>
+                  <li><Link href="/integrations" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Integrations</Link></li>
+                  <li><Link href="/compare" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Compare</Link></li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-4">Company</h3>
+                <ul className="space-y-2">
+                  <li><Link href="/about" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">About Us</Link></li>
+                  <li><Link href="/testimonials" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Testimonials</Link></li>
+                  <li><Link href="/contact" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Contact</Link></li>
+                  <li><Link href="/security" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Security</Link></li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-4">Resources</h3>
+                <ul className="space-y-2">
+                  <li><Link href="/resources" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Resources</Link></li>
+                  <li><Link href="/support" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Support</Link></li>
+                  <li><Link href="/faq" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">FAQ</Link></li>
+                  <li><Link href="/knowledge-base" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Documentation</Link></li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-4">Legal</h3>
+                <ul className="space-y-2">
+                  <li><Link href="/privacy" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Privacy Policy</Link></li>
+                  <li><Link href="/terms" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Terms of Service</Link></li>
+                </ul>
+              </div>
+            </div>
+            <div className="border-t border-gray-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-center sm:text-left">
                 <p className="text-sm text-gray-600">
                   © {new Date().getFullYear()} <span className="font-semibold text-gray-900">MyClinicSoft</span>. All rights reserved.
@@ -150,18 +187,6 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
                   className="text-sm text-gray-600 hover:text-blue-600 transition-colors"
                 >
                   Support
-                </a>
-                <a
-                  href="#"
-                  className="text-sm text-gray-600 hover:text-blue-600 transition-colors"
-                >
-                  Privacy
-                </a>
-                <a
-                  href="#"
-                  className="text-sm text-gray-600 hover:text-blue-600 transition-colors"
-                >
-                  Terms
                 </a>
               </div>
             </div>
