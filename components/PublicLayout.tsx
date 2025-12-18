@@ -33,6 +33,12 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
               {/* Desktop Navigation */}
               <nav className="hidden md:flex items-center gap-2 lg:gap-4">
                 <Link
+                  href="/features"
+                  className="px-3 py-2 text-sm lg:text-base text-gray-700 hover:text-blue-600 font-medium transition-colors rounded-lg hover:bg-blue-50"
+                >
+                  Features
+                </Link>
+                <Link
                   href="/onboard"
                   className="px-3 py-2 text-sm lg:text-base text-gray-700 hover:text-blue-600 font-medium transition-colors rounded-lg hover:bg-blue-50"
                 >
@@ -83,6 +89,13 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
             {mobileMenuOpen && (
               <div className="md:hidden py-4 border-t border-gray-200 animate-in slide-in-from-top-2">
                 <nav className="flex flex-col gap-2">
+                  <Link
+                    href="/features"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="px-4 py-3 text-base text-gray-700 hover:text-blue-600 font-medium transition-colors rounded-lg hover:bg-blue-50"
+                  >
+                    Features
+                  </Link>
                   <Link
                     href="/onboard"
                     onClick={() => setMobileMenuOpen(false)}
