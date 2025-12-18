@@ -141,7 +141,7 @@ export default function FeaturesPage() {
       title: 'Laboratory Results',
       description: 'Lab test management with third-party integration and automated patient notifications. Store, track, and share lab results securely with patients and other healthcare providers.',
       color: 'purple',
-      image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80',
+      image: 'https://images.unsplash.com/photo-1582719471384-894fbb16e074?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80',
       subItems: [
         'Lab test management',
         'Third-party lab integration',
@@ -181,7 +181,7 @@ export default function FeaturesPage() {
       title: 'Queue Management',
       description: 'Patient queue system with QR codes and display screens. Efficiently manage patient flow with digital queue management, check-in systems, and real-time status updates.',
       color: 'orange',
-      image: 'https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80',
+      image: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80',
       subItems: [
         'Digital queue system',
         'QR code generation',
@@ -367,7 +367,7 @@ export default function FeaturesPage() {
       title: 'Service Management',
       description: 'Clinic services and pricing management. Define services, set pricing, and track service utilization with comprehensive service catalog management.',
       color: 'purple',
-      image: 'https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80',
+      image: 'https://images.unsplash.com/photo-1552664730-d307ca884978?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80',
       subItems: [
         'Service catalog management',
         'Pricing management',
@@ -387,7 +387,7 @@ export default function FeaturesPage() {
       title: 'Patient Portal',
       description: 'Public booking and patient access portal. Patients can book appointments, view medical records, access lab results, and manage their health information online.',
       color: 'green',
-      image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80',
+      image: 'https://images.unsplash.com/photo-1573164713714-d95e436ab8d6?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80',
       subItems: [
         'Public appointment booking',
         'Medical records access',
