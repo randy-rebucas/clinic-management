@@ -39,11 +39,14 @@ class Monitoring {
 
     try {
       // Dynamically import Sentry to avoid requiring it if not configured
-      // Use dynamic import to handle missing package gracefully
+      // Use Function constructor to create a truly dynamic import that webpack can't analyze
       let Sentry: SentryType;
       try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        Sentry = require('@sentry/nextjs');
+        // Use Function constructor to prevent webpack from statically analyzing the import
+        // This allows the module to be optional without causing build errors
+        const dynamicImport = new Function('modulePath', 'return import(modulePath)');
+        const sentryModule = await dynamicImport('@sentry/nextjs');
+        Sentry = sentryModule.default || sentryModule;
       } catch {
         // Package not installed, monitoring will be disabled
         console.warn('⚠️  Sentry package not installed. Install with: npm install @sentry/nextjs');

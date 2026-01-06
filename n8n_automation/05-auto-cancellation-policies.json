@@ -1,0 +1,248 @@
+{
+  "name": "Auto-Cancellation Policies",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger (Daily 10 AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.APP_BASE_URL || 'https://your-app.vercel.app' }}/api/cron/auto-cancellation-policies",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.CRON_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "http-request",
+      "name": "Call Automation API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equal",
+              "value2": 200
+            }
+          ]
+        }
+      },
+      "id": "check-success",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.item.json.body.data;\nconst restricted = response.records.filter(r => r.currentRestriction !== 'none').length;\nconst banned = response.records.filter(r => r.currentRestriction === 'banned').length;\n\nreturn {\n  json: {\n    message: `Auto-Cancellation Policies: ${response.processed} patients processed, ${response.restrictionsApplied} restrictions applied`,\n    restrictedCount: restricted,\n    bannedCount: banned,\n    notificationsSent: response.notificationsSent\n  }\n};"
+      },
+      "id": "format-success",
+      "name": "Format Success Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "log",
+        "level": "info",
+        "message": "={{ $json.message }}"
+      },
+      "id": "log-success",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "log",
+        "level": "error",
+        "message": "=Auto-Cancellation Policies failed: {{ $json.body.error || 'Unknown error' }}"
+      },
+      "id": "log-error",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $('Format Success Message').item.json.bannedCount }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "check-banned",
+      "name": "Check Banned Patients",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "send",
+        "operation": "post",
+        "chatId": "",
+        "text": "=⚠️ WARNING: {{ $('Format Success Message').item.json.bannedCount }} patient(s) have been banned from advance bookings due to repeated no-shows.\n\nPlease review patient management system.",
+        "additionalFields": {}
+      },
+      "id": "notify-banned",
+      "name": "Notify Banned Patients",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        1560,
+        100
+      ],
+      "disabled": true,
+      "notes": "Configure Telegram credentials to enable banned patient notifications"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Daily 10 AM)": {
+      "main": [
+        [
+          {
+            "node": "Call Automation API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Automation API": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Format Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Success Message": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Banned Patients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Banned Patients": {
+      "main": [
+        [
+          {
+            "node": "Notify Banned Patients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "automation",
+      "name": "Automation"
+    },
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "appointment",
+      "name": "Appointment"
+    }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

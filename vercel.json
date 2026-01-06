@@ -95,6 +95,26 @@
     {
       "path": "/api/cron/backup",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/smart-assignment",
+      "schedule": "0 */1 * * *"
+    },
+    {
+      "path": "/api/cron/inventory-reordering",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/prescription-expiry-warnings",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/document-expiry-tracking",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/auto-cancellation-policies",
+      "schedule": "0 10 * * *"
     }
   ]
 }

@@ -59,6 +59,10 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  
+  // Turbopack configuration (Next.js 16 uses Turbopack by default)
+  // Empty config to silence the warning about webpack vs turbopack
+  turbopack: {},
 };
 
 export default nextConfig;

@@ -1,0 +1,248 @@
+{
+  "name": "Document Expiration Tracking",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger (Daily 9 AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.APP_BASE_URL || 'https://your-app.vercel.app' }}/api/cron/document-expiry-tracking",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.CRON_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "http-request",
+      "name": "Call Automation API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equal",
+              "value2": 200
+            }
+          ]
+        }
+      },
+      "id": "check-success",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.item.json.body.data;\nconst urgentAlerts = response.alerts.filter(a => a.warningLevel === 'urgent').length;\nconst criticalDocs = response.alerts.filter(a => \n  a.document.category === 'insurance' || a.document.category === 'id'\n).length;\n\nreturn {\n  json: {\n    message: `Document Expiry Tracking: ${response.processed} documents checked, ${response.alertsSent} alerts sent`,\n    urgentCount: urgentAlerts,\n    criticalDocs: criticalDocs,\n    processed: response.processed,\n    alertsSent: response.alertsSent\n  }\n};"
+      },
+      "id": "format-success",
+      "name": "Format Success Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "log",
+        "level": "info",
+        "message": "={{ $json.message }}"
+      },
+      "id": "log-success",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "log",
+        "level": "error",
+        "message": "=Document Expiry Tracking failed: {{ $json.body.error || 'Unknown error' }}"
+      },
+      "id": "log-error",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $('Format Success Message').item.json.criticalDocs }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "check-critical",
+      "name": "Check Critical Documents",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "send",
+        "operation": "post",
+        "chatId": "",
+        "text": "=🚨 CRITICAL: {{ $('Format Success Message').item.json.criticalDocs }} critical documents (insurance/ID) expiring soon!\n\nPlease review document management system.",
+        "additionalFields": {}
+      },
+      "id": "notify-critical",
+      "name": "Notify Critical Documents",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        1560,
+        100
+      ],
+      "disabled": true,
+      "notes": "Configure Telegram credentials to enable critical document notifications"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Daily 9 AM)": {
+      "main": [
+        [
+          {
+            "node": "Call Automation API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Automation API": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Format Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Success Message": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Critical Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Critical Documents": {
+      "main": [
+        [
+          {
+            "node": "Notify Critical Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "automation",
+      "name": "Automation"
+    },
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "document",
+      "name": "Document"
+    }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

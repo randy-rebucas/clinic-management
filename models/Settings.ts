@@ -230,6 +230,12 @@ const SettingsSchema = new Schema<ISettings>(
       autoInsuranceVerification: { type: Boolean, default: true },
       autoQueueOptimization: { type: Boolean, default: true },
       autoDataRetention: { type: Boolean, default: true },
+      // New Priority 1 automations
+      autoSmartAssignment: { type: Boolean, default: true },
+      autoInventoryReordering: { type: Boolean, default: true },
+      autoPrescriptionExpiryWarnings: { type: Boolean, default: true },
+      autoDocumentExpiryTracking: { type: Boolean, default: true },
+      autoCancellationPolicies: { type: Boolean, default: true },
     },
 
     displaySettings: {

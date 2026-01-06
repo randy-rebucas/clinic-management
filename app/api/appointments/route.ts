@@ -298,6 +298,25 @@ export async function POST(request: NextRequest) {
       }
     }
     
+    // Auto-assign doctor if not assigned and smart assignment enabled (async, don't block response)
+    if (!appointment.doctor && !appointment.provider && tenantId) {
+      const { getSettings } = await import('@/lib/settings');
+      const settings = await getSettings(tenantId.toString());
+      if (settings?.automationSettings?.autoSmartAssignment) {
+        const { assignDoctorToAppointment } = await import('@/lib/automations/smart-assignment');
+        assignDoctorToAppointment({
+          appointmentId: appointment._id,
+          patientId: appointment.patient,
+          appointmentDate: appointment.appointmentDate || appointment.scheduledAt,
+          appointmentTime: appointment.appointmentTime || '09:00',
+          reason: appointment.reason,
+          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+        }).catch((error) => {
+          console.error('Error in smart appointment assignment:', error);
+        });
+      }
+    }
+    
     return NextResponse.json(
       { success: true, data: appointment },
       { status: 201 }
