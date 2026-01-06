@@ -1,0 +1,104 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/reminders",
+      "schedule": "0 9 * * *",
+      "comment": "Daily appointment reminders - Critical"
+    },
+    {
+      "path": "/api/cron/queue-optimization",
+      "schedule": "*/15 * * * *",
+      "comment": "Queue optimization every 15 min - Critical"
+    },
+    {
+      "path": "/api/cron/smart-assignment",
+      "schedule": "0 */1 * * *",
+      "comment": "Auto-assign doctors hourly - Critical"
+    },
+    {
+      "path": "/api/cron/waitlist-management",
+      "schedule": "5,20,35,50 * * * *",
+      "comment": "Waitlist management every 15 min (staggered) - Critical"
+    },
+    {
+      "path": "/api/cron/no-show-handling",
+      "schedule": "10,40 * * * *",
+      "comment": "No-show processing every 30 min - Critical"
+    },
+    {
+      "path": "/api/cron/medication-reminders",
+      "schedule": "0 8,12,16,20 * * *",
+      "comment": "Medication reminders 4x daily - Critical"
+    },
+    {
+      "path": "/api/cron/daily-reports",
+      "schedule": "0 23 * * *",
+      "comment": "End-of-day reports - Critical"
+    },
+    {
+      "path": "/api/cron/backup",
+      "schedule": "0 2 * * *",
+      "comment": "Daily backup at 2 AM - Critical"
+    },
+    {
+      "path": "/api/cron/payment-reminders",
+      "schedule": "0 10 * * *",
+      "comment": "Payment reminders - High Priority"
+    },
+    {
+      "path": "/api/cron/inventory-alerts",
+      "schedule": "0 8 * * *",
+      "comment": "Low stock alerts - High Priority"
+    },
+    {
+      "path": "/api/cron/inventory-reordering",
+      "schedule": "15 9 * * *",
+      "comment": "Auto-reorder items (staggered) - High Priority"
+    },
+    {
+      "path": "/api/cron/prescription-refills",
+      "schedule": "0 9 * * *",
+      "comment": "Process refill requests - High Priority"
+    },
+    {
+      "path": "/api/cron/prescription-expiry-warnings",
+      "schedule": "5 8 * * *",
+      "comment": "Expiring prescription warnings (staggered) - High Priority"
+    },
+    {
+      "path": "/api/cron/insurance-verification",
+      "schedule": "10 8 * * *",
+      "comment": "Verify insurance (staggered) - High Priority"
+    },
+    {
+      "path": "/api/cron/followup-scheduling",
+      "schedule": "0 11 * * *",
+      "comment": "Schedule follow-ups - High Priority"
+    },
+    {
+      "path": "/api/cron/recurring-appointments",
+      "schedule": "0 13 * * *",
+      "comment": "Create recurring appointments - Medium Priority"
+    },
+    {
+      "path": "/api/cron/auto-cancellation-policies",
+      "schedule": "30 10 * * *",
+      "comment": "Apply no-show policies - Medium Priority"
+    },
+    {
+      "path": "/api/cron/health-reminders",
+      "schedule": "0 12 * * *",
+      "comment": "Preventive care reminders - Medium Priority"
+    },
+    {
+      "path": "/api/cron/expiry-monitoring",
+      "schedule": "0 7 * * *",
+      "comment": "Monitor expiring items - Medium Priority"
+    },
+    {
+      "path": "/api/cron/document-expiry-tracking",
+      "schedule": "30 9 * * *",
+      "comment": "Track expiring documents (staggered) - Medium Priority"
+    }
+  ]
+}

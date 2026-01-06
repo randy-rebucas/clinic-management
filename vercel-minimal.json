@@ -1,0 +1,16 @@
+{
+  "comment": "MINIMAL CONFIG - For Vercel Hobby Plan (2 crons max)",
+  "crons": [
+    {
+      "path": "/api/cron/reminders",
+      "schedule": "0 9 * * *",
+      "comment": "Daily appointment reminders - MOST CRITICAL for reducing no-shows"
+    },
+    {
+      "path": "/api/cron/backup",
+      "schedule": "0 2 * * *",
+      "comment": "Daily backup - CRITICAL for data protection"
+    }
+  ],
+  "note": "For additional automation, use external services like n8n or GitHub Actions"
+}
