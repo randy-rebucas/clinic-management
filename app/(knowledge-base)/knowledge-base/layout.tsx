@@ -72,25 +72,38 @@ export default async function KnowledgeBaseLayout({
   
   // Group files by category
   const categories: Record<string, DocFile[]> = {
-    'Journeys': [],
+    'Getting Started': [],
+    'User Journeys': [],
+    'Core Features': [],
     'Setup & Configuration': [],
-    'Features': [],
     'Other': [],
   };
   
   files.forEach(file => {
-    if (file.filename.includes('JOURNEY')) {
-      categories['Journeys'].push(file);
+    if (file.filename.includes('GETTING_STARTED') || file.filename.includes('README')) {
+      categories['Getting Started'].push(file);
+    } else if (file.filename.includes('JOURNEY') || file.filename.includes('FLOW')) {
+      categories['User Journeys'].push(file);
     } else if (
       file.filename.includes('SETUP') || 
       file.filename.includes('DEPLOYMENT') ||
       file.filename.includes('CLOUDINARY') ||
       file.filename.includes('PAYPAL') ||
       file.filename.includes('SMS') ||
-      file.filename.includes('CRON')
+      file.filename.includes('EMAIL') ||
+      file.filename.includes('CRON') ||
+      file.filename.includes('SETTINGS') ||
+      file.filename.includes('CONFIGURATION') ||
+      file.filename.includes('MONITORING')
     ) {
       categories['Setup & Configuration'].push(file);
     } else if (
+      file.filename.includes('PATIENT') ||
+      file.filename.includes('APPOINTMENT') ||
+      file.filename.includes('CLINICAL') ||
+      file.filename.includes('VISIT') ||
+      file.filename.includes('QUEUE') ||
+      file.filename.includes('INVENTORY') ||
       file.filename.includes('BILLING') ||
       file.filename.includes('DOCUMENT') ||
       file.filename.includes('EPRESCRIPTION') ||
@@ -98,9 +111,10 @@ export default async function KnowledgeBaseLayout({
       file.filename.includes('ROOM') ||
       file.filename.includes('NOTIFICATIONS') ||
       file.filename.includes('MEMBERSHIP') ||
-      file.filename.includes('DASHBOARD')
+      file.filename.includes('DASHBOARD') ||
+      file.filename.includes('REPORTS')
     ) {
-      categories['Features'].push(file);
+      categories['Core Features'].push(file);
     } else {
       categories['Other'].push(file);
     }
