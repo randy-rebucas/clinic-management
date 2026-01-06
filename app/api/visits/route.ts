@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const date = searchParams.get('date');
 
-    let query: any = {};
+    const query: any = {};
     
     // Add tenant filter
     if (tenantId) {

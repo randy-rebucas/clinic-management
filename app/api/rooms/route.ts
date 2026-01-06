@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const available = searchParams.get('available');
 
-    let query: any = {};
+    const query: any = {};
     
     // Add tenant filter
     if (tenantId) {

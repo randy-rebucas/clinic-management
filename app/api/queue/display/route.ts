@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const roomId = searchParams.get('roomId');
     const limit = parseInt(searchParams.get('limit') || '10', 10);
 
-    let query: any = { 
+    const query: any = { 
       status: { $in: ['waiting', 'in-progress'] },
       checkedIn: true, // Only show checked-in patients
     };

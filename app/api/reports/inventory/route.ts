@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const status = searchParams.get('status');
 
-    let query: any = {};
+    const query: any = {};
     if (category) {
       query.category = category;
     }

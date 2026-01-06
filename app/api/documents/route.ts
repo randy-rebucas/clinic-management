@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     const visitId = searchParams.get('visitId');
     const limit = parseInt(searchParams.get('limit') || '50', 10);
 
-    let query: any = { status };
+    const query: any = { status };
     
     // Add tenant filter
     if (tenantId) {

@@ -47,7 +47,7 @@ export async function GET(
     }
 
     // Build date range query
-    let dateQuery: any = {};
+    const dateQuery: any = {};
     if (startDate || endDate) {
       dateQuery.appointmentDate = {};
       if (startDate) {

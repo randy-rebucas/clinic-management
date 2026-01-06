@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Build patient query based on filters
-    let patientQuery: any = {};
+    const patientQuery: any = {};
     if (filters) {
       if (filters.ageGroup) {
         // Age group filtering would require date calculation

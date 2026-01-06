@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100', 10);
     const page = parseInt(searchParams.get('page') || '1', 10);
 
-    let query: any = {};
+    const query: any = {};
     
     // Add tenant filter
     if (tenantId) {

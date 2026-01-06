@@ -64,7 +64,7 @@ export async function handleNoShow(options: NoShowHandlingOptions): Promise<{
       ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
       : appointment.tenantId;
 
-    let rescheduled = false;
+    const rescheduled = false;
 
     // Send apology and rescheduling offer
     const message = generateNoShowMessage(appointment);

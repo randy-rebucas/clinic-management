@@ -145,7 +145,7 @@ export default function VisitForm({
       setSelectedPatient(null);
       setPatientSearch('');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [formData.patient, patients]);
 
   useEffect(() => {

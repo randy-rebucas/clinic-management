@@ -197,6 +197,9 @@ This project uses Next.js environment variables. According to the [Next.js docum
 #### Encryption
 - `ENCRYPTION_KEY` - Key for encrypting sensitive data (generate with: `openssl rand -base64 32`)
 
+#### Monitoring (Sentry)
+- `SENTRY_DSN` - Sentry DSN for error tracking and performance monitoring (optional)
+
 **Notes:**
 - SMS functionality will work without Twilio credentials but will only log messages. To enable actual SMS sending, sign up at [Twilio](https://www.twilio.com) and add your credentials.
 - Email functionality requires SMTP configuration. Without it, emails will only be logged.

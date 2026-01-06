@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
     
-    let query: any = {};
+    const query: any = {};
     if (date) {
       const startOfDay = new Date(date);
       startOfDay.setHours(0, 0, 0, 0);

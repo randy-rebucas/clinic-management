@@ -4,12 +4,20 @@ import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 
 /**
  * Patient QR Code Login
  * Allows patients to login using their QR code
+ * Rate limited to prevent brute force attacks
  */
 export async function POST(request: NextRequest) {
+  // Apply strict rate limiting for authentication endpoint
+  const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+  
   try {
     await connectDB();
     const body = await request.json();

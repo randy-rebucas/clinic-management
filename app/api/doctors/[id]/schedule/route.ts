@@ -31,7 +31,7 @@ export async function GET(
     }
 
     // Get schedule for specific date range if provided
-    let scheduleData = {
+    const scheduleData = {
       weeklySchedule: doctor.schedule || [],
       availabilityOverrides: doctor.availabilityOverrides || [],
     };

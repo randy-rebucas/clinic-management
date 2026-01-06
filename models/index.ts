@@ -213,51 +213,84 @@ export type { INotification, NotificationType, NotificationPriority } from './No
 export function registerAllModels(): void {
   // Import all models to trigger registration
   // The order matters due to references between models
+  // Using require() for dynamic model loading is intentional
   
   // Base models
+   
   require('./Attachment');
+   
   require('./Tenant');
+   
   require('./Medicine');
+   
   require('./Service');
+   
   require('./Room');
+   
   require('./Specialization');
+   
   require('./Settings');
   
   // Auth models
+   
   require('./Role');
+   
   require('./Permission');
   
   // Profile models
+   
   require('./Admin');
+   
   require('./Doctor');
+   
   require('./Nurse');
+   
   require('./Receptionist');
+   
   require('./Accountant');
+   
   require('./MedicalRepresentative');
+   
   require('./Staff');
   
   // User model
+   
   require('./User');
   
   // Clinical models
+   
   require('./Patient');
+   
   require('./Appointment');
+   
   require('./Visit');
+   
   require('./Prescription');
+   
   require('./LabResult');
+   
   require('./Imaging');
+   
   require('./Procedure');
+   
   require('./Invoice');
+   
   require('./Referral');
   
   // Supporting models
+   
   require('./Queue');
+   
   require('./Document');
+   
   require('./Membership');
+   
   require('./Inventory');
   
   // Audit models
+   
   require('./AuditLog');
+   
   require('./Notification');
   
   console.log('✅ All models registered successfully');

@@ -10,7 +10,7 @@ interface LogEntry {
   level: LogLevel;
   message: string;
   timestamp: string;
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
   error?: Error;
 }
 
@@ -18,7 +18,7 @@ class Logger {
   private isProduction = process.env.NODE_ENV === 'production';
   private isDevelopment = process.env.NODE_ENV === 'development';
 
-  private formatLog(level: LogLevel, message: string, context?: Record<string, any>, error?: Error): LogEntry {
+  private formatLog(level: LogLevel, message: string, context?: Record<string, unknown>, error?: Error): LogEntry {
     return {
       level,
       message,
@@ -34,7 +34,7 @@ class Logger {
     };
   }
 
-  private log(level: LogLevel, message: string, context?: Record<string, any>, error?: Error): void {
+  private log(level: LogLevel, message: string, context?: Record<string, unknown>, error?: Error): void {
     const logEntry = this.formatLog(level, message, context, error);
     
     // In production, you should send logs to a logging service
@@ -58,22 +58,38 @@ class Logger {
     }
   }
 
-  debug(message: string, context?: Record<string, any>): void {
+  debug(message: string, context?: Record<string, unknown>): void {
     if (this.isDevelopment) {
       this.log('debug', message, context);
     }
   }
 
-  info(message: string, context?: Record<string, any>): void {
+  info(message: string, context?: Record<string, unknown>): void {
     this.log('info', message, context);
   }
 
-  warn(message: string, context?: Record<string, any>, error?: Error): void {
+  warn(message: string, context?: Record<string, unknown>, error?: Error): void {
     this.log('warn', message, context, error);
   }
 
-  error(message: string, error?: Error, context?: Record<string, any>): void {
+  error(message: string, error?: Error, context?: Record<string, unknown>): void {
     this.log('error', message, context, error);
+    
+    // Send to monitoring service if available
+    if (this.isProduction && error) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { monitoring } = require('./monitoring');
+        if (monitoring.isEnabled()) {
+          monitoring.captureException(error, {
+            message,
+            ...context,
+          });
+        }
+      } catch {
+        // Monitoring not available, continue without it
+      }
+    }
   }
 }
 

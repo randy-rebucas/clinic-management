@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const tier = searchParams.get('tier');
     const status = searchParams.get('status');
 
-    let query: any = {};
+    const query: any = {};
     
     // Add tenant filter
     if (tenantId) {

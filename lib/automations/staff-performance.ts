@@ -45,7 +45,7 @@ export async function generateStaffPerformanceReport(
     
     // Calculate date range
     let startDate: Date;
-    let endDate: Date = new Date(now);
+    const endDate: Date = new Date(now);
     endDate.setHours(23, 59, 59, 999);
 
     if (period === 'weekly') {

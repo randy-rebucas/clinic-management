@@ -82,7 +82,7 @@ export async function optimizeQueue(
 
     const changes: QueueOptimizationResult['changes'] = [];
     let totalWaitTime = 0;
-    let totalPatients = queueEntries.length;
+    const totalPatients = queueEntries.length;
 
     // Optimization strategies
     for (const entry of queueEntries) {

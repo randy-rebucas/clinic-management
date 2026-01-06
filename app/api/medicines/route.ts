@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const active = searchParams.get('active') !== 'false';
 
-    let query: any = {};
+    const query: any = {};
     
     // Add tenant filter
     if (tenantId) {

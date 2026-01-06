@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const visitId = searchParams.get('visitId');
     const status = searchParams.get('status');
 
-    let query: any = {};
+    const query: any = {};
     
     // Add tenant filter
     if (tenantId) {

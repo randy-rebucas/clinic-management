@@ -57,7 +57,7 @@ export async function GET(
       patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
     }
 
-    let invoice = await Invoice.findOne(query)
+    const invoice = await Invoice.findOne(query)
       .populate(patientPopulateOptions)
       .populate('visit', 'visitCode date visitType')
       .populate('createdBy', 'name email');

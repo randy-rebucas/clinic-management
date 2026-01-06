@@ -2,12 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
+import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 
 /**
  * Public endpoint for patient self-registration
  * No authentication required - allows patients to register themselves
+ * Rate limited to prevent abuse
  */
 export async function POST(request: NextRequest) {
+  // Apply rate limiting for public endpoint
+  const rateLimitResponse = await applyRateLimit(request, rateLimiters.public);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+  
   try {
     await connectDB();
     

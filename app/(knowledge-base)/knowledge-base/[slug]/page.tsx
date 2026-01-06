@@ -27,7 +27,7 @@ async function getArticle(slug: string): Promise<DocArticle | null> {
         title,
         content,
       };
-    } catch (fileError: any) {
+    } catch {
       const docsPath = join(process.cwd(), 'docs');
       const files = await readdir(docsPath);
       const matchingFile = files.find(f => 

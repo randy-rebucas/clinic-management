@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const lowStock = searchParams.get('lowStock') === 'true';
 
-    let query: any = {};
+    const query: any = {};
     
     // Add tenant filter
     if (tenantId) {

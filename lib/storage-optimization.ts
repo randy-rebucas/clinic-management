@@ -71,7 +71,7 @@ export async function cleanupOldFiles(
     cutoffDate.setDate(cutoffDate.getDate() - deleteOlderThanDays);
 
     let deletedDocuments = 0;
-    let deletedAttachments = 0;
+    const deletedAttachments = 0;
     let freedBytes = 0;
     const errors: string[] = [];
 

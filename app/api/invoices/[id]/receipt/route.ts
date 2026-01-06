@@ -27,7 +27,7 @@ export async function GET(
       );
     }
 
-    let invoice = await Invoice.findById(id)
+    const invoice = await Invoice.findById(id)
       .populate('patient', 'firstName lastName patientCode email phone dateOfBirth address')
       .populate('visit', 'visitCode date')
       .populate('createdBy', 'name email');

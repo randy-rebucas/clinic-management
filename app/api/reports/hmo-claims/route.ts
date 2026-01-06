@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
 
     // Get invoices with insurance/HMO
-    let query: any = {
+    const query: any = {
       insurance: { $exists: true, $ne: null },
     };
 

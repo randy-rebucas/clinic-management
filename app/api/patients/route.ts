@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
     const skip = (pageNum - 1) * limitNum;
 
     // Build query
-    let query = Patient.find(filter).sort(sort).skip(skip).limit(limitNum);
+    const query = Patient.find(filter).sort(sort).skip(skip).limit(limitNum);
 
     // Execute query
     const [patients, total] = await Promise.all([

@@ -25,6 +25,7 @@ const envConfig: EnvConfig = {
     'CLOUDINARY_API_SECRET',
     'CRON_SECRET',
     'ENCRYPTION_KEY',
+    'SENTRY_DSN', // Sentry DSN for error tracking and monitoring
   ],
 };
 

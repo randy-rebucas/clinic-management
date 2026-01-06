@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     const roleId = searchParams.get('roleId');
     const resource = searchParams.get('resource');
 
-    let query: any = {};
+    const query: any = {};
     
     // Add tenant filter
     if (tenantId) {

@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
 
-    let query: any = {
+    const query: any = {
       status: { $in: ['unpaid', 'partial'] },
     };
 

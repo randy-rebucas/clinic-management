@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type');
     const limit = parseInt(searchParams.get('limit') || '50', 10);
 
-    let query: any = { user: session.userId };
+    const query: any = { user: session.userId };
     
     // Add tenant filter
     if (tenantId) {
