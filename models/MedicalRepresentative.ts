@@ -215,7 +215,7 @@ MedicalRepresentativeSchema.post('save', async function (doc: IMedicalRepresenta
       }
 
       // Generate a default password (can be changed on first login)
-      const defaultPassword = `MedRep${doc.company.slice(0, 4).toUpperCase()}${doc.phone.slice(-4)}!`;
+      const defaultPassword = `Password1234!`;
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
       // Create the user
