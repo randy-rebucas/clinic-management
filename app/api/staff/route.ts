@@ -192,6 +192,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(staff);
+    // const hashedPassword = await bcrypt.hash(admin.password, 10);
     // The post-save hook will automatically create a User account
     // Wait a bit for the hook to complete and fetch the created user
     await new Promise(resolve => setTimeout(resolve, 500));
