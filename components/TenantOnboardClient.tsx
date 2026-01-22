@@ -690,7 +690,7 @@ export default function TenantOnboardClient() {
                   <p className="mt-1 text-sm text-red-600">{errors.subdomain[0]}</p>
                 )}
                 <p className="mt-1 text-xs text-gray-500">
-                  This will be your clinic's unique URL. Auto-generated from clinic name.
+                  This will be your clinic&apos;s unique URL. Auto-generated from clinic name.
                 </p>
               </div>
 
@@ -930,7 +930,7 @@ export default function TenantOnboardClient() {
                 Create Admin Account
               </h2>
               <p className="text-gray-600 mb-6">
-                Create the administrator account for your clinic. You'll use these credentials to log in and manage your clinic.
+                Create the administrator account for your clinic. You&apos;ll use these credentials to log in and manage your clinic.
               </p>
               
               <div>

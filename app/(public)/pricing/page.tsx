@@ -237,7 +237,7 @@ export default function PricingPage() {
             </div>
             <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 shadow-lg">
               <h3 className="text-lg font-bold text-gray-900 mb-2">What happens after the trial?</h3>
-              <p className="text-gray-600">After your 7-day trial, you'll need to choose a paid plan to continue using MyClinicSoft. Your data is preserved during the transition.</p>
+              <p className="text-gray-600">After your 7-day trial, you&apos;ll need to choose a paid plan to continue using MyClinicSoft. Your data is preserved during the transition.</p>
             </div>
             <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 shadow-lg">
               <h3 className="text-lg font-bold text-gray-900 mb-2">Do you offer refunds?</h3>

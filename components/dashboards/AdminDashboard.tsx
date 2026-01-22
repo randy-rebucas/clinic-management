@@ -133,7 +133,7 @@ export default function AdminDashboard() {
       ),
     },
     {
-      title: 'Today\'s Appointments',
+      title: 'Today&apos;s Appointments',
       value: dashboardData.overview.todayAppointments,
       href: '/appointments',
       iconColor: 'amber',
@@ -144,7 +144,7 @@ export default function AdminDashboard() {
       ),
     },
     {
-      title: period === 'today' ? 'Today\'s Visits' : period === 'week' ? 'This Week\'s Visits' : 'This Month\'s Visits',
+      title: period === 'today' ? 'Today&apos;s Visits' : period === 'week' ? 'This Week&apos;s Visits' : 'This Month&apos;s Visits',
       value: dashboardData.overview.periodVisits,
       href: '/visits',
       iconColor: 'green',
@@ -166,7 +166,7 @@ export default function AdminDashboard() {
       ),
     },
     {
-      title: period === 'today' ? 'Today\'s Revenue' : period === 'week' ? 'This Week\'s Revenue' : 'This Month\'s Revenue',
+      title: period === 'today' ? 'Today&apos;s Revenue' : period === 'week' ? 'This Week&apos;s Revenue' : 'This Month&apos;s Revenue',
       value: formatCurrency(dashboardData.overview.periodRevenue),
       href: '/invoices',
       iconColor: 'emerald',
@@ -378,7 +378,7 @@ export default function AdminDashboard() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
-                    <h2 className="text-lg font-bold text-gray-900">Today's Appointments</h2>
+                    <h2 className="text-lg font-bold text-gray-900">Today&apos;s Appointments</h2>
                   </div>
                   <Link href="/appointments" className="text-sm font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
                     View all

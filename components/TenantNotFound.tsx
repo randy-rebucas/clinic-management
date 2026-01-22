@@ -54,7 +54,9 @@ export default function TenantNotFound({ subdomain }: TenantNotFoundProps) {
         }
       }
       
-      setRootDomainUrl(`${protocol}//${rootHost}`);
+      setTimeout(() => {
+        setRootDomainUrl(`${protocol}//${rootHost}`);
+      }, 0);
     }
   }, []);
 
@@ -104,7 +106,7 @@ export default function TenantNotFound({ subdomain }: TenantNotFoundProps) {
               Clinic Not Found
             </h1>
             <p className="text-blue-100 text-lg">
-              The clinic you're looking for doesn't exist or is no longer available
+              The clinic you&apos;re looking for doesn&apos;t exist or is no longer available
             </p>
           </div>
 
@@ -146,7 +148,7 @@ export default function TenantNotFound({ subdomain }: TenantNotFoundProps) {
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-1">Check the URL</h3>
                   <p className="text-gray-600 text-sm">
-                    Make sure you're using the correct subdomain. The URL should look like: <code className="bg-gray-100 px-1 rounded">subdomain.yourdomain.com</code>
+                    Make sure you&apos;re using the correct subdomain. The URL should look like: <code className="bg-gray-100 px-1 rounded">subdomain.yourdomain.com</code>
                   </p>
                 </div>
               </div>
@@ -170,7 +172,7 @@ export default function TenantNotFound({ subdomain }: TenantNotFoundProps) {
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-1">Set Up Your Clinic</h3>
                   <p className="text-gray-600 text-sm">
-                    If you're a new clinic, you can set up your account by registering.
+                    If you&apos;re a new clinic, you can set up your account by registering.
                   </p>
                 </div>
               </div>

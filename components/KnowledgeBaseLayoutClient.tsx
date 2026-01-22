@@ -30,7 +30,9 @@ export default function KnowledgeBaseLayoutClient({
   const currentSlug = pathname.split('/').pop() || '';
 
   useEffect(() => {
-    setSidebarOpen(false);
+    setTimeout(() => {
+      setSidebarOpen(false);
+    }, 0);
   }, [pathname]);
 
   useEffect(() => {
@@ -38,7 +40,9 @@ export default function KnowledgeBaseLayoutClient({
       files.some(f => f.slug === currentSlug)
     )?.[0];
     if (activeCategory) {
-      setExpandedCategories(prev => new Set([...prev, activeCategory]));
+      setTimeout(() => {
+        setExpandedCategories(prev => new Set([...prev, activeCategory]));
+      }, 0);
     }
   }, [currentSlug, categories]);
 

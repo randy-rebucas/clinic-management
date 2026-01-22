@@ -151,7 +151,7 @@ export default function LabResultDetailClient({ labResultId }: { labResultId: st
               </svg>
             </div>
             <h2 className="text-2xl font-bold text-gray-900">Lab result not found</h2>
-            <p className="text-sm text-gray-600 mb-4">The lab result you're looking for doesn't exist or has been removed.</p>
+            <p className="text-sm text-gray-600 mb-4">The lab result you&apos;re looking for doesn&apos;t exist or has been removed.</p>
             <Link 
               href="/lab-results"
               className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-lg hover:from-cyan-600 hover:to-cyan-700 transition-all text-sm font-semibold shadow-md"

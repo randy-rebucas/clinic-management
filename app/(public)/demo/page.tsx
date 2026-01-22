@@ -54,7 +54,7 @@ export default function DemoPage() {
             <div>
               <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-6">Request a Live Demo</h2>
               <p className="text-lg text-gray-700 mb-6 leading-relaxed">
-                Schedule a personalized demo with one of our experts. We'll show you exactly how MyClinicSoft 
+                Schedule a personalized demo with one of our experts. We&apos;ll show you exactly how MyClinicSoft 
                 can work for your clinic and answer any questions you have.
               </p>
               <ul className="space-y-3 mb-8">

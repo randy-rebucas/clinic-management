@@ -165,7 +165,7 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
                     <div>
                       <h2 className="text-2xl font-semibold mb-2">Step 1: System Prerequisites</h2>
                       <p className="text-gray-600">
-                        Let's verify that your system meets the requirements.
+                        Let&apos;s verify that your system meets the requirements.
                       </p>
                     </div>
 

@@ -66,10 +66,12 @@ export default function ReferralForm({
   useEffect(() => {
     if (formData.patient) {
       const patient = patients.find((p) => p._id === formData.patient);
-      setSelectedPatient(patient || null);
-      if (patient) {
-        setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-      }
+      setTimeout(() => {
+        setSelectedPatient(patient || null);
+        if (patient) {
+          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+        }
+      }, 0);
     }
   }, [formData.patient, patients]);
 

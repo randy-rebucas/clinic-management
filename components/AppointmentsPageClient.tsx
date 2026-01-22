@@ -114,7 +114,6 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         setShowWalkInForm(false);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patientId, patients.length]);
 
   useEffect(() => {

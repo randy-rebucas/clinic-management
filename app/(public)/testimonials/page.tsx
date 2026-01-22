@@ -104,7 +104,7 @@ export default function TestimonialsPage() {
                     </svg>
                   ))}
                 </div>
-                <p className="text-gray-700 leading-relaxed mb-6 italic">"{testimonial.quote}"</p>
+                <p className="text-gray-700 leading-relaxed mb-6 italic">&quot;{testimonial.quote}&quot;</p>
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex-shrink-0"></div>
                   <div>

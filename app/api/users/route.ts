@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Hash password
-    const bcrypt = require('bcryptjs');
+    const bcrypt = await import('bcryptjs');
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Ensure user is created with tenantId

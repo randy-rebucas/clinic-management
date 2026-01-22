@@ -125,7 +125,7 @@ export default function DoctorDashboard() {
       ),
     },
     dashboardData.permissions.canViewAppointments && {
-      title: 'Today\'s Appointments',
+      title: 'Today&apos;s Appointments',
       value: dashboardData.overview.todayAppointments,
       href: '/appointments',
       iconColor: 'amber',
@@ -136,7 +136,7 @@ export default function DoctorDashboard() {
       ),
     },
     dashboardData.permissions.canViewVisits && {
-      title: period === 'today' ? 'Today\'s Visits' : period === 'week' ? 'This Week\'s Visits' : 'This Month\'s Visits',
+      title: period === 'today' ? 'Today&apos;s Visits' : period === 'week' ? 'This Week&apos;s Visits' : 'This Month&apos;s Visits',
       value: dashboardData.overview.periodVisits,
       href: '/visits',
       iconColor: 'green',
@@ -330,7 +330,7 @@ export default function DoctorDashboard() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </div>
-                      <h2 className="text-lg font-bold text-gray-900">My Today's Appointments</h2>
+                      <h2 className="text-lg font-bold text-gray-900">My Today&apos;s Appointments</h2>
                     </div>
                     <Link href="/appointments" className="text-sm font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
                       View all

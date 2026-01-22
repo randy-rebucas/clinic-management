@@ -85,9 +85,16 @@ export default function DocumentUploadForm({
   useEffect(() => {
     if (formData.patient) {
       const patient = patients.find((p) => p._id === formData.patient);
-      setSelectedPatient(patient || null);
       if (patient) {
-        setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+        // Use setTimeout to avoid synchronous setState in effect
+        setTimeout(() => {
+          setSelectedPatient(patient);
+          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+        }, 0);
+      } else {
+        setTimeout(() => {
+          setSelectedPatient(null);
+        }, 0);
       }
     }
   }, [formData.patient, patients]);
@@ -101,10 +108,14 @@ export default function DocumentUploadForm({
       if (formData.file.type.startsWith('image/')) {
         reader.readAsDataURL(formData.file);
       } else {
-        setFilePreview(null);
+        setTimeout(() => {
+          setFilePreview(null);
+        }, 0);
       }
     } else {
-      setFilePreview(null);
+      setTimeout(() => {
+        setFilePreview(null);
+      }, 0);
     }
   }, [formData.file]);
 

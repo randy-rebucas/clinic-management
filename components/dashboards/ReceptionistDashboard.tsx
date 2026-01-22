@@ -128,7 +128,7 @@ export default function ReceptionistDashboard() {
       ),
     },
     dashboardData.permissions.canViewAppointments && {
-      title: 'Today\'s Appointments',
+      title: 'Today&apos;s Appointments',
       value: dashboardData.overview.todayAppointments,
       href: '/appointments',
       iconColor: 'amber',
@@ -325,7 +325,7 @@ export default function ReceptionistDashboard() {
               {/* Recent Appointments */}
               <div className="bg-white border border-gray-200 rounded-lg p-4 flex-1">
                 <div className="flex justify-between items-center mb-3">
-                  <h2 className="text-lg font-semibold">Today's Appointments</h2>
+                  <h2 className="text-lg font-semibold">Today&apos;s Appointments</h2>
                   <Link href="/appointments" className="text-blue-600 hover:text-blue-700 text-sm font-medium">
                     View all
                   </Link>

@@ -24,7 +24,9 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     // First, try to load from localStorage
     const saved = localStorage.getItem('sidebarCollapsed');
     if (saved !== null) {
-      setIsCollapsed(saved === 'true');
+      setTimeout(() => {
+        setIsCollapsed(saved === 'true');
+      }, 0);
     }
 
     // Then sync with settings

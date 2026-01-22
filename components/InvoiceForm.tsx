@@ -109,10 +109,12 @@ export default function InvoiceForm({
   useEffect(() => {
     if (formData.patient) {
       const patient = patients.find((p) => p._id === formData.patient);
-      setSelectedPatient(patient || null);
-      if (patient) {
-        setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-      }
+      setTimeout(() => {
+        setSelectedPatient(patient || null);
+        if (patient) {
+          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+        }
+      }, 0);
     }
   }, [formData.patient, patients]);
 
@@ -126,9 +128,13 @@ export default function InvoiceForm({
           (service.category && service.category.toLowerCase().includes(searchLower))
         );
       });
-      setFilteredServices(filtered.slice(0, 10));
+      setTimeout(() => {
+        setFilteredServices(filtered.slice(0, 10));
+      }, 0);
     } else {
-      setFilteredServices([]);
+      setTimeout(() => {
+        setFilteredServices([]);
+      }, 0);
     }
   }, [serviceSearch, services]);
 
@@ -167,7 +173,9 @@ export default function InvoiceForm({
       const calculatedTax = afterDiscount * defaultTaxRate / 100;
       // Don't update if user manually set tax to 0
       if (formData.tax !== calculatedTax) {
-        setFormData(prev => ({ ...prev, tax: calculatedTax }));
+        setTimeout(() => {
+          setFormData(prev => ({ ...prev, tax: calculatedTax }));
+        }, 0);
       }
     }
   }, [defaultTaxRate, formData.items, formData.discounts]);
