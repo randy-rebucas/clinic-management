@@ -300,6 +300,7 @@ ReceptionistSchema.post('save', async function (doc: IReceptionist) {
       // Generate a default password (can be changed on first login)
       const defaultPassword = `Password1234!`;
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+      
       console.log('🔐 Generated default password');
 
       // Create the user with tenantId if receptionist has one

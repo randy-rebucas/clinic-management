@@ -180,6 +180,25 @@ export async function login(
       };
     }
 
+    // Check if user has a password
+    if (!user.password) {
+      console.error('Login error: User has no password set', { userId: user._id, email: user.email });
+      return {
+        errors: {
+          email: ['Invalid email or password.'],
+        },
+      };
+    }
+
+    // Check if user is active
+    if (user.status !== 'active') {
+      return {
+        errors: {
+          email: ['Your account is not active. Please contact your administrator.'],
+        },
+      };
+    }
+
     // Verify password
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
@@ -194,6 +213,34 @@ export async function login(
     // Reset rate limit on successful login
     resetRateLimit(sanitizedEmail);
 
+    // Helper function to find role by name with tenant context
+    const findRoleByName = async (name: string): Promise<any> => {
+      if (tenantId) {
+        // First try tenant-scoped role
+        const tenantRole = await Role.findOne({ name, tenantId });
+        if (tenantRole) return tenantRole;
+        // If not found, try global role
+        return await Role.findOne({ 
+          name,
+          $or: [{ tenantId: { $exists: false } }, { tenantId: null }]
+        });
+      } else {
+        // No tenant, look for global role
+        return await Role.findOne({ name });
+      }
+    };
+
+    // Helper function to determine role from user profile fields
+    const determineRoleFromProfile = (user: any): string | null => {
+      if (user.adminProfile) return 'admin';
+      if (user.doctorProfile) return 'doctor';
+      if (user.nurseProfile) return 'nurse';
+      if (user.receptionistProfile) return 'receptionist';
+      if (user.accountantProfile) return 'accountant';
+      if (user.medicalRepresentativeProfile) return 'medical-representative';
+      return null;
+    };
+
     // Get role name from populated role or fallback
     let roleName: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative' = 'receptionist';
     let roleId: string | undefined;
@@ -203,11 +250,74 @@ export async function login(
         roleName = (user.role as any).name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
         roleId = (user.role as any)._id?.toString();
       } else {
-        // Role is ObjectId, fetch it
-        const roleDoc = await Role.findById(user.role);
+        // Role is ObjectId, fetch it (consider tenant context if applicable)
+        let roleDoc;
+        if (tenantId) {
+          // First try tenant-scoped role
+          roleDoc = await Role.findOne({ _id: user.role, tenantId });
+          // If not found, try global role
+          if (!roleDoc) {
+            roleDoc = await Role.findOne({ 
+              _id: user.role,
+              $or: [{ tenantId: { $exists: false } }, { tenantId: null }]
+            });
+          }
+        } else {
+          // No tenant, look for global role or any role with this ID
+          roleDoc = await Role.findById(user.role);
+        }
+        
         if (roleDoc) {
           roleName = roleDoc.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
           roleId = roleDoc._id.toString();
+        } else {
+          console.error('Login error: Role not found by ID', { 
+            roleId: user.role, 
+            userId: user._id, 
+            email: user.email,
+            tenantId 
+          });
+          // Try to determine role from profile fields
+          const profileRole = determineRoleFromProfile(user);
+          if (profileRole) {
+            const fallbackRole = await findRoleByName(profileRole);
+            if (fallbackRole) {
+              roleName = fallbackRole.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
+              roleId = fallbackRole._id.toString();
+              console.log(`✅ Found role from profile: ${roleName}`, { userId: user._id, email: user.email });
+            }
+          }
+          // If still no roleId, try receptionist as last resort
+          if (!roleId) {
+            const fallbackRole = await findRoleByName('receptionist');
+            if (fallbackRole) {
+              roleId = fallbackRole._id.toString();
+              console.warn(`⚠️  Using receptionist role as fallback`, { userId: user._id, email: user.email });
+            }
+          }
+        }
+      }
+    } else {
+      console.error('Login error: User has no role assigned', { 
+        userId: user._id, 
+        email: user.email 
+      });
+      // Try to determine role from profile fields
+      const profileRole = determineRoleFromProfile(user);
+      if (profileRole) {
+        const fallbackRole = await findRoleByName(profileRole);
+        if (fallbackRole) {
+          roleName = fallbackRole.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
+          roleId = fallbackRole._id.toString();
+          console.log(`✅ Found role from profile: ${roleName}`, { userId: user._id, email: user.email });
+        }
+      }
+      // If still no roleId, try receptionist as last resort
+      if (!roleId) {
+        const fallbackRole = await findRoleByName('receptionist');
+        if (fallbackRole) {
+          roleId = fallbackRole._id.toString();
+          console.warn(`⚠️  Using receptionist role as fallback`, { userId: user._id, email: user.email });
         }
       }
     }
@@ -238,8 +348,29 @@ export async function login(
 
     revalidatePath('/dashboard');
     redirect('/dashboard');
-  } catch (error) {
+  } catch (error: any) {
     console.error('Login error:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name,
+    });
+    
+    // Return more specific error if it's a known issue
+    if (error?.message?.includes('password')) {
+      return {
+        errors: {
+          email: ['An error occurred during password verification. Please try again.'],
+        },
+      };
+    }
+    
+    if (error?.message?.includes('role') || error?.message?.includes('Role')) {
+      return {
+        message: 'An error occurred while verifying your role. Please contact your administrator.',
+      };
+    }
+    
     return {
       message: 'An error occurred during login. Please try again.',
     };
