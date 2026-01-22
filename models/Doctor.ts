@@ -159,14 +159,8 @@ DoctorSchema.index({ tenantId: 1, specializationId: 1, status: 1 }); // Tenant-s
 DoctorSchema.index({ tenantId: 1, department: 1, status: 1 }); // Tenant-scoped department queries
 DoctorSchema.index({ tenantId: 1, status: 1 }); // Tenant-scoped status queries
 
-// Register Doctor model immediately after schema definition
-// This ensures it's available when other models (like User) reference it via ref: 'Doctor'
-// Must be registered before the post-save hook that imports User model
-if (!mongoose.models.Doctor) {
-  mongoose.model<IDoctor>('Doctor', DoctorSchema);
-}
-
 // Post-save hook to automatically create a User when a Doctor is created
+// IMPORTANT: Hook must be added BEFORE model registration
 DoctorSchema.post('save', async function (doc: IDoctor) {
   try {
     // Ensure models are registered by importing them first
@@ -209,7 +203,7 @@ DoctorSchema.post('save', async function (doc: IDoctor) {
 
       // Generate a default password (can be changed on first login)
       // Using a combination of license number for security
-      const defaultPassword = `Doctor${doc.licenseNumber.slice(-4)}!`;
+      const defaultPassword = `Password1234!`;
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
       // Create the user

@@ -102,12 +102,8 @@ AdminSchema.index({ tenantId: 1, status: 1 });
 AdminSchema.index({ tenantId: 1, department: 1, status: 1 }); // For department-based queries
 AdminSchema.index({ tenantId: 1, accessLevel: 1, status: 1 }); // For access level queries
 
-// Register Admin model immediately after schema definition
-if (!mongoose.models.Admin) {
-  mongoose.model<IAdmin>('Admin', AdminSchema);
-}
-
 // Post-save hook to automatically create a User when an Admin is created
+// IMPORTANT: Hook must be added BEFORE model registration
 AdminSchema.post('save', async function (doc: IAdmin) {
   try {
     // Ensure models are registered by importing them first
