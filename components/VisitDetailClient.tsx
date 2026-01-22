@@ -253,7 +253,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
               </svg>
             </div>
             <h2 className="text-2xl font-bold text-gray-900">Visit not found</h2>
-            <p className="text-sm text-gray-600 mb-4">The visit you're looking for doesn't exist or has been removed.</p>
+            <p className="text-sm text-gray-600 mb-4">The visit you&apos;re looking for doesn&apos;t exist or has been removed.</p>
             <Link 
               href="/visits"
               className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold shadow-md"

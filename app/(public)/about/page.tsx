@@ -78,7 +78,7 @@ export default function AboutPage() {
               </span>
             </h1>
             <p className="text-xl sm:text-2xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
-              We're on a mission to make clinic management simple, efficient, and accessible for healthcare providers everywhere.
+              We&apos;re on a mission to make clinic management simple, efficient, and accessible for healthcare providers everywhere.
             </p>
           </div>
         </div>
@@ -95,7 +95,7 @@ export default function AboutPage() {
                 Our mission is to eliminate administrative burdens and streamline clinic operations through innovative technology.
               </p>
               <p className="text-lg text-gray-700 mb-4 leading-relaxed">
-                We're committed to providing a comprehensive, user-friendly platform that empowers clinics of all sizes 
+                We&apos;re committed to providing a comprehensive, user-friendly platform that empowers clinics of all sizes 
                 to deliver exceptional healthcare services while maintaining the highest standards of security and compliance.
               </p>
               <p className="text-lg text-gray-700 leading-relaxed">

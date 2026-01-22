@@ -206,7 +206,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
               </svg>
             </div>
             <h2 className="text-2xl font-bold text-gray-900">{error || 'Prescription not found'}</h2>
-            <p className="text-sm text-gray-600 mb-4">The prescription you're looking for doesn't exist or has been removed.</p>
+            <p className="text-sm text-gray-600 mb-4">The prescription you&apos;re looking for doesn&apos;t exist or has been removed.</p>
             <Link 
               href="/prescriptions"
               className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all text-sm font-semibold shadow-md"

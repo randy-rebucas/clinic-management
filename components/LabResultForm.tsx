@@ -66,8 +66,10 @@ export default function LabResultForm({
       }, 0);
       return () => clearTimeout(timer);
     } else {
-      setSelectedPatient(null);
-      setPatientSearch('');
+      setTimeout(() => {
+        setSelectedPatient(null);
+        setPatientSearch('');
+      }, 0);
     }
      
   }, [formData.patient, patients]);

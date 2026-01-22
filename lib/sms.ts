@@ -18,6 +18,7 @@ function getTwilioClient() {
 
   try {
     // Dynamic import to avoid requiring twilio at build time if not installed
+    /* eslint-disable @typescript-eslint/no-require-imports */
     const twilio = require('twilio');
     twilioClient = twilio(accountSid, authToken);
     return twilioClient;

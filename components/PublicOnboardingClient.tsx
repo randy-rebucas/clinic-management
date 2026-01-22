@@ -1120,7 +1120,7 @@ export default function PublicOnboardingClient() {
                             </div>
                             {formData.allergies.length === 0 ? (
                               <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
-                                <p className="text-sm text-gray-500">No allergies recorded. Click "Add Allergy" to add one.</p>
+                                <p className="text-sm text-gray-500">No allergies recorded. Click &quot;Add Allergy&quot; to add one.</p>
                               </div>
                             ) : (
                               <div className="space-y-3">
@@ -1191,7 +1191,7 @@ export default function PublicOnboardingClient() {
                             </div>
                             {formData.preExistingConditions.length === 0 ? (
                               <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
-                                <p className="text-sm text-gray-500">No conditions recorded. Click "Add Condition" to add one.</p>
+                                <p className="text-sm text-gray-500">No conditions recorded. Click &quot;Add Condition&quot; to add one.</p>
                               </div>
                             ) : (
                               <div className="space-y-3">
@@ -1259,7 +1259,7 @@ export default function PublicOnboardingClient() {
                             </div>
                             {Object.keys(formData.familyHistory).length === 0 ? (
                               <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
-                                <p className="text-sm text-gray-500">No family history recorded. Click "Add History" to add one.</p>
+                                <p className="text-sm text-gray-500">No family history recorded. Click &quot;Add History&quot; to add one.</p>
                               </div>
                             ) : (
                               <div className="space-y-2">

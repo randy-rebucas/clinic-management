@@ -426,8 +426,8 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                       </svg>
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-gray-900">You're at the Highest Tier!</h3>
-                      <p className="text-sm text-gray-600">You're already enjoying all the premium benefits of Platinum membership.</p>
+                      <h3 className="text-lg font-bold text-gray-900">You&apos;re at the Highest Tier!</h3>
+                      <p className="text-sm text-gray-600">You&apos;re already enjoying all the premium benefits of Platinum membership.</p>
                     </div>
                   </div>
                 </div>

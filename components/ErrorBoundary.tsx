@@ -129,7 +129,7 @@ ${errorDetails.componentStack || 'No component stack available'}`;
             </h2>
             
             <p className="text-gray-600 text-center mb-6 font-medium">
-              We're sorry, but something unexpected happened. Please try refreshing the page.
+              We&apos;re sorry, but something unexpected happened. Please try refreshing the page.
             </p>
 
             {error && (

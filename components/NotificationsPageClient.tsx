@@ -148,7 +148,7 @@ export default function NotificationsPageClient() {
                   </svg>
                 </div>
                 <h2 className="text-xl font-bold text-gray-900 mb-2">No notifications</h2>
-                <p className="text-sm text-gray-600 font-medium">You're all caught up!</p>
+                <p className="text-sm text-gray-600 font-medium">You&apos;re all caught up!</p>
               </div>
             </div>
           )}

@@ -62,7 +62,7 @@ export default async function HomePage() {
               </p>
               
               <p className="text-base sm:text-lg text-gray-600 mb-8 sm:mb-12 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
-                Streamline patient care, manage appointments, and enhance your clinic's efficiency with our modern, cloud-based healthcare management platform.
+                Streamline patient care, manage appointments, and enhance your clinic&apos;s efficiency with our modern, cloud-based healthcare management platform.
               </p>
 
               {/* CTA Buttons */}

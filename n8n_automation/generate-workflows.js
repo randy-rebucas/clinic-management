@@ -6,6 +6,7 @@
  * This will create all workflow JSON files in the current directory
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require('fs');
 const path = require('path');
 

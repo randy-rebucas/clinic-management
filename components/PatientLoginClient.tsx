@@ -697,7 +697,7 @@ export default function PatientLoginClient() {
         {/* Footer Links */}
         <div className="text-center space-y-3 sm:space-y-4 mt-6 sm:mt-8">
           <p className="text-sm sm:text-base text-gray-600">
-            Don't have a patient code?{' '}
+            Don&apos;t have a patient code?{' '}
             <Link href="/onboard" className="text-blue-600 hover:text-blue-700 font-semibold underline decoration-2 underline-offset-2">
               Register here
             </Link>

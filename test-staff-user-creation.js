@@ -7,6 +7,7 @@
  * Run with: node test-staff-user-creation.js
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports */
 const mongoose = require('mongoose');
 require('dotenv').config({ path: '.env.local' });
 

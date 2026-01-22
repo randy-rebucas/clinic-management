@@ -31,7 +31,7 @@ export default function ContactPage() {
               </span>
             </h1>
             <p className="text-xl sm:text-2xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
-              We're here to help. Reach out to us for support, sales inquiries, or any questions.
+              We&apos;re here to help. Reach out to us for support, sales inquiries, or any questions.
             </p>
           </div>
         </div>

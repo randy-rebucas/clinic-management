@@ -319,7 +319,7 @@ export default function DashboardClient() {
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
             <div>
               <h1 className="text-3xl font-bold mb-1">Dashboard</h1>
-              <p className="text-sm text-gray-500">Welcome back! Here's an overview of your clinic.</p>
+              <p className="text-sm text-gray-500">Welcome back! Here&apos;s an overview of your clinic.</p>
             </div>
             <div className="flex gap-2">
               <button
@@ -387,7 +387,7 @@ export default function DashboardClient() {
             {/* Recent Appointments */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex-1">
               <div className="flex justify-between items-center mb-3">
-                <h2 className="text-lg font-semibold">Today's Appointments</h2>
+                <h2 className="text-lg font-semibold">Today&apos;s Appointments</h2>
                 <Link href="/appointments" className="text-sm text-blue-600 hover:text-blue-700 hover:underline">
                   View all
                 </Link>

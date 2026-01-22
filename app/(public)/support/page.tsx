@@ -185,7 +185,7 @@ export default function SupportPage() {
             Still Need Help?
           </h2>
           <p className="text-base sm:text-lg lg:text-xl text-blue-100 mb-8 sm:mb-12 max-w-2xl mx-auto leading-relaxed">
-            Contact our support team directly and we'll get back to you as soon as possible.
+            Contact our support team directly and we&apos;ll get back to you as soon as possible.
           </p>
           <Link
             href="/contact"

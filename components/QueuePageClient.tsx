@@ -359,7 +359,6 @@ export default function QueuePageClient() {
 
   useEffect(() => {
     fetchQueue();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterDoctor, filterStatus]);
 
   if (loading) {

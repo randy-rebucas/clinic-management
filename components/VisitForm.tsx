@@ -142,8 +142,10 @@ export default function VisitForm({
       }, 0);
       return () => clearTimeout(timer);
     } else {
-      setSelectedPatient(null);
-      setPatientSearch('');
+      setTimeout(() => {
+        setSelectedPatient(null);
+        setPatientSearch('');
+      }, 0);
     }
      
   }, [formData.patient, patients]);
@@ -879,7 +881,7 @@ export default function VisitForm({
             </div>
             {formData.diagnoses.length === 0 ? (
               <div className="text-center py-8 bg-white/50 rounded-lg border-2 border-dashed border-red-200">
-                <p className="text-sm text-gray-600 font-medium">No diagnoses added. Click "Add Diagnosis" to add one.</p>
+                <p className="text-sm text-gray-600 font-medium">No diagnoses added. Click &quot;Add Diagnosis&quot; to add one.</p>
               </div>
             ) : (
               <div className="flex flex-col gap-3">

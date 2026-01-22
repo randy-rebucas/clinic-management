@@ -20,7 +20,6 @@ export default function LabResultFormClient({ patientId }: { patientId?: string 
 
   useEffect(() => {
     fetchPatients();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchPatients = async () => {
