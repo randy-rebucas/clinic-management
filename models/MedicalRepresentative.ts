@@ -2,8 +2,8 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 export interface IMedicalRepresentative extends Document {
-  // Tenant reference for multi-tenant support
-  tenantId?: Types.ObjectId;
+  // Tenant references for multi-tenant support
+  tenantIds?: Types.ObjectId[];
   
   // User account reference (reverse reference from User.medicalRepresentativeProfile)
   userId?: Types.ObjectId;
@@ -62,12 +62,12 @@ export interface IMedicalRepresentative extends Document {
 
 const MedicalRepresentativeSchema: Schema = new Schema(
   {
-    // Tenant reference for multi-tenant support
-    tenantId: {
+    // Tenant references for multi-tenant support
+    tenantIds: [{
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
       index: true,
-    },
+    }],
     
     // User account reference (reverse reference from User.medicalRepresentativeProfile)
     userId: {
@@ -156,10 +156,10 @@ const MedicalRepresentativeSchema: Schema = new Schema(
 );
 
 // Indexes for efficient queries (tenant-scoped)
-MedicalRepresentativeSchema.index({ tenantId: 1, email: 1 }, { unique: true, sparse: true }); // Tenant-scoped unique email
-MedicalRepresentativeSchema.index({ tenantId: 1, company: 1, status: 1 }); // For company-based queries
-MedicalRepresentativeSchema.index({ tenantId: 1, status: 1 }); // For status-based queries
-MedicalRepresentativeSchema.index({ tenantId: 1, createdAt: -1 }); // For sorting by creation date
+MedicalRepresentativeSchema.index({ tenantIds: 1, email: 1 }, { unique: true, sparse: true }); // Tenant-scoped unique email
+MedicalRepresentativeSchema.index({ tenantIds: 1, company: 1, status: 1 }); // For company-based queries
+MedicalRepresentativeSchema.index({ tenantIds: 1, status: 1 }); // For status-based queries
+MedicalRepresentativeSchema.index({ tenantIds: 1, createdAt: -1 }); // For sorting by creation date
 MedicalRepresentativeSchema.index({ userId: 1 }); // For user lookup
 
 // Register MedicalRepresentative model immediately after schema definition
