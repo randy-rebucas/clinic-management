@@ -165,6 +165,17 @@ export async function getTenantId(): Promise<string | null> {
   return context.tenantId;
 }
 
+export async function getTenantBySlug(slug: string): Promise<ITenant | null> {
+  try {
+    await connectDB();
+    const tenant = await Tenant.findOne({ slug: slug.toLowerCase(), status: 'active' }).lean<ITenant | null>();
+    return tenant;
+  } catch (error) {
+    console.error('Error getting tenant by slug:', error);
+    return null;
+  }
+}
+
 /**
  * Verify that a tenant exists and is active
  */
