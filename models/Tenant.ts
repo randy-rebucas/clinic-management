@@ -1,5 +1,23 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
+export type ITenantSettings = {
+  timezone: string;
+  currency: string;
+  currencySymbol?: string;
+  currencyPosition: 'before' | 'after'; // e.g., $100 or 100$
+  dateFormat: string; // e.g., 'MM/DD/YYYY', 'DD/MM/YYYY'
+  timeFormat: '12h' | '24h';
+  language: 'en' | 'es';
+  numberFormat: {
+    decimalSeparator: string; // '.' or ','
+    thousandsSeparator: string; // ',' or '.'
+    decimalPlaces: number; // 2 for currency
+  };
+  logo?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+};
+
 export interface ITenant extends Document {
   _id: Types.ObjectId;
   name: string;
@@ -14,14 +32,7 @@ export interface ITenant extends Document {
     zipCode?: string;
     country?: string;
   };
-  settings?: {
-    timezone?: string;
-    currency?: string;
-    dateFormat?: string;
-    logo?: string;
-    primaryColor?: string;
-    secondaryColor?: string;
-  };
+  settings?: ITenantSettings;
   status: 'active' | 'inactive' | 'suspended';
   subscription?: {
     plan?: string;
@@ -125,7 +136,7 @@ TenantSchema.pre('save', async function (next) {
       'test',
       'demo',
     ];
-    
+
     if (reservedWords.includes(this.subdomain.toLowerCase())) {
       return next(new Error(`Subdomain "${this.subdomain}" is reserved and cannot be used`));
     }
