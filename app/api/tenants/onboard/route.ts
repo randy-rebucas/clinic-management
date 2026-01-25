@@ -28,19 +28,19 @@ function validateSubdomain(subdomain: string): { valid: boolean; error?: string 
   if (!subdomain || subdomain.length < 2) {
     return { valid: false, error: 'Subdomain must be at least 2 characters long' };
   }
-  
+
   if (subdomain.length > 63) {
     return { valid: false, error: 'Subdomain must be at most 63 characters long' };
   }
-  
+
   if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(subdomain)) {
     return { valid: false, error: 'Subdomain must contain only lowercase letters, numbers, and hyphens' };
   }
-  
+
   if (RESERVED_WORDS.includes(subdomain.toLowerCase())) {
     return { valid: false, error: `Subdomain "${subdomain}" is reserved and cannot be used` };
   }
-  
+
   return { valid: true };
 }
 
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       hasAdminEmail: !!body.admin?.email,
       hasAdminPassword: !!body.admin?.password,
     });
-    
+
     const {
       name,
       displayName,
@@ -81,12 +81,19 @@ export async function POST(request: NextRequest) {
       settings,
       admin,
     } = body;
-
+    console.log('Onboarding data:', {
+      name: name ? `${name.substring(0, 20)}...` : 'missing',
+      subdomain: subdomain ? `${subdomain.substring(0, 20)}...` : 'missing',
+      hasAdmin: !!admin,
+      adminName: admin?.name ? `${admin.name.substring(0, 20)}...` : 'missing',
+      adminEmail: admin?.email ? `${admin.email.substring(0, 20)}...` : 'missing',
+      adminPassword: admin?.password,
+    });
     // Validate required fields
     if (!name || !subdomain || !admin?.name || !admin?.email || !admin?.password) {
       const missingFields = [];
       const fieldErrors: any = {};
-      
+
       if (!name || !name.trim()) {
         missingFields.push('name');
         fieldErrors.tenantName = ['Tenant name is required'];
@@ -107,7 +114,7 @@ export async function POST(request: NextRequest) {
         missingFields.push('admin.password');
         fieldErrors.adminPassword = ['Admin password is required'];
       }
-      
+
       console.error('Missing required fields:', missingFields);
       console.error('Request body received:', {
         name: name ? `${name.substring(0, 20)}...` : 'missing',
@@ -117,10 +124,10 @@ export async function POST(request: NextRequest) {
         adminEmail: admin?.email ? `${admin.email.substring(0, 20)}...` : 'missing',
         hasAdminPassword: !!admin?.password,
       });
-      
+
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           message: `Missing required fields: ${missingFields.join(', ')}`,
           errors: {
             ...fieldErrors,
@@ -164,7 +171,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if admin email already exists (within any tenant)
-    const existingUser = await User.findOne({ 
+    const existingUser = await User.findOne({
       email: admin.email.toLowerCase().trim(),
     });
     if (existingUser) {
@@ -277,14 +284,14 @@ export async function POST(request: NextRequest) {
       try {
         // First, try to find existing role with tenantId
         role = await Role.findOne({ name: roleData.name, tenantId });
-        
+
         if (!role) {
           // If not found, check for role without tenantId (backward compatibility)
-          const existingRoleWithoutTenant = await Role.findOne({ 
+          const existingRoleWithoutTenant = await Role.findOne({
             name: roleData.name,
             $or: [{ tenantId: { $exists: false } }, { tenantId: null }]
           });
-          
+
           if (existingRoleWithoutTenant) {
             // Update existing role to include tenantId
             existingRoleWithoutTenant.tenantId = tenantId;
@@ -324,7 +331,7 @@ export async function POST(request: NextRequest) {
           role = await Role.findOne({ name: roleData.name, tenantId });
           if (!role) {
             // Try without tenantId
-            role = await Role.findOne({ 
+            role = await Role.findOne({
               name: roleData.name,
               $or: [{ tenantId: { $exists: false } }, { tenantId: null }]
             });
@@ -334,11 +341,11 @@ export async function POST(request: NextRequest) {
               await role.save();
             }
           }
-          
+
           if (!role) {
             throw new Error(`Failed to create or find role ${roleData.name}: ${error.message}`);
           }
-          
+
           // Update role properties
           role.displayName = roleData.displayName;
           role.description = roleData.description;
@@ -383,7 +390,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Creating admin profile and user...');
-    
+
     // Validate admin password
     if (!admin.password || admin.password.length < 8) {
       throw new Error('Admin password must be at least 8 characters long');
@@ -395,7 +402,7 @@ export async function POST(request: NextRequest) {
     const lastName = nameParts.slice(1).join(' ') || 'User';
 
     // Check if Admin already exists (from Tenant post-save hook)
-    let adminProfile = await Admin.findOne({ 
+    let adminProfile = await Admin.findOne({
       tenantId: tenant._id,
       email: admin.email.toLowerCase().trim(),
     });
@@ -424,7 +431,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if User already exists (might have been created by Admin post-save hook)
-    let adminUser = await User.findOne({ 
+    let adminUser = await User.findOne({
       email: admin.email.toLowerCase().trim(),
     });
 
@@ -432,7 +439,10 @@ export async function POST(request: NextRequest) {
       // Create User manually with the provided password
       console.log('Creating User account...');
       try {
+        console.log('Hashing password and creating user...', admin.password);
         const hashedPassword = await bcrypt.hash(admin.password, 10);
+        console.log('Password hashed, creating user document...', hashedPassword);
+
         adminUser = await User.create({
           name: admin.name.trim(),
           email: admin.email.toLowerCase().trim(),
@@ -456,13 +466,13 @@ export async function POST(request: NextRequest) {
           keyPattern: userError.keyPattern,
           keyValue: userError.keyValue,
         });
-        
+
         // If it's a duplicate key error, provide a better message
         if (userError.code === 11000) {
           const field = Object.keys(userError.keyPattern || {})[0] || 'field';
           throw new Error(`User with this ${field} already exists`);
         }
-        
+
         throw new Error(`Failed to create User: ${userError.message}`);
       }
     } else {
@@ -490,7 +500,7 @@ export async function POST(request: NextRequest) {
     if (!verifyUser) {
       throw new Error('User was created but cannot be retrieved from database');
     }
-    
+
     console.log('✅ User verified in database:', {
       id: verifyUser._id.toString(),
       email: verifyUser.email,
@@ -527,7 +537,7 @@ export async function POST(request: NextRequest) {
     const clinicAddress = tenant.address?.street
       ? `${tenant.address.street}${tenant.address.city ? `, ${tenant.address.city}` : ''}${tenant.address.state ? `, ${tenant.address.state}` : ''}${tenant.address.zipCode ? ` ${tenant.address.zipCode}` : ''}`
       : '';
-    
+
     await Settings.create({
       tenantId,
       clinicName: tenant.displayName || tenant.name,
@@ -580,7 +590,7 @@ export async function POST(request: NextRequest) {
     // Type guard for MongoDB errors
     const isMongoError = error && typeof error === 'object' && 'code' in error;
     const mongoError = isMongoError ? error as { code?: number; keyPattern?: Record<string, unknown>; keyValue?: Record<string, unknown> } : null;
-    
+
     // Create detailed error information for logging
     const errorDetails = {
       error: error instanceof Error ? {
@@ -591,27 +601,27 @@ export async function POST(request: NextRequest) {
       errorCode: mongoError?.code,
       keyPattern: mongoError?.keyPattern,
       keyValue: mongoError?.keyValue,
-      errorStringified: error instanceof Error 
+      errorStringified: error instanceof Error
         ? JSON.stringify({
-            name: error.name,
-            message: error.message,
-            code: mongoError?.code,
-            keyPattern: mongoError?.keyPattern,
-            keyValue: mongoError?.keyValue,
-            stack: error.stack,
-          }, null, 2)
+          name: error.name,
+          message: error.message,
+          code: mongoError?.code,
+          keyPattern: mongoError?.keyPattern,
+          keyValue: mongoError?.keyValue,
+          stack: error.stack,
+        }, null, 2)
         : JSON.stringify(error, null, 2),
       timestamp: new Date().toISOString(),
     };
 
     console.error('Error creating tenant:', errorDetails);
     console.error('Error details (stringified):', errorDetails.errorStringified);
-    
+
     // Handle duplicate key errors
     if (mongoError?.code === 11000 || error.message?.includes('duplicate key')) {
       const field = mongoError?.keyPattern ? Object.keys(mongoError.keyPattern)[0] : 'field';
       const value = mongoError?.keyValue ? Object.values(mongoError.keyValue)[0] : 'value';
-      
+
       return NextResponse.json(
         {
           success: false,

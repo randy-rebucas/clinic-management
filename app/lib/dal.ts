@@ -102,6 +102,7 @@ export async function createSession(
       expires: expiresAt,
       sameSite: 'lax',
       path: '/',
+      domain: process.env.COOKIE_DOMAIN || undefined, // Set apex domain for cross-subdomain auth
     });
   } catch (error) {
     console.error('Error creating session:', error);
