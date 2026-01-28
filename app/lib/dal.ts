@@ -27,7 +27,7 @@ function validateSecret() {
 export interface SessionPayload extends JWTPayload {
   userId: string;
   email: string;
-  role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative'; // Role name for backward compatibility
+  role: 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative'; // Role name for backward compatibility
   roleId?: string; // Role ObjectId from database
   tenantId?: string; // Tenant ObjectId for multi-tenant support
   expiresAt: number | Date;
@@ -129,6 +129,7 @@ export async function updateSession() {
       expires: expires,
       sameSite: 'lax',
       path: '/',
+      domain: process.env.COOKIE_DOMAIN || undefined, // Set apex domain for cross-subdomain auth
     });
   } catch (error) {
     console.error('Error updating session:', error);
@@ -139,7 +140,15 @@ export async function updateSession() {
 export async function deleteSession() {
   try {
     const cookieStore = await cookies();
-    cookieStore.delete('session');
+    // Delete with domain to ensure cross-subdomain cookie is removed
+    cookieStore.set('session', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      expires: new Date(0), // Expire immediately
+      sameSite: 'lax',
+      path: '/',
+      domain: process.env.COOKIE_DOMAIN || undefined,
+    });
   } catch (error) {
     console.error('Error deleting session:', error);
   }

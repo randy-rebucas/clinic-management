@@ -34,6 +34,7 @@
     "cloudinary": "^2.8.0",
     "html5-qrcode": "^2.3.8",
     "jose": "^6.1.2",
+    "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.0.0",
     "mongoose": "^8.20.0",
     "next": "^16.0.10",
@@ -47,6 +48,7 @@
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "twilio": "^5.10.6",
+    "vercel": "^50.5.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -55,6 +57,7 @@
     "@testing-library/react": "^16.0.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/jest": "^29.5.11",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
