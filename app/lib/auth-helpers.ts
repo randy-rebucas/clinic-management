@@ -1,195 +1,375 @@
-import { verifySession } from './dal';
+import { NextRequest, NextResponse } from 'next/server';
+import { jwtVerify } from 'jose';
 import { redirect } from 'next/navigation';
-import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import User from '@/models/User';
+import Permission from '@/models/Permission';
+import { Types } from 'mongoose';
+import { verifySession } from './dal';
 
-/**
- * Require authentication - redirects to login if not authenticated
- * @returns SessionPayload if authenticated
- */
-export async function requireAuth() {
-  const session = await verifySession();
-  if (!session) {
-    redirect('/login');
-  }
-  return session;
+export interface JWTPayload {
+  userId: string;
+  tenantId?: string;
+  email: string;
+  role: string;
+  roleId?: string;
+  expiresAt?: number | Date;
 }
 
-/**
- * Require specific role(s) - redirects to login if not authenticated or doesn't have required role
- * @param allowedRoles - Array of roles that are allowed
- * @returns SessionPayload if authenticated and authorized
- */
-export async function requireRole(allowedRoles: ('admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative')[]) {
-  const session = await requireAuth();
-  
-  if (!allowedRoles.includes(session.role)) {
-    redirect('/dashboard');
-  }
-  
-  return session;
-}
+// Use the same secret as dal.ts for consistency
+const secretKey = process.env.SESSION_SECRET;
+const encodedKey = new TextEncoder().encode(
+  secretKey || 'default-secret-key-change-in-production-dev-only'
+);
 
-/**
- * Require admin role
- * @returns SessionPayload if authenticated and is admin
- */
-export async function requireAdmin() {
-  const session = await requireAuth();
-  
-  // Check session role first (fast check)
-  if (session.role === 'admin') {
-    console.log('✅ Admin access granted via session role');
-    return session;
-  }
-  
-  // If session role is not admin, double-check against database
-  // This handles cases where user role was updated but session wasn't refreshed
+export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
-    await connectDB();
-    
-    // Register models to ensure they're available
-    const { registerAllModels } = await import('@/models');
-    registerAllModels();
-    
-    const User = (await import('@/models/User')).default;
-    const Role = (await import('@/models/Role')).default;
-    
-    // Get user with populated role
-    const user = await User.findById(session.userId)
-      .populate('role', 'name')
-      .lean();
-    
-    if (!user) {
-      console.log('❌ User not found in database');
-      redirect('/dashboard');
+    const { payload } = await jwtVerify(token, encodedKey, {
+      algorithms: ['HS256'],
+    });
+
+    // Validate required fields
+    if (
+      typeof payload !== 'object' ||
+      !payload ||
+      typeof (payload as any).userId !== 'string' ||
+      typeof (payload as any).email !== 'string' ||
+      typeof (payload as any).role !== 'string'
+    ) {
+      return null;
     }
-    
-    // Extract role name from various possible formats
-    let roleName: string | null = null;
-    
-    if ((user as any).role) {
-      const role = (user as any).role;
-      
-      // Case 1: Role is populated object with name property
-      if (typeof role === 'object' && role !== null && 'name' in role) {
-        roleName = role.name;
-      }
-      // Case 2: Role is a string (legacy or direct assignment)
-      else if (typeof role === 'string') {
-        roleName = role;
-      }
-      // Case 3: Role is an ObjectId - need to look it up
-      else if (role && typeof role.toString === 'function') {
-        try {
-          const roleDoc = await Role.findById(role).select('name').lean();
-          if (roleDoc && !Array.isArray(roleDoc)) {
-            roleName = (roleDoc as any).name;
-          }
-        } catch (lookupError) {
-          console.error('Error looking up role by ID:', lookupError);
-        }
-      }
-    }
-    
-    console.log('🔍 Role check - session.role:', session.role, 'database roleName:', roleName);
-    
-    // Check if role name is 'admin'
-    if (roleName === 'admin') {
-      console.log('✅ Admin access granted via database role check');
-      return session;
-    }
-    
-    // Fallback: Use getUser() which has more robust role handling
-    const { getUser } = await import('@/app/lib/dal');
-    const userFromGetUser = await getUser();
-    
-    if (userFromGetUser && userFromGetUser.role === 'admin') {
-      console.log('✅ Admin access granted via getUser() fallback');
-      return session;
-    }
-    
-    console.log('❌ User is not admin - session.role:', session.role, 'userFromGetUser.role:', userFromGetUser?.role);
+
+    return payload as unknown as JWTPayload;
   } catch (error) {
-    console.error('❌ Error checking user role in requireAdmin:', error);
-    // Don't redirect on error - let it fall through to show the error
+    return null;
   }
-  
-  // Not admin - redirect to dashboard
-  console.log('❌ User is not admin - redirecting to dashboard');
-  redirect('/dashboard');
 }
 
-/**
- * Require permission for a page - redirects if not authorized
- * @param resource - Resource name (e.g., 'patients', 'appointments')
- * @param action - Action name (e.g., 'read', 'write', 'delete')
- * @returns SessionPayload if authenticated and authorized
- */
-export async function requirePagePermission(resource: string, action: string = 'read') {
-  const session = await requireAuth();
-  
-  const hasPerm = await hasPermission(session, resource, action);
-  if (!hasPerm) {
-    redirect('/dashboard'); // Redirect to home if no permission
+export async function getCurrentUser(request: NextRequest): Promise<JWTPayload | null> {
+  try {
+    // Check for session cookie (primary) or auth-token cookie (legacy) or Authorization header
+    const token = request.cookies.get('session')?.value ||
+                  request.cookies.get('auth-token')?.value ||
+                  request.headers.get('authorization')?.replace('Bearer ', '');
+    if (!token) {
+      return null;
+    }
+    const payload = await verifyToken(token);
+    if (!payload) {
+      return null;
+    }
+    await connectDB();
+    const user = await User.findById(payload.userId).select('isActive status tenantId').lean<{ isActive?: boolean; status?: string; tenantId?: string } | null>();
+
+    // Check if user exists and is active
+    if (!user) {
+      return null;
+    }
+
+    // Check user is active (support both isActive boolean and status string)
+    const isUserActive = user.isActive !== false && user.status !== 'inactive';
+    if (!isUserActive) {
+      return null;
+    }
+
+    // For multi-tenant, verify tenant matches if both have tenantId
+    if (payload.tenantId && user.tenantId && user.tenantId.toString() !== payload.tenantId) {
+      return null;
+    }
+
+    return payload;
+  } catch (error) {
+    console.error('Error getting current user:', error);
+    return null;
   }
-  
-  return session;
 }
 
+
+export function hasRole(userRole: string, requiredRoles: string[]): boolean {
+  const roleHierarchy: Record<string, number> = {
+    viewer: 1,
+    cashier: 2,
+    manager: 3,
+    admin: 4,
+    owner: 5,
+    doctor: 3,
+    nurse: 2,
+    receptionist: 1,
+    accountant: 2,
+    'medical-representative': 1,
+  };
+  const userLevel = roleHierarchy[userRole] || 0;
+  return requiredRoles.some(role => roleHierarchy[role] <= userLevel);
+}
+
+export async function requireAuth(request: NextRequest): Promise<JWTPayload> {
+  const user = await getCurrentUser(request);
+  if (!user) {
+    throw new Error('Unauthorized');
+  }
+  return user;
+}
+
+export async function requireRole(request: NextRequest, roles: string[]): Promise<JWTPayload> {
+  const user = await requireAuth(request);
+  if (!hasRole(user.role, roles)) {
+    throw new Error('Forbidden: Insufficient permissions');
+  }
+  return user;
+}
+
+
 /**
- * Check if user has required role (for API routes)
- * @param session - Current session
- * @param allowedRoles - Array of roles that are allowed
- * @returns true if user has required role
+ * Require admin role - works for both API routes (with request) and server components (without request)
  */
-export function hasRole(
-  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative' } | null,
-  allowedRoles: ('admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative')[]
-): boolean {
-  if (!session) return false;
-  return allowedRoles.includes(session.role);
+export async function requireAdmin(request?: NextRequest): Promise<JWTPayload | void> {
+  // Server component path (no request)
+  if (!request) {
+    const session = await verifySession();
+    if (!session) {
+      redirect('/login');
+    }
+    if (session.role !== 'admin' && session.role !== 'owner') {
+      redirect('/dashboard?error=admin_required');
+    }
+    return;
+  }
+
+  // API route path (with request)
+  const user = await requireAuth(request);
+  if (user.role !== 'admin' && user.role !== 'owner') {
+    throw new Error('Forbidden: Admins only');
+  }
+  return user;
 }
 
+// Permission helpers
+
 /**
- * Check if user is admin (for API routes)
- * @param session - Current session
- * @returns true if user is admin
+ * Check if user has admin role
  */
-export function isAdmin(session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative' } | null): boolean {
-  return hasRole(session, ['admin']);
+export function isAdmin(session: { role?: string } | null): boolean {
+  if (!session || !session.role) return false;
+  return session.role === 'admin' || session.role === 'owner';
 }
 
 /**
- * Check if user has permission for a resource and action
- * @param session - Current session
- * @param resource - Resource name (e.g., 'patients', 'appointments')
- * @param action - Action name (e.g., 'read', 'write', 'delete')
- * @returns true if user has permission
+ * Default permissions by role - centralized for reuse
+ */
+const defaultRolePermissions: Record<string, Record<string, string[]>> = {
+  doctor: {
+    read: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'documents', 'queue', 'referrals', 'reports', 'medicines', 'services', 'rooms'],
+    write: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'documents', 'queue', 'referrals'],
+    delete: ['prescriptions'],
+  },
+  nurse: {
+    read: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'queue', 'medicines', 'rooms'],
+    write: ['patients', 'visits', 'queue', 'lab-results'],
+    delete: [],
+  },
+  receptionist: {
+    read: ['patients', 'appointments', 'queue', 'invoices', 'visits', 'doctors', 'services', 'rooms'],
+    write: ['patients', 'appointments', 'queue', 'invoices'],
+    delete: [],
+  },
+  accountant: {
+    read: ['patients', 'invoices', 'reports', 'visits'],
+    write: ['invoices'],
+    delete: [],
+  },
+  'medical-representative': {
+    read: ['doctors', 'appointments'],
+    write: [],
+    delete: [],
+  },
+};
+
+/**
+ * Check if user has permission (returns boolean)
+ * Used for UI visibility checks
  */
 export async function hasPermission(
-  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative'; userId: string; roleId?: string } | null,
+  session: { userId?: string; role?: string; roleId?: string; tenantId?: string } | null,
   resource: string,
   action: string
 ): Promise<boolean> {
-  if (!session) return false;
-  
-  // Import permissions utility
-  const { hasPermission: checkPermission, hasPermissionByRole } = await import('@/lib/permissions');
-  
-  // Use faster role-based check first (uses defaults)
-  if (hasPermissionByRole(session.role, resource, action)) {
+  if (!session) {
+    return false;
+  }
+
+  // Admins and owners have full access
+  if (session.role === 'admin' || session.role === 'owner') {
     return true;
   }
-  
-  // If role-based check fails, do full database check (for custom permissions)
-  return await checkPermission(session.userId, resource, action);
+
+  try {
+    await connectDB();
+
+    // Build query for permissions
+    const permissionQuery: any = {
+      resource,
+      actions: action,
+    };
+
+    // Add tenant filter if available
+    if (session.tenantId) {
+      permissionQuery.tenantId = new Types.ObjectId(session.tenantId);
+    } else {
+      permissionQuery.$or = [
+        { tenantId: { $exists: false } },
+        { tenantId: null }
+      ];
+    }
+
+    // Check user-specific permission
+    if (session.userId) {
+      const userPermission = await Permission.findOne({
+        ...permissionQuery,
+        user: new Types.ObjectId(session.userId),
+      }).lean();
+
+      if (userPermission) {
+        return true;
+      }
+    }
+
+    // Check role-based permission
+    if (session.roleId) {
+      const rolePermission = await Permission.findOne({
+        ...permissionQuery,
+        role: new Types.ObjectId(session.roleId),
+      }).lean();
+
+      if (rolePermission) {
+        return true;
+      }
+    }
+
+    // Check default role permissions
+    if (session.role && defaultRolePermissions[session.role]) {
+      const rolePerms = defaultRolePermissions[session.role];
+      if (rolePerms[action]?.includes(resource)) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Error checking permission:', error);
+    return false;
+  }
 }
 
 /**
- * Create unauthorized response for API routes
+ * Check if user has permission to perform action on resource
+ * Returns null if allowed, or a 403 response if forbidden
  */
-export function unauthorizedResponse(message = 'Unauthorized') {
+export async function requirePermission(
+  session: { userId?: string; role?: string; roleId?: string; tenantId?: string } | null,
+  resource: string,
+  action: string
+): Promise<NextResponse | null> {
+  if (!session) {
+    return forbiddenResponse('No session provided');
+  }
+
+  // Admins and owners have full access
+  if (session.role === 'admin' || session.role === 'owner') {
+    return null;
+  }
+
+  try {
+    await connectDB();
+
+    // Build query for permissions - check both user-specific and role-based
+    const permissionQuery: any = {
+      resource,
+      actions: action,
+    };
+
+    // Add tenant filter if available
+    if (session.tenantId) {
+      permissionQuery.tenantId = new Types.ObjectId(session.tenantId);
+    } else {
+      permissionQuery.$or = [
+        { tenantId: { $exists: false } },
+        { tenantId: null }
+      ];
+    }
+
+    // Check user-specific permission first
+    if (session.userId) {
+      const userPermission = await Permission.findOne({
+        ...permissionQuery,
+        user: new Types.ObjectId(session.userId),
+      }).lean();
+
+      if (userPermission) {
+        return null; // Permission granted
+      }
+    }
+
+    // Check role-based permission
+    if (session.roleId) {
+      const rolePermission = await Permission.findOne({
+        ...permissionQuery,
+        role: new Types.ObjectId(session.roleId),
+      }).lean();
+
+      if (rolePermission) {
+        return null; // Permission granted
+      }
+    }
+
+    // Default permissions based on role for common operations
+    const defaultPermissions: Record<string, Record<string, string[]>> = {
+      doctor: {
+        read: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'documents', 'queue', 'referrals', 'reports', 'medicines', 'services', 'rooms'],
+        write: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'documents', 'queue', 'referrals'],
+        delete: ['prescriptions'],
+      },
+      nurse: {
+        read: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'queue', 'medicines', 'rooms'],
+        write: ['patients', 'visits', 'queue', 'lab-results'],
+        delete: [],
+      },
+      receptionist: {
+        read: ['patients', 'appointments', 'queue', 'invoices', 'visits', 'doctors', 'services', 'rooms'],
+        write: ['patients', 'appointments', 'queue', 'invoices'],
+        delete: [],
+      },
+      accountant: {
+        read: ['patients', 'invoices', 'reports', 'visits'],
+        write: ['invoices'],
+        delete: [],
+      },
+      'medical-representative': {
+        read: ['doctors', 'appointments'],
+        write: [],
+        delete: [],
+      },
+    };
+
+    // Check default role permissions
+    if (session.role && defaultPermissions[session.role]) {
+      const rolePerms = defaultPermissions[session.role];
+      if (rolePerms[action]?.includes(resource)) {
+        return null; // Permission granted via default role permissions
+      }
+    }
+
+    return forbiddenResponse(`Permission denied: Cannot ${action} ${resource}`);
+  } catch (error) {
+    console.error('Error checking permission:', error);
+    // In case of error, deny access
+    return forbiddenResponse('Error checking permissions');
+  }
+}
+
+/**
+ * Create an unauthorized JSON response
+ */
+export function unauthorizedResponse(message: string = 'Unauthorized') {
   return NextResponse.json(
     { success: false, error: message },
     { status: 401 }
@@ -197,9 +377,9 @@ export function unauthorizedResponse(message = 'Unauthorized') {
 }
 
 /**
- * Create forbidden response for API routes (authenticated but not authorized)
+ * Create a forbidden JSON response
  */
-export function forbiddenResponse(message = 'Forbidden') {
+export function forbiddenResponse(message: string = 'Forbidden') {
   return NextResponse.json(
     { success: false, error: message },
     { status: 403 }
@@ -207,26 +387,110 @@ export function forbiddenResponse(message = 'Forbidden') {
 }
 
 /**
- * Require permission for API routes - returns forbidden response if not authorized
- * @param session - Current session
- * @param resource - Resource name (e.g., 'patients', 'appointments')
- * @param action - Action name (e.g., 'read', 'write', 'update', 'delete')
- * @returns null if authorized, forbidden response if not
+ * Server Component/Page permission check
+ * Redirects to login if no session, or to dashboard with error if no permission
  */
-export async function requirePermission(
-  session: { role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative'; userId: string; roleId?: string } | null,
+export async function requirePagePermission(
   resource: string,
   action: string
-): Promise<NextResponse | null> {
+): Promise<void> {
+  const session = await verifySession();
+
   if (!session) {
-    return unauthorizedResponse();
+    redirect('/login');
   }
-  
-  const hasPerm = await hasPermission(session, resource, action);
-  if (!hasPerm) {
-    return forbiddenResponse(`You don't have permission to ${action} ${resource}`);
+
+  // Admins and owners have full access
+  if (session.role === 'admin' || session.role === 'owner') {
+    return;
   }
-  
-  return null;
+
+  try {
+    await connectDB();
+
+    // Build query for permissions
+    const permissionQuery: any = {
+      resource,
+      actions: action,
+    };
+
+    // Add tenant filter if available
+    if (session.tenantId) {
+      permissionQuery.tenantId = new Types.ObjectId(session.tenantId);
+    } else {
+      permissionQuery.$or = [
+        { tenantId: { $exists: false } },
+        { tenantId: null }
+      ];
+    }
+
+    // Check user-specific permission
+    if (session.userId) {
+      const userPermission = await Permission.findOne({
+        ...permissionQuery,
+        user: new Types.ObjectId(session.userId),
+      }).lean();
+
+      if (userPermission) {
+        return; // Permission granted
+      }
+    }
+
+    // Check role-based permission
+    if (session.roleId) {
+      const rolePermission = await Permission.findOne({
+        ...permissionQuery,
+        role: new Types.ObjectId(session.roleId),
+      }).lean();
+
+      if (rolePermission) {
+        return; // Permission granted
+      }
+    }
+
+    // Default permissions based on role
+    const defaultPermissions: Record<string, Record<string, string[]>> = {
+      doctor: {
+        read: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'documents', 'queue', 'referrals', 'reports', 'medicines', 'services', 'rooms'],
+        write: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'documents', 'queue', 'referrals'],
+        delete: ['prescriptions'],
+      },
+      nurse: {
+        read: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'queue', 'medicines', 'rooms'],
+        write: ['patients', 'visits', 'queue', 'lab-results'],
+        delete: [],
+      },
+      receptionist: {
+        read: ['patients', 'appointments', 'queue', 'invoices', 'visits', 'doctors', 'services', 'rooms'],
+        write: ['patients', 'appointments', 'queue', 'invoices'],
+        delete: [],
+      },
+      accountant: {
+        read: ['patients', 'invoices', 'reports', 'visits'],
+        write: ['invoices'],
+        delete: [],
+      },
+      'medical-representative': {
+        read: ['doctors', 'appointments'],
+        write: [],
+        delete: [],
+      },
+    };
+
+    // Check default role permissions
+    if (session.role && defaultPermissions[session.role]) {
+      const rolePerms = defaultPermissions[session.role];
+      if (rolePerms[action]?.includes(resource)) {
+        return; // Permission granted
+      }
+    }
+
+    // No permission - redirect to dashboard
+    redirect('/dashboard?error=access_denied');
+  } catch (error) {
+    console.error('Error checking page permission:', error);
+    redirect('/dashboard?error=permission_error');
+  }
 }
+
 

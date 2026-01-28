@@ -4,6 +4,8 @@ export {
   requireRole,
   requireAdmin,
   hasRole,
+  getCurrentUser,
+  verifyToken,
   isAdmin,
   unauthorizedResponse,
   forbiddenResponse,
