@@ -74,7 +74,7 @@ export default async function TenantLayout({
       const host = headersList.get('host') || '';
 
       if (authToken?.value) {
-        const payload = verifyToken(authToken.value);
+        const payload = await verifyToken(authToken.value);
 
         if (payload && payload.tenantId) {
           const userTenant = await Tenant.findById(payload.tenantId)

@@ -6,8 +6,8 @@ export {
   hasRole,
   getCurrentUser,
   verifyToken,
-  // isAdmin,
-  // unauthorizedResponse,
-  // forbiddenResponse,
+  isAdmin,
+  unauthorizedResponse,
+  forbiddenResponse,
 } from './auth-helpers';
 
