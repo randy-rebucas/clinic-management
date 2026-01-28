@@ -182,6 +182,38 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
           ))}
           </div>
         </div>
+
+        {/* User Profile & Logout Section */}
+        {user && (
+          <div className="border-t border-gray-200 p-3">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
+                <span className="text-white font-semibold text-sm">
+                  {user.name?.charAt(0)?.toUpperCase() || 'U'}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {user.name || 'User'}
+                </p>
+                <p className="text-xs text-gray-500 capitalize truncate">
+                  {user.role || 'Staff'}
+                </p>
+              </div>
+            </div>
+            <form action={logout}>
+              <button
+                type="submit"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-700 font-medium rounded-md transition-colors text-sm border border-gray-200 hover:border-red-200"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Sign Out
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );
