@@ -14,14 +14,14 @@ export interface IPatient extends Document {
   lastName: string;
   suffix?: string;
   dateOfBirth: Date; // Using dateOfBirth for consistency with existing API
-  sex?: 'male' | 'female' | 'other' | 'unknown';
+  sex: 'male' | 'female' | 'other';
   civilStatus?: string;
   nationality?: string;
   occupation?: string;
   
   // Contact information
-  email: string; // Keep required for backward compatibility
-  phone: string; // Keep required for backward compatibility
+  email?: string;
+  phone: string;
   // Also support contacts object for extended use
   contacts?: {
     phone?: string;
@@ -36,11 +36,11 @@ export interface IPatient extends Document {
     state: string;
     zipCode: string;
   };
-  
+
   // Emergency contact (merged from both models)
-  emergencyContact: {
-    name: string;
-    phone: string;
+  emergencyContact?: {
+    name?: string;
+    phone?: string;
     relationship?: string; // from original Patient
     relation?: string; // from Extended (alias)
   };
@@ -153,8 +153,8 @@ const PatientSchema: Schema = new Schema(
     },
     sex: {
       type: String,
-      enum: ['male', 'female', 'other', 'unknown'],
-      default: 'unknown',
+      enum: ['male', 'female', 'other'],
+      required: [true, 'Sex is required'],
     },
     civilStatus: {
       type: String,
@@ -169,10 +169,9 @@ const PatientSchema: Schema = new Schema(
       trim: true,
     },
     
-    // Contact information (keep required for backward compatibility)
+    // Contact information
     email: {
       type: String,
-      required: [true, 'Email is required'],
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
@@ -191,16 +190,16 @@ const PatientSchema: Schema = new Schema(
     
     // Address (structured from original Patient model)
     address: {
-      street: { type: String, required: true, trim: true },
-      city: { type: String, required: true, trim: true },
-      state: { type: String, required: true, trim: true },
-      zipCode: { type: String, required: true, trim: true },
+      street: { type: String, required: [true, 'Street address is required'], trim: true },
+      city: { type: String, required: [true, 'City is required'], trim: true },
+      state: { type: String, required: [true, 'State is required'], trim: true },
+      zipCode: { type: String, required: [true, 'Zip code is required'], trim: true },
     },
-    
+
     // Emergency contact (merged from both models)
     emergencyContact: {
-      name: { type: String, required: true, trim: true },
-      phone: { type: String, required: true, trim: true },
+      name: { type: String, trim: true },
+      phone: { type: String, trim: true },
       relationship: { type: String, trim: true }, // from original Patient
       relation: { type: String, trim: true }, // from Extended (alias)
     },
