@@ -20,10 +20,10 @@ interface PatientFormData {
   middleName?: string;
   lastName: string;
   suffix?: string;
-  email: string;
+  email?: string;
   phone: string;
   dateOfBirth: string;
-  sex?: 'male' | 'female' | 'other' | 'unknown';
+  sex: 'male' | 'female' | 'other';
   civilStatus?: string;
   nationality?: string;
   occupation?: string;
@@ -33,19 +33,19 @@ interface PatientFormData {
     state: string;
     zipCode: string;
   };
-  emergencyContact: {
-    name: string;
-    phone: string;
-    relationship: string;
+  emergencyContact?: {
+    name?: string;
+    phone?: string;
+    relationship?: string;
   };
   identifiers?: {
     philHealth?: string;
     govId?: string;
   };
-  medicalHistory: string;
-  preExistingConditions: PreExistingCondition[];
-  allergies: AllergyEntry[];
-  familyHistory: Record<string, string>;
+  medicalHistory?: string;
+  preExistingConditions?: PreExistingCondition[];
+  allergies?: AllergyEntry[];
+  familyHistory?: Record<string, string>;
 }
 
 interface PatientFormProps {
@@ -103,7 +103,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
     email: initialData?.email || '',
     phone: initialData?.phone || '',
     dateOfBirth: formatDateForInput(initialData?.dateOfBirth),
-    sex: initialData?.sex || 'unknown',
+    sex: initialData?.sex as 'male' | 'female' | 'other',
     civilStatus: initialData?.civilStatus || '',
     nationality: initialData?.nationality || '',
     occupation: initialData?.occupation || '',
@@ -113,11 +113,17 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
       state: initialData?.address?.state || '',
       zipCode: initialData?.address?.zipCode || '',
     },
-    emergencyContact: {
-      name: initialData?.emergencyContact?.name || '',
-      phone: initialData?.emergencyContact?.phone || '',
-      relationship: initialData?.emergencyContact?.relationship || '',
-    },
+    emergencyContact: initialData?.emergencyContact
+      ? {
+          name: initialData.emergencyContact.name || '',
+          phone: initialData.emergencyContact.phone || '',
+          relationship: initialData.emergencyContact.relationship || '',
+        }
+      : {
+          name: '',
+          phone: '',
+          relationship: '',
+        },
     identifiers: initialData?.identifiers ? {
       philHealth: initialData.identifiers.philHealth || '',
       govId: initialData.identifiers.govId || '',
@@ -134,12 +140,12 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     // Filter out empty allergies and conditions
-    const filteredAllergies = formData.allergies.filter((a) => a.substance.trim().length > 0);
-    const filteredConditions = formData.preExistingConditions.filter((c) => c.condition.trim().length > 0);
+    const filteredAllergies = formData.allergies ? formData.allergies.filter((a) => a.substance.trim().length > 0) : [];
+    const filteredConditions = formData.preExistingConditions ? formData.preExistingConditions.filter((c) => c.condition.trim().length > 0) : [];
     // Filter out empty family history entries
-    const filteredFamilyHistory = Object.fromEntries(
+    const filteredFamilyHistory = formData.familyHistory ? Object.fromEntries(
       Object.entries(formData.familyHistory).filter(([condition, relation]) => condition.trim().length > 0)
-    );
+    ) : {};
     onSubmit({ 
       ...formData, 
       allergies: filteredAllergies,
@@ -151,19 +157,19 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
   const addAllergy = () => {
     setFormData({
       ...formData,
-      allergies: [...formData.allergies, { substance: '', reaction: '', severity: 'unknown' }],
+      allergies: [...(formData.allergies || []), { substance: '', reaction: '', severity: 'unknown' }],
     });
   };
 
   const removeAllergy = (index: number) => {
     setFormData({
       ...formData,
-      allergies: formData.allergies.filter((_, i) => i !== index),
+      allergies: formData.allergies ? formData.allergies.filter((_, i) => i !== index) : [],
     });
   };
 
   const updateAllergy = (index: number, field: keyof AllergyEntry, value: string) => {
-    const updated = [...formData.allergies];
+    const updated = [...(formData.allergies || [])];
     updated[index] = { ...updated[index], [field]: value };
     setFormData({ ...formData, allergies: updated });
   };
@@ -242,13 +248,16 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Sex</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Sex <span className="text-red-500">*</span>
+                </label>
                 <select
+                  required
                   value={formData.sex}
                   onChange={(e) => setFormData({ ...formData, sex: e.target.value as any })}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                 >
-                  <option value="unknown">Unknown</option>
+                  <option value="">Select...</option>
                   <option value="male">Male</option>
                   <option value="female">Female</option>
                   <option value="other">Other</option>
@@ -299,12 +308,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
             {/* Contact Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Email <span className="text-red-500">*</span>
-                </label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email</label>
                 <input
                   type="email"
-                  required
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
@@ -350,9 +356,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                       City <span className="text-red-500">*</span>
                     </label>
                     <input
-                      required
-                      value={formData.address.city}
-                      onChange={(e) =>
+                    required
+                    value={formData.address.city}
+                    onChange={(e) =>
                         setFormData({
                           ...formData,
                           address: { ...formData.address, city: e.target.value },
@@ -366,9 +372,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                       State <span className="text-red-500">*</span>
                     </label>
                     <input
-                      required
-                      value={formData.address.state}
-                      onChange={(e) =>
+                    required
+                    value={formData.address.state}
+                    onChange={(e) =>
                         setFormData({
                           ...formData,
                           address: { ...formData.address, state: e.target.value },
@@ -382,9 +388,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                       Zip Code <span className="text-red-500">*</span>
                     </label>
                     <input
-                      required
-                      value={formData.address.zipCode}
-                      onChange={(e) =>
+                    required
+                    value={formData.address.zipCode}
+                    onChange={(e) =>
                         setFormData({
                           ...formData,
                           address: { ...formData.address, zipCode: e.target.value },
@@ -417,45 +423,36 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               <span className="text-sm font-semibold text-gray-700 mb-3 block">Emergency Contact</span>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                    Name <span className="text-red-500">*</span>
-                  </label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Name</label>
                   <input
-                    required
-                    value={formData.emergencyContact.name}
+                    value={(formData.emergencyContact ?? {}).name}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        emergencyContact: { ...formData.emergencyContact, name: e.target.value },
+                        emergencyContact: { ...(formData.emergencyContact ?? { name: '', phone: '', relationship: '' }), name: e.target.value },
                       })
                     }
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                    Phone <span className="text-red-500">*</span>
-                  </label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Phone</label>
                   <input
                     type="tel"
-                    required
-                    value={formData.emergencyContact.phone}
+                    value={(formData.emergencyContact ?? { phone: '' }).phone}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        emergencyContact: { ...formData.emergencyContact, phone: e.target.value },
+                        emergencyContact: { ...(formData.emergencyContact ?? { name: '', phone: '', relationship: '' }), phone: e.target.value },
                       })
                     }
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                    Relationship <span className="text-red-500">*</span>
-                  </label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Relationship</label>
                   <input
-                    required
-                    value={formData.emergencyContact.relationship}
+                    value={formData.emergencyContact?.relationship || ''}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
@@ -541,7 +538,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   Add Allergy
                 </button>
               </div>
-              {formData.allergies.length === 0 ? (
+              {(formData.allergies?.length ?? 0) === 0 ? (
                 <div className="p-6 text-center border-2 border-dashed border-gray-300 rounded-lg bg-white/50">
                   <svg className="w-8 h-8 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -550,7 +547,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {formData.allergies.map((allergy, index) => (
+                  {(formData.allergies ?? []).map((allergy, index) => (
                     <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <div>
@@ -611,7 +608,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                     setFormData({
                       ...formData,
                       preExistingConditions: [
-                        ...formData.preExistingConditions,
+                        ...(formData.preExistingConditions ?? []),
                         { condition: '', status: 'active' },
                       ],
                     });
@@ -624,7 +621,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   Add Condition
                 </button>
               </div>
-              {formData.preExistingConditions.length === 0 ? (
+              {(formData.preExistingConditions?.length ?? 0) === 0 ? (
                 <div className="p-6 text-center border-2 border-dashed border-gray-300 rounded-lg bg-white/50">
                   <svg className="w-8 h-8 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -633,7 +630,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {formData.preExistingConditions.map((condition, index) => (
+                  {(formData.preExistingConditions ?? []).map((condition, index) => (
                     <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <div className="md:col-span-2">
@@ -641,7 +638,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                           <input
                               value={condition.condition}
                               onChange={(e) => {
-                                const updated = [...formData.preExistingConditions];
+                                const updated = [...(formData.preExistingConditions ?? [])];
                                 updated[index] = { ...updated[index], condition: e.target.value };
                                 setFormData({ ...formData, preExistingConditions: updated });
                               }}
@@ -654,7 +651,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                           <select
                   value={condition.status}
                   onChange={(e) => {
-                              const updated = [...formData.preExistingConditions];
+                              const updated = [...(formData.preExistingConditions ?? [])];
                               updated[index] = { ...updated[index], status: e.target.value as any };
                               setFormData({ ...formData, preExistingConditions: updated });
                             }}
@@ -671,7 +668,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                     type="date"
                     value={condition.diagnosisDate || ''}
                     onChange={(e) => {
-                      const updated = [...formData.preExistingConditions];
+                      const updated = [...(formData.preExistingConditions ?? [])];
                       updated[index] = { ...updated[index], diagnosisDate: e.target.value };
                       setFormData({ ...formData, preExistingConditions: updated });
                     }}
@@ -684,7 +681,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                             onClick={() => {
                               setFormData({
                                 ...formData,
-                                preExistingConditions: formData.preExistingConditions.filter((_, i) => i !== index),
+                                preExistingConditions: (formData.preExistingConditions ?? []).filter((_, i) => i !== index),
                               });
                             }}
                             className="w-full px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-semibold transition-colors text-sm"
@@ -726,7 +723,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   Add History
                 </button>
               </div>
-              {Object.keys(formData.familyHistory).length === 0 ? (
+              {Object.keys(formData.familyHistory ?? {}).length === 0 ? (
                 <div className="p-6 text-center border-2 border-dashed border-gray-300 rounded-lg bg-white/50">
                   <svg className="w-8 h-8 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -735,7 +732,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {Object.entries(formData.familyHistory).map(([condition, relation], index) => (
+                  {Object.entries(formData.familyHistory ?? {}).map(([condition, relation], index) => (
                     <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
                       <div className="flex justify-between items-center">
                         <div className="flex-1">
