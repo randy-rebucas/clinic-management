@@ -298,7 +298,10 @@ export default function PatientEditClient({ patientId }: { patientId: string }) 
     email: patient.email,
     phone: patient.phone,
     dateOfBirth: formattedDateOfBirth,
-    sex: patient.sex as 'male' | 'female' | 'other' | 'unknown' | undefined,
+    sex:
+      patient.sex === 'unknown' || !patient.sex
+        ? undefined
+        : (patient.sex as 'male' | 'female' | 'other' | undefined),
     civilStatus: patient.civilStatus || '',
     nationality: patient.nationality || '',
     occupation: patient.occupation || '',
