@@ -24,11 +24,11 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
-    
+
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     // Get query parameters
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search') || '';
@@ -42,17 +42,19 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get('sortOrder') || 'desc';
     const limit = searchParams.get('limit');
     const page = searchParams.get('page') || '1';
-
+    console.log('GET /api/patients called with params:', {
+      search,
+      sex, active, minAge, maxAge, city, state, sortBy, sortOrder, limit, page, tenantId
+    });
     // Build filter query
     const filter: any = {};
-    
-    // Add tenant filter (multi-tenant support)
+    // Support global search (across all tenants) if ?global=true
+    const isGlobal = searchParams.get('global') === 'true';
     const tenantFilter: any = {};
     if (tenantId) {
-      // Match if tenantIds contains the tenantId (array)
-      tenantFilter.tenantIds = new Types.ObjectId(tenantId);
+      // Ensure tenantIds is an array and match if user's tenantId is present
+      tenantFilter.tenantIds = { $in: [new Types.ObjectId(tenantId)] };
     } else {
-      // Backward compatibility: match docs with no tenantIds or null
       tenantFilter.$or = [
         { tenantIds: { $exists: false } },
         { tenantIds: null },
@@ -73,16 +75,38 @@ export async function GET(request: NextRequest) {
         { 'address.city': searchRegex },
         { 'address.state': searchRegex },
       ];
-      
-      // Combine tenant filter with search conditions
-      filter.$and = [
-        tenantFilter,
-        { $or: searchConditions }
-      ];
+      if (isGlobal) {
+        // Merge global and tenant scope: show both global and tenant matches
+        filter.$or = [
+          // Global search (all tenants)
+          { $or: searchConditions },
+          // Tenant-scoped search
+          { $and: [tenantFilter, { $or: searchConditions }] }
+        ];
+      } else {
+        // Only tenant scope
+        filter.$and = [
+          tenantFilter,
+          { $or: searchConditions }
+        ];
+      }
     } else {
-      // No search, just use tenant filter
-      Object.assign(filter, tenantFilter);
+      // No search, just use tenant filter (unless global)
+      if (isGlobal) {
+        // No search, global: show all patients
+        // (no filter needed)
+      } else {
+        Object.assign(filter, tenantFilter);
+      }
     }
+
+    // Debug logging
+    console.log('Patient search params:', {
+      search,
+      isGlobal,
+      tenantId,
+      filter,
+    });
 
     // Sex filter
     if (sex && sex !== 'all') {
@@ -180,7 +204,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
-    
+
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
@@ -191,8 +215,8 @@ export async function POST(request: NextRequest) {
       const limitCheck = await checkSubscriptionLimit(tenantId, 'createPatient');
       if (!limitCheck.allowed) {
         return NextResponse.json(
-          { 
-            success: false, 
+          {
+            success: false,
             error: limitCheck.reason || 'Subscription limit exceeded',
             limit: limitCheck.limit,
             current: limitCheck.current,
@@ -203,8 +227,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
+
     const body = await request.json();
-    
+
+    // Clean up empty strings/nulls from optional fields
+    if (body.email === '') delete body.email;
+    if (body.middleName === '' || body.middleName === null) delete body.middleName;
+    if (body.suffix === '' || body.suffix === null) delete body.suffix;
+    if (body.civilStatus === '' || body.civilStatus === null) delete body.civilStatus;
+    if (body.nationality === '' || body.nationality === null) delete body.nationality;
+    if (body.occupation === '' || body.occupation === null) delete body.occupation;
+    if (body.medicalHistory === '' || body.medicalHistory === null) delete body.medicalHistory;
+    if (body.preExistingConditions && Array.isArray(body.preExistingConditions) && body.preExistingConditions.length === 0) delete body.preExistingConditions;
+    if (body.allergies && Array.isArray(body.allergies) && body.allergies.length === 0) delete body.allergies;
+    if (body.familyHistory && Object.keys(body.familyHistory).length === 0) delete body.familyHistory;
+    if (body.identifiers && Object.keys(body.identifiers).length === 0) delete body.identifiers;
+    if (body.emergencyContact) {
+      const ec = body.emergencyContact;
+      if ((!ec.name || ec.name === '') && (!ec.phone || ec.phone === '') && (!ec.relationship || ec.relationship === '')) {
+        delete body.emergencyContact;
+      }
+    }
+
     // Ensure patient is created with tenantIds array
     if (tenantId && !body.tenantIds) {
       body.tenantIds = [new Types.ObjectId(tenantId)];
@@ -213,16 +257,23 @@ export async function POST(request: NextRequest) {
       body.tenantIds = [new Types.ObjectId(body.tenantId)];
       delete body.tenantId;
     }
-    
+
+    // Ensure tenantIds is always an array of ObjectIds if present
+    if (body.tenantIds && Array.isArray(body.tenantIds)) {
+      body.tenantIds = body.tenantIds.map((id: string | Types.ObjectId) =>
+        id instanceof Types.ObjectId ? id : new Types.ObjectId(id)
+      );
+    }
+
     console.log('Creating patient with data:', JSON.stringify(body, null, 2));
-    
+
     // Auto-generate patientCode if not provided
     // Use retry mechanism to handle race conditions
     if (!body.patientCode) {
       let patientCode: string;
       let attempts = 0;
       const maxAttempts = 10;
-      
+
       do {
         attempts++;
         if (attempts > maxAttempts) {
@@ -231,24 +282,16 @@ export async function POST(request: NextRequest) {
             { status: 500 }
           );
         }
-        
+
         // Find the highest patient code number (tenant-scoped)
         const codeQuery: any = {
           patientCode: { $exists: true, $ne: null, $regex: /^CLINIC-\d+$/ }
         };
-        if (tenantId) {
-          codeQuery.tenantIds = new Types.ObjectId(tenantId);
-        } else {
-          codeQuery.$or = [
-            { tenantIds: { $exists: false } },
-            { tenantIds: null },
-            { tenantIds: { $size: 0 } }
-          ];
-        }
+
         const lastPatient = await Patient.findOne(codeQuery)
           .sort({ patientCode: -1 })
           .exec();
-        
+
         let nextNumber = 1;
         if (lastPatient?.patientCode) {
           const match = lastPatient.patientCode.match(/(\d+)$/);
@@ -256,45 +299,34 @@ export async function POST(request: NextRequest) {
             nextNumber = parseInt(match[1], 10) + attempts; // Add attempts to avoid collisions
           }
         }
-        
+
         patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
-        
-        // Check if this code already exists (tenant-scoped)
-        const existingQuery: any = { patientCode };
-        if (tenantId) {
-          existingQuery.tenantIds = new Types.ObjectId(tenantId);
-        } else {
-          existingQuery.$or = [
-            { tenantIds: { $exists: false } },
-            { tenantIds: null },
-            { tenantIds: { $size: 0 } }
-          ];
-        }
-        const existing = await Patient.findOne(existingQuery);
+        // Check if this code already exists
+        const existing = await Patient.findOne({ patientCode });
         if (!existing) {
           break; // Code is available
         }
-        
+
         // If code exists, try next number
         nextNumber++;
         patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
       } while (true);
-      
+
       body.patientCode = patientCode;
     }
-    
+
     // Create patient with retry on duplicate key error
     let patient;
     let createAttempts = 0;
     const maxCreateAttempts = 5;
-    
+
     while (createAttempts < maxCreateAttempts) {
       try {
         patient = await Patient.create(body);
         break; // Success
       } catch (createError: any) {
         createAttempts++;
-        
+
         // If it's a duplicate key error for patientCode, generate a new one
         if (createError.code === 11000 && createError.keyPattern?.patientCode) {
           if (createAttempts >= maxCreateAttempts) {
@@ -303,13 +335,13 @@ export async function POST(request: NextRequest) {
               { status: 500 }
             );
           }
-          
+
           // Generate a new patient code (tenant-scoped)
           const codeQuery: any = {
             patientCode: { $exists: true, $ne: null, $regex: /^CLINIC-\d+$/ }
           };
           if (tenantId) {
-            codeQuery.tenantIds = new Types.ObjectId(tenantId);
+            codeQuery.tenantIds = { $in: [new Types.ObjectId(tenantId)] };
           } else {
             codeQuery.$or = [
               { tenantIds: { $exists: false } },
@@ -320,7 +352,7 @@ export async function POST(request: NextRequest) {
           const lastPatient = await Patient.findOne(codeQuery)
             .sort({ patientCode: -1 })
             .exec();
-          
+
           let nextNumber = 1;
           if (lastPatient?.patientCode) {
             const match = lastPatient.patientCode.match(/(\d+)$/);
@@ -328,39 +360,41 @@ export async function POST(request: NextRequest) {
               nextNumber = parseInt(match[1], 10) + createAttempts + 1;
             }
           }
-          
+
           body.patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
           continue; // Retry with new code
         }
-        
+
         // If it's not a duplicate key error, throw it
         throw createError;
       }
     }
-    
+
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Failed to create patient. Please try again.' },
         { status: 500 }
       );
     }
-
-    // Send welcome message (async, don't wait)
-    import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
-      sendWelcomeMessage({
-        patientId: patient._id,
-        tenantIds: Array.isArray(patient.tenantIds) ? patient.tenantIds.map((id: any) => id.toString()) : [],
-        sendSMS: true,
-        sendEmail: true,
-        sendNotification: false,
+    // only send email if email field is present
+    if (body.email) {
+      // Send welcome message (async, don't wait)
+      import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
+        sendWelcomeMessage({
+          patientId: patient._id,
+          tenantIds: Array.isArray(patient.tenantIds) ? patient.tenantIds.map((id: any) => id.toString()) : [],
+          sendSMS: true,
+          sendEmail: true,
+          sendNotification: false,
+        }).catch((error) => {
+          console.error('Error sending welcome message:', error);
+          // Don't fail patient creation if welcome message fails
+        });
       }).catch((error) => {
-        console.error('Error sending welcome message:', error);
-        // Don't fail patient creation if welcome message fails
+        console.error('Error loading welcome messages module:', error);
       });
-    }).catch((error) => {
-      console.error('Error loading welcome messages module:', error);
-    });
-
+    }
+    
     return NextResponse.json({ success: true, data: patient }, { status: 201 });
   } catch (error: any) {
     logger.error('Error creating patient', error as Error, {
@@ -368,7 +402,7 @@ export async function POST(request: NextRequest) {
       code: error.code,
       errors: error.errors,
     });
-    
+
     if (error.name === 'ValidationError') {
       // Extract validation error messages
       const validationErrors = Object.values(error.errors || {}).map((err: any) => err.message).join(', ');
