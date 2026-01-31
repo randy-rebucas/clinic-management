@@ -7,15 +7,16 @@ import { Types } from 'mongoose';
 // GET /api/patients/[id]/tenants
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectDB();
-    const patientId = params.id;
-    if (!patientId) {
+    const { id } = await params;
+
+    if (!id) {
       return NextResponse.json({ success: false, error: 'Patient ID required' }, { status: 400 });
     }
-    const patient = await Patient.findById(patientId);
+    const patient = await Patient.findById(id);
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found' }, { status: 404 });
     }
