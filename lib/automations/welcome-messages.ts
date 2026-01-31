@@ -11,7 +11,8 @@ import { Types } from 'mongoose';
 
 export interface WelcomeMessageOptions {
   patientId: string | Types.ObjectId;
-  tenantId?: string | Types.ObjectId;
+  tenantId?: string | Types.ObjectId; // legacy, for backward compatibility
+  tenantIds?: (string | Types.ObjectId)[]; // multi-tenant support
   sendSMS?: boolean;
   sendEmail?: boolean;
   sendNotification?: boolean;
@@ -45,9 +46,17 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
       return { success: false, sent: false, error: 'Patient not found' };
     }
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : patient.tenantId;
+    // Multi-tenant support: use tenantIds if provided, fallback to tenantId or patient.tenantIds
+    let tenantId: Types.ObjectId | undefined = undefined;
+    if (options.tenantIds && options.tenantIds.length > 0) {
+      tenantId = typeof options.tenantIds[0] === 'string' ? new Types.ObjectId(options.tenantIds[0]) : options.tenantIds[0];
+    } else if (options.tenantId) {
+      tenantId = typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId;
+    } else if (Array.isArray(patient.tenantIds) && patient.tenantIds.length > 0) {
+      tenantId = patient.tenantIds[0];
+    } else if (patient.tenantId) {
+      tenantId = patient.tenantId;
+    }
 
     const clinicName = settings.clinicName || 'Our Clinic';
     const clinicPhone = settings.clinicPhone || '';

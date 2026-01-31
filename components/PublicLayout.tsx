@@ -45,12 +45,6 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
                   Register
                 </Link>
                 <Link
-                  href="/book"
-                  className="px-3 py-2 text-sm lg:text-base text-gray-700 hover:text-blue-600 font-medium transition-colors rounded-lg hover:bg-blue-50"
-                >
-                  Book Appointment
-                </Link>
-                <Link
                   href="/patient/login"
                   className="px-3 py-2 text-sm lg:text-base text-gray-700 hover:text-blue-600 font-medium transition-colors rounded-lg hover:bg-blue-50"
                 >

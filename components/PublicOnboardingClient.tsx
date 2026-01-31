@@ -51,24 +51,7 @@ interface PatientFormData {
   familyHistory: Record<string, string>;
 }
 
-interface Clinic {
-  _id: string;
-  name: string;
-  displayName: string;
-  subdomain: string;
-  email?: string;
-  phone?: string;
-  address?: {
-    street?: string;
-    city?: string;
-    state?: string;
-    zipCode?: string;
-    country?: string;
-  };
-}
-
 const STEPS = [
-  { id: 0, title: 'Select Clinic', description: 'Choose your clinic' },
   { id: 1, title: 'Personal Info', description: 'Basic information' },
   { id: 2, title: 'Contact & Address', description: 'How to reach you' },
   { id: 3, title: 'Emergency Contact', description: 'Emergency details' },
@@ -82,78 +65,6 @@ export default function PublicOnboardingClient() {
   const [success, setSuccess] = useState(false);
   const [patientCode, setPatientCode] = useState<string | null>(null);
   const [patientId, setPatientId] = useState<string | null>(null);
-  const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null);
-  const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
-  const [loadingClinics, setLoadingClinics] = useState(true);
-  const [hasSubdomain, setHasSubdomain] = useState(false);
-  const router = useRouter();
-
-  // Check for subdomain on mount and get tenant info
-  useEffect(() => {
-    const checkSubdomain = async () => {
-      if (typeof window !== 'undefined') {
-        const hostname = window.location.hostname;
-        const parts = hostname.split('.');
-        // Extract potential subdomain (first part)
-        const firstPart = parts[0]?.toLowerCase();
-        // 'www' is not a subdomain - treat it as root domain
-        const isWww = firstPart === 'www';
-        // If hostname has more than 2 parts AND first part is not 'www', we have a subdomain
-        // Or if 2 parts and first is not 'localhost' or 'www'
-        const hasSubdomain = !isWww && (
-          (parts.length > 2) || 
-          (parts.length === 2 && firstPart !== 'localhost')
-        );
-        setHasSubdomain(hasSubdomain);
-        
-        if (!hasSubdomain) {
-          // No subdomain (including www), fetch available clinics
-          fetchClinics();
-        } else {
-          // Has subdomain, get tenant info and skip clinic selection
-          try {
-            const subdomain = firstPart;
-            const res = await fetch(`/api/tenants/public?subdomain=${subdomain}`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data.success && data.tenant) {
-                setSelectedClinic(data.tenant);
-              }
-            }
-          } catch (error) {
-            console.error('Failed to fetch tenant info:', error);
-          }
-          setCurrentStep(1);
-        }
-      }
-    };
-    
-    checkSubdomain();
-  }, []);
-
-  const fetchClinics = async () => {
-    try {
-      setLoadingClinics(true);
-      const res = await fetch('/api/tenants/public');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.tenants) {
-          setAvailableClinics(data.tenants);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch clinics:', error);
-      setError('Failed to load clinics. Please refresh the page.');
-    } finally {
-      setLoadingClinics(false);
-    }
-  };
-
-  const handleClinicSelect = (clinic: Clinic) => {
-    setSelectedClinic(clinic);
-    setCurrentStep(1);
-    setError(null);
-  };
 
   const [formData, setFormData] = useState<PatientFormData>({
     firstName: '',
@@ -192,10 +103,8 @@ export default function PublicOnboardingClient() {
   const validateStep = (step: number): boolean => {
     switch (step) {
       case 0:
-        return !!selectedClinic; // Clinic must be selected
-      case 1:
         return !!(formData.firstName && formData.lastName && formData.dateOfBirth);
-      case 2:
+      case 1:
         return !!(
           formData.phone &&
           formData.address.street &&
@@ -203,13 +112,13 @@ export default function PublicOnboardingClient() {
           formData.address.state &&
           formData.address.zipCode
         );
-      case 3:
+      case 2:
         return !!(
           formData.emergencyContact.name &&
           formData.emergencyContact.phone &&
           formData.emergencyContact.relationship
         );
-      case 4:
+      case 3:
         return true; // Medical info is optional
       default:
         return false;
@@ -220,7 +129,6 @@ export default function PublicOnboardingClient() {
     if (validateStep(currentStep) && currentStep < STEPS.length - 1) {
       setCurrentStep(currentStep + 1);
       setError(null);
-      // Scroll to top on mobile
       if (window.innerWidth < 768) {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
@@ -230,8 +138,7 @@ export default function PublicOnboardingClient() {
   };
 
   const prevStep = () => {
-    const minStep = hasSubdomain ? 1 : 0;
-    if (currentStep > minStep) {
+    if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
       setError(null);
       if (window.innerWidth < 768) {
@@ -299,11 +206,6 @@ export default function PublicOnboardingClient() {
       );
       if (Object.keys(filteredFamilyHistory).length > 0) {
         payload.familyHistory = filteredFamilyHistory;
-      }
-
-      // Add tenantId if clinic is selected
-      if (selectedClinic) {
-        payload.tenantId = selectedClinic._id;
       }
 
       const res = await fetch('/api/patients/public', {
@@ -449,7 +351,7 @@ export default function PublicOnboardingClient() {
 
   // Progress percentage
   // Calculate progress based on visible steps
-  const visibleSteps = hasSubdomain ? STEPS.filter(s => s.id !== 0) : STEPS;
+  const visibleSteps = STEPS;
   const currentStepIndex = Math.max(0, visibleSteps.findIndex(s => s.id === currentStep));
   const progress = visibleSteps.length > 0 ? ((currentStepIndex + 1) / visibleSteps.length) * 100 : 0;
 
@@ -611,7 +513,7 @@ export default function PublicOnboardingClient() {
               {/* Step Indicators - Mobile */}
               <div className="px-4 sm:px-6 py-4 bg-gradient-to-r from-gray-50 to-blue-50/30 border-b border-gray-200/50 sm:hidden">
                 <div className="flex justify-between items-center">
-                  {STEPS.filter(step => hasSubdomain ? step.id !== 0 : true).map((step, index) => (
+                  {STEPS.filter(step => step.id).map((step, index) => (
                     <div key={step.id} className="flex-1 flex flex-col items-center">
                       <div
                         className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all shadow-md ${
@@ -639,24 +541,24 @@ export default function PublicOnboardingClient() {
               {/* Step Indicators - Desktop */}
               <div className="hidden sm:block px-6 py-5 bg-gradient-to-r from-gray-50 to-blue-50/30 border-b border-gray-200/50">
                 <div className="flex justify-between">
-                  {STEPS.filter(step => hasSubdomain ? step.id !== 0 : true).map((step, index) => (
+                  {STEPS.map((step, index) => (
                     <div key={step.id} className="flex-1 flex items-center">
                       <div className="flex items-center flex-1">
                         <div
                           className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold transition-all shadow-lg ${
-                            currentStep > step.id
+                            currentStep > index
                               ? 'bg-gradient-to-br from-green-500 to-emerald-500 text-white'
-                              : currentStep === step.id
+                              : currentStep === index
                               ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white ring-2 ring-blue-300 ring-offset-2 scale-110'
                               : 'bg-gray-300 text-gray-600'
                           }`}
                         >
-                          {currentStep > step.id ? (
+                          {currentStep > index ? (
                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                             </svg>
                           ) : (
-                            step.id + 1
+                            index + 1
                           )}
                         </div>
                         <div className="ml-3 flex-1">
@@ -667,7 +569,7 @@ export default function PublicOnboardingClient() {
                       {index < STEPS.length - 1 && (
                         <div
                           className={`flex-1 h-1 mx-4 rounded-full transition-all ${
-                            currentStep > step.id ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gray-300'
+                            currentStep > index ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gray-300'
                           }`}
                         />
                       )}
@@ -679,72 +581,9 @@ export default function PublicOnboardingClient() {
               {/* Form Content */}
               <form onSubmit={currentStep === STEPS.length - 1 ? handleSubmit : (e) => { e.preventDefault(); nextStep(); }}>
                 <div className="p-4 sm:p-6 lg:p-8">
-                  {/* Step 0: Clinic Selection */}
-                  {currentStep === 0 && (
-                    <div className="space-y-4 sm:space-y-6 animate-fade-in">
-                      <div>
-                        <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">Select Your Clinic</h3>
-                        <p className="text-sm text-gray-600 mb-6">
-                          Please select the clinic where you would like to register and set your appointment.
-                        </p>
-                        
-                        {loadingClinics ? (
-                          <div className="flex items-center justify-center py-12">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-                          </div>
-                        ) : availableClinics.length === 0 ? (
-                          <div className="text-center py-12">
-                            <p className="text-gray-600 mb-4">No clinics available at the moment.</p>
-                            <Link href="/tenant-onboard" className="text-blue-600 hover:text-blue-700 font-semibold">
-                              Register a new clinic
-                            </Link>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {availableClinics.map((clinic) => (
-                              <button
-                                key={clinic._id}
-                                type="button"
-                                onClick={() => handleClinicSelect(clinic)}
-                                className={`p-6 sm:p-8 border-2 rounded-2xl text-left transition-all hover:shadow-xl transform hover:scale-[1.02] ${
-                                  selectedClinic?._id === clinic._id
-                                    ? 'border-blue-600 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg'
-                                    : 'border-gray-200 hover:border-blue-300 bg-white/80 backdrop-blur-sm'
-                                }`}
-                              >
-                                <div className="flex items-start justify-between mb-3">
-                                  <h4 className="text-lg font-semibold text-gray-900">{clinic.displayName || clinic.name}</h4>
-                                  {selectedClinic?._id === clinic._id && (
-                                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  )}
-                                </div>
-                                {clinic.address && (clinic.address.city || clinic.address.state) && (
-                                  <p className="text-sm text-gray-600 mb-2">
-                                    {[clinic.address.city, clinic.address.state].filter(Boolean).join(', ')}
-                                  </p>
-                                )}
-                                {clinic.phone && (
-                                  <p className="text-sm text-gray-600 mb-2">
-                                    📞 {clinic.phone}
-                                  </p>
-                                )}
-                                {clinic.email && (
-                                  <p className="text-sm text-gray-600">
-                                    ✉️ {clinic.email}
-                                  </p>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Step 1: Personal Information */}
-                  {currentStep === 1 && (
+                  {currentStep === 0 && (
                     <div className="space-y-4 sm:space-y-6 animate-fade-in">
                       <div>
                         <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Personal Information</h3>
@@ -861,8 +700,7 @@ export default function PublicOnboardingClient() {
                   )}
 
                   {/* Step 2: Contact & Address */}
-                  {/* Step 2: Contact & Address */}
-                  {currentStep === 2 && (
+                  {currentStep === 1 && (
                     <div className="space-y-4 sm:space-y-6 animate-fade-in">
                       <div>
                         <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Contact & Address</h3>
@@ -979,8 +817,7 @@ export default function PublicOnboardingClient() {
                   )}
 
                   {/* Step 3: Emergency Contact & Identifiers */}
-                  {/* Step 3: Emergency Contact */}
-                  {currentStep === 3 && (
+                  {currentStep === 2 && (
                     <div className="space-y-4 sm:space-y-6 animate-fade-in">
                       <div>
                         <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Emergency Contact & Identifiers</h3>
@@ -1088,8 +925,7 @@ export default function PublicOnboardingClient() {
                   )}
 
                   {/* Step 4: Medical Information */}
-                  {/* Step 4: Medical Info */}
-                  {currentStep === 4 && (
+                  {currentStep === 3 && (
                     <div className="space-y-4 sm:space-y-6 animate-fade-in">
                       <div>
                         <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Medical Information</h3>
@@ -1291,9 +1127,9 @@ export default function PublicOnboardingClient() {
                     <button
                       type="button"
                       onClick={prevStep}
-                      disabled={currentStep === (hasSubdomain ? 1 : 0)}
+                      disabled={currentStep === 1}
                       className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-                        currentStep === (hasSubdomain ? 1 : 0)
+                        currentStep === 1
                           ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                           : 'bg-white/80 backdrop-blur-sm border-2 border-gray-300 hover:border-gray-400 text-gray-700 hover:shadow-lg transform hover:scale-105'
                       }`}

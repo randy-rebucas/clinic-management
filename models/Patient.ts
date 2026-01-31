@@ -2,8 +2,8 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 import { AttachmentSchema, IAttachment } from './Attachment';
 
 export interface IPatient extends Document {
-  // Tenant reference for multi-tenant support
-  tenantId?: Types.ObjectId;
+  // Tenant references for multi-tenant support (can belong to multiple clinics)
+  tenantIds?: Types.ObjectId[];
   
   // Patient identification
   patientCode?: string; // e.g. CLINIC-0001 (optional for backward compatibility)
@@ -113,11 +113,17 @@ export interface IPatient extends Document {
 
 const PatientSchema: Schema = new Schema(
   {
-    // Tenant reference for multi-tenant support
-    tenantId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Tenant',
-      index: true,
+    // Tenant references for multi-tenant support (can belong to multiple clinics)
+    tenantIds: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: 'Tenant',
+          index: true,
+        },
+      ],
+      required: false,
+      default: undefined,
     },
     
     // Patient identification
@@ -301,16 +307,16 @@ const PatientSchema: Schema = new Schema(
   }
 );
 
-// Indexes
-PatientSchema.index({ tenantId: 1, lastName: 1, firstName: 1 }); // Tenant-scoped name queries
-PatientSchema.index({ tenantId: 1, email: 1 }); // Tenant-scoped email (compound index for uniqueness)
-PatientSchema.index({ tenantId: 1, dateOfBirth: 1 }); // Tenant-scoped age queries
-PatientSchema.index({ tenantId: 1, sex: 1 }); // Tenant-scoped gender queries
-PatientSchema.index({ tenantId: 1, active: 1 }); // Tenant-scoped active patient queries
-PatientSchema.index({ tenantId: 1, 'identifiers.philHealth': 1 }); // Tenant-scoped PhilHealth lookups
-PatientSchema.index({ tenantId: 1, 'identifiers.govId': 1 }); // Tenant-scoped government ID lookups
-PatientSchema.index({ tenantId: 1, createdAt: -1 }); // Tenant-scoped registration date queries
-PatientSchema.index({ tenantId: 1, patientCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped patient code
+// Indexes (updated for tenantIds array)
+PatientSchema.index({ tenantIds: 1, lastName: 1, firstName: 1 }); // Tenant-scoped name queries
+PatientSchema.index({ tenantIds: 1, email: 1 }); // Tenant-scoped email (compound index for uniqueness)
+PatientSchema.index({ tenantIds: 1, dateOfBirth: 1 }); // Tenant-scoped age queries
+PatientSchema.index({ tenantIds: 1, sex: 1 }); // Tenant-scoped gender queries
+PatientSchema.index({ tenantIds: 1, active: 1 }); // Tenant-scoped active patient queries
+PatientSchema.index({ tenantIds: 1, 'identifiers.philHealth': 1 }); // Tenant-scoped PhilHealth lookups
+PatientSchema.index({ tenantIds: 1, 'identifiers.govId': 1 }); // Tenant-scoped government ID lookups
+PatientSchema.index({ tenantIds: 1, createdAt: -1 }); // Tenant-scoped registration date queries
+PatientSchema.index({ tenantIds: 1, patientCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped patient code
 
 // Virtual for full name
 PatientSchema.virtual('fullName').get(function (this: IPatient) {
