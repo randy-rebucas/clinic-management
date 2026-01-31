@@ -46,12 +46,18 @@ export async function GET(request: NextRequest) {
     // Build filter query
     const filter: any = {};
     
-    // Add tenant filter
+    // Add tenant filter (multi-tenant support)
     const tenantFilter: any = {};
     if (tenantId) {
-      tenantFilter.tenantId = new Types.ObjectId(tenantId);
+      // Match if tenantIds contains the tenantId (array)
+      tenantFilter.tenantIds = new Types.ObjectId(tenantId);
     } else {
-      tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      // Backward compatibility: match docs with no tenantIds or null
+      tenantFilter.$or = [
+        { tenantIds: { $exists: false } },
+        { tenantIds: null },
+        { tenantIds: { $size: 0 } }
+      ];
     }
 
     // Search filter - search across multiple fields
@@ -199,9 +205,13 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     
-    // Ensure patient is created with tenantId
-    if (tenantId && !body.tenantId) {
-      body.tenantId = new Types.ObjectId(tenantId);
+    // Ensure patient is created with tenantIds array
+    if (tenantId && !body.tenantIds) {
+      body.tenantIds = [new Types.ObjectId(tenantId)];
+    } else if (body.tenantId && !body.tenantIds) {
+      // Migrate single tenantId to tenantIds array if present in body
+      body.tenantIds = [new Types.ObjectId(body.tenantId)];
+      delete body.tenantId;
     }
     
     console.log('Creating patient with data:', JSON.stringify(body, null, 2));
@@ -223,13 +233,17 @@ export async function POST(request: NextRequest) {
         }
         
         // Find the highest patient code number (tenant-scoped)
-        const codeQuery: any = { 
+        const codeQuery: any = {
           patientCode: { $exists: true, $ne: null, $regex: /^CLINIC-\d+$/ }
         };
         if (tenantId) {
-          codeQuery.tenantId = new Types.ObjectId(tenantId);
+          codeQuery.tenantIds = new Types.ObjectId(tenantId);
         } else {
-          codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+          codeQuery.$or = [
+            { tenantIds: { $exists: false } },
+            { tenantIds: null },
+            { tenantIds: { $size: 0 } }
+          ];
         }
         const lastPatient = await Patient.findOne(codeQuery)
           .sort({ patientCode: -1 })
@@ -248,9 +262,13 @@ export async function POST(request: NextRequest) {
         // Check if this code already exists (tenant-scoped)
         const existingQuery: any = { patientCode };
         if (tenantId) {
-          existingQuery.tenantId = new Types.ObjectId(tenantId);
+          existingQuery.tenantIds = new Types.ObjectId(tenantId);
         } else {
-          existingQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+          existingQuery.$or = [
+            { tenantIds: { $exists: false } },
+            { tenantIds: null },
+            { tenantIds: { $size: 0 } }
+          ];
         }
         const existing = await Patient.findOne(existingQuery);
         if (!existing) {
@@ -287,13 +305,17 @@ export async function POST(request: NextRequest) {
           }
           
           // Generate a new patient code (tenant-scoped)
-          const codeQuery: any = { 
+          const codeQuery: any = {
             patientCode: { $exists: true, $ne: null, $regex: /^CLINIC-\d+$/ }
           };
           if (tenantId) {
-            codeQuery.tenantId = new Types.ObjectId(tenantId);
+            codeQuery.tenantIds = new Types.ObjectId(tenantId);
           } else {
-            codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+            codeQuery.$or = [
+              { tenantIds: { $exists: false } },
+              { tenantIds: null },
+              { tenantIds: { $size: 0 } }
+            ];
           }
           const lastPatient = await Patient.findOne(codeQuery)
             .sort({ patientCode: -1 })
@@ -327,7 +349,7 @@ export async function POST(request: NextRequest) {
     import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
       sendWelcomeMessage({
         patientId: patient._id,
-        tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+        tenantIds: Array.isArray(patient.tenantIds) ? patient.tenantIds.map((id: any) => id.toString()) : [],
         sendSMS: true,
         sendEmail: true,
         sendNotification: false,

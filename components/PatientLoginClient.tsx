@@ -6,22 +6,6 @@ import Link from 'next/link';
 
 type QRInputMethod = 'scan' | 'upload' | 'paste';
 
-interface Clinic {
-  _id: string;
-  name: string;
-  displayName: string;
-  subdomain: string;
-  email?: string;
-  phone?: string;
-  address?: {
-    street?: string;
-    city?: string;
-    state?: string;
-    zipCode?: string;
-    country?: string;
-  };
-}
-
 export default function PatientLoginClient() {
   const [loginMethod, setLoginMethod] = useState<'code' | 'qr'>('code');
   const [qrInputMethod, setQrInputMethod] = useState<QRInputMethod>('scan');
@@ -31,88 +15,10 @@ export default function PatientLoginClient() {
   const [error, setError] = useState<string | null>(null);
   const [scannerReady, setScannerReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [hasSubdomain, setHasSubdomain] = useState(false);
-  const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null);
-  const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
-  const [loadingClinics, setLoadingClinics] = useState(true);
-  const [showClinicSelection, setShowClinicSelection] = useState(false);
   const router = useRouter();
-  
+
   const scannerRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Check for subdomain on mount and get tenant info
-  useEffect(() => {
-    const checkSubdomain = async () => {
-      if (typeof window !== 'undefined') {
-        const hostname = window.location.hostname;
-        const parts = hostname.split('.');
-        // Extract potential subdomain (first part)
-        const firstPart = parts[0]?.toLowerCase();
-        // 'www' is not a subdomain - treat it as root domain
-        const isWww = firstPart === 'www';
-        // If hostname has more than 2 parts AND first part is not 'www', we have a subdomain
-        // Or if 2 parts and first is not 'localhost' or 'www'
-        const hasSubdomain = !isWww && (
-          (parts.length > 2) || 
-          (parts.length === 2 && firstPart !== 'localhost')
-        );
-        setHasSubdomain(hasSubdomain);
-        
-        if (!hasSubdomain) {
-          // No subdomain (including www), fetch available clinics
-          fetchClinics();
-          setShowClinicSelection(true);
-        } else {
-          // Has subdomain, get tenant info
-          try {
-            const subdomain = firstPart;
-            const res = await fetch(`/api/tenants/public?subdomain=${subdomain}`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data.success && data.tenant) {
-                setSelectedClinic(data.tenant);
-              }
-            }
-          } catch (error) {
-            console.error('Failed to fetch tenant info:', error);
-          }
-        }
-        setLoadingClinics(false);
-      }
-    };
-    
-    checkSubdomain();
-  }, []);
-
-  const fetchClinics = async () => {
-    try {
-      setLoadingClinics(true);
-      const res = await fetch('/api/tenants/public');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.tenants) {
-          setAvailableClinics(data.tenants);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch clinics:', error);
-    } finally {
-      setLoadingClinics(false);
-    }
-  };
-
-  const handleClinicSelect = (clinic: Clinic) => {
-    setSelectedClinic(clinic);
-    // Redirect to clinic's subdomain for login
-    if (typeof window !== 'undefined') {
-      const protocol = window.location.protocol;
-      const rootDomain = window.location.hostname.split('.').slice(-2).join('.');
-      const port = window.location.port ? `:${window.location.port}` : '';
-      const loginUrl = `${protocol}//${clinic.subdomain}.${rootDomain}${port}/patient/login`;
-      window.location.href = loginUrl;
-    }
-  };
 
   const performQRLogin = useCallback(async (qrData: string) => {
     setLoading(true);
@@ -120,29 +26,19 @@ export default function PatientLoginClient() {
 
     try {
       // Parse QR data to add tenantId if needed
-      let parsedQrData = qrData;
-      try {
-        const qrObj = typeof qrData === 'string' ? JSON.parse(qrData) : qrData;
-        if (selectedClinic && !qrObj.tenantId) {
-          qrObj.tenantId = selectedClinic._id;
-          parsedQrData = JSON.stringify(qrObj);
-        }
-      } catch (e) {
-        // If parsing fails, use original data
-      }
-
+      const parsedQrData = typeof qrData === 'string' ? JSON.parse(qrData) : qrData;
       const res = await fetch('/api/patients/qr-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          qrCode: parsedQrData,
-          ...(selectedClinic && { tenantId: selectedClinic._id }),
+        body: JSON.stringify({
+          qrCode: parsedQrData
         }),
       });
 
       const data = await res.json();
 
       if (data.success) {
+        // Redirect to patient portal
         router.push('/patient/portal');
       } else {
         setError(data.error || 'Invalid QR code. Please try again.');
@@ -153,7 +49,7 @@ export default function PatientLoginClient() {
     } finally {
       setLoading(false);
     }
-  }, [selectedClinic, router]);
+  }, [router]);
 
   const handleQRScanned = useCallback(async (decodedText: string) => {
     // Stop scanner after successful scan
@@ -161,7 +57,7 @@ export default function PatientLoginClient() {
       await scannerRef.current.stop().catch(console.error);
       setScannerReady(false);
     }
-    
+
     setQrCode(decodedText);
     // Auto-submit after scanning
     await performQRLogin(decodedText);
@@ -172,19 +68,19 @@ export default function PatientLoginClient() {
     let html5QrCode: any = null;
 
     const initScanner = async () => {
-      if (loginMethod === 'qr' && qrInputMethod === 'scan' && !showClinicSelection) {
+      if (loginMethod === 'qr' && qrInputMethod === 'scan') {
         try {
           const { Html5Qrcode } = await import('html5-qrcode');
-          
+
           // Small delay to ensure DOM element exists
           await new Promise(resolve => setTimeout(resolve, 100));
-          
+
           const element = document.getElementById('qr-reader');
           if (!element) return;
-          
+
           html5QrCode = new Html5Qrcode('qr-reader');
           scannerRef.current = html5QrCode;
-          
+
           await html5QrCode.start(
             { facingMode: 'environment' },
             {
@@ -194,9 +90,9 @@ export default function PatientLoginClient() {
             (decodedText: string) => {
               handleQRScanned(decodedText);
             },
-            () => {} // Ignore errors during scanning
+            () => { } // Ignore errors during scanning
           );
-          
+
           setScannerReady(true);
           setCameraError(null);
         } catch (err: any) {
@@ -216,7 +112,7 @@ export default function PatientLoginClient() {
       scannerRef.current = null;
       setScannerReady(false);
     };
-  }, [loginMethod, qrInputMethod, showClinicSelection, handleQRScanned]);
+  }, [loginMethod, qrInputMethod, handleQRScanned]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -228,10 +124,10 @@ export default function PatientLoginClient() {
     try {
       const { Html5Qrcode } = await import('html5-qrcode');
       const html5QrCode = new Html5Qrcode('qr-file-reader');
-      
+
       const result = await html5QrCode.scanFile(file, true);
       setQrCode(result);
-      
+
       // Auto-submit after successful scan
       await performQRLogin(result);
     } catch (err: any) {
@@ -256,17 +152,15 @@ export default function PatientLoginClient() {
       const qrData = JSON.stringify({
         patientCode: patientCode,
         type: 'patient_login',
-        timestamp: Date.now(),
-        ...(selectedClinic && { tenantId: selectedClinic._id }),
+        timestamp: Date.now()
       });
 
       // Use QR login endpoint directly - it supports lookup by patientCode
       const loginRes = await fetch('/api/patients/qr-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          qrCode: qrData,
-          ...(selectedClinic && { tenantId: selectedClinic._id }),
+        body: JSON.stringify({
+          qrCode: qrData
         }),
       });
 
@@ -278,6 +172,7 @@ export default function PatientLoginClient() {
       } else {
         setError(loginData.error || 'Login failed. Please try again.');
       }
+
     } catch (error: any) {
       console.error('Login error:', error);
       setError(`Login failed: ${error.message || 'Unknown error'}`);
@@ -298,113 +193,6 @@ export default function PatientLoginClient() {
     }
   };
 
-  // Show clinic selection if no subdomain
-  if (showClinicSelection && !hasSubdomain) {
-    return (
-      <div className="min-h-screen relative overflow-hidden flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-        {/* Abstract Background */}
-        <div className="fixed inset-0 -z-10">
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>
-          <div className="absolute top-0 -left-4 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-          <div className="absolute top-0 -right-4 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-        </div>
-
-        <div className="max-w-md w-full relative z-10">
-          <div className="text-center mb-8 sm:mb-10">
-            <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl sm:rounded-3xl shadow-xl mb-4 sm:mb-6 transform hover:scale-105 transition-transform">
-              <svg className="w-10 h-10 sm:w-12 sm:h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-            </div>
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 mb-3 tracking-tight">Patient Portal Login</h1>
-            <p className="text-base sm:text-lg text-gray-600">Select your clinic to continue</p>
-          </div>
-
-          <div className="bg-white/90 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-200/50 p-6 sm:p-8">
-            {loadingClinics ? (
-              <div className="flex items-center justify-center py-12 sm:py-16">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="relative">
-                    <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-                  </div>
-                  <p className="text-base sm:text-lg text-gray-600 font-medium">Loading clinics...</p>
-                </div>
-              </div>
-            ) : availableClinics.length === 0 ? (
-              <div className="text-center py-12 sm:py-16">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                </div>
-                <p className="text-gray-600 mb-4 text-base sm:text-lg">No clinics available at the moment.</p>
-                <Link href="/tenant-onboard" className="inline-block px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105">
-                  Register a new clinic
-                </Link>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 sm:gap-6 max-h-96 overflow-y-auto pr-2">
-                {availableClinics.map((clinic) => (
-                  <button
-                    key={clinic._id}
-                    type="button"
-                    onClick={() => handleClinicSelect(clinic)}
-                    className="w-full p-6 sm:p-8 border-2 border-gray-200 rounded-2xl text-left hover:border-blue-400 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 transition-all shadow-md hover:shadow-xl transform hover:scale-[1.02] bg-white/80 backdrop-blur-sm"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-bold text-lg sm:text-xl text-gray-900 mb-2">{clinic.displayName || clinic.name}</h4>
-                        {clinic.address && (clinic.address.city || clinic.address.state) && (
-                          <p className="text-sm sm:text-base text-gray-600 mb-2 flex items-center gap-2">
-                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            {[clinic.address.city, clinic.address.state].filter(Boolean).join(', ')}
-                          </p>
-                        )}
-                        {clinic.phone && (
-                          <p className="text-sm text-gray-600 flex items-center gap-2">
-                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                            </svg>
-                            {clinic.phone}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex-shrink-0">
-                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center shadow-lg">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="mt-6 sm:mt-8 pt-6 border-t border-gray-200/50">
-              <p className="text-sm sm:text-base text-gray-600 text-center">
-                Don&apos;t see your clinic?{' '}
-                <Link href="/tenant-onboard" className="text-blue-600 hover:text-blue-700 font-semibold underline decoration-2 underline-offset-2">
-                  Register a new clinic
-                </Link>
-              </p>
-            </div>
-          </div>
-
-          <div className="text-center mt-6 sm:mt-8">
-            <Link href="/" className="text-sm sm:text-base text-blue-600 hover:text-blue-700 font-medium underline decoration-2 underline-offset-2">
-              Back to Home
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen relative overflow-hidden flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -439,11 +227,10 @@ export default function PatientLoginClient() {
                 setLoginMethod('code');
                 setError(null);
               }}
-              className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-semibold transition-all ${
-                loginMethod === 'code'
+              className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-semibold transition-all ${loginMethod === 'code'
                   ? 'bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-700 border-b-2 border-blue-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
-              }`}
+                }`}
             >
               Patient Code
             </button>
@@ -452,11 +239,10 @@ export default function PatientLoginClient() {
                 setLoginMethod('qr');
                 setError(null);
               }}
-              className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-semibold transition-all ${
-                loginMethod === 'qr'
+              className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-semibold transition-all ${loginMethod === 'qr'
                   ? 'bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-700 border-b-2 border-blue-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
-              }`}
+                }`}
             >
               QR Code
             </button>
@@ -525,11 +311,10 @@ export default function PatientLoginClient() {
                       setError(null);
                       setCameraError(null);
                     }}
-                    className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
-                      qrInputMethod === 'scan'
+                    className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${qrInputMethod === 'scan'
                         ? 'bg-white text-blue-700 shadow-md'
                         : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
-                    }`}
+                      }`}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -545,11 +330,10 @@ export default function PatientLoginClient() {
                       setError(null);
                       setCameraError(null);
                     }}
-                    className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
-                      qrInputMethod === 'upload'
+                    className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${qrInputMethod === 'upload'
                         ? 'bg-white text-blue-700 shadow-md'
                         : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
-                    }`}
+                      }`}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -564,11 +348,10 @@ export default function PatientLoginClient() {
                       setError(null);
                       setCameraError(null);
                     }}
-                    className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
-                      qrInputMethod === 'paste'
+                    className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${qrInputMethod === 'paste'
                         ? 'bg-white text-blue-700 shadow-md'
                         : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
-                    }`}
+                      }`}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -596,8 +379,8 @@ export default function PatientLoginClient() {
                       </div>
                     ) : (
                       <>
-                        <div 
-                          id="qr-reader" 
+                        <div
+                          id="qr-reader"
                           className="w-full rounded-lg overflow-hidden bg-gray-900"
                           style={{ minHeight: '280px' }}
                         />
@@ -620,7 +403,7 @@ export default function PatientLoginClient() {
                   <div className="space-y-3">
                     {/* Hidden element for html5-qrcode file scanning */}
                     <div id="qr-file-reader" style={{ display: 'none' }}></div>
-                    
+
                     <div
                       onClick={() => fileInputRef.current?.click()}
                       className="border-2 border-dashed border-gray-300 rounded-xl sm:rounded-2xl p-8 sm:p-12 text-center cursor-pointer hover:border-blue-500 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 transition-all shadow-md hover:shadow-lg transform hover:scale-[1.02]"
