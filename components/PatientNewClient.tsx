@@ -85,7 +85,9 @@ export default function PatientNewClient() {
           payload.familyHistory = filteredFamilyHistory;
         }
       }
+      console.log('Submitting new patient payload:', payload);
 
+      // Send the request to create a new patient
       const res = await fetch('/api/patients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,12 +111,20 @@ export default function PatientNewClient() {
         return;
       }
       
-      if (data.success) {
+      if (data && data.success && data.data && data.data._id) {
         // Redirect to the new patient's detail page
         router.push(`/patients/${data.data._id}`);
       } else {
+        // Defensive: handle empty or unexpected API response
         console.error('API error response:', data);
-        setError('Error: ' + (data.error || 'Unknown error occurred'));
+        let errorMsg = 'Unknown error occurred';
+        if (data && typeof data === 'object') {
+          if (data.error) errorMsg = data.error;
+          else if (data.message) errorMsg = data.message;
+        } else if (typeof data === 'string') {
+          errorMsg = data;
+        }
+        setError('Error: ' + errorMsg);
       }
     } catch (error: any) {
       console.error('Failed to create patient:', error);

@@ -767,16 +767,16 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                   <dl className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Name</dt>
-                      <dd className="text-sm font-medium text-gray-900">{patient.emergencyContact.name}</dd>
+                      <dd className="text-sm font-medium text-gray-900">{patient.emergencyContact?.name || '-'}</dd>
                     </div>
                     <div>
                       <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Phone</dt>
-                      <dd className="text-sm font-medium text-gray-900">{patient.emergencyContact.phone}</dd>
+                      <dd className="text-sm font-medium text-gray-900">{patient.emergencyContact?.phone || '-'}</dd>
                     </div>
-                    {patient.emergencyContact.relationship && (
+                    {patient.emergencyContact?.relationship && (
                       <div>
                         <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Relationship</dt>
-                        <dd className="text-sm font-medium text-gray-900">{patient.emergencyContact.relationship}</dd>
+                        <dd className="text-sm font-medium text-gray-900">{patient.emergencyContact?.relationship || '-'}</dd>
                       </div>
                     )}
                   </dl>
