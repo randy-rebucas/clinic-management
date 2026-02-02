@@ -66,9 +66,9 @@ export interface IMedicalRepresentative extends Document {
   status: 'active' | 'inactive' | 'on-leave';
 
   // Activation and payment tracking
-  isActivated: { type: Boolean, default: false }; // Whether the medical rep has completed payment and activation
+  isActivated: { type: boolean, default: false }; // Whether the medical rep has completed payment and activation
   activationDate?: { type: Date, default: undefined }; // Date when they became activated
-  paymentStatus: { type: String, enum: ['pending', 'completed', 'failed', 'refunded'], default: 'pending' };
+  paymentStatus: { type: string, enum: ['pending', 'completed', 'failed', 'refunded'], default: 'pending' };
   paymentDate?: Date; // When payment was processed
   paymentAmount?: number; // Registration/activation fee
   paymentMethod?: string; // Payment method used (credit card, bank transfer, etc.)
