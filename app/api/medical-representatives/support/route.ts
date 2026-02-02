@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
+import SupportRequestModel from '@/models/SupportRequest';
 
 export interface SupportRequest {
   subject: string;
@@ -39,16 +40,18 @@ export async function POST(request: NextRequest) {
     // Verify session (optional, but recommended)
     const session = await verifySession();
     const userId = session?.userId;
+    const tenantId = session?.tenantId;
 
     await connectDB();
 
-    // Log the support request (you could save this to a database)
-    console.log('Medical representative support request received:', {
+    const supportRequest = await SupportRequestModel.create({
+      tenantId,
+      userId,
       email: body.email,
       subject: body.subject,
       category: body.category,
-      userId,
-      timestamp: new Date().toISOString(),
+      message: body.message,
+      status: 'open',
     });
 
     // Send email notification to support team
@@ -76,7 +79,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Support request submitted successfully. We will get back to you soon.',
-      reference: `SR-${Date.now()}`,
+      reference: `SR-${supportRequest._id}`,
     });
   } catch (error: any) {
     console.error('Support request error:', error);

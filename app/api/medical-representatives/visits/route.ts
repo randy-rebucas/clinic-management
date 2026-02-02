@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
+import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 
 // Define Visit interface for requests
 interface VisitData {
@@ -37,11 +38,15 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
-    // For now, return empty array - visits will be stored in a separate collection
-    // This is a placeholder implementation
+    const visits = await MedicalRepresentativeVisit.find({
+      userId: session.userId,
+    })
+      .sort({ date: -1, createdAt: -1 })
+      .lean();
+
     return NextResponse.json({
       success: true,
-      data: [],
+      data: visits,
     });
   } catch (error: any) {
     console.error('Get visits error:', error);
@@ -93,23 +98,17 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
-    // Create visit object (in-memory for now - would be saved to DB in production)
-    const visit = {
-      _id: `visit_${Date.now()}`,
+    const visit = await MedicalRepresentativeVisit.create({
       userId: session.userId,
       clinicName: body.clinicName,
       clinicLocation: body.clinicLocation,
       purpose: body.purpose,
-      date: body.date,
+      date: new Date(body.date),
       time: body.time,
       duration: body.duration || 60,
       status: body.status || 'scheduled',
       notes: body.notes || '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    console.log('Visit created:', visit);
+    });
 
     return NextResponse.json({
       success: true,

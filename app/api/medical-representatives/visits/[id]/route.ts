@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
+import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 
 interface VisitData {
   clinicName: string;
@@ -19,7 +20,7 @@ interface VisitData {
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await verifySession();
@@ -49,24 +50,29 @@ export async function PUT(
 
     await connectDB();
 
-    const visitId = params.id;
+    const { id: visitId } = await params;
 
-    // Update visit (in-memory for now)
-    const updatedVisit = {
-      _id: visitId,
-      userId: session.userId,
-      clinicName: body.clinicName,
-      clinicLocation: body.clinicLocation,
-      purpose: body.purpose,
-      date: body.date,
-      time: body.time,
-      duration: body.duration || 60,
-      status: body.status || 'scheduled',
-      notes: body.notes || '',
-      updatedAt: new Date().toISOString(),
-    };
+    const updatedVisit = await MedicalRepresentativeVisit.findOneAndUpdate(
+      { _id: visitId, userId: session.userId },
+      {
+        clinicName: body.clinicName,
+        clinicLocation: body.clinicLocation,
+        purpose: body.purpose,
+        date: new Date(body.date),
+        time: body.time,
+        duration: body.duration || 60,
+        status: body.status || 'scheduled',
+        notes: body.notes || '',
+      },
+      { new: true }
+    ).lean();
 
-    console.log('Visit updated:', updatedVisit);
+    if (!updatedVisit) {
+      return NextResponse.json(
+        { success: false, error: 'Visit not found' },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
@@ -88,7 +94,7 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await verifySession();
@@ -108,8 +114,18 @@ export async function DELETE(
 
     await connectDB();
 
-    const visitId = params.id;
-    console.log('Visit deleted:', visitId);
+    const { id: visitId } = await params;
+    const deletedVisit = await MedicalRepresentativeVisit.findOneAndDelete({
+      _id: visitId,
+      userId: session.userId,
+    }).lean();
+
+    if (!deletedVisit) {
+      return NextResponse.json(
+        { success: false, error: 'Visit not found' },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
