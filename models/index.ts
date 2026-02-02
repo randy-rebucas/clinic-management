@@ -83,6 +83,9 @@ export type { ITenant } from './Tenant';
 export { default as Medicine } from './Medicine';
 export type { IMedicine, IDosageRange } from './Medicine';
 
+export { default as Product } from './Product';
+export type { IProduct } from './Product';
+
 export { default as Service } from './Service';
 export type { IService } from './Service';
 
@@ -156,6 +159,9 @@ export type {
   IDigitalSignature 
 } from './Visit';
 
+export { default as MedicalRepresentativeVisit } from './MedicalRepresentativeVisit';
+export type { IMedicalRepresentativeVisit } from './MedicalRepresentativeVisit';
+
 export { default as Prescription } from './Prescription';
 export type { IPrescription, IMedication, IPharmacyDispense } from './Prescription';
 
@@ -188,6 +194,9 @@ export type { IMembership, MembershipTier, MembershipStatus } from './Membership
 
 export { default as InventoryItem } from './Inventory';
 export type { IInventoryItem } from './Inventory';
+
+export { default as SupportRequest } from './SupportRequest';
+export type { ISupportRequest, SupportCategory, SupportStatus } from './SupportRequest';
 
 // ============================================================
 // 8. AUDIT AND NOTIFICATION MODELS

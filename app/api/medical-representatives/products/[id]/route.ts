@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
+import Product from '@/models/Product';
 
 interface ProductData {
   name: string;
@@ -20,7 +21,7 @@ interface ProductData {
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await verifySession();
@@ -50,26 +51,30 @@ export async function PUT(
 
     await connectDB();
 
-    const productId = params.id;
+    const { id: productId } = await params;
 
-    // Update product (in-memory for now)
-    const updatedProduct = {
-      _id: productId,
-      userId: session.userId,
-      name: body.name,
-      category: body.category,
-      manufacturer: body.manufacturer,
-      description: body.description,
-      dosage: body.dosage || '',
-      strength: body.strength || '',
-      packaging: body.packaging,
-      expiryDate: body.expiryDate,
-      status: body.status || 'active',
-      specifications: [],
-      updatedAt: new Date().toISOString(),
-    };
+    const updatedProduct = await Product.findOneAndUpdate(
+      { _id: productId, userId: session.userId },
+      {
+        name: body.name,
+        category: body.category,
+        manufacturer: body.manufacturer,
+        description: body.description,
+        dosage: body.dosage || undefined,
+        strength: body.strength || undefined,
+        packaging: body.packaging,
+        expiryDate: new Date(body.expiryDate),
+        status: body.status || 'active',
+      },
+      { new: true }
+    ).lean();
 
-    console.log('Product updated:', updatedProduct);
+    if (!updatedProduct) {
+      return NextResponse.json(
+        { success: false, error: 'Product not found' },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
@@ -91,7 +96,7 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await verifySession();
@@ -111,8 +116,18 @@ export async function DELETE(
 
     await connectDB();
 
-    const productId = params.id;
-    console.log('Product deleted:', productId);
+    const { id: productId } = await params;
+    const deletedProduct = await Product.findOneAndDelete({
+      _id: productId,
+      userId: session.userId,
+    }).lean();
+
+    if (!deletedProduct) {
+      return NextResponse.json(
+        { success: false, error: 'Product not found' },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({
       success: true,

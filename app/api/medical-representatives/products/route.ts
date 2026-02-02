@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
+import Product from '@/models/Product';
 
 interface ProductData {
   name: string;
@@ -37,11 +38,15 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
-    // For now, return empty array - products will be stored in a separate collection
-    // This is a placeholder implementation
+    const products = await Product.find({
+      userId: session.userId,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
     return NextResponse.json({
       success: true,
-      data: [],
+      data: products,
     });
   } catch (error: any) {
     console.error('Get products error:', error);
@@ -93,25 +98,19 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
-    // Create product object (in-memory for now - would be saved to DB in production)
-    const product = {
-      _id: `product_${Date.now()}`,
+    const product = await Product.create({
       userId: session.userId,
       name: body.name,
       category: body.category,
       manufacturer: body.manufacturer,
       description: body.description,
-      dosage: body.dosage || '',
-      strength: body.strength || '',
+      dosage: body.dosage || undefined,
+      strength: body.strength || undefined,
       packaging: body.packaging,
-      expiryDate: body.expiryDate,
+      expiryDate: new Date(body.expiryDate),
       status: body.status || 'active',
       specifications: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    console.log('Product created:', product);
+    });
 
     return NextResponse.json({
       success: true,
