@@ -35,6 +35,7 @@
     "html5-qrcode": "^2.3.8",
     "jose": "^6.1.2",
     "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^0.563.0",
     "mongodb": "^7.0.0",
     "mongoose": "^8.20.0",
     "next": "^16.0.10",
