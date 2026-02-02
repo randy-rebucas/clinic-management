@@ -159,7 +159,7 @@ export async function login(
     // Get tenant context for multi-tenant support
     const tenantContext = await getTenantContext();
     const tenantId = tenantContext.tenantId;
-
+    console.log('Tenant context in login:', tenantContext);
     // Find user by email (case-insensitive, within tenant scope if tenant exists) with role populated
     const userQuery: any = { email: sanitizedEmail };
     if (tenantId) {
@@ -375,6 +375,16 @@ export async function login(
       message: 'An error occurred during login. Please try again.',
     };
   }
+}
+
+export async function loginMedicalRep() {
+  try {
+    await deleteSession();
+    revalidatePath('/');
+  } catch (error) {
+    console.error('Error during medical representative login:', error);
+  }
+  redirect('/medical-representatives/login');
 }
 
 export async function logout() {

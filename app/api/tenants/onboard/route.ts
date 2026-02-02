@@ -268,14 +268,7 @@ export async function POST(request: NextRequest) {
         description: 'Financial staff with access to billing and invoices',
         level: 30,
         defaultPermissions: DEFAULT_ROLE_PERMISSIONS.accountant,
-      },
-      {
-        name: 'medical-representative',
-        displayName: 'Medical Representative',
-        description: 'External medical representatives with limited access',
-        level: 20,
-        defaultPermissions: DEFAULT_ROLE_PERMISSIONS['medical-representative'],
-      },
+      }
     ];
 
     const createdRoles: any[] = [];
@@ -508,30 +501,6 @@ export async function POST(request: NextRequest) {
       hasAdminProfile: !!(verifyUser as any).adminProfile,
     });
 
-    // Create medicines
-    console.log('Creating medicines...');
-    const medicinesData = [
-      { name: 'Paracetamol', genericName: 'Acetaminophen', form: 'tablet', strength: '500 mg', category: 'Analgesic' },
-      { name: 'Amoxicillin', genericName: 'Amoxicillin', form: 'capsule', strength: '250 mg', category: 'Antibiotic' },
-      { name: 'Ibuprofen', genericName: 'Ibuprofen', form: 'tablet', strength: '400 mg', category: 'NSAID' },
-      { name: 'Omeprazole', genericName: 'Omeprazole', form: 'capsule', strength: '20 mg', category: 'PPI' },
-      { name: 'Loratadine', genericName: 'Loratadine', form: 'tablet', strength: '10 mg', category: 'Antihistamine' },
-    ];
-
-    for (const medData of medicinesData) {
-      await Medicine.create({
-        ...medData,
-        tenantId,
-        unit: 'mg',
-        route: 'oral',
-        indications: ['Pain relief', 'Fever'],
-        standardDosage: medData.strength,
-        standardFrequency: 'BID',
-        requiresPrescription: true,
-        active: true,
-      });
-    }
-
     // Create tenant settings
     console.log('Creating tenant settings...');
     const clinicAddress = tenant.address?.street
@@ -576,7 +545,6 @@ export async function POST(request: NextRequest) {
       adminEmail: adminUser.email,
       seedData: {
         roles: createdRoles.length,
-        medicines: medicinesData.length,
         permissions: createdRoles.reduce((sum, role) => sum + (role.permissions?.length || 0), 0),
         settings: true,
       },

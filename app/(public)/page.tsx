@@ -79,22 +79,32 @@ export default async function HomePage() {
                   </span>
                   <div className="absolute inset-0 bg-gradient-to-r from-blue-700 to-indigo-700 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 </Link>
-                
-                <Link
-                  href="/book"
-                  className="group px-6 sm:px-8 py-3 sm:py-4 bg-white/90 backdrop-blur-sm text-blue-600 border-2 border-blue-600 rounded-xl sm:rounded-2xl font-semibold text-base sm:text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
-                >
-                  Book Appointment
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </Link>
-                
+
                 <Link
                   href="/login"
                   className="px-6 sm:px-8 py-3 sm:py-4 bg-gray-900/80 backdrop-blur-sm text-white rounded-xl sm:rounded-2xl font-semibold text-base sm:text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
                 >
                   Staff Login
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                  </svg>
+                </Link>
+
+                <Link
+                  href="/medical-representatives/onboard"
+                  className="px-6 sm:px-8 py-3 sm:py-4 bg-purple-600/90 backdrop-blur-sm text-white rounded-xl sm:rounded-2xl font-semibold text-base sm:text-lg shadow-lg hover:shadow-xl hover:bg-purple-700 transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
+                >
+                  Medical Rep Sign Up
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                </Link>
+
+                <Link
+                  href="/medical-representatives/login"
+                  className="px-6 sm:px-8 py-3 sm:py-4 bg-purple-600/60 backdrop-blur-sm text-white rounded-xl sm:rounded-2xl font-semibold text-base sm:text-lg shadow-lg hover:shadow-xl hover:bg-purple-700 transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 border border-purple-400/50"
+                >
+                  Medical Rep Login
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
                   </svg>
