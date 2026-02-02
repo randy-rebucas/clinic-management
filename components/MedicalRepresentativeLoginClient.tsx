@@ -159,7 +159,7 @@ export default function MedicalRepresentativeLoginClient() {
 
                         {/* Help Text */}
                         <div className="bg-purple-50/80 border border-purple-200 rounded-xl p-4 text-center">
-                            <p className="text-sm text-gray-700 mb-2">Don't have a login yet?</p>
+                            <p className="text-sm text-gray-700 mb-2">Don&apos;t have a login yet?</p>
                             <p className="text-sm text-gray-600">
                                 Complete your registration at{' '}
                                 <Link href="/medical-representatives/onboard" className="text-purple-600 hover:text-purple-700 font-semibold underline decoration-2 underline-offset-2">
