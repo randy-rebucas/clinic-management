@@ -13,6 +13,10 @@ export default async function Dashboard() {
     redirect('/login');
   }
 
+  console.log('User session:', session);
+  if (session.role === 'medical-representative') {
+    redirect('/medical-representative/portal');
+  }
   // Route to role-specific dashboard
   switch (session.role) {
     case 'admin':
