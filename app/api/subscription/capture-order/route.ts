@@ -16,8 +16,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get tenant ID
-    const tenantId = await getTenantId();
+    // Get tenant ID from subdomain or fall back to session tenantId
+    const tenantId = await getTenantId() || session.tenantId;
     if (!tenantId) {
       return NextResponse.json(
         { error: 'Tenant not found' },
@@ -26,10 +26,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { orderId, plan, token } = body;
-    
-    // Use token from query params if orderId not provided
-    const finalOrderId = orderId || token;
+    const { orderId, plan } = body;
+    const finalOrderId = orderId;
 
     if (!finalOrderId) {
       return NextResponse.json(

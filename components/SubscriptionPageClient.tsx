@@ -360,8 +360,20 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Basic Plan */}
-              <div className="border border-gray-200 rounded-xl p-6 hover:border-blue-500 hover:shadow-md transition-all">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Basic</h3>
+              <div className={`rounded-xl p-6 transition-all relative ${
+                status.isActive && !status.isExpired && status.plan === 'basic'
+                  ? 'border-2 border-green-500 shadow-md bg-green-50/30'
+                  : 'border border-gray-200 hover:border-blue-500 hover:shadow-md'
+              }`}>
+                {status.isActive && !status.isExpired && status.plan === 'basic' && (
+                  <div className="absolute top-0 left-0 bg-green-500 text-white px-3 py-1 rounded-br-xl rounded-tl-lg text-xs font-semibold flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    CURRENT PLAN
+                  </div>
+                )}
+                <h3 className={`text-lg font-semibold text-gray-900 mb-2 ${status.isActive && !status.isExpired && status.plan === 'basic' ? 'mt-4' : ''}`}>Basic</h3>
                 <div className="mb-4">
                   <span className="text-3xl font-bold text-gray-900">$29</span>
                   <span className="text-gray-600">/month</span>
@@ -382,18 +394,37 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
                 </ul>
                 <button
                   onClick={() => handleSubscribe('basic')}
-                  disabled={processing}
-                  className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={processing || (status.isActive && !status.isExpired && status.plan === 'basic')}
+                  className={`w-full px-4 py-2 rounded-lg font-semibold transition-colors disabled:cursor-not-allowed ${
+                    status.isActive && !status.isExpired && status.plan === 'basic'
+                      ? 'bg-green-100 text-green-700 border border-green-300'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50'
+                  }`}
                 >
-                  {processing && selectedPlan === 'basic' ? 'Processing...' : 'Select Plan'}
+                  {status.isActive && !status.isExpired && status.plan === 'basic'
+                    ? 'Current Plan'
+                    : processing && selectedPlan === 'basic' ? 'Processing...' : 'Select Plan'}
                 </button>
               </div>
 
               {/* Professional Plan */}
-              <div className="border-2 border-blue-500 rounded-xl p-6 relative shadow-md">
-                <div className="absolute top-0 right-0 bg-blue-500 text-white px-3 py-1 rounded-bl-xl text-xs font-semibold">
-                  POPULAR
-                </div>
+              <div className={`rounded-xl p-6 relative shadow-md ${
+                status.isActive && !status.isExpired && status.plan === 'professional'
+                  ? 'border-2 border-green-500 bg-green-50/30'
+                  : 'border-2 border-blue-500'
+              }`}>
+                {status.isActive && !status.isExpired && status.plan === 'professional' ? (
+                  <div className="absolute top-0 right-0 bg-green-500 text-white px-3 py-1 rounded-bl-xl rounded-tr-lg text-xs font-semibold flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    CURRENT PLAN
+                  </div>
+                ) : (
+                  <div className="absolute top-0 right-0 bg-blue-500 text-white px-3 py-1 rounded-bl-xl text-xs font-semibold">
+                    POPULAR
+                  </div>
+                )}
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Professional</h3>
                 <div className="mb-4">
                   <span className="text-3xl font-bold text-gray-900">$79</span>
@@ -421,16 +452,34 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
                 </ul>
                 <button
                   onClick={() => handleSubscribe('professional')}
-                  disabled={processing}
-                  className="w-full px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={processing || (status.isActive && !status.isExpired && status.plan === 'professional')}
+                  className={`w-full px-5 py-2.5 rounded-lg font-semibold transition-all shadow-md disabled:cursor-not-allowed ${
+                    status.isActive && !status.isExpired && status.plan === 'professional'
+                      ? 'bg-green-100 text-green-700 border border-green-300'
+                      : 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 disabled:opacity-50'
+                  }`}
                 >
-                  {processing && selectedPlan === 'professional' ? 'Processing...' : 'Select Plan'}
+                  {status.isActive && !status.isExpired && status.plan === 'professional'
+                    ? 'Current Plan'
+                    : processing && selectedPlan === 'professional' ? 'Processing...' : 'Select Plan'}
                 </button>
               </div>
 
               {/* Enterprise Plan */}
-              <div className="border border-gray-200 rounded-xl p-6 hover:border-blue-500 hover:shadow-md transition-all">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Enterprise</h3>
+              <div className={`rounded-xl p-6 transition-all relative ${
+                status.isActive && !status.isExpired && status.plan === 'enterprise'
+                  ? 'border-2 border-green-500 shadow-md bg-green-50/30'
+                  : 'border border-gray-200 hover:border-blue-500 hover:shadow-md'
+              }`}>
+                {status.isActive && !status.isExpired && status.plan === 'enterprise' && (
+                  <div className="absolute top-0 left-0 bg-green-500 text-white px-3 py-1 rounded-br-xl rounded-tl-lg text-xs font-semibold flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    CURRENT PLAN
+                  </div>
+                )}
+                <h3 className={`text-lg font-semibold text-gray-900 mb-2 ${status.isActive && !status.isExpired && status.plan === 'enterprise' ? 'mt-4' : ''}`}>Enterprise</h3>
                 <div className="mb-4">
                   <span className="text-3xl font-bold text-gray-900">$199</span>
                   <span className="text-gray-600">/month</span>
@@ -457,10 +506,16 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
                 </ul>
                 <button
                   onClick={() => handleSubscribe('enterprise')}
-                  disabled={processing}
-                  className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={processing || (status.isActive && !status.isExpired && status.plan === 'enterprise')}
+                  className={`w-full px-4 py-2 rounded-lg font-semibold transition-colors disabled:cursor-not-allowed ${
+                    status.isActive && !status.isExpired && status.plan === 'enterprise'
+                      ? 'bg-green-100 text-green-700 border border-green-300'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50'
+                  }`}
                 >
-                  {processing && selectedPlan === 'enterprise' ? 'Processing...' : 'Select Plan'}
+                  {status.isActive && !status.isExpired && status.plan === 'enterprise'
+                    ? 'Current Plan'
+                    : processing && selectedPlan === 'enterprise' ? 'Processing...' : 'Select Plan'}
                 </button>
               </div>
             </div>

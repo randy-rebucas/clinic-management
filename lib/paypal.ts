@@ -74,13 +74,15 @@ export async function createPayPalOrder(
   planName: string,
   amount: number,
   currency: string = 'USD',
-  tenantId: string
+  tenantId: string,
+  appUrl?: string
 ): Promise<{ orderId: string; approvalUrl: string }> {
   try {
     const accessToken = await getPayPalAccessToken();
     const environment = process.env.PAYPAL_ENVIRONMENT || 'sandbox';
     const baseUrl = PAYPAL_API_BASE[environment as keyof typeof PAYPAL_API_BASE] || PAYPAL_API_BASE.sandbox;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    // Use provided appUrl (from request origin) or fall back to env var
+    const resolvedAppUrl = appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
     const response = await fetch(`${baseUrl}/v2/checkout/orders`, {
       method: 'POST',
@@ -105,8 +107,8 @@ export async function createPayPalOrder(
           brand_name: 'MyClinicSoft',
           landing_page: 'BILLING',
           user_action: 'PAY_NOW',
-          return_url: `${appUrl}/subscription/success?plan=${planName}`,
-          cancel_url: `${appUrl}/subscription?canceled=true`,
+          return_url: `${resolvedAppUrl}/subscription/success?plan=${planName}`,
+          cancel_url: `${resolvedAppUrl}/subscription?canceled=true`,
         },
       }),
     });

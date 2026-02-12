@@ -11,18 +11,24 @@ interface SubscriptionSuccessClientProps {
     subdomain: string;
   } | null;
   token?: string;
+  plan?: string;
 }
 
-export default function SubscriptionSuccessClient({ user, tenant, token }: SubscriptionSuccessClientProps) {
+export default function SubscriptionSuccessClient({ user, tenant, token, plan: planProp }: SubscriptionSuccessClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
   const [message, setMessage] = useState('Processing your payment...');
+  const [hasProcessed, setHasProcessed] = useState(false);
 
   useEffect(() => {
+    // Prevent double-processing (React StrictMode or re-renders)
+    if (hasProcessed) return;
+
     async function processPayment() {
+      // PayPal returns the order ID as the 'token' query param
       const orderId = searchParams.get('token') || token;
-      const plan = searchParams.get('plan') || 'professional'; // Default to professional
+      const plan = searchParams.get('plan') || planProp || 'professional';
 
       if (!orderId) {
         setStatus('error');
@@ -30,13 +36,15 @@ export default function SubscriptionSuccessClient({ user, tenant, token }: Subsc
         return;
       }
 
+      setHasProcessed(true);
+
       try {
         const response = await fetch('/api/subscription/capture-order', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ orderId, token: orderId, plan }),
+          body: JSON.stringify({ orderId, plan }),
         });
 
         const data = await response.json();
@@ -44,7 +52,7 @@ export default function SubscriptionSuccessClient({ user, tenant, token }: Subsc
         if (data.success) {
           setStatus('success');
           setMessage('Your subscription has been activated successfully!');
-          
+
           // Redirect to dashboard after 3 seconds
           setTimeout(() => {
             router.push('/dashboard');
@@ -60,7 +68,7 @@ export default function SubscriptionSuccessClient({ user, tenant, token }: Subsc
     }
 
     processPayment();
-  }, [searchParams, token, router]);
+  }, [searchParams, token, planProp, router, hasProcessed]);
 
   return (
     <div className="max-w-2xl mx-auto p-6">
