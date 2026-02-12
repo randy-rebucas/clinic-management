@@ -299,9 +299,9 @@ export async function POST(request: NextRequest) {
       select: 'firstName lastName email phone patientCode',
     };
     if (patientTenantId) {
-      patientPopulateOptions.match = { tenantId: patientTenantId };
+      patientPopulateOptions.match = { tenantIds: patientTenantId };
     } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
     
     const doctorPopulateOptions: any = {

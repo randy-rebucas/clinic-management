@@ -64,40 +64,41 @@ Check ALL API endpoints that reference patients:
 - ✅ `/app/api/patients/**/*.ts`
 
 **Document/Records APIs:**
-- ✅ `/app/api/invoices/route.ts` - FIXED
-- ✅ `/app/api/invoices/[id]/route.ts`
-- ✅ `/app/api/documents/route.ts` - FIXED
-- ✅ `/app/api/documents/[id]/route.ts`
-- `/app/api/visits/route.ts`
-- `/app/api/visits/[id]/route.ts`
-- `/app/api/prescriptions/route.ts`
-- `/app/api/prescriptions/[id]/route.ts`
-- `/app/api/lab-results/route.ts`
-- `/app/api/lab-results/[id]/route.ts`
+- ✅ `/app/api/invoices/route.ts` - FIXED (Feb 12, 2026)
+- ✅ `/app/api/invoices/[id]/route.ts` - FIXED (Feb 12, 2026)
+- ✅ `/app/api/documents/route.ts` - FIXED (Feb 12, 2026)
+- ✅ `/app/api/documents/[id]/route.ts` - FIXED (Feb 12, 2026)
+- ✅ `/app/api/visits/route.ts` - FIXED (Previous session)
+- ✅ `/app/api/visits/[id]/route.ts` - FIXED (Previous session)
+- ✅ `/app/api/prescriptions/route.ts` - FIXED (Previous session)
+- ✅ `/app/api/prescriptions/[id]/route.ts` - FIXED (Previous session)
+- ✅ `/app/api/lab-results/route.ts` - FIXED (Feb 12, 2026)
+- ✅ `/app/api/lab-results/[id]/route.ts` - FIXED (Previous session)
 
 **Referral APIs:**
-- ✅ `/app/api/referrals/route.ts` - FIXED
-- ✅ `/app/api/referrals/[id]/route.ts` - FIXED
+- ✅ `/app/api/referrals/route.ts` - FIXED (Feb 12, 2026)
+- ✅ `/app/api/referrals/[id]/route.ts` - FIXED (Feb 12, 2026)
 
 **Appointment/Schedule APIs:**
-- `/app/api/appointments/route.ts`
-- `/app/api/appointments/[id]/route.ts`
+- ✅ `/app/api/appointments/route.ts` - FIXED (Previous session)
+- ✅ `/app/api/appointments/[id]/route.ts` - FIXED (Feb 12, 2026)
+- ✅ `/app/api/patients/appointments/route.ts` - FIXED (Feb 12, 2026)
 
 **Membership/Billing APIs:**
-- `/app/api/memberships/route.ts`
-- `/app/api/memberships/[id]/route.ts`
+- ✅ `/app/api/memberships/route.ts` - FIXED (Feb 12, 2026 - patient & referredBy)
+- ✅ `/app/api/memberships/[id]/route.ts` - FIXED (Feb 12, 2026 - patient, referredBy & referrals)
 
 **Queue Management:**
-- `/app/api/queue/route.ts`
-- `/app/api/queue/[id]/route.ts`
-- `/app/api/queue/**/route.ts`
+- ✅ `/app/api/queue/route.ts` - FIXED (Previous session)
+- ✅ `/app/api/queue/[id]/route.ts` - FIXED (Previous session)
+- ✅ `/app/api/queue/**/route.ts` - FIXED (Previous session)
 
 **Compliance/Analytics:**
-- `/app/api/compliance-reports/route.ts`
-- `/app/api/analytics/route.ts`
+- ✅ `/app/api/compliance-reports/route.ts` - FIXED (Previous session)
+- ✅ `/app/api/analytics/route.ts` - No patient populates
 
 **Portal APIs:**
-- `/app/api/patient-portal/**/*.ts`
+- ✅ `/app/api/patient-portal/**/*.ts` - FIXED (Previous session)
 
 ### 3. Detection Patterns
 
@@ -219,13 +220,36 @@ grep -r "tenantId: new Types.ObjectId" app/api/ --include="*.ts" | grep -i patie
 
 ## Summary Checklist
 
-- [ ] Search for all `patientPopulateOptions` in `/app/api/`
-- [ ] Replace `tenantId:` with `tenantIds:` in patient populate match
-- [ ] Replace `{ $exists: false }` with `{ $exists: false }` and `null` with `{ $size: 0 }`
-- [ ] Test build passes
+- ✅ Search for all `patientPopulateOptions` in `/app/api/`
+- ✅ Replace `tenantId:` with `tenantIds:` in patient populate match
+- ✅ Replace `{ $exists: false }` with `{ $exists: false }` and `null` with `{ $size: 0 }`
+- ✅ Test build passes
 - [ ] Test patient data displays on frontend
 - [ ] Verify multi-tenant isolation still works
-- [ ] Document any special cases
+- ✅ Document all fixes
+
+## Latest Scan Results (February 12, 2026)
+
+**Total Files Fixed This Session:** 7
+1. `/app/api/memberships/route.ts` - GET endpoint (patient & referredBy)
+2. `/app/api/memberships/route.ts` - POST endpoint (patient & referredBy)
+3. `/app/api/memberships/[id]/route.ts` - GET endpoint (patient, referredBy & referrals)
+4. `/app/api/memberships/[id]/route.ts` - PUT endpoint (patient & referredBy)
+5. `/app/api/lab-results/route.ts` - GET endpoint
+6. `/app/api/documents/[id]/route.ts` - GET endpoint
+7. `/app/api/appointments/[id]/route.ts` - GET endpoint
+8. `/app/api/patients/appointments/route.ts` - POST endpoint
+
+**Verification:**
+- ✅ Build successful (npm run build completed)
+- ✅ No TypeScript errors
+- ✅ All patient populates now use `tenantIds` array field
+- ✅ All referredBy populates now use `tenantIds` array field
+- ✅ All referrals populates now use `tenantIds` array field
+
+**Remaining Work:**
+- Manual testing to verify patient data displays correctly
+- Multi-tenant isolation testing
 
 ## Why This Matters
 

@@ -52,9 +52,9 @@ export async function GET(request: NextRequest) {
       select: 'firstName lastName patientCode',
     };
     if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
     
     const referredByPopulateOptions: any = {
@@ -62,9 +62,9 @@ export async function GET(request: NextRequest) {
       select: 'firstName lastName patientCode',
     };
     if (tenantId) {
-      referredByPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      referredByPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      referredByPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      referredByPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
 
     const memberships = await Membership.find(query)
@@ -201,9 +201,9 @@ export async function POST(request: NextRequest) {
       select: 'firstName lastName patientCode',
     };
     if (tenantId) {
-      referredByPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      referredByPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      referredByPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      referredByPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
     
     await membership.populate(patientPopulateOptions);
