@@ -42,12 +42,18 @@ export async function POST(request: NextRequest) {
     const planName = plan.toLowerCase();
     const amount = PLAN_PRICES[planName];
 
+    // Use the request origin so PayPal redirects back to the correct host (including subdomain)
+    const origin = request.headers.get('origin') || request.headers.get('referer')?.replace(/\/[^/]*$/, '') || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    // Strip trailing slash
+    const appUrl = origin.replace(/\/$/, '');
+
     // Create PayPal order
     const { orderId, approvalUrl } = await createPayPalOrder(
       planName,
       amount,
       'USD',
-      tenantId
+      tenantId,
+      appUrl
     );
 
     return NextResponse.json({
