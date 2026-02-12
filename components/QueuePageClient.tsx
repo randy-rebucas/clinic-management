@@ -188,10 +188,10 @@ export default function QueuePageClient() {
   const showNotification = (message: string, type: 'error' | 'success') => {
     if (type === 'error') {
       setError(message);
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 6000);
     } else {
       setSuccess(message);
-      setTimeout(() => setSuccess(null), 3000);
+      setTimeout(() => setSuccess(null), 4000);
     }
   };
 
@@ -221,9 +221,9 @@ export default function QueuePageClient() {
       const data = await res.json();
       if (data.success) {
         showNotification(`Status updated to ${newStatus}`, 'success');
-        fetchQueue();
+        fetchQueue(true);
       } else {
-        showNotification('Error: ' + data.error, 'error');
+        showNotification(data.error || 'Failed to update queue status', 'error');
       }
     } catch (error) {
       console.error('Failed to update queue status:', error);
@@ -247,9 +247,9 @@ export default function QueuePageClient() {
       const data = await res.json();
       if (data.success) {
         showNotification('Patient checked in successfully', 'success');
-        fetchQueue();
+        fetchQueue(true);
       } else {
-        showNotification('Error: ' + data.error, 'error');
+        showNotification(data.error || 'Failed to check in patient', 'error');
       }
     } catch (error) {
       console.error('Failed to check in patient:', error);
@@ -301,18 +301,19 @@ export default function QueuePageClient() {
 
       const data = await res.json();
       if (data.success) {
-        showNotification('Patient added to queue successfully', 'success');
+        const queueNum = data.data?.queueNumber || 'Queue';
+        showNotification(`${selectedPatient.firstName} ${selectedPatient.lastName} added to queue (${queueNum})`, 'success');
         setShowAddForm(false);
         setFormData({ patientId: '', doctorId: '', queueType: 'walk-in', priority: 0 });
         setPatientSearch('');
         setSelectedPatient(null);
-        fetchQueue();
+        fetchQueue(true);
       } else {
-        showNotification('Error: ' + data.error, 'error');
+        showNotification(data.error || 'Failed to add patient to queue', 'error');
       }
     } catch (error) {
       console.error('Failed to add patient to queue:', error);
-      showNotification('Failed to add patient to queue', 'error');
+      showNotification('Network error: Failed to add patient to queue', 'error');
     }
   };
 
@@ -380,7 +381,7 @@ export default function QueuePageClient() {
     if (filterType && q.queueType !== filterType) return false;
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      const patientName = (q.patientName || `${q.patient?.firstName} ${q.patient?.lastName}`).toLowerCase();
+      const patientName = (q.patientName || `${q.patient?.firstName || ''} ${q.patient?.lastName || ''}`).toLowerCase();
       const queueNumber = q.queueNumber.toLowerCase();
       if (!patientName.includes(query) && !queueNumber.includes(query)) return false;
     }
@@ -394,7 +395,6 @@ export default function QueuePageClient() {
   });
 
   const activeQueue = filteredQueue.filter(q => q.status === 'waiting' || q.status === 'in-progress');
-
   return (
     <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
@@ -454,16 +454,21 @@ export default function QueuePageClient() {
                 <button
                   onClick={() => fetchQueue(true)}
                   disabled={refreshing}
-                  className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200"
+                  className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 min-w-[110px] justify-center"
                 >
                   {refreshing ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent" />
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent" />
+                      <span>Updating...</span>
+                    </>
                   ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span>Refresh</span>
+                    </>
                   )}
-                  {refreshing ? 'Refreshing...' : 'Refresh'}
                 </button>
                 <p className="text-xs text-gray-500 hidden sm:block font-medium">
                   Auto-refreshes every 30s
@@ -700,8 +705,10 @@ export default function QueuePageClient() {
                   >
                     <td className="px-5 py-4">
                       <div className="text-sm font-bold text-gray-900">{item.queueNumber}</div>
-                      {item.priority !== undefined && item.priority < 3 && (
-                        <span className="inline-block mt-1.5 px-2.5 py-1 bg-orange-100 text-orange-700 text-xs rounded-full font-semibold border border-orange-200">Priority</span>
+                      {item.priority !== undefined && item.priority > 0 && item.priority < 3 && (
+                        <span className="inline-block mt-1.5 px-2.5 py-1 bg-orange-100 text-orange-700 text-xs rounded-full font-semibold border border-orange-200">
+                          {item.priority === 1 ? 'High Priority' : item.priority === 2 ? 'Urgent' : 'Priority'}
+                        </span>
                       )}
                     </td>
                     <td className="px-5 py-4">
@@ -711,27 +718,42 @@ export default function QueuePageClient() {
                         getTypeColor(item.queueType) === 'green' ? 'bg-green-100 text-green-700 border-green-200' :
                         'bg-gray-100 text-gray-700 border-gray-200'
                       }`}>
-                        {item.queueType}
+                        {item.queueType === 'appointment' ? 'Appointment' : 
+                         item.queueType === 'walk-in' ? 'Walk-In' : 
+                         item.queueType === 'follow-up' ? 'Follow-Up' : item.queueType}
                       </span>
                     </td>
                     <td className="px-5 py-4">
-                      <Link href={`/patients/${item.patient._id}`}>
-                        <div className="text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline transition-colors">
-                          {item.patientName || `${item.patient?.firstName} ${item.patient?.lastName}`}
+                      {item.patient?._id ? (
+                        <Link href={`/visits/new?patientId=${item.patient._id}`} className="block">
+                          <div className="text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer">
+                            {item.patientName || `${item.patient?.firstName || ''} ${item.patient?.lastName || 'Unknown'}`.trim()}
+                          </div>
+                        </Link>
+                      ) : (
+                        <div className="text-sm font-bold text-gray-900">
+                          {item.patientName || 'Unknown Patient'}
                         </div>
-                      </Link>
+                      )}
                       <div className="text-xs text-gray-600 mt-1">
                         {new Date(item.queuedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </td>
                     <td className="px-5 py-4">
                       {item.doctor ? (
-                        <div className="text-sm text-gray-900 font-medium">Dr. {item.doctor.firstName} {item.doctor.lastName}</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          Dr. {item.doctor.firstName} {item.doctor.lastName}
+                        </div>
                       ) : (
-                        <div className="text-sm text-gray-500">Not assigned</div>
+                        <div className="text-sm text-gray-500 italic">No doctor assigned</div>
                       )}
                       {item.room && (
-                        <div className="text-xs text-blue-600 font-semibold mt-1">Room: {item.room.name || item.room.roomNumber}</div>
+                        <div className="text-xs text-blue-600 font-semibold mt-1 flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                          </svg>
+                          {item.room.name || item.room.roomNumber || 'Room assigned'}
+                        </div>
                       )}
                     </td>
                     <td className="px-5 py-4">
@@ -742,7 +764,9 @@ export default function QueuePageClient() {
                         getStatusColor(item.status) === 'red' ? 'bg-red-100 text-red-700 border-red-200' :
                         'bg-gray-100 text-gray-700 border-gray-200'
                       }`}>
-                        {item.status}
+                        {item.status === 'in-progress' ? 'In Progress' : 
+                         item.status === 'no-show' ? 'No-Show' : 
+                         item.status.charAt(0).toUpperCase() + item.status.slice(1)}
                       </span>
                     </td>
                     <td className="px-5 py-4">
@@ -767,7 +791,7 @@ export default function QueuePageClient() {
                     </td>
                     <td className="px-5 py-4 text-right">
                       <div className="flex gap-2 justify-end">
-                        {item.status === 'waiting' && (
+                        {item.status === 'waiting' && item.checkedIn && (
                           <>
                             <button
                               onClick={() => handleStatusUpdate(item._id, 'in-progress')}

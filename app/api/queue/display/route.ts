@@ -48,9 +48,9 @@ export async function GET(request: NextRequest) {
       select: 'firstName lastName',
     };
     if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: null }] };
     }
     
     const doctorPopulateOptions: any = {

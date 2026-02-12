@@ -89,7 +89,7 @@ export async function PUT(
         availabilityOverrides: body.availabilityOverrides,
       },
       { new: true, runValidators: true }
-    );
+    ).select('schedule availabilityOverrides status');
 
     if (!doctor) {
       return NextResponse.json(

@@ -20,31 +20,43 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
-    const { qrCode } = body;
+    const { qrCode, queueId: directQueueId } = body;
 
-    if (!qrCode) {
+    let queueId: string;
+    let patientId: string | undefined;
+    let checkInMethod: 'qr_code' | 'manual' = 'manual';
+
+    // Support both QR code check-in and manual check-in
+    if (qrCode) {
+      // QR code check-in
+      checkInMethod = 'qr_code';
+      
+      // Parse QR code data
+      let qrData;
+      try {
+        qrData = typeof qrCode === 'string' ? JSON.parse(qrCode) : qrCode;
+      } catch (error) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid QR code format' },
+          { status: 400 }
+        );
+      }
+
+      queueId = qrData.queueId;
+      patientId = qrData.patientId;
+    } else if (directQueueId) {
+      // Manual check-in
+      queueId = directQueueId;
+    } else {
       return NextResponse.json(
-        { success: false, error: 'QR code required' },
+        { success: false, error: 'Queue ID or QR code required' },
         { status: 400 }
       );
     }
-
-    // Parse QR code data
-    let qrData;
-    try {
-      qrData = typeof qrCode === 'string' ? JSON.parse(qrCode) : qrCode;
-    } catch (error) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid QR code format' },
-        { status: 400 }
-      );
-    }
-
-    const { queueId, patientId } = qrData;
 
     if (!queueId) {
       return NextResponse.json(
-        { success: false, error: 'Queue ID not found in QR code' },
+        { success: false, error: 'Queue ID not found' },
         { status: 400 }
       );
     }
@@ -67,9 +79,9 @@ export async function POST(request: NextRequest) {
       select: 'firstName lastName patientCode',
     };
     if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: null }] };
     }
     
     const doctorPopulateOptions: any = {
@@ -95,12 +107,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify patient matches
-    if (queue.patient._id.toString() !== patientId) {
-      return NextResponse.json(
-        { success: false, error: 'QR code does not match queue entry' },
-        { status: 403 }
-      );
+    // Verify patient matches (only for QR code check-in)
+    if (patientId) {
+      const queuePatientId = queue.patient?._id?.toString() || queue.patient?.toString();
+      if (queuePatientId !== patientId) {
+        return NextResponse.json(
+          { success: false, error: 'QR code does not match queue entry' },
+          { status: 403 }
+        );
+      }
     }
 
     // Check if already checked in
@@ -115,21 +130,21 @@ export async function POST(request: NextRequest) {
     // Update check-in status
     queue.checkedIn = true;
     queue.checkedInAt = new Date();
-    queue.checkInMethod = 'qr_code';
+    queue.checkInMethod = checkInMethod;
     await queue.save();
 
     // Log check-in
     await createAuditLog({
       userId: session?.userId || 'public',
-      userEmail: session?.email || 'qr_checkin',
+      userEmail: session?.email || (checkInMethod === 'qr_code' ? 'qr_checkin' : 'manual_checkin'),
       userRole: session?.role || 'public',
       tenantId: tenantId,
       action: 'update',
       resource: 'system',
       resourceId: queue._id,
-      description: `Patient checked in via QR code: ${queue.queueNumber}`,
+      description: `Patient checked in via ${checkInMethod === 'qr_code' ? 'QR code' : 'manual check-in'}: ${queue.queueNumber}`,
       metadata: {
-        checkInMethod: 'qr_code',
+        checkInMethod,
       },
     });
 

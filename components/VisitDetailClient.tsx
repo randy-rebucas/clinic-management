@@ -133,6 +133,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
         return;
       }
       const data = await res.json();
+      console.log('Fetched visit data:', data);
       if (data.success) {
         setVisit(data.data);
       } else {

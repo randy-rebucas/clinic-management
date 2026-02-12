@@ -45,7 +45,7 @@ export async function POST(
       query,
       { $push: { internalNotes: note } },
       { new: true }
-    );
+    ).populate('specializationId', 'name description category');
 
     if (!doctor) {
       return NextResponse.json(

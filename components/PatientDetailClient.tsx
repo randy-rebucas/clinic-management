@@ -374,7 +374,13 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     return age;
   };
 
-  const totalOutstanding = invoices.reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
+  // Only count outstanding balance from unpaid and partial invoices
+  const totalOutstanding = invoices.reduce((sum, inv) => {
+    if (inv.status === 'paid' || inv.status === 'refunded') {
+      return sum;
+    }
+    return sum + (inv.outstandingBalance || 0);
+  }, 0);
   const totalPaid = invoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
 
   return (
@@ -1168,7 +1174,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                               <p className="text-sm font-semibold text-gray-900">
                                 Total: {formatCurrency(invoice.total)}
                               </p>
-                              {invoice.outstandingBalance > 0 && (
+                              {invoice.outstandingBalance > 0 && invoice.status !== 'paid' && invoice.status !== 'refunded' && (
                                 <p className="text-sm text-red-600 font-semibold mt-1">
                                   Outstanding: {formatCurrency(invoice.outstandingBalance)}
                                 </p>

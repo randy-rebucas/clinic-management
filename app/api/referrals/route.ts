@@ -67,9 +67,9 @@ export async function GET(request: NextRequest) {
       select: 'firstName lastName patientCode',
     };
     if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
     
     const doctorPopulateOptions: any = {
@@ -140,10 +140,11 @@ export async function POST(request: NextRequest) {
     const tenantId = session.tenantId || tenantContext.tenantId || undefined;
     
     // Validate that the patient belongs to the tenant
+    // Patient model uses tenantIds (array) since patients can belong to multiple clinics
     if (body.patient && tenantId) {
       const patientQuery: any = {
         _id: body.patient,
-        tenantId: new Types.ObjectId(tenantId),
+        tenantIds: new Types.ObjectId(tenantId),
       };
       const patient = await Patient.findOne(patientQuery);
       if (!patient) {
@@ -241,9 +242,9 @@ export async function POST(request: NextRequest) {
       select: 'firstName lastName patientCode',
     };
     if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
     
     const doctorPopulateOptions: any = {

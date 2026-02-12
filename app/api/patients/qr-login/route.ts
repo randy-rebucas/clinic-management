@@ -66,19 +66,19 @@ export async function POST(request: NextRequest) {
     if (patientId) {
       const patientQuery: any = { _id: patientId };
       if (tenantId) {
-        patientQuery.tenantId = new Types.ObjectId(tenantId);
+        patientQuery.tenantIds = new Types.ObjectId(tenantId);
       } else {
-        // If no tenant, check for patients without tenantId (backward compatibility)
-        patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+        // If no tenant, check for patients without tenantIds (backward compatibility)
+        patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
       }
       patient = await Patient.findOne(patientQuery);
     } else if (patientCode) {
       const patientQuery: any = { patientCode };
       if (tenantId) {
-        patientQuery.tenantId = new Types.ObjectId(tenantId);
+        patientQuery.tenantIds = new Types.ObjectId(tenantId);
       } else {
-        // If no tenant, check for patients without tenantId (backward compatibility)
-        patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+        // If no tenant, check for patients without tenantIds (backward compatibility)
+        patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
       }
       patient = await Patient.findOne(patientQuery);
     }

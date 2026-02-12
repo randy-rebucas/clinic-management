@@ -39,6 +39,11 @@ import {
   AuditLog,
 } from '../models';
 import { DEFAULT_ROLE_PERMISSIONS } from '../lib/permissions';
+import {
+  MEDICAL_SPECIALIZATIONS,
+  categorizeSpecialization,
+  getSpecializationDescription,
+} from '../lib/constants/specializations';
 
 /**
  * Seed Data Script for Initial Tenant Setup
@@ -825,76 +830,26 @@ async function seedDataScript() {
     }
     console.log('✅ Services created\n');
 
-    // 9.5. Create Specializations
-    console.log('🏥 Creating specializations...');
-    const specializationsData = [
-      'General Practice / Family Medicine',
-      'Internal Medicine',
-      'Pediatrics',
-      'Obstetrics and Gynecology',
-      'Surgery',
-      'Orthopedic Surgery',
-      'Cardiology',
-      'Dermatology',
-      'Neurology',
-      'Psychiatry',
-      'Ophthalmology',
-      'ENT (Ear, Nose, and Throat)',
-      'Urology',
-      'Oncology',
-      'Radiology',
-      'Anesthesiology',
-      'Emergency Medicine',
-      'Pathology',
-      'Pulmonology',
-      'Gastroenterology',
-      'Endocrinology',
-      'Rheumatology',
-      'Nephrology',
-      'Hematology',
-      'Infectious Disease',
-      'Physical Medicine and Rehabilitation',
-      'Sports Medicine',
-      'Geriatrics',
-      'Allergy and Immunology',
-      'Critical Care Medicine',
-      'Plastic Surgery',
-      'Neurosurgery',
-      'Cardiothoracic Surgery',
-      'Vascular Surgery',
-      'Pediatric Surgery',
-      'Other',
-    ];
-
-    // Helper function to categorize specializations
-    const categorizeSpecialization = (name: string): string => {
-      if (name.includes('Surgery') || name === 'Plastic Surgery' || name === 'Neurosurgery' || name === 'Cardiothoracic Surgery' || name === 'Vascular Surgery' || name === 'Pediatric Surgery') {
-        return 'Surgery';
+    // 9.5. Create Specializations (Global - not tenant-scoped)
+    console.log('🏥 Creating specializations (global)...');
+    
+    for (const specName of MEDICAL_SPECIALIZATIONS) {
+      // Check if already exists globally
+      let specialization = await Specialization.findOne({ name: specName });
+      if (!specialization) {
+        specialization = await Specialization.create({
+          name: specName,
+          category: categorizeSpecialization(specName),
+          description: getSpecializationDescription(specName),
+          active: true,
+        });
+        console.log(`   ✓ Created specialization: ${specialization.name}`);
+      } else {
+        console.log(`   ~ Specialization already exists: ${specialization.name}`);
       }
-      if (name === 'Radiology' || name === 'Pathology' || name === 'Anesthesiology') {
-        return 'Diagnostic';
-      }
-      if (name === 'Emergency Medicine' || name === 'Critical Care Medicine') {
-        return 'Emergency';
-      }
-      if (name === 'General Practice / Family Medicine' || name === 'Internal Medicine' || name === 'Pediatrics' || name === 'Geriatrics') {
-        return 'Primary Care';
-      }
-      return 'Specialty';
-    };
-
-    for (const specName of specializationsData) {
-      const specialization = await Specialization.create({
-        name: specName,
-        tenantId,
-        category: categorizeSpecialization(specName),
-        description: `Medical specialization in ${specName}`,
-        active: true,
-      });
       seedData.specializations.push(specialization);
-      console.log(`   ✓ Created specialization: ${specialization.name}`);
     }
-    console.log('✅ Specializations created\n');
+    console.log('✅ Specializations ready\n');
 
     // 9.6. Create Doctor Profiles (auto-creates User via post-save hook)
     console.log('🩺 Creating doctor profiles...');

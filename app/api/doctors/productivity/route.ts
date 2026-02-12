@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');
 
     const doctors = await Doctor.find({ status: 'active' })
-      .populate('specializationId', 'name');
+      .populate('specializationId', 'name description category');
 
     // Import models for productivity calculation
     const Appointment = (await import('@/models/Appointment')).default;

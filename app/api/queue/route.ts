@@ -43,20 +43,23 @@ export async function GET(request: NextRequest) {
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId || undefined;
     
+    // Validate tenantId is present (required for multi-tenant support)
+    if (!tenantId) {
+      return NextResponse.json(
+        { success: false, error: 'Tenant context is required' },
+        { status: 400 }
+      );
+    }
+    
     const searchParams = request.nextUrl.searchParams;
     const doctorId = searchParams.get('doctorId');
     const roomId = searchParams.get('roomId');
     const status = searchParams.get('status') || 'waiting';
     const display = searchParams.get('display') === 'true'; // For TV display
 
-    const query: any = {};
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    const query: any = {
+      tenantId: new Types.ObjectId(tenantId)
+    };
     
     // Handle status filter - support comma-separated values
     if (status && status !== 'all') {
@@ -78,22 +81,14 @@ export async function GET(request: NextRequest) {
     const patientPopulateOptions: any = {
       path: 'patient',
       select: 'firstName lastName patientCode',
+      match: { tenantIds: new Types.ObjectId(tenantId) }
     };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
     
     const doctorPopulateOptions: any = {
       path: 'doctor',
       select: 'firstName lastName',
+      match: { tenantId: new Types.ObjectId(tenantId) }
     };
-    if (tenantId) {
-      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
 
     // Find queues - populate will work if models are registered
     const queues = await Queue.find(query)
@@ -159,16 +154,24 @@ export async function POST(request: NextRequest) {
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId || undefined;
     
-    // Validate that the patient belongs to the tenant
-    const Patient = (await import('@/models/Patient')).default;
-    const patientQuery: any = { _id: patientId };
-    if (tenantId) {
-      patientQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    // Validate tenantId is present (required for multi-tenant support)
+    if (!tenantId) {
+      return NextResponse.json(
+        { success: false, error: 'Tenant context is required' },
+        { status: 400 }
+      );
     }
+
+    // Always validate patient exists first
+    const PatientModel = (await import('@/models/Patient')).default;
+    const patientQuery: any = { 
+      _id: patientId,
+      tenantIds: new Types.ObjectId(tenantId) // Check if tenantId is in tenantIds array
+    };
     
-    const patient = await Patient.findOne(patientQuery).select('firstName lastName').lean();
+    const patient = await PatientModel.findOne(patientQuery).select('firstName lastName').lean();
+    console.log('Patient lookup result:', { patientId, tenantId, found: !!patient });
+    
     if (!patient || Array.isArray(patient) || !('firstName' in patient) || !('lastName' in patient)) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
@@ -177,6 +180,25 @@ export async function POST(request: NextRequest) {
     }
 
     const patientName = `${patient.firstName} ${patient.lastName}`;
+    
+    // Validate appointment if provided
+    if (appointmentId) {
+      const AppointmentModel = (await import('@/models/Appointment')).default;
+      const appointmentQuery: any = { 
+        _id: appointmentId,
+        tenantId: new Types.ObjectId(tenantId)
+      };
+      
+      const appointment = await AppointmentModel.findOne(appointmentQuery).lean();
+      console.log('Appointment lookup result:', { appointmentId, found: !!appointment });
+      
+      if (!appointment) {
+        return NextResponse.json(
+          { success: false, error: 'Appointment not found' },
+          { status: 404 }
+        );
+      }
+    }
 
     // Generate queue number before creating the queue (tenant-scoped)
     const finalQueueType = queueType || 'appointment';
@@ -191,14 +213,10 @@ export async function POST(request: NextRequest) {
     endOfDay.setHours(23, 59, 59, 999);
     
     const countQuery: any = {
+      tenantId: new Types.ObjectId(tenantId),
       queueType: finalQueueType,
       queuedAt: { $gte: startOfDay, $lte: endOfDay },
     };
-    if (tenantId) {
-      countQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      countQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
     
     const count = await Queue.countDocuments(countQuery);
     
@@ -223,12 +241,12 @@ export async function POST(request: NextRequest) {
       queueType: finalQueueType,
       priority: priority || 0,
       qrCode: qrCodeData,
+      checkedIn: false,
+      status: 'waiting',
     };
     
-    // Ensure queue is created with tenantId
-    if (tenantId && !queueData.tenantId) {
-      queueData.tenantId = new Types.ObjectId(tenantId);
-    }
+    // Always set tenantId for multi-tenant support
+    queueData.tenantId = new Types.ObjectId(tenantId);
 
     const queue = await Queue.create(queueData);
 
@@ -245,22 +263,14 @@ export async function POST(request: NextRequest) {
     const patientPopulateOptions: any = {
       path: 'patient',
       select: 'firstName lastName patientCode',
+      match: { tenantIds: new Types.ObjectId(tenantId) }
     };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
     
     const doctorPopulateOptions: any = {
       path: 'doctor',
       select: 'firstName lastName',
+      match: { tenantId: new Types.ObjectId(tenantId) }
     };
-    if (tenantId) {
-      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
     
     await queue.populate(patientPopulateOptions);
     await queue.populate(doctorPopulateOptions);

@@ -27,7 +27,8 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    const doctor = await Doctor.findById(id);
+    const doctor = await Doctor.findById(id)
+      .populate('specializationId', 'name description category');
     if (!doctor) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },
@@ -79,27 +80,16 @@ export async function PUT(
         );
       }
       
-      // Find or create specialization for this tenant
-      let specialization;
-      const specializationQuery: any = { name: specializationName };
-      if (tenantId) {
-        specializationQuery.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        specializationQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      specialization = await Specialization.findOne(specializationQuery);
+      // Find or create specialization globally (not tenant-scoped)
+      let specialization = await Specialization.findOne({ name: specializationName });
       
       if (!specialization) {
-        // Create new specialization if it doesn't exist
-        const newSpecializationData: any = {
+        // Create new specialization if it doesn't exist (globally)
+        specialization = await Specialization.create({
           name: specializationName,
           active: true,
-        };
-        if (tenantId) {
-          newSpecializationData.tenantId = new Types.ObjectId(tenantId);
-        }
-        specialization = await Specialization.create(newSpecializationData);
+          category: 'Specialty', // Default category for custom specializations
+        });
       }
       
       // Replace specialization string with specializationId
@@ -110,7 +100,7 @@ export async function PUT(
     const doctor = await Doctor.findByIdAndUpdate(id, body, {
       new: true,
       runValidators: true,
-    });
+    }).populate('specializationId', 'name description category');
     if (!doctor) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },

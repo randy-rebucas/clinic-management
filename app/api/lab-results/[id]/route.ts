@@ -44,9 +44,9 @@ export async function GET(
       select: 'firstName lastName patientCode email phone dateOfBirth',
     };
     if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
 
     const labResult = await LabResult.findOne(query)
@@ -142,9 +142,9 @@ export async function PUT(
       select: 'firstName lastName patientCode email phone',
     };
     if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
     
     await labResult.populate(patientPopulateOptions);

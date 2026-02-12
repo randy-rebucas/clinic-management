@@ -101,6 +101,8 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [newStatus, setNewStatus] = useState<string>('');
   const router = useRouter();
   const currency = useSetting('billingSettings.currency', 'PHP');
 
@@ -164,6 +166,12 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
     fetchInvoice();
   }, [invoiceId]);
 
+  useEffect(() => {
+    if (invoice && !newStatus) {
+      setNewStatus(invoice.status);
+    }
+  }, [invoice]);
+
   const fetchInvoice = async () => {
     try {
       setLoading(true);
@@ -208,6 +216,36 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
 
   const handlePrintReceipt = () => {
     window.open(`/api/invoices/${invoiceId}/receipt`, '_blank');
+  };
+
+  const handleUpdateStatus = async () => {
+    if (!newStatus || newStatus === invoice?.status) return;
+
+    try {
+      setUpdatingStatus(true);
+      const res = await fetch(`/api/invoices/${invoiceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to update status');
+      }
+
+      const data = await res.json();
+      if (data.success && data.data) {
+        setInvoice(data.data);
+        setNewStatus(data.data.status);
+        alert('Invoice status updated successfully');
+      }
+    } catch (error: any) {
+      console.error('Failed to update status:', error);
+      alert(error.message || 'Failed to update invoice status');
+    } finally {
+      setUpdatingStatus(false);
+    }
   };
 
   if (loading) {
@@ -442,6 +480,93 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
                         <span className="font-bold text-red-600">{formatCurrency(invoice.outstandingBalance)}</span>
                       </div>
                     )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Status Management */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+            <div className="p-5 border-b border-gray-200 bg-gray-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-500 rounded-lg">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h2 className="text-lg font-bold text-gray-900">Status Management</h2>
+              </div>
+            </div>
+            <div className="p-5">
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Update Invoice Status
+                  </label>
+                  <p className="text-xs text-gray-600 mb-3">
+                    Change the payment status of this invoice. This helps track outstanding balances and completed payments.
+                  </p>
+                  <select
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value)}
+                    className="w-full sm:w-64 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                  >
+                    <option value="unpaid">Unpaid</option>
+                    <option value="partial">Partially Paid</option>
+                    <option value="paid">Paid</option>
+                    <option value="refunded">Refunded</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="block text-sm font-semibold text-gray-700 opacity-0 pointer-events-none sm:block hidden">
+                    Action
+                  </label>
+                  <button
+                    onClick={handleUpdateStatus}
+                    disabled={updatingStatus || newStatus === invoice.status}
+                    className={`px-5 py-2.5 rounded-lg transition-all flex items-center gap-2 text-sm font-semibold shadow-md whitespace-nowrap ${
+                      updatingStatus || newStatus === invoice.status
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700'
+                    }`}
+                  >
+                    {updatingStatus ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        Updating...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Update Status
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+              
+              {/* Status Guide */}
+              <div className="mt-5 pt-5 border-t border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Status Guide:</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3">
+                    <span className="px-2 py-1 rounded-full bg-red-100 text-red-800 border border-red-200 font-semibold">UNPAID</span>
+                    <span className="text-gray-600">No payment received yet</span>
+                  </div>
+                  <div className="flex items-start gap-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <span className="px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200 font-semibold">PARTIAL</span>
+                    <span className="text-gray-600">Some payment received, balance remains</span>
+                  </div>
+                  <div className="flex items-start gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
+                    <span className="px-2 py-1 rounded-full bg-green-100 text-green-800 border border-green-200 font-semibold">PAID</span>
+                    <span className="text-gray-600">Full payment received</span>
+                  </div>
+                  <div className="flex items-start gap-2 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-800 border border-gray-200 font-semibold">REFUNDED</span>
+                    <span className="text-gray-600">Payment returned to patient</span>
                   </div>
                 </div>
               </div>
