@@ -26,13 +26,24 @@ Welcome to the comprehensive documentation for the Clinic Management System. Thi
 - [Billing and Payments](./BILLING_PAYMENTS.md) - Invoice generation and payment processing
 - [Inventory Management](./INVENTORY_MANAGEMENT.md) - Medicine and supplies tracking
 
+### Workflows & Quick References
+- [**Appointment & Queue Workflow**](./APPOINTMENT_QUEUE_WORKFLOW.md) - Complete workflow from scheduling to completion
+- [**Appointment & Queue Diagrams**](./APPOINTMENT_QUEUE_DIAGRAMS.md) - Visual flowcharts and system architecture
+- [**Appointment & Queue Implementation Checklist**](./APPOINTMENT_QUEUE_IMPLEMENTATION_CHECKLIST.md) - Developer implementation verification
+- [**Queue Management Workflow**](./QUEUE_WORKFLOW.md) - Detailed queue system operations and processes
+- [**Queue Quick Process Flow**](./QUEUE_QUICK_PROCESS.md) - Visual quick reference for queue operations
+- [Appointment & Queue Quick Reference](./APPOINTMENT_QUEUE_QUICK_REFERENCE.md) - Staff quick reference guide
+- [Medical Representative Onboarding](./MEDICAL_REP_ONBOARDING.md) - Med rep workflow and portal access
+- [Medical Representative Portal Guide](./MEDICAL_REP_PORTAL.md) - Med rep portal features
+- [Complete Patient Journey](./USER_JOURNEY_COMPLETE_PATIENT_FLOW.md) - End-to-end patient flow
+
 ### System Configuration
 - [Settings Configuration](./SETTINGS_CONFIGURATION.md) - System-wide and tenant settings
 - [Monitoring and Rate Limiting](./MONITORING_AND_RATE_LIMITING.md) - Performance and security
 
 ### User Guides
-- [Complete Patient Journey](./USER_JOURNEY_COMPLETE_PATIENT_FLOW.md) - End-to-end patient flow
 - [Staff Login Guide](../STAFF_LOGIN_GUIDE.md) - Login instructions for staff
+- [Specializations Reference](./SPECIALIZATIONS_SEED.md) - Medical specializations available
 
 ---
 

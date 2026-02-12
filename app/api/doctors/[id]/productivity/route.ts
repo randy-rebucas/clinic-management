@@ -26,7 +26,7 @@ export async function GET(
     const endDate = searchParams.get('endDate');
 
     const doctor = await Doctor.findById(id)
-      .populate('specializationId', 'name');
+      .populate('specializationId', 'name description category');
     if (!doctor) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },

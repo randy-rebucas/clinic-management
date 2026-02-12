@@ -40,6 +40,11 @@ export interface IQueue extends Document {
   checkInMethod?: 'manual' | 'qr_code' | 'kiosk';
   qrCode?: string; // QR code data for check-in
   
+  // Consultation tracking
+  consultationDuration?: number; // Minutes (calculated from startedAt to completedAt)
+  completionNotes?: string; // Notes when completing consultation
+  nextAction?: 'billing' | 'pharmacy' | 'lab' | 'checkout'; // What happens after consultation
+  
   // Notes
   notes?: string;
   
@@ -87,6 +92,12 @@ const QueueSchema: Schema = new Schema(
       enum: ['manual', 'qr_code', 'kiosk'],
     },
     qrCode: { type: String },
+    consultationDuration: { type: Number }, // Minutes
+    completionNotes: { type: String },
+    nextAction: {
+      type: String,
+      enum: ['billing', 'pharmacy', 'lab', 'checkout'],
+    },
     notes: { type: String },
   },
   { timestamps: true }
@@ -116,6 +127,18 @@ QueueSchema.pre('validate', async function (next) {
     }) || 0;
     
     this.queueNumber = `${prefix}${dateStr}-${String(count + 1).padStart(3, '0')}`;
+  }
+  next();
+});
+
+// Pre-save hook to calculate consultation duration
+QueueSchema.pre('save', function (next) {
+  if (this.status === 'completed' && this.startedAt && this.completedAt) {
+    // Type assertion for Date fields in hook context
+    const startTime = new Date(this.startedAt as Date);
+    const endTime = new Date(this.completedAt as Date);
+    const durationMs = endTime.getTime() - startTime.getTime();
+    this.consultationDuration = Math.round(durationMs / (1000 * 60)); // Convert to minutes
   }
   next();
 });

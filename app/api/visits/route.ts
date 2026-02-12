@@ -66,9 +66,9 @@ export async function GET(request: NextRequest) {
       select: 'firstName lastName patientCode',
     };
     if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
 
     const visits = await Visit.find(query)
@@ -126,10 +126,11 @@ export async function POST(request: NextRequest) {
     }
     
     // Validate that the patient belongs to the tenant
+    // Patient model uses tenantIds (array) since patients can belong to multiple clinics
     if (body.patient && tenantId) {
       const patientQuery: any = {
         _id: body.patient,
-        tenantId: new Types.ObjectId(tenantId),
+        tenantIds: new Types.ObjectId(tenantId),
       };
       const patient = await Patient.findOne(patientQuery);
       if (!patient) {
@@ -196,13 +197,31 @@ export async function POST(request: NextRequest) {
       select: 'firstName lastName patientCode',
     };
     if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
     
     await visit.populate(patientPopulateOptions);
     await visit.populate('provider', 'name email');
+    
+    // Auto-create prescription if medications are present in treatment plan
+    if (body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {
+      // Import and trigger prescription creation (async, don't wait)
+      import('@/lib/automations/prescription-from-visit').then(({ createPrescriptionFromVisit }) => {
+        createPrescriptionFromVisit({
+          visitId: visit._id,
+          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          createdBy: session.userId,
+          shouldSendNotification: true,
+        }).catch((error) => {
+          console.error('Error auto-creating prescription from visit:', error);
+          // Don't fail the visit creation if prescription creation fails
+        });
+      }).catch((error) => {
+        console.error('Error loading prescription automation module:', error);
+      });
+    }
     
     return NextResponse.json({ success: true, data: visit }, { status: 201 });
   } catch (error: any) {

@@ -38,7 +38,7 @@ export async function GET(
     }
 
     const doctor = await Doctor.findOne(doctorQuery)
-      .populate('specializationId', 'name');
+      .populate('specializationId', 'name description category');
     if (!doctor) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },

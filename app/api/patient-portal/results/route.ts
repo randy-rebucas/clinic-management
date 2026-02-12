@@ -47,18 +47,18 @@ export async function GET(request: NextRequest) {
       // Build query with tenant filter
       const patientQuery: any = { _id: patientId };
       if (tenantId) {
-        patientQuery.tenantId = new Types.ObjectId(tenantId);
+        patientQuery.tenantIds = new Types.ObjectId(tenantId);
       } else {
-        patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+        patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
       }
       patient = await Patient.findOne(patientQuery);
     } else {
       // Build query with tenant filter
       const patientQuery: any = { email: user.email };
       if (tenantId) {
-        patientQuery.tenantId = new Types.ObjectId(tenantId);
+        patientQuery.tenantIds = new Types.ObjectId(tenantId);
       } else {
-        patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+        patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
       }
       patient = await Patient.findOne(patientQuery);
     }

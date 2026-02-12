@@ -11,7 +11,8 @@ interface Doctor {
   lastName: string;
   email: string;
   phone: string;
-  specialization: string;
+  specialization?: string;
+  specializationId?: { _id: string; name: string };
   licenseNumber: string;
   title?: string;
   department?: string;
@@ -81,6 +82,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
         return;
       }
       const data = await res.json();
+      console.log('Fetched doctor:', data);
       if (data.success) {
         setDoctor(data.data);
       }
@@ -247,6 +249,10 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
   }
 
   const fullName = `${doctor.title || 'Dr.'} ${doctor.firstName} ${doctor.lastName}`;
+  console.log('Doctor specializationId:', doctor.specializationId?.name);
+  const specializationName = (typeof doctor.specializationId === 'object' && doctor.specializationId?.name)
+    ? doctor.specializationId.name
+    : doctor.specialization || '';
   const metrics = doctor.performanceMetrics;
   const total = metrics?.totalAppointments || 0;
   const completed = metrics?.completedAppointments || 0;
@@ -299,7 +305,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                   <div className="flex-1 min-w-0">
                     <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-1">{fullName}</h1>
                     <div className="flex flex-wrap items-center gap-3">
-                      <p className="text-base text-gray-600">{doctor.specialization}</p>
+                      <p className="text-base text-gray-600">{doctor.specializationId?.name}</p>
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
                         doctor.status === 'active'
                           ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
@@ -311,6 +317,15 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                       </span>
                     </div>
                   </div>
+                  <Link
+                    href={`/doctors/${doctorId}/edit`}
+                    className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-flex items-center gap-2 flex-shrink-0"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Edit
+                  </Link>
                 </div>
               </div>
             </div>
@@ -374,7 +389,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                         </div>
                         <div>
                           <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Specialization</p>
-                          <p className="text-sm font-medium text-gray-900">{doctor.specialization}</p>
+                          <p className="text-sm font-medium text-gray-900">{specializationName}</p>
                         </div>
                         {doctor.department && doctor.department !== 'No Department' && (
                           <div>

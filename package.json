@@ -19,6 +19,7 @@
     "install:reset": "tsx scripts/install.ts --reset",
     "setup:admin": "tsx scripts/create-admin.ts",
     "seed": "tsx scripts/seed-data.ts",
+    "seed:specializations": "tsx scripts/seed-specializations.ts",
     "tenant:onboard": "tsx scripts/onboard-tenant.ts",
     "tenant:delete": "tsx scripts/delete-tenant.ts",
     "db:reset": "tsx scripts/reset-db.ts",

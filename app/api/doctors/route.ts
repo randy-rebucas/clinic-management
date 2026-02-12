@@ -40,6 +40,7 @@ export async function GET() {
     const doctors = await Doctor.find(doctorQuery)
       .populate('specializationId', 'name description category')
       .sort({ createdAt: -1 });
+
     return NextResponse.json({ success: true, data: doctors });
   } catch (error: any) {
     console.error('Error fetching doctors:', error);
@@ -106,27 +107,16 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      // Find or create specialization for this tenant
-      let specialization;
-      const specializationQuery: any = { name: specializationName };
-      if (tenantId) {
-        specializationQuery.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        specializationQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      specialization = await Specialization.findOne(specializationQuery);
+      // Find or create specialization globally (not tenant-scoped)
+      let specialization = await Specialization.findOne({ name: specializationName });
       
       if (!specialization) {
-        // Create new specialization if it doesn't exist
-        const newSpecializationData: any = {
+        // Create new specialization if it doesn't exist (globally)
+        specialization = await Specialization.create({
           name: specializationName,
           active: true,
-        };
-        if (tenantId) {
-          newSpecializationData.tenantId = new Types.ObjectId(tenantId);
-        }
-        specialization = await Specialization.create(newSpecializationData);
+          category: 'Specialty', // Default category for custom specializations
+        });
       }
       
       // Replace specialization string with specializationId
@@ -143,6 +133,8 @@ export async function POST(request: NextRequest) {
     }
     
     const doctor = await Doctor.create(body);
+    // Populate the specializationId after creation
+    await doctor.populate('specializationId', 'name description category');
     return NextResponse.json({ success: true, data: doctor }, { status: 201 });
   } catch (error: any) {
     if (error.name === 'ValidationError') {

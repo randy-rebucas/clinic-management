@@ -71,9 +71,9 @@ export async function GET(
       select: 'firstName lastName patientCode email phone',
     };
     if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
 
     const visit = await Visit.findOne(query)
@@ -192,13 +192,31 @@ export async function PUT(
       select: 'firstName lastName patientCode email phone',
     };
     if (tenantId) {
-      patientPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
+      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
     } else {
-      patientPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
     
     await visit.populate(patientPopulateOptions);
     await visit.populate('provider', 'name email');
+    
+    // Auto-create or update prescription if medications are present in treatment plan
+    if (body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {
+      // Import and trigger prescription creation/update (async, don't wait)
+      import('@/lib/automations/prescription-from-visit').then(({ updatePrescriptionFromVisit }) => {
+        updatePrescriptionFromVisit({
+          visitId: visit._id,
+          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          createdBy: session.userId,
+          shouldSendNotification: false, // Don't send notification on update, only on creation
+        }).catch((error) => {
+          console.error('Error auto-updating prescription from visit:', error);
+          // Don't fail the visit update if prescription update fails
+        });
+      }).catch((error) => {
+        console.error('Error loading prescription automation module:', error);
+      });
+    }
     
     // Check if visit status changed to 'closed' - trigger automatic invoice generation
     if (statusChangedToClosed) {

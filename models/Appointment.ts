@@ -27,6 +27,7 @@ export interface IAppointment extends Document {
   isWalkIn?: boolean;
   queueNumber?: number;
   estimatedWaitTime?: number; // in minutes
+  queueId?: Types.ObjectId; // Reference to Queue entry
   
   // Room/Location support
   room?: string; // Room number or name (e.g., "Room 101", "Consultation Room A")
@@ -119,6 +120,10 @@ const AppointmentSchema: Schema = new Schema(
     },
     estimatedWaitTime: {
       type: Number, // in minutes
+    },
+    queueId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Queue',
     },
     
     // Room/Location support

@@ -136,9 +136,9 @@ export async function POST(request: NextRequest) {
     // Find or create patient (tenant-scoped)
     const patientQuery: any = { email: patientEmail };
     if (tenantId) {
-      patientQuery.tenantId = new Types.ObjectId(tenantId);
+      patientQuery.tenantIds = new Types.ObjectId(tenantId);
     } else {
-      patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
     }
 
     let patient = await Patient.findOne(patientQuery);
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
         patientCode: `PAT-${Date.now()}`,
       };
       if (tenantId) {
-        patientData.tenantId = new Types.ObjectId(tenantId);
+        patientData.tenantIds = [new Types.ObjectId(tenantId)];
       }
       patient = await Patient.create(patientData);
     } else {

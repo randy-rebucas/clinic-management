@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Modal } from './ui/Modal';
+import { MEDICAL_SPECIALIZATIONS } from '@/lib/constants/specializations';
 
 interface Doctor {
   _id: string;
@@ -11,7 +12,13 @@ interface Doctor {
   lastName: string;
   email: string;
   phone: string;
-  specialization: string;
+  specialization?: string; // Fallback for legacy data
+  specializationId?: {
+    _id: string;
+    name: string;
+    description?: string;
+    category?: string;
+  };
   licenseNumber: string;
   title?: string;
   department?: string;
@@ -31,45 +38,6 @@ interface Doctor {
   };
 }
 
-const MEDICAL_SPECIALIZATIONS = [
-  'General Practice / Family Medicine',
-  'Internal Medicine',
-  'Pediatrics',
-  'Obstetrics and Gynecology',
-  'Surgery',
-  'Orthopedic Surgery',
-  'Cardiology',
-  'Dermatology',
-  'Neurology',
-  'Psychiatry',
-  'Ophthalmology',
-  'ENT (Ear, Nose, and Throat)',
-  'Urology',
-  'Oncology',
-  'Radiology',
-  'Anesthesiology',
-  'Emergency Medicine',
-  'Pathology',
-  'Pulmonology',
-  'Gastroenterology',
-  'Endocrinology',
-  'Rheumatology',
-  'Nephrology',
-  'Hematology',
-  'Infectious Disease',
-  'Physical Medicine and Rehabilitation',
-  'Sports Medicine',
-  'Geriatrics',
-  'Allergy and Immunology',
-  'Critical Care Medicine',
-  'Plastic Surgery',
-  'Neurosurgery',
-  'Cardiothoracic Surgery',
-  'Vascular Surgery',
-  'Pediatric Surgery',
-  'Other',
-];
-
 export default function DoctorsPageClient() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +50,7 @@ export default function DoctorsPageClient() {
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [showCustomSpecialization, setShowCustomSpecialization] = useState(false);
+  const [specializations, setSpecializations] = useState<string[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; doctorId: string | null; doctorName: string }>({
     show: false,
     doctorId: null,
@@ -104,7 +73,29 @@ export default function DoctorsPageClient() {
   useEffect(() => {
     fetchDoctors();
     fetchCurrentUser();
+    fetchSpecializations();
   }, []);
+  
+  const fetchSpecializations = async () => {
+    try {
+      const res = await fetch('/api/specializations');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.data) {
+          // Extract names from specialization objects, fallback to hardcoded list
+          const specNames = data.data.map((s: any) => s.name);
+          setSpecializations(specNames.length > 0 ? specNames : MEDICAL_SPECIALIZATIONS);
+        }
+      } else {
+        // Fallback to hardcoded list if API fails
+        setSpecializations([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch specializations:', err);
+      // Fallback to hardcoded list
+      setSpecializations([]);
+    }
+  };
 
   const fetchCurrentUser = async () => {
     try {
@@ -170,6 +161,7 @@ export default function DoctorsPageClient() {
       let data;
       if (contentType && contentType.includes('application/json')) {
         data = await res.json();
+        console.log('API response:', data);
       } else {
         const text = await res.text();
         console.error('API returned non-JSON response:', text.substring(0, 500));
@@ -337,7 +329,10 @@ export default function DoctorsPageClient() {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       const name = `${doctor.firstName} ${doctor.lastName}`.toLowerCase();
-      const specialization = (doctor.specialization || '').toLowerCase();
+      // Handle both specializationId (populated) and specialization (legacy)
+      const specialization = (typeof doctor.specializationId === 'object' && doctor.specializationId?.name
+        ? doctor.specializationId.name
+        : doctor.specialization || '').toLowerCase();
       const email = (doctor.email || '').toLowerCase();
       if (!name.includes(query) && !specialization.includes(query) && !email.includes(query)) return false;
     }
@@ -592,7 +587,7 @@ export default function DoctorsPageClient() {
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white transition-all"
                   >
                     <option value="">Select Specialization</option>
-                    {MEDICAL_SPECIALIZATIONS.map((spec) => (
+                    {specializations.map((spec) => (
                       <option key={spec} value={spec}>
                         {spec}
                       </option>
@@ -771,7 +766,11 @@ export default function DoctorsPageClient() {
                               {doctor.status || 'active'}
                             </span>
                           </div>
-                          <p className="text-sm font-medium text-gray-700 mb-1">{doctor.specialization}</p>
+                          <p className="text-sm font-medium text-gray-700 mb-1">
+                            {typeof doctor.specializationId === 'object' && doctor.specializationId?.name
+                              ? doctor.specializationId.name
+                              : doctor.specialization || 'Not specified'}
+                          </p>
                           {doctor.department && doctor.department !== 'No Department' && (
                             <p className="text-xs text-gray-600 mb-2">{doctor.department}</p>
                           )}
@@ -821,6 +820,17 @@ export default function DoctorsPageClient() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                           </svg>
                         </Link>
+                        {/* // edit button */}
+                        <Link
+                          href={`/doctors/${doctor._id}/edit`}
+                          className="px-4 py-2 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 transition-colors text-sm font-semibold inline-flex items-center gap-1.5"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          <span>Edit</span>
+                        </Link>
+                        {/* // delete button */}
                         {canDelete && (
                           <button
                             onClick={() => setDeleteConfirm({
@@ -885,7 +895,11 @@ export default function DoctorsPageClient() {
                         <p className="text-sm font-bold text-gray-900">
                           {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
                         </p>
-                        <p className="text-xs text-gray-600 mt-0.5">{doctor.specialization}</p>
+                        <p className="text-xs text-gray-600 mt-0.5">
+                          {typeof doctor.specializationId === 'object' && doctor.specializationId?.name
+                            ? doctor.specializationId.name
+                            : doctor.specialization || 'Not specified'}
+                        </p>
                       </td>
                       {[0, 1, 2, 3, 4, 5, 6].map((day) => {
                         const schedule = doctor.schedule?.find((s) => s.dayOfWeek === day);
@@ -951,7 +965,11 @@ export default function DoctorsPageClient() {
                         <h3 className="text-lg font-bold text-gray-900">
                           {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
                         </h3>
-                        <p className="text-sm text-gray-600">{doctor.specialization}</p>
+                        <p className="text-sm text-gray-600">
+                          {typeof doctor.specializationId === 'object' && doctor.specializationId?.name
+                            ? doctor.specializationId.name
+                            : doctor.specialization || 'Not specified'}
+                        </p>
                       </div>
                     </div>
                     <div className="flex gap-2">

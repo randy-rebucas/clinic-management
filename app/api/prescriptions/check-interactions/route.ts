@@ -36,9 +36,9 @@ export async function POST(request: NextRequest) {
       // Get patient's current active prescriptions (tenant-scoped)
       const patientQuery: any = { _id: patientId };
       if (tenantId) {
-        patientQuery.tenantId = new Types.ObjectId(tenantId);
+        patientQuery.tenantIds = new Types.ObjectId(tenantId);
       } else {
-        patientQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+        patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
       }
       
       const patient = await Patient.findOne(patientQuery);
