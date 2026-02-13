@@ -231,6 +231,31 @@ export async function PUT(
       );
     }
 
+    // Trigger appointment status update automation if status changed
+    const oldStatus = currentQueue.status;
+    const newStatus = body.status;
+    const skipAutomation = body._skipAutomation === true;
+    
+    if (oldStatus !== newStatus && newStatus && !skipAutomation) {
+      // Import and trigger appointment update automation (async, don't wait)
+      import('@/lib/automations/appointment-from-queue').then(({ updateAppointmentFromQueue }) => {
+        updateAppointmentFromQueue({
+          queueId: currentQueue._id,
+          patientId: currentQueue.patient,
+          appointmentId: currentQueue.appointment,
+          newQueueStatus: newStatus,
+          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+        }).catch((error) => {
+          console.error('[Queue API] Error in appointment automation:', error);
+          // Don't fail queue update if appointment update fails
+        });
+      }).catch((error) => {
+        console.error('[Queue API] Error loading appointment automation module:', error);
+      });
+    } else if (skipAutomation) {
+      console.log('[Queue API] ⏭️ Skipping appointment automation (triggered by appointment update)');
+    }
+
     return NextResponse.json({ success: true, data: updatedQueue });
   } catch (error: any) {
     console.error('Error updating queue entry:', error);
