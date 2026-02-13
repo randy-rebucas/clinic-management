@@ -32,6 +32,16 @@ interface Service {
   unit?: string;
 }
 
+interface Doctor {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  specializationId?: {
+    name: string;
+  };
+}
+
 interface InvoiceItem {
   serviceId?: string;
   code?: string;
@@ -85,6 +95,10 @@ export default function InvoiceForm({
     patient: initialData?.patient || '',
     visit: initialData?.visit || '',
     items: [] as InvoiceItem[],
+    professionalFee: 0,
+    professionalFeeType: '' as 'consultation' | 'procedure' | 'reading' | 'other' | '',
+    professionalFeeDoctor: '',
+    professionalFeeNotes: '',
     discounts: [] as Discount[],
     tax: defaultTaxRate,
     insurance: {
@@ -105,6 +119,8 @@ export default function InvoiceForm({
   const [serviceSearch, setServiceSearch] = useState('');
   const [showServiceSearch, setShowServiceSearch] = useState(false);
   const [filteredServices, setFilteredServices] = useState<Service[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [loadingDoctors, setLoadingDoctors] = useState(false);
 
   useEffect(() => {
     if (formData.patient) {
@@ -117,6 +133,25 @@ export default function InvoiceForm({
       }, 0);
     }
   }, [formData.patient, patients]);
+
+  // Fetch doctors for professional fee selection
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      setLoadingDoctors(true);
+      try {
+        const res = await fetch('/api/doctors');
+        const data = await res.json();
+        if (data.success) {
+          setDoctors(data.data);
+        }
+      } catch (error) {
+        console.error('Error fetching doctors:', error);
+      } finally {
+        setLoadingDoctors(false);
+      }
+    };
+    fetchDoctors();
+  }, []);
 
   useEffect(() => {
     if (serviceSearch.length >= 2) {
@@ -153,15 +188,16 @@ export default function InvoiceForm({
 
   const calculateTotals = () => {
     const subtotal = formData.items.reduce((sum, item) => sum + item.total, 0);
+    const professionalFee = formData.professionalFee || 0;
     const discountTotal = formData.discounts.reduce((sum, disc) => sum + disc.amount, 0);
     const afterDiscount = subtotal - discountTotal;
     // Calculate tax as percentage of after-discount amount if tax rate is set, otherwise use manual tax
     const taxAmount = defaultTaxRate > 0 
       ? (afterDiscount * defaultTaxRate / 100)
       : (formData.tax || 0);
-    const total = afterDiscount + taxAmount;
+    const total = afterDiscount + professionalFee + taxAmount;
 
-    return { subtotal, discountTotal, afterDiscount, tax: taxAmount, total };
+    return { subtotal, professionalFee, discountTotal, afterDiscount, tax: taxAmount, total };
   };
   
   // Update formData.tax when defaultTaxRate changes (for display purposes)
@@ -180,7 +216,7 @@ export default function InvoiceForm({
     }
   }, [defaultTaxRate, formData.items, formData.discounts]);
 
-  const { subtotal, discountTotal, afterDiscount, tax, total } = calculateTotals();
+  const { subtotal, professionalFee, discountTotal, afterDiscount, tax, total } = calculateTotals();
 
   const addItem = (service?: Service) => {
     const newItem: InvoiceItem = {
@@ -280,6 +316,9 @@ export default function InvoiceForm({
         unitPrice: item.unitPrice,
         total: item.total,
       })),
+      professionalFee: formData.professionalFee || undefined,
+      professionalFeeType: formData.professionalFeeType || undefined,
+      professionalFeeNotes: formData.professionalFeeNotes || undefined,
       discounts: formData.discounts.length > 0 ? formData.discounts : undefined,
       tax: formData.tax || 0,
       insurance: formData.insurance.provider
@@ -624,6 +663,83 @@ export default function InvoiceForm({
             )}
           </div>
 
+          {/* Professional Fee */}
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-purple-500 rounded-lg">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Professional Fee (PF)</h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                  Amount
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formData.professionalFee || ''}
+                  onChange={(e) => setFormData({ ...formData, professionalFee: parseFloat(e.target.value) || 0 })}
+                  placeholder="0.00"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm"
+                />
+                <p className="text-xs text-gray-600 mt-1">Doctor&apos;s professional fee separate from service charges</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                  Type
+                </label>
+                <select
+                  value={formData.professionalFeeType || ''}
+                  onChange={(e) => setFormData({ ...formData, professionalFeeType: e.target.value as any })}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                >
+                  <option value="">Select type...</option>
+                  <option value="consultation">Consultation</option>
+                  <option value="procedure">Procedure/Surgery</option>
+                  <option value="reading">Reading/Interpretation</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                  Doctor (Optional)
+                </label>
+                <select
+                  value={formData.professionalFeeDoctor || ''}
+                  onChange={(e) => setFormData({ ...formData, professionalFeeDoctor: e.target.value })}
+                  disabled={loadingDoctors}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm bg-white disabled:bg-gray-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">{loadingDoctors ? 'Loading doctors...' : 'Select doctor...'}</option>
+                  {doctors.map((doctor) => (
+                    <option key={doctor._id} value={doctor._id}>
+                      Dr. {doctor.firstName} {doctor.lastName}
+                      {doctor.specializationId?.name ? ` - ${doctor.specializationId.name}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-600 mt-1">Assign the professional fee to a specific doctor</p>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                  Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={formData.professionalFeeNotes || ''}
+                  onChange={(e) => setFormData({ ...formData, professionalFeeNotes: e.target.value })}
+                  placeholder="e.g., Dr. Smith - General Consultation"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Tax & Insurance */}
           <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
@@ -735,6 +851,12 @@ export default function InvoiceForm({
                 <span className="text-sm font-semibold text-gray-700">Subtotal:</span>
                 <span className="text-sm font-bold text-gray-900">{formatCurrency(subtotal)}</span>
               </div>
+              {professionalFee > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-sm font-semibold text-purple-700">Professional Fee:</span>
+                  <span className="text-sm font-bold text-purple-700">+{formatCurrency(professionalFee)}</span>
+                </div>
+              )}
               {discountTotal > 0 && (
                 <div className="flex justify-between">
                   <span className="text-sm font-semibold text-red-600">Discounts:</span>

@@ -5,6 +5,17 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Modal } from './ui/Modal';
 
+interface Vitals {
+  bp?: string;        // Blood pressure (e.g., "120/80")
+  hr?: number;        // Heart rate (bpm)
+  rr?: number;        // Respiratory rate (breaths/min)
+  tempC?: number;     // Temperature in Celsius
+  spo2?: number;      // Oxygen saturation (%)
+  heightCm?: number;  // Height in cm
+  weightKg?: number;  // Weight in kg
+  bmi?: number;       // Body Mass Index (calculated)
+}
+
 interface Queue {
   _id: string;
   queueNumber: string;
@@ -32,6 +43,7 @@ interface Queue {
   estimatedWaitTime?: number;
   priority?: number;
   position?: number;
+  vitals?: Vitals;
 }
 
 interface Doctor {
@@ -58,7 +70,7 @@ export default function QueuePageClient() {
   const [filterStatus, setFilterStatus] = useState<string>('active'); // 'active' | 'all'
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<{id: string, action: string, patientName: string} | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ id: string, action: string, patientName: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -71,6 +83,8 @@ export default function QueuePageClient() {
   const [showPatientSearch, setShowPatientSearch] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [showVitalsForm, setShowVitalsForm] = useState(false);
+  const [selectedQueueForVitals, setSelectedQueueForVitals] = useState<Queue | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -137,20 +151,20 @@ export default function QueuePageClient() {
   const fetchQueue = async (showRefreshing = false) => {
     try {
       if (showRefreshing) setRefreshing(true);
-      
+
       let url = '/api/queue';
       const params = new URLSearchParams();
       if (filterDoctor) params.append('doctorId', filterDoctor);
       if (filterStatus === 'active') params.append('status', 'waiting,in-progress');
       if (params.toString()) url += '?' + params.toString();
-      
+
       const res = await fetch(url);
-      
+
       if (res.status === 401) {
         router.push('/login');
         return;
       }
-      
+
       const contentType = res.headers.get('content-type');
       let data;
       if (contentType && contentType.includes('application/json')) {
@@ -160,7 +174,7 @@ export default function QueuePageClient() {
         console.error('API returned non-JSON response:', text.substring(0, 500));
         data = { success: false, error: `API error: ${res.status} ${res.statusText}` };
       }
-      
+
       if (data.success) {
         let filteredData = data.data || [];
         if (filterType) {
@@ -322,7 +336,7 @@ export default function QueuePageClient() {
     const now = new Date();
     const diffMs = now.getTime() - queued.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 60) return `${diffMins} min`;
     const hours = Math.floor(diffMins / 60);
     const mins = diffMins % 60;
@@ -362,6 +376,59 @@ export default function QueuePageClient() {
     fetchQueue();
   }, [filterDoctor, filterStatus]);
 
+  
+  const handleVitalsUpdate = async (vitalsData: Vitals) => {
+    if (!selectedQueueForVitals) {
+      showNotification('No queue item selected', 'error');
+      return;
+    }
+    
+    console.log('Updating vitals for queue ID:', selectedQueueForVitals._id);
+    console.log('Vitals data being sent:', vitalsData);
+    
+    try {
+      const res = await fetch(`/api/queue/${selectedQueueForVitals._id}/vitals`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vitals: vitalsData }),
+      });
+
+      if (res.status === 401) {
+        router.push('/login');
+        return;
+      }
+
+      const data = await res.json();
+      console.log('Vitals update response:', data);
+      
+      if (data.success) {
+        // Update local state immediately for better UX
+        if (data.data) {
+          console.log('Updated queue with vitals:', data.data.vitals);
+          setQueue(prevQueue => 
+            prevQueue.map(q => 
+              q._id === selectedQueueForVitals._id 
+                ? { ...q, vitals: data.data.vitals }
+                : q
+            )
+          );
+        }
+        
+        showNotification('Vital signs recorded successfully', 'success');
+        setShowVitalsForm(false);
+        setSelectedQueueForVitals(null);
+        
+        // Refresh to ensure sync with server
+        fetchQueue(true);
+      } else {
+        showNotification(data.error || 'Failed to update vital signs', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to update vitals:', error);
+      showNotification('Failed to update vital signs', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
@@ -395,6 +462,7 @@ export default function QueuePageClient() {
   });
 
   const activeQueue = filteredQueue.filter(q => q.status === 'waiting' || q.status === 'in-progress');
+  console.log('Active queue items:', activeQueue);
   return (
     <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
@@ -653,406 +721,700 @@ export default function QueuePageClient() {
                 </p>
               </div>
             </div>
-        {filteredQueue.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-bold text-gray-900 mb-2">
-              {searchQuery || filterDoctor || filterType || filterStatus !== 'active' 
-                ? 'No patients match your filters' 
-                : 'No patients in queue'}
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              {searchQuery || filterDoctor || filterType || filterStatus !== 'active' 
-                ? 'Try adjusting your search or filters' 
-                : 'Add a patient to get started'}
-            </p>
-            {!searchQuery && !filterDoctor && !filterType && filterStatus === 'active' && (
-              <button
-                onClick={() => setShowAddForm(true)}
-                className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center gap-2 mx-auto text-sm font-semibold shadow-md"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Patient
-              </button>
+            {filteredQueue.length === 0 ? (
+              <div className="p-12 text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">
+                  {searchQuery || filterDoctor || filterType || filterStatus !== 'active'
+                    ? 'No patients match your filters'
+                    : 'No patients in queue'}
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  {searchQuery || filterDoctor || filterType || filterStatus !== 'active'
+                    ? 'Try adjusting your search or filters'
+                    : 'Add a patient to get started'}
+                </p>
+                {!searchQuery && !filterDoctor && !filterType && filterStatus === 'active' && (
+                  <button
+                    onClick={() => setShowAddForm(true)}
+                    className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center gap-2 mx-auto text-sm font-semibold shadow-md"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Patient
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Queue #</th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Type</th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Patient</th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Doctor / Room</th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Wait Time</th>
+                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Checked In</th>
+                      <th className="px-5 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredQueue.map((item) => (
+                      <tr
+                        key={item._id}
+                        className={item.status === 'in-progress' ? 'bg-blue-50/50' : 'hover:bg-gray-50 transition-colors'}
+                      >
+                        <td className="px-5 py-4">
+                          <div className="text-sm font-bold text-gray-900">{item.queueNumber}</div>
+                          {item.priority !== undefined && item.priority > 0 && item.priority < 3 && (
+                            <span className="inline-block mt-1.5 px-2.5 py-1 bg-orange-100 text-orange-700 text-xs rounded-full font-semibold border border-orange-200">
+                              {item.priority === 1 ? 'High Priority' : item.priority === 2 ? 'Urgent' : 'Priority'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={`px-2.5 py-1 text-xs rounded-full font-semibold border ${getTypeColor(item.queueType) === 'blue' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                            getTypeColor(item.queueType) === 'purple' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                              getTypeColor(item.queueType) === 'green' ? 'bg-green-100 text-green-700 border-green-200' :
+                                'bg-gray-100 text-gray-700 border-gray-200'
+                            }`}>
+                            {item.queueType === 'appointment' ? 'Appointment' :
+                              item.queueType === 'walk-in' ? 'Walk-In' :
+                                item.queueType === 'follow-up' ? 'Follow-Up' : item.queueType}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4">
+                          {item.patient?._id ? (
+                            <Link href={`/visits/new?patientId=${item.patient._id}`} className="block">
+                              <div className="text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer">
+                                {item.patientName || `${item.patient?.firstName || ''} ${item.patient?.lastName || 'Unknown'}`.trim()}
+                              </div>
+                            </Link>
+                          ) : (
+                            <div className="text-sm font-bold text-gray-900">
+                              {item.patientName || 'Unknown Patient'}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <div className="text-xs text-gray-600">
+                              {new Date(item.queuedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                            {item.vitals && Object.keys(item.vitals).length > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-semibold border border-green-200">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                                </svg>
+                                Vitals
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          {item.doctor ? (
+                            <div className="text-sm text-gray-900 font-medium">
+                              Dr. {item.doctor.firstName} {item.doctor.lastName}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-500 italic">No doctor assigned</div>
+                          )}
+                          {item.room && (
+                            <div className="text-xs text-blue-600 font-semibold mt-1 flex items-center gap-1">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                              </svg>
+                              {item.room.name || item.room.roomNumber || 'Room assigned'}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={`px-2.5 py-1 text-xs rounded-full font-semibold border ${getStatusColor(item.status) === 'green' ? 'bg-green-100 text-green-700 border-green-200' :
+                            getStatusColor(item.status) === 'blue' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                              getStatusColor(item.status) === 'yellow' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                                getStatusColor(item.status) === 'red' ? 'bg-red-100 text-red-700 border-red-200' :
+                                  'bg-gray-100 text-gray-700 border-gray-200'
+                            }`}>
+                            {item.status === 'in-progress' ? 'In Progress' :
+                              item.status === 'no-show' ? 'No-Show' :
+                                item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4">
+                          {item.estimatedWaitTime !== undefined && (
+                            <div className="text-sm font-semibold text-gray-900">Est: {item.estimatedWaitTime}m</div>
+                          )}
+                          <div className="text-xs text-gray-600 mt-1">
+                            {calculateWaitTime(item.queuedAt)}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          {item.checkedIn ? (
+                            <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold border border-green-200">✓ Checked In</span>
+                          ) : (
+                            <button
+                              onClick={() => handleCheckIn(item._id)}
+                              className="px-3 py-1.5 text-orange-700 hover:bg-orange-50 rounded-lg transition-colors text-xs font-semibold border border-orange-200"
+                            >
+                              Check In
+                            </button>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <div className="flex gap-2 justify-end">
+                            {item.status === 'waiting' && item.checkedIn && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    console.log('Opening vitals form for:', item.patientName, 'Current vitals:', item.vitals);
+                                    setSelectedQueueForVitals(item);
+                                    setShowVitalsForm(true);
+                                  }}
+                                  className={`px-3 py-1.5 rounded-lg transition-colors text-xs font-semibold border ${
+                                    item.vitals && Object.keys(item.vitals).length > 0
+                                      ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                                      : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                                  }`}
+                                  title={item.vitals && Object.keys(item.vitals).length > 0 ? 'Update Vital Signs' : 'Add Vital Signs'}
+                                >
+                                  {item.vitals && Object.keys(item.vitals).length > 0 ? (
+                                    <span className="flex items-center gap-1">
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                      Update Vitals
+                                    </span>
+                                  ) : (
+                                    'Add Vitals'
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => handleStatusUpdate(item._id, 'in-progress')}
+                                  className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-xs font-semibold border border-blue-200"
+                                  title="Start"
+                                >
+                                  Start
+                                </button>
+                                <button
+                                  onClick={() => handleStatusUpdate(item._id, 'cancelled', item.patientName)}
+                                  className="px-3 py-1.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors text-xs font-semibold border border-red-200"
+                                  title="Cancel"
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            )}
+                            {item.status === 'in-progress' && (
+                              <>
+                                <button
+                                  onClick={() => handleStatusUpdate(item._id, 'completed')}
+                                  className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-xs font-semibold border border-green-200"
+                                  title="Complete"
+                                >
+                                  Done
+                                </button>
+                                <button
+                                  onClick={() => handleStatusUpdate(item._id, 'no-show', item.patientName)}
+                                  className="px-3 py-1.5 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 transition-colors text-xs font-semibold border border-yellow-200"
+                                  title="No-Show"
+                                >
+                                  No-Show
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Queue #</th>
-                  <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Type</th>
-                  <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Patient</th>
-                  <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Doctor / Room</th>
-                  <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                  <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Wait Time</th>
-                  <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Checked In</th>
-                  <th className="px-5 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredQueue.map((item) => (
-                  <tr 
-                    key={item._id}
-                    className={item.status === 'in-progress' ? 'bg-blue-50/50' : 'hover:bg-gray-50 transition-colors'}
-                  >
-                    <td className="px-5 py-4">
-                      <div className="text-sm font-bold text-gray-900">{item.queueNumber}</div>
-                      {item.priority !== undefined && item.priority > 0 && item.priority < 3 && (
-                        <span className="inline-block mt-1.5 px-2.5 py-1 bg-orange-100 text-orange-700 text-xs rounded-full font-semibold border border-orange-200">
-                          {item.priority === 1 ? 'High Priority' : item.priority === 2 ? 'Urgent' : 'Priority'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={`px-2.5 py-1 text-xs rounded-full font-semibold border ${
-                        getTypeColor(item.queueType) === 'blue' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                        getTypeColor(item.queueType) === 'purple' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                        getTypeColor(item.queueType) === 'green' ? 'bg-green-100 text-green-700 border-green-200' :
-                        'bg-gray-100 text-gray-700 border-gray-200'
-                      }`}>
-                        {item.queueType === 'appointment' ? 'Appointment' : 
-                         item.queueType === 'walk-in' ? 'Walk-In' : 
-                         item.queueType === 'follow-up' ? 'Follow-Up' : item.queueType}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      {item.patient?._id ? (
-                        <Link href={`/visits/new?patientId=${item.patient._id}`} className="block">
-                          <div className="text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer">
-                            {item.patientName || `${item.patient?.firstName || ''} ${item.patient?.lastName || 'Unknown'}`.trim()}
-                          </div>
-                        </Link>
-                      ) : (
-                        <div className="text-sm font-bold text-gray-900">
-                          {item.patientName || 'Unknown Patient'}
-                        </div>
-                      )}
-                      <div className="text-xs text-gray-600 mt-1">
-                        {new Date(item.queuedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      {item.doctor ? (
-                        <div className="text-sm text-gray-900 font-medium">
-                          Dr. {item.doctor.firstName} {item.doctor.lastName}
-                        </div>
-                      ) : (
-                        <div className="text-sm text-gray-500 italic">No doctor assigned</div>
-                      )}
-                      {item.room && (
-                        <div className="text-xs text-blue-600 font-semibold mt-1 flex items-center gap-1">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                          </svg>
-                          {item.room.name || item.room.roomNumber || 'Room assigned'}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={`px-2.5 py-1 text-xs rounded-full font-semibold border ${
-                        getStatusColor(item.status) === 'green' ? 'bg-green-100 text-green-700 border-green-200' :
-                        getStatusColor(item.status) === 'blue' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                        getStatusColor(item.status) === 'yellow' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
-                        getStatusColor(item.status) === 'red' ? 'bg-red-100 text-red-700 border-red-200' :
-                        'bg-gray-100 text-gray-700 border-gray-200'
-                      }`}>
-                        {item.status === 'in-progress' ? 'In Progress' : 
-                         item.status === 'no-show' ? 'No-Show' : 
-                         item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      {item.estimatedWaitTime !== undefined && (
-                        <div className="text-sm font-semibold text-gray-900">Est: {item.estimatedWaitTime}m</div>
-                      )}
-                      <div className="text-xs text-gray-600 mt-1">
-                        {calculateWaitTime(item.queuedAt)}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      {item.checkedIn ? (
-                        <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold border border-green-200">✓ Checked In</span>
-                      ) : (
-                        <button
-                          onClick={() => handleCheckIn(item._id)}
-                          className="px-3 py-1.5 text-orange-700 hover:bg-orange-50 rounded-lg transition-colors text-xs font-semibold border border-orange-200"
-                        >
-                          Check In
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      <div className="flex gap-2 justify-end">
-                        {item.status === 'waiting' && item.checkedIn && (
-                          <>
-                            <button
-                              onClick={() => handleStatusUpdate(item._id, 'in-progress')}
-                              className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-xs font-semibold border border-blue-200"
-                              title="Start"
-                            >
-                              Start
-                            </button>
-                            <button
-                              onClick={() => handleStatusUpdate(item._id, 'cancelled', item.patientName)}
-                              className="px-3 py-1.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors text-xs font-semibold border border-red-200"
-                              title="Cancel"
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        )}
-                        {item.status === 'in-progress' && (
-                          <>
-                            <button
-                              onClick={() => handleStatusUpdate(item._id, 'completed')}
-                              className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-xs font-semibold border border-green-200"
-                              title="Complete"
-                            >
-                              Done
-                            </button>
-                            <button
-                              onClick={() => handleStatusUpdate(item._id, 'no-show', item.patientName)}
-                              className="px-3 py-1.5 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 transition-colors text-xs font-semibold border border-yellow-200"
-                              title="No-Show"
-                            >
-                              No-Show
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+          {/* Vitals Entry Modal */}
+          <Modal 
+            open={showVitalsForm && !!selectedQueueForVitals} 
+            onOpenChange={(open) => {
+              setShowVitalsForm(open);
+              if (!open) {
+                setSelectedQueueForVitals(null);
+              }
+            }} 
+            className="max-w-5xl"
+          >
+            <div className="p-6 sm:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Record Vital Signs</h2>
+                  {selectedQueueForVitals && (
+                    <p className="text-sm text-blue-700 font-semibold mt-0.5">
+                      Patient: {selectedQueueForVitals.patientName || `${selectedQueueForVitals.patient?.firstName || ''} ${selectedQueueForVitals.patient?.lastName || ''}`.trim()}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {selectedQueueForVitals && (
+                <VitalsForm
+                  initialVitals={selectedQueueForVitals.vitals}
+                  onSubmit={handleVitalsUpdate}
+                  onCancel={() => {
+                    setShowVitalsForm(false);
+                    setSelectedQueueForVitals(null);
+                  }}
+                />
+              )}
+            </div>
+          </Modal>
 
           {/* Add to Queue Modal */}
           <Modal open={showAddForm} onOpenChange={(open) => {
-        setShowAddForm(open);
-        if (!open) {
-          setPatientSearch('');
-          setSelectedPatient(null);
-          setHighlightedIndex(-1);
-          setFormData({ ...formData, patientId: '' });
-        }
-      }} className="max-w-lg">
-        <div className="p-6 sm:p-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-purple-500 rounded-lg">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Add Patient to Queue</h2>
-              <p className="text-sm text-gray-600 mt-0.5">
-                Add a new patient to the queue system
-              </p>
-            </div>
-          </div>
-          <form onSubmit={handleAddToQueue}>
-            <div className="flex flex-col gap-5">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Patient <span className="text-red-500">*</span></label>
-                <div className="relative patient-search-container">
-                  <input
-                    type="text"
-                    required
-                    value={patientSearch}
-                    onChange={(e) => {
-                      setPatientSearch(e.target.value);
-                      setShowPatientSearch(true);
-                      setHighlightedIndex(-1);
-                      if (!e.target.value) {
-                        setFormData({ ...formData, patientId: '' });
-                        setSelectedPatient(null);
-                      }
-                    }}
-                    onFocus={() => {
-                      setShowPatientSearch(true);
-                      setHighlightedIndex(-1);
-                    }}
-                    onKeyDown={(e) => {
-                      if (!showPatientSearch || filteredPatients.length === 0) return;
-                      
-                      if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        setHighlightedIndex(prev => 
-                          prev < filteredPatients.length - 1 ? prev + 1 : prev
-                        );
-                      } else if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        setHighlightedIndex(prev => prev > 0 ? prev - 1 : -1);
-                      } else if (e.key === 'Enter' && highlightedIndex >= 0) {
-                        e.preventDefault();
-                        selectPatient(filteredPatients[highlightedIndex]);
-                      } else if (e.key === 'Escape') {
-                        setShowPatientSearch(false);
-                        setHighlightedIndex(-1);
-                      }
-                    }}
-                    placeholder="Type to search patients..."
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                  />
-                  {showPatientSearch && (
-                    <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                      {filteredPatients.length > 0 ? (
-                        <div className="flex flex-col gap-1 p-1">
-                          {filteredPatients.map((patient, index) => (
-                            <button
-                              key={patient._id}
-                              type="button"
-                              onClick={() => {
-                                selectPatient(patient);
-                                setShowPatientSearch(false);
-                              }}
-                              onMouseEnter={() => setHighlightedIndex(index)}
-                              className={`w-full text-left px-4 py-2.5 rounded-lg transition-colors flex flex-col items-start ${
-                                highlightedIndex === index 
-                                  ? 'bg-blue-50 hover:bg-blue-100 border border-blue-200' 
-                                  : 'hover:bg-gray-50 border border-transparent'
-                              }`}
-                            >
-                              <span className="font-semibold text-sm text-gray-900">{patient.firstName} {patient.lastName}</span>
-                              {patient.patientCode && (
-                                <span className="text-xs text-gray-600 mt-0.5">{patient.patientCode}</span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      ) : patientSearch.trim() ? (
-                        <div className="p-4 text-center">
-                          <p className="text-sm text-gray-600">No patients found</p>
-                        </div>
-                      ) : (
-                        <div className="p-4 text-center">
-                          <p className="text-sm text-gray-600">All patients ({patients.length})</p>
+            setShowAddForm(open);
+            if (!open) {
+              setPatientSearch('');
+              setSelectedPatient(null);
+              setHighlightedIndex(-1);
+              setFormData({ ...formData, patientId: '' });
+            }
+          }} className="max-w-lg">
+            <div className="p-6 sm:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-purple-500 rounded-lg">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Add Patient to Queue</h2>
+                  <p className="text-sm text-gray-600 mt-0.5">
+                    Add a new patient to the queue system
+                  </p>
+                </div>
+              </div>
+              <form onSubmit={handleAddToQueue}>
+                <div className="flex flex-col gap-5">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Patient <span className="text-red-500">*</span></label>
+                    <div className="relative patient-search-container">
+                      <input
+                        type="text"
+                        required
+                        value={patientSearch}
+                        onChange={(e) => {
+                          setPatientSearch(e.target.value);
+                          setShowPatientSearch(true);
+                          setHighlightedIndex(-1);
+                          if (!e.target.value) {
+                            setFormData({ ...formData, patientId: '' });
+                            setSelectedPatient(null);
+                          }
+                        }}
+                        onFocus={() => {
+                          setShowPatientSearch(true);
+                          setHighlightedIndex(-1);
+                        }}
+                        onKeyDown={(e) => {
+                          if (!showPatientSearch || filteredPatients.length === 0) return;
+
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            setHighlightedIndex(prev =>
+                              prev < filteredPatients.length - 1 ? prev + 1 : prev
+                            );
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            setHighlightedIndex(prev => prev > 0 ? prev - 1 : -1);
+                          } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+                            e.preventDefault();
+                            selectPatient(filteredPatients[highlightedIndex]);
+                          } else if (e.key === 'Escape') {
+                            setShowPatientSearch(false);
+                            setHighlightedIndex(-1);
+                          }
+                        }}
+                        placeholder="Type to search patients..."
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                      />
+                      {showPatientSearch && (
+                        <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                          {filteredPatients.length > 0 ? (
+                            <div className="flex flex-col gap-1 p-1">
+                              {filteredPatients.map((patient, index) => (
+                                <button
+                                  key={patient._id}
+                                  type="button"
+                                  onClick={() => {
+                                    selectPatient(patient);
+                                    setShowPatientSearch(false);
+                                  }}
+                                  onMouseEnter={() => setHighlightedIndex(index)}
+                                  className={`w-full text-left px-4 py-2.5 rounded-lg transition-colors flex flex-col items-start ${highlightedIndex === index
+                                    ? 'bg-blue-50 hover:bg-blue-100 border border-blue-200'
+                                    : 'hover:bg-gray-50 border border-transparent'
+                                    }`}
+                                >
+                                  <span className="font-semibold text-sm text-gray-900">{patient.firstName} {patient.lastName}</span>
+                                  {patient.patientCode && (
+                                    <span className="text-xs text-gray-600 mt-0.5">{patient.patientCode}</span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          ) : patientSearch.trim() ? (
+                            <div className="p-4 text-center">
+                              <p className="text-sm text-gray-600">No patients found</p>
+                            </div>
+                          ) : (
+                            <div className="p-4 text-center">
+                              <p className="text-sm text-gray-600">All patients ({patients.length})</p>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
-                  )}
+                    {formData.patientId && !selectedPatient && (
+                      <p className="text-xs text-red-600 mt-1.5 font-medium">Please select a valid patient from the list</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Doctor (Optional)</label>
+                    <select
+                      value={formData.doctorId || 'none'}
+                      onChange={(e) => setFormData({ ...formData, doctorId: e.target.value === 'none' ? '' : e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                    >
+                      <option value="none">No doctor assigned</option>
+                      {doctors.map((doctor) => (
+                        <option key={doctor._id} value={doctor._id}>
+                          Dr. {doctor.firstName} {doctor.lastName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Queue Type <span className="text-red-500">*</span></label>
+                    <select
+                      value={formData.queueType}
+                      onChange={(e) => setFormData({ ...formData, queueType: e.target.value as any })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                    >
+                      <option value="walk-in">Walk-In</option>
+                      <option value="appointment">Appointment</option>
+                      <option value="follow-up">Follow-Up</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
+                    <select
+                      value={formData.priority.toString()}
+                      onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                    >
+                      <option value="0">Normal</option>
+                      <option value="1">High</option>
+                      <option value="2">Urgent</option>
+                    </select>
+                    <p className="text-xs text-gray-600 mt-1.5">Lower number = higher priority</p>
+                  </div>
+                  <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPatientSearch('');
+                        setSelectedPatient(null);
+                        setHighlightedIndex(-1);
+                        setFormData({ ...formData, patientId: '' });
+                      }}
+                      className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit" className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all text-sm font-semibold shadow-md">
+                      Add to Queue
+                    </button>
+                  </div>
                 </div>
-                {formData.patientId && !selectedPatient && (
-                  <p className="text-xs text-red-600 mt-1.5 font-medium">Please select a valid patient from the list</p>
-                )}
+              </form>
+            </div>
+          </Modal>
+
+          {/* Confirmation Dialog */}
+          <Modal open={!!confirmAction} onOpenChange={(open) => {
+            if (!open) setConfirmAction(null);
+          }} className="max-w-md">
+            <div className="p-6 sm:p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className={`p-2 rounded-lg ${confirmAction?.action === 'cancelled' ? 'bg-red-500' : 'bg-yellow-500'}`}>
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">Confirm Action</h3>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Doctor (Optional)</label>
-                <select
-                  value={formData.doctorId || 'none'}
-                  onChange={(e) => setFormData({ ...formData, doctorId: e.target.value === 'none' ? '' : e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                >
-                  <option value="none">No doctor assigned</option>
-                  {doctors.map((doctor) => (
-                    <option key={doctor._id} value={doctor._id}>
-                      Dr. {doctor.firstName} {doctor.lastName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Queue Type <span className="text-red-500">*</span></label>
-                <select
-                  value={formData.queueType}
-                  onChange={(e) => setFormData({ ...formData, queueType: e.target.value as any })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                >
-                  <option value="walk-in">Walk-In</option>
-                  <option value="appointment">Appointment</option>
-                  <option value="follow-up">Follow-Up</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
-                <select
-                  value={formData.priority.toString()}
-                  onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                >
-                  <option value="0">Normal</option>
-                  <option value="1">High</option>
-                  <option value="2">Urgent</option>
-                </select>
-                <p className="text-xs text-gray-600 mt-1.5">Lower number = higher priority</p>
-              </div>
+              <p className="text-sm text-gray-600 mb-6">
+                Are you sure you want to mark <strong className="text-gray-900">{confirmAction?.patientName}</strong> as <strong className="text-gray-900">{confirmAction?.action}</strong>?
+              </p>
               <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
                 <button
-                  type="button"
-                  onClick={() => {
-                    setPatientSearch('');
-                    setSelectedPatient(null);
-                    setHighlightedIndex(-1);
-                    setFormData({ ...formData, patientId: '' });
-                  }}
+                  onClick={() => setConfirmAction(null)}
                   className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
                 >
                   Cancel
                 </button>
-                <button type="submit" className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all text-sm font-semibold shadow-md">
-                  Add to Queue
+                <button
+                  onClick={() => {
+                    if (confirmAction) {
+                      performStatusUpdate(confirmAction.id, confirmAction.action);
+                      setConfirmAction(null);
+                    }
+                  }}
+                  className={`px-5 py-2.5 rounded-lg text-white transition-all text-sm font-semibold shadow-md ${confirmAction?.action === 'cancelled'
+                    ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700'
+                    : 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700'
+                    }`}
+                >
+                  Confirm
                 </button>
               </div>
             </div>
-          </form>
-        </div>
-      </Modal>
-
-          {/* Confirmation Dialog */}
-          <Modal open={!!confirmAction} onOpenChange={(open) => {
-        if (!open) setConfirmAction(null);
-      }} className="max-w-md">
-        <div className="p-6 sm:p-8">
-          <div className="flex items-center gap-3 mb-4">
-            <div className={`p-2 rounded-lg ${confirmAction?.action === 'cancelled' ? 'bg-red-500' : 'bg-yellow-500'}`}>
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-bold text-gray-900">Confirm Action</h3>
-          </div>
-          <p className="text-sm text-gray-600 mb-6">
-            Are you sure you want to mark <strong className="text-gray-900">{confirmAction?.patientName}</strong> as <strong className="text-gray-900">{confirmAction?.action}</strong>?
-          </p>
-          <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
-            <button
-              onClick={() => setConfirmAction(null)}
-              className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => {
-                if (confirmAction) {
-                  performStatusUpdate(confirmAction.id, confirmAction.action);
-                  setConfirmAction(null);
-                }
-              }}
-              className={`px-5 py-2.5 rounded-lg text-white transition-all text-sm font-semibold shadow-md ${
-                confirmAction?.action === 'cancelled' 
-                  ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700' 
-                  : 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700'
-              }`}
-            >
-              Confirm
-            </button>
-          </div>
-        </div>
-      </Modal>
+          </Modal>
         </div>
       </div>
     </section>
+  );
+}
+
+function VitalsForm({
+  initialVitals,
+  onSubmit,
+  onCancel
+}: {
+  initialVitals?: Vitals;
+  onSubmit: (vitals: Vitals) => void;
+  onCancel: () => void;
+}) {
+  const hasInitialVitals = initialVitals && Object.keys(initialVitals).length > 0;
+  console.log('VitalsForm initialized with:', {
+    hasInitialVitals,
+    initialVitals,
+    bp: initialVitals?.bp,
+    hr: initialVitals?.hr,
+    rr: initialVitals?.rr,
+    tempC: initialVitals?.tempC,
+    spo2: initialVitals?.spo2,
+    heightCm: initialVitals?.heightCm,
+    weightKg: initialVitals?.weightKg,
+    bmi: initialVitals?.bmi
+  });
+  
+  const [vitals, setVitals] = useState({
+    bp: initialVitals?.bp || '',
+    hr: initialVitals?.hr?.toString() || '',
+    rr: initialVitals?.rr?.toString() || '',
+    tempC: initialVitals?.tempC?.toString() || '',
+    spo2: initialVitals?.spo2?.toString() || '',
+    heightCm: initialVitals?.heightCm?.toString() || '',
+    weightKg: initialVitals?.weightKg?.toString() || '',
+  });
+
+  const calculateBMI = () => {
+    const height = parseFloat(vitals.heightCm as any);
+    const weight = parseFloat(vitals.weightKg as any);
+    if (height > 0 && weight > 0) {
+      const heightM = height / 100;
+      return parseFloat((weight / (heightM * heightM)).toFixed(1));
+    }
+    return undefined;
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const bmi = calculateBMI();
+    const vitalsData: Vitals = {};
+
+    if (vitals.bp && vitals.bp.trim()) vitalsData.bp = vitals.bp.trim();
+    if (vitals.hr) vitalsData.hr = parseFloat(vitals.hr as any);
+    if (vitals.rr) vitalsData.rr = parseFloat(vitals.rr as any);
+    if (vitals.tempC) vitalsData.tempC = parseFloat(vitals.tempC as any);
+    if (vitals.spo2) vitalsData.spo2 = parseFloat(vitals.spo2 as any);
+    if (vitals.heightCm) vitalsData.heightCm = parseFloat(vitals.heightCm as any);
+    if (vitals.weightKg) vitalsData.weightKg = parseFloat(vitals.weightKg as any);
+    if (bmi) vitalsData.bmi = bmi;
+
+    // Validate that at least one vital sign is provided
+    if (Object.keys(vitalsData).length === 0) {
+      alert('Please enter at least one vital sign');
+      return;
+    }
+
+    console.log('Submitting vitals data:', vitalsData);
+    onSubmit(vitalsData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {hasInitialVitals && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-sm text-blue-800 font-medium flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Existing vitals loaded. Modify any fields to update.
+          </p>
+        </div>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Blood Pressure
+          </label>
+          <input
+            type="text"
+            value={vitals.bp}
+            onChange={(e) => setVitals({ ...vitals, bp: e.target.value })}
+            placeholder="120/80"
+            pattern="[0-9]+/[0-9]+"
+            title="Enter as systolic/diastolic (e.g., 120/80)"
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+          />
+          <p className="text-xs text-gray-500 mt-1">mmHg (e.g., 120/80)</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Heart Rate
+          </label>
+          <input
+            type="number"
+            value={vitals.hr}
+            onChange={(e) => setVitals({ ...vitals, hr: e.target.value })}
+            placeholder="72"
+            min="30"
+            max="250"
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+          />
+          <p className="text-xs text-gray-500 mt-1">30-250 bpm</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Respiratory Rate
+          </label>
+          <input
+            type="number"
+            value={vitals.rr}
+            onChange={(e) => setVitals({ ...vitals, rr: e.target.value })}
+            placeholder="16"
+            min="8"
+            max="60"
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+          />
+          <p className="text-xs text-gray-500 mt-1">8-60 breaths/min</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Temperature
+          </label>
+          <input
+            type="number"
+            step="0.1"
+            value={vitals.tempC}
+            onChange={(e) => setVitals({ ...vitals, tempC: e.target.value })}
+            placeholder="36.5"
+            min="30"
+            max="45"
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+          />
+          <p className="text-xs text-gray-500 mt-1">30-45°C</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            SpO2 (Oxygen Saturation)
+          </label>
+          <input
+            type="number"
+            value={vitals.spo2}
+            onChange={(e) => setVitals({ ...vitals, spo2: e.target.value })}
+            placeholder="98"
+            min="50"
+            max="100"
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+          />
+          <p className="text-xs text-gray-500 mt-1">50-100%</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Height
+          </label>
+          <input
+            type="number"
+            step="0.1"
+            value={vitals.heightCm}
+            onChange={(e) => setVitals({ ...vitals, heightCm: e.target.value })}
+            placeholder="170"
+            min="50"
+            max="250"
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+          />
+          <p className="text-xs text-gray-500 mt-1">50-250 cm</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Weight
+          </label>
+          <input
+            type="number"
+            step="0.1"
+            value={vitals.weightKg}
+            onChange={(e) => setVitals({ ...vitals, weightKg: e.target.value })}
+            placeholder="70"
+            min="2"
+            max="300"
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+          />
+          <p className="text-xs text-gray-500 mt-1">2-300 kg</p>
+        </div>
+
+        {calculateBMI() && (
+          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+            <label className="block text-sm font-semibold text-blue-900 mb-2">
+              BMI (Calculated)
+            </label>
+            <p className="text-2xl font-bold text-blue-700">{calculateBMI()}</p>
+            <p className="text-xs text-blue-600 mt-1">kg/m²</p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
+        >
+          Save Vital Signs
+        </button>
+      </div>
+    </form>
   );
 }
 

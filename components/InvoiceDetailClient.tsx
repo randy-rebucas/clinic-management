@@ -71,6 +71,14 @@ interface Invoice {
   };
   items: InvoiceItem[];
   subtotal?: number;
+  professionalFee?: number;
+  professionalFeeType?: 'consultation' | 'procedure' | 'reading' | 'other';
+  professionalFeeDoctor?: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+  };
+  professionalFeeNotes?: string;
   discounts: Discount[];
   tax?: number;
   total?: number;
@@ -444,6 +452,24 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
                       <span className="font-semibold text-gray-700">Subtotal:</span>
                       <span className="font-bold text-gray-900">{formatCurrency(invoice.subtotal || 0)}</span>
                     </div>
+                    {invoice.professionalFee && invoice.professionalFee > 0 && (
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-1">
+                        <div className="flex justify-between text-sm">
+                          <span className="font-semibold text-purple-700">
+                            Professional Fee {invoice.professionalFeeType && `(${invoice.professionalFeeType})`}:
+                          </span>
+                          <span className="font-bold text-purple-700">+{formatCurrency(invoice.professionalFee)}</span>
+                        </div>
+                        {invoice.professionalFeeDoctor && (
+                          <div className="text-xs text-purple-600 font-medium">
+                            Dr. {invoice.professionalFeeDoctor.firstName} {invoice.professionalFeeDoctor.lastName}
+                          </div>
+                        )}
+                        {invoice.professionalFeeNotes && (
+                          <div className="text-xs text-gray-600">{invoice.professionalFeeNotes}</div>
+                        )}
+                      </div>
+                    )}
                     {invoice.discounts && invoice.discounts.length > 0 && (
                       <div className="space-y-2">
                         {invoice.discounts.map((discount, idx) => (

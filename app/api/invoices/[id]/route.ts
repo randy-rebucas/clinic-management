@@ -60,6 +60,7 @@ export async function GET(
     const invoice = await Invoice.findOne(query)
       .populate(patientPopulateOptions)
       .populate('visit', 'visitCode date visitType')
+      .populate('professionalFeeDoctor', 'firstName lastName')
       .populate('createdBy', 'name email');
 
     if (!invoice) {
@@ -154,16 +155,17 @@ export async function PUT(
     }
 
     // Recalculate totals if items or discounts changed
-    if (body.items || body.discounts) {
+    if (body.items || body.discounts || body.professionalFee !== undefined) {
       const currentInvoice = await Invoice.findOne(query);
       const items = body.items || currentInvoice?.items || [];
       const discounts = body.discounts || currentInvoice?.discounts || [];
+      const professionalFee = body.professionalFee !== undefined ? body.professionalFee : (currentInvoice?.professionalFee || 0);
 
       const subtotal = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
       const discountTotal = discounts.reduce((sum: number, disc: any) => sum + (disc.amount || 0), 0);
       const afterDiscount = subtotal - discountTotal;
       const tax = body.tax || currentInvoice?.tax || 0;
-      const total = afterDiscount + tax;
+      const total = afterDiscount + professionalFee + tax;
 
       body.subtotal = subtotal;
       body.total = total;

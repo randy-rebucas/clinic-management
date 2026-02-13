@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VisitForm from './VisitForm';
 
-interface Visit {
+export interface Visit {
   _id: string;
   visitCode: string;
   patient: {
@@ -104,6 +104,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
   const [providerName, setProviderName] = useState('Dr. Provider');
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -255,7 +256,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
             </div>
             <h2 className="text-2xl font-bold text-gray-900">Visit not found</h2>
             <p className="text-sm text-gray-600 mb-4">The visit you&apos;re looking for doesn&apos;t exist or has been removed.</p>
-            <Link 
+            <Link
               href="/visits"
               className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold shadow-md"
             >
@@ -275,7 +276,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-4">
-                <Link 
+                <Link
                   href="/visits"
                   className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 >
@@ -292,7 +293,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                   <div>
                     <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Visit {visit.visitCode}</h1>
                     <p className="text-sm sm:text-base text-gray-600 mt-1">
-                      {visit.patient 
+                      {visit.patient
                         ? `${visit.patient.firstName} ${visit.patient.lastName} • ${new Date(visit.date).toLocaleDateString()}`
                         : `No patient assigned • ${new Date(visit.date).toLocaleDateString()}`
                       }
@@ -352,28 +353,28 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-6 sm:p-8">
                 <VisitForm
-              initialData={{
-                patient: visit.patient?._id || '',
-                visitType: visit.visitType as any,
-                chiefComplaint: visit.chiefComplaint,
-                historyOfPresentIllness: visit.historyOfPresentIllness,
-                vitals: visit.vitals,
-                physicalExam: visit.physicalExam,
-                diagnoses: visit.diagnoses,
-                soapNotes: visit.soapNotes,
-                treatmentPlan: visit.treatmentPlan,
-                followUpDate: visit.followUpDate,
-                notes: visit.notes,
-                digitalSignature: visit.digitalSignature ? {
-                  providerName: visit.digitalSignature.providerName,
-                  signatureData: visit.digitalSignature.signatureData,
-                } : undefined,
-              }}
-              patients={visit.patient ? [{ _id: visit.patient._id, firstName: visit.patient.firstName, lastName: visit.patient.lastName }] : []}
-              onSubmit={handleUpdate}
-              onCancel={() => setEditing(false)}
-              providerName={providerName}
-            />
+                  initialData={{
+                    patient: visit.patient?._id || '',
+                    visitType: visit.visitType as any,
+                    chiefComplaint: visit.chiefComplaint,
+                    historyOfPresentIllness: visit.historyOfPresentIllness,
+                    vitals: visit.vitals,
+                    physicalExam: visit.physicalExam,
+                    diagnoses: visit.diagnoses,
+                    soapNotes: visit.soapNotes,
+                    treatmentPlan: visit.treatmentPlan,
+                    followUpDate: visit.followUpDate,
+                    notes: visit.notes,
+                    digitalSignature: visit.digitalSignature ? {
+                      providerName: visit.digitalSignature.providerName,
+                      signatureData: visit.digitalSignature.signatureData,
+                    } : undefined,
+                  }}
+                  patients={visit.patient ? [{ _id: visit.patient._id, firstName: visit.patient.firstName, lastName: visit.patient.lastName }] : []}
+                  onSubmit={handleUpdate}
+                  onCancel={() => setEditing(false)}
+                  providerName={providerName}
+                />
               </div>
             </div>
           ) : (
@@ -600,7 +601,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                   </div>
                   <h3 className="text-lg font-bold text-gray-900">Clinical Images & Attachments</h3>
                 </div>
-                  
+
                 {/* File Upload Section */}
                 <FileUploadSection onUpload={handleFileUpload} />
 
@@ -664,6 +665,8 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
     </section>
   );
 }
+
+
 
 function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string) => void }) {
   const [file, setFile] = useState<File | null>(null);
