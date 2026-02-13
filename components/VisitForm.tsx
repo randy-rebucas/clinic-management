@@ -84,6 +84,7 @@ export default function VisitForm({
   onCancel,
   providerName,
 }: VisitFormProps) {
+  console.log('VisitForm initialData:', initialData);
   const [formData, setFormData] = useState<VisitFormData>({
     patient: initialData?.patient || '',
     visitType: initialData?.visitType || 'consultation',
@@ -149,6 +150,17 @@ export default function VisitForm({
     }
 
   }, [formData.patient, patients]);
+
+  // Update form data when initialData changes (e.g., when queue vitals are loaded)
+  useEffect(() => {
+    if (initialData?.vitals && Object.keys(initialData.vitals).length > 0) {
+      console.log('Updating vitals from initialData:', initialData.vitals);
+      setFormData(prev => ({
+        ...prev,
+        vitals: { ...prev.vitals, ...initialData.vitals }
+      }));
+    }
+  }, [initialData?.vitals]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -602,6 +614,73 @@ export default function VisitForm({
                             })
                           }
                           placeholder="98"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">RR (Respiratory Rate)</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Breaths per minute</p>
+                        <input
+                          type="number"
+                          value={formData.vitals?.rr || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              vitals: { ...formData.vitals, rr: parseInt(e.target.value) || undefined },
+                            })
+                          }
+                          placeholder="16"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Height (cm)</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Height in centimeters</p>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={formData.vitals?.heightCm || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              vitals: { ...formData.vitals, heightCm: parseFloat(e.target.value) || undefined },
+                            })
+                          }
+                          placeholder="170"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Weight (kg)</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Weight in kilograms</p>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={formData.vitals?.weightKg || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              vitals: { ...formData.vitals, weightKg: parseFloat(e.target.value) || undefined },
+                            })
+                          }
+                          placeholder="70"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">BMI</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Body Mass Index</p>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={formData.vitals?.bmi || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              vitals: { ...formData.vitals, bmi: parseFloat(e.target.value) || undefined },
+                            })
+                          }
+                          placeholder="24.2"
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                         />
                       </div>
