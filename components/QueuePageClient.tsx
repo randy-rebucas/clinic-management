@@ -388,7 +388,7 @@ export default function QueuePageClient() {
     
     try {
       const res = await fetch(`/api/queue/${selectedQueueForVitals._id}/vitals`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vitals: vitalsData }),
       });
@@ -945,22 +945,31 @@ export default function QueuePageClient() {
                 setSelectedQueueForVitals(null);
               }
             }} 
-            className="max-w-5xl"
+            className="max-w-[90vw]"
           >
-            <div className="p-6 sm:p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Record Vital Signs</h2>
-                  {selectedQueueForVitals && (
-                    <p className="text-sm text-blue-700 font-semibold mt-0.5">
-                      Patient: {selectedQueueForVitals.patientName || `${selectedQueueForVitals.patient?.firstName || ''} ${selectedQueueForVitals.patient?.lastName || ''}`.trim()}
-                    </p>
-                  )}
+            <div className="p-6 sm:p-8 bg-gradient-to-br from-gray-50 to-blue-50/30">
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg">
+                    <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-2xl font-bold text-gray-900 mb-1">Record Vital Signs</h2>
+                    {selectedQueueForVitals && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <span className="text-blue-900 font-semibold">
+                          {selectedQueueForVitals.patientName || `${selectedQueueForVitals.patient?.firstName || ''} ${selectedQueueForVitals.patient?.lastName || ''}`.trim()}
+                        </span>
+                        <span className="text-gray-400">•</span>
+                        <span className="text-gray-600 font-medium">Queue #{selectedQueueForVitals.queueNumber}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               {selectedQueueForVitals && (
@@ -985,7 +994,7 @@ export default function QueuePageClient() {
               setHighlightedIndex(-1);
               setFormData({ ...formData, patientId: '' });
             }
-          }} className="max-w-lg">
+          }} >
             <div className="p-6 sm:p-8">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2 bg-purple-500 rounded-lg">
@@ -1263,155 +1272,219 @@ function VitalsForm({
   return (
     <form onSubmit={handleSubmit}>
       {hasInitialVitals && (
-        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800 font-medium flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <div className="mb-5 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 rounded-lg shadow-sm">
+          <p className="text-sm text-blue-900 font-semibold flex items-center gap-2">
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Existing vitals loaded. Modify any fields to update.
+            Updating existing vitals — modify any field to update the record
           </p>
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Blood Pressure
-          </label>
-          <input
-            type="text"
-            value={vitals.bp}
-            onChange={(e) => setVitals({ ...vitals, bp: e.target.value })}
-            placeholder="120/80"
-            pattern="[0-9]+/[0-9]+"
-            title="Enter as systolic/diastolic (e.g., 120/80)"
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-          />
-          <p className="text-xs text-gray-500 mt-1">mmHg (e.g., 120/80)</p>
-        </div>
 
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Heart Rate
-          </label>
-          <input
-            type="number"
-            value={vitals.hr}
-            onChange={(e) => setVitals({ ...vitals, hr: e.target.value })}
-            placeholder="72"
-            min="30"
-            max="250"
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-          />
-          <p className="text-xs text-gray-500 mt-1">30-250 bpm</p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Respiratory Rate
-          </label>
-          <input
-            type="number"
-            value={vitals.rr}
-            onChange={(e) => setVitals({ ...vitals, rr: e.target.value })}
-            placeholder="16"
-            min="8"
-            max="60"
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-          />
-          <p className="text-xs text-gray-500 mt-1">8-60 breaths/min</p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Temperature
-          </label>
-          <input
-            type="number"
-            step="0.1"
-            value={vitals.tempC}
-            onChange={(e) => setVitals({ ...vitals, tempC: e.target.value })}
-            placeholder="36.5"
-            min="30"
-            max="45"
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-          />
-          <p className="text-xs text-gray-500 mt-1">30-45°C</p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            SpO2 (Oxygen Saturation)
-          </label>
-          <input
-            type="number"
-            value={vitals.spo2}
-            onChange={(e) => setVitals({ ...vitals, spo2: e.target.value })}
-            placeholder="98"
-            min="50"
-            max="100"
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-          />
-          <p className="text-xs text-gray-500 mt-1">50-100%</p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Height
-          </label>
-          <input
-            type="number"
-            step="0.1"
-            value={vitals.heightCm}
-            onChange={(e) => setVitals({ ...vitals, heightCm: e.target.value })}
-            placeholder="170"
-            min="50"
-            max="250"
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-          />
-          <p className="text-xs text-gray-500 mt-1">50-250 cm</p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Weight
-          </label>
-          <input
-            type="number"
-            step="0.1"
-            value={vitals.weightKg}
-            onChange={(e) => setVitals({ ...vitals, weightKg: e.target.value })}
-            placeholder="70"
-            min="2"
-            max="300"
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-          />
-          <p className="text-xs text-gray-500 mt-1">2-300 kg</p>
-        </div>
-
-        {calculateBMI() && (
-          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-            <label className="block text-sm font-semibold text-blue-900 mb-2">
-              BMI (Calculated)
+      {/* Primary Vitals Section */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-5 shadow-sm">
+        <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+          </svg>
+          Primary Vitals
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+              <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+              </svg>
+              Blood Pressure
             </label>
-            <p className="text-2xl font-bold text-blue-700">{calculateBMI()}</p>
-            <p className="text-xs text-blue-600 mt-1">kg/m²</p>
+            <input
+              type="text"
+              value={vitals.bp}
+              onChange={(e) => setVitals({ ...vitals, bp: e.target.value })}
+              placeholder="120/80"
+              pattern="[0-9]+/[0-9]+"
+              title="Enter as systolic/diastolic (e.g., 120/80)"
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all text-sm hover:border-gray-400"
+            />
+            <p className="text-xs text-gray-500 mt-1.5 font-medium">mmHg (e.g., 120/80)</p>
           </div>
-        )}
+
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+              <svg className="w-4 h-4 text-pink-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+              </svg>
+              Heart Rate
+            </label>
+            <input
+              type="number"
+              value={vitals.hr}
+              onChange={(e) => setVitals({ ...vitals, hr: e.target.value })}
+              placeholder="72"
+              min="30"
+              max="250"
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 outline-none transition-all text-sm hover:border-gray-400"
+            />
+            <p className="text-xs text-gray-500 mt-1.5 font-medium">30-250 bpm</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+              <svg className="w-4 h-4 text-cyan-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" />
+              </svg>
+              Respiratory Rate
+            </label>
+            <input
+              type="number"
+              value={vitals.rr}
+              onChange={(e) => setVitals({ ...vitals, rr: e.target.value })}
+              placeholder="16"
+              min="8"
+              max="60"
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all text-sm hover:border-gray-400"
+            />
+            <p className="text-xs text-gray-500 mt-1.5 font-medium">8-60 breaths/min</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+              <svg className="w-4 h-4 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clipRule="evenodd" />
+              </svg>
+              Temperature
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              value={vitals.tempC}
+              onChange={(e) => setVitals({ ...vitals, tempC: e.target.value })}
+              placeholder="36.5"
+              min="30"
+              max="45"
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm hover:border-gray-400"
+            />
+            <p className="text-xs text-gray-500 mt-1.5 font-medium">30-45°C</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+              <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+              </svg>
+              SpO2 (Oxygen)
+            </label>
+            <input
+              type="number"
+              value={vitals.spo2}
+              onChange={(e) => setVitals({ ...vitals, spo2: e.target.value })}
+              placeholder="98"
+              min="50"
+              max="100"
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm hover:border-gray-400"
+            />
+            <p className="text-xs text-gray-500 mt-1.5 font-medium">50-100%</p>
+          </div>
+        </div>
       </div>
 
-      <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
+      {/* Physical Measurements Section */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-5 shadow-sm">
+        <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          Physical Measurements
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+              <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
+              </svg>
+              Height
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              value={vitals.heightCm}
+              onChange={(e) => setVitals({ ...vitals, heightCm: e.target.value })}
+              placeholder="170"
+              min="50"
+              max="250"
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all text-sm hover:border-gray-400"
+            />
+            <p className="text-xs text-gray-500 mt-1.5 font-medium">50-250 cm</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+              <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+              </svg>
+              Weight
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              value={vitals.weightKg}
+              onChange={(e) => setVitals({ ...vitals, weightKg: e.target.value })}
+              placeholder="70"
+              min="2"
+              max="300"
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm hover:border-gray-400"
+            />
+            <p className="text-xs text-gray-500 mt-1.5 font-medium">2-300 kg</p>
+          </div>
+
+          {calculateBMI() ? (
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 shadow-lg border-2 border-blue-400">
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="w-5 h-5 text-blue-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                <label className="text-sm font-bold text-white">
+                  BMI (Auto-Calculated)
+                </label>
+              </div>
+              <p className="text-4xl font-bold text-white mb-1">{calculateBMI()}</p>
+              <p className="text-sm text-blue-100 font-medium">kg/m² - Body Mass Index</p>
+            </div>
+          ) : (
+            <div className="bg-gray-100 rounded-xl p-5 border-2 border-dashed border-gray-300 flex items-center justify-center">
+              <div className="text-center">
+                <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                <p className="text-sm font-semibold text-gray-500">BMI</p>
+                <p className="text-xs text-gray-400 mt-1">Enter height & weight</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-3 justify-end pt-6">
         <button
           type="button"
           onClick={onCancel}
-          className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
+          className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-all text-sm font-bold border border-gray-300 shadow-sm flex items-center gap-2"
         >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
           Cancel
         </button>
         <button
           type="submit"
-          className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
+          className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-bold shadow-lg hover:shadow-xl flex items-center gap-2"
         >
-          Save Vital Signs
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          {hasInitialVitals ? 'Update Vital Signs' : 'Save Vital Signs'}
         </button>
       </div>
     </form>
