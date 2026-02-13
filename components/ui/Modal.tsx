@@ -23,6 +23,11 @@ export function Modal({ open, onOpenChange, children, className = '' }: ModalPro
 
   if (!open) return null;
 
+  // Apply default max-w-lg only if no custom className provided
+  const modalClasses = className 
+    ? `relative bg-white rounded-lg shadow-xl w-full mx-4 max-h-[90vh] overflow-y-auto ${className}`
+    : `relative bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto`;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
@@ -30,7 +35,7 @@ export function Modal({ open, onOpenChange, children, className = '' }: ModalPro
     >
       <div className="fixed inset-0 bg-black/50" />
       <div
-        className={`relative bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto ${className}`}
+        className={modalClasses}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
