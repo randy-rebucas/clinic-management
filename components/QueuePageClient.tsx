@@ -945,7 +945,7 @@ export default function QueuePageClient() {
                 setSelectedQueueForVitals(null);
               }
             }} 
-            className="max-w-[90vw]"
+            className="min-w-[30vw] max-w-[50vw]"
           >
             <div className="p-6 sm:p-8 bg-gradient-to-br from-gray-50 to-blue-50/30">
               <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-6">
