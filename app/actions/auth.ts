@@ -159,7 +159,6 @@ export async function login(
     // Get tenant context for multi-tenant support
     const tenantContext = await getTenantContext();
     const tenantId = tenantContext.tenantId;
-    console.log('Tenant context in login:', tenantContext);
     // Find user by email (case-insensitive, within tenant scope if tenant exists) with role populated
     const userQuery: any = { email: sanitizedEmail };
     if (tenantId) {
@@ -284,7 +283,6 @@ export async function login(
             if (fallbackRole) {
               roleName = fallbackRole.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
               roleId = fallbackRole._id.toString();
-              console.log(`✅ Found role from profile: ${roleName}`, { userId: user._id, email: user.email });
             }
           }
           // If still no roleId, try receptionist as last resort
@@ -309,7 +307,6 @@ export async function login(
         if (fallbackRole) {
           roleName = fallbackRole.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
           roleId = fallbackRole._id.toString();
-          console.log(`✅ Found role from profile: ${roleName}`, { userId: user._id, email: user.email });
         }
       }
       // If still no roleId, try receptionist as last resort

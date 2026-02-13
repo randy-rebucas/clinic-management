@@ -4,15 +4,17 @@ A step-by-step guide following a patient through their entire journey in your cl
 
 ## Journey Overview
 
-This guide demonstrates a complete patient flow from appointment booking to billing:
+This guide demonstrates a complete patient flow from appointment booking to billing with **real-time updates** across all systems:
 
-1. Patient Books Appointment
-2. Patient Checks In
-3. Doctor Consultation
-4. Prescription Created
-5. Lab Tests Ordered
-6. Billing and Payment
-7. Follow-up Scheduled
+1. Patient Books Appointment ✨ (Real-time calendar updates)
+2. Patient Checks In ✨ (Live queue updates)
+3. Doctor Consultation ✨ (Real-time status sync)
+4. Prescription Created ✨ (Instant prescription visibility)
+5. Lab Tests Ordered ✨ (Live lab order tracking)
+6. Billing and Payment ✨ (Real-time invoice updates)
+7. Follow-up Scheduled ✨ (Automatic calendar sync)
+
+**🔴 LIVE SYSTEM:** All staff see updates in real-time (2-5 second refresh) - no manual page refresh needed!
 
 Let's follow "Maria Santos" through her first visit to your clinic.
 
@@ -112,17 +114,21 @@ Maria arrives at the clinic 15 minutes before her appointment.
 3. Asks Maria to take a seat
 4. Gives her a queue number ticket
 
-**System Updates:**
-- Appointment status: "Arrived"
-- Queue status: "Waiting"
+**System Updates (Real-Time ✨):**
+- Appointment status: "Arrived" → **All staff see this update instantly**
+- Queue status: "Waiting" → **Queue display updates automatically**
 - Display screen shows: "Now serving: Queue #3"
+- **Doctor's dashboard updates** showing new patient in queue
+- **Reception staff see live queue count** increase
 
-**While Waiting:**
+**While Waiting (Live Updates):**
 - Maria sees her queue number on the display screen
+- Display automatically updates as queue moves forward
 - She receives SMS update:
   ```
   You are #3 in queue. Estimated wait: 15 minutes. Thank you for your patience.
   ```
+- **Real-time position updates** every 2-3 seconds on waiting room display
 
 ---
 
@@ -133,17 +139,32 @@ Doctor is ready to see Maria.
 
 ### Actions
 
-**Reception/Nurse:**
+**Reception/Nurse (Real-Time System ✨):**
 
-1. Views queue in MyClinicSoft
+1. Views queue in MyClinicSoft (auto-refreshes every 3 seconds)
 2. Clicks "Call Next Patient"
-3. System updates display screen:
+3. **Instant Updates Across All Screens:**
+   - Waiting room display updates immediately
+   - Doctor's dashboard shows patient "in-progress"
+   - Appointment status changes to "in-progress" automatically
+   - Nurse station screen updates
+   
+4. System updates display screen:
    ```
    NOW CALLING: Maria Santos (Queue #5)
    Please proceed to Room 2
    ```
-4. Announcement plays (optional)
-5. Maria receives SMS: "You are next. Please proceed to Room 2."
+5. Announcement plays (optional)
+6. Maria receives SMS: "You are next. Please proceed to Room 2."
+
+**🔴 REAL-TIME CASCADE:**
+```
+Queue: waiting → in-progress
+    ↓ (0.5 seconds via automation)
+Appointment: scheduled → in-progress
+    ↓ (2-3 seconds via polling)
+All dashboards refresh showing new status
+```
 
 **In Consultation Room:**
 
@@ -193,6 +214,13 @@ Doctor is ready to see Maria.
 
 3. **Physical Examination**
    - General: Alert, well-appearing
+
+**💡 Behind the Scenes (Real-Time):**
+As doctor documents, all updates are immediately visible to:
+- Nurses monitoring patient status
+- Billing staff preparing invoices
+- Pharmacy seeing prescription orders in real-time
+- Lab staff receiving test orders instantly
    - HEENT: Normal
    - Neurological: No focal deficits
    - Documents findings in MyClinicSoft
@@ -248,13 +276,19 @@ Doctor prescribes medication for Maria's headaches.
    - Maintain good posture
    - Stay hydrated
    - Get adequate sleep
-   - Return if headaches worsen or new symptoms appear
-   ```
-
-6. Doctor reviews and clicks "Save Prescription"
-
-7. Doctor digitally signs prescription
-
+   - Return if h (Real-Time ✨):**
+- Links prescription to visit
+- Generates prescription number: RX-2024-00567
+- **Instantly notifies:**
+  - Pharmacy dashboard (prescription appears immediately)
+  - Patient portal (visible within seconds)
+  - Billing system (adds to patient's invoice automatically)
+- Updates inventory in real-time:
+  - Deducts 28 Ibuprofen tablets
+  - Deducts 30 Multivitamin tablets
+  - **Pharmacy staff see stock update immediately**
+- Checks stock levels (auto-alert if low)
+- **All connected screens refresh automatically**
 **System Actions:**
 - Links prescription to visit
 - Generates prescription number: RX-2024-00567
@@ -644,7 +678,10 @@ Questions? Call us at: [Clinic Phone]
 ✅ Quick check-in with QR code
 ✅ Minimal wait time with queue system
 ✅ Complete medical records accessible online
-✅ Clear prescriptions and instructions
+✅ Clear prescriptions and
+✨ **NEW: Real-time updates across all stations (no page refresh needed)**
+✨ **NEW: Live queue and appointment status sync**
+✨ **NEW: Instant prescription and lab order visibility** instructions
 ✅ Easy follow-up scheduling
 ✅ Transparent billing
 ✅ Ongoing engagement and care

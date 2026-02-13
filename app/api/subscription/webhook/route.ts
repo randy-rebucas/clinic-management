@@ -40,18 +40,15 @@ export async function POST(request: NextRequest) {
           const orderId = resource.supplementary_data.related_ids.order_id;
           // Find tenant by order ID (you may need to store orderId -> tenantId mapping)
           // For now, we'll handle this in the capture-order route
-          console.log('Payment captured:', orderId);
         }
         break;
 
       case 'PAYMENT.CAPTURE.DENIED':
       case 'PAYMENT.CAPTURE.REFUNDED':
         // Payment was denied or refunded
-        console.log('Payment issue:', eventType, resource);
         break;
 
       default:
-        console.log('Unhandled webhook event:', eventType);
     }
 
     return NextResponse.json({ received: true });

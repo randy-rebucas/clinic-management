@@ -84,7 +84,6 @@ export default function VisitForm({
   onCancel,
   providerName,
 }: VisitFormProps) {
-  console.log('VisitForm initialData:', initialData);
   const [formData, setFormData] = useState<VisitFormData>({
     patient: initialData?.patient || '',
     visitType: initialData?.visitType || 'consultation',
@@ -154,7 +153,6 @@ export default function VisitForm({
   // Update form data when initialData changes (e.g., when queue vitals are loaded)
   useEffect(() => {
     if (initialData?.vitals && Object.keys(initialData.vitals).length > 0) {
-      console.log('Updating vitals from initialData:', initialData.vitals);
       setFormData(prev => ({
         ...prev,
         vitals: { ...prev.vitals, ...initialData.vitals }
@@ -1157,7 +1155,6 @@ export default function VisitForm({
               onChange={(e) => {
                 // Note: File uploads should be handled separately via API
                 // This is just a placeholder - actual upload should be done after visit creation
-                console.log('Files selected:', e.target.files);
               }}
               className="w-full text-sm px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white"
             />

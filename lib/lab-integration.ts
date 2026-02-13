@@ -137,7 +137,6 @@ export async function receiveLabResultFromThirdParty(
 export function processHL7Message(hl7Message: string): LabRequestPayload | null {
   // This would parse HL7 messages
   // For now, return null as placeholder
-  console.log('HL7 message processing not yet implemented');
   return null;
 }
 

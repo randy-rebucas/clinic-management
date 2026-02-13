@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import AppointmentCalendar from './AppointmentCalendar';
 import { Modal } from './ui/Modal';
 import { useSetting } from './SettingsContext';
+import { useAppointmentWebSocket } from '@/lib/hooks/useAppointmentWebSocket';
+import { useQueueWebSocket } from '@/lib/hooks/useQueueWebSocket';
 
 interface Appointment {
   _id: string;
@@ -55,7 +57,6 @@ interface Doctor {
 }
 
 export default function AppointmentsPageClient({ patientId }: { patientId?: string } = {}) {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +65,32 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'calendar' | 'list' | 'queue'>('calendar');
   const defaultDuration = useSetting('appointmentSettings.defaultDuration', 30);
-  const [appointmentsInQueue, setAppointmentsInQueue] = useState<Set<string>>(new Set());
+  const [filterDoctor, setFilterDoctor] = useState<string>('');
+  const [filterRoom, setFilterRoom] = useState<string>('');
+
+  // WebSocket hooks for real-time updates (event-driven, not polling)
+  const { appointments, loading: loadingAppointments, error: appointmentsError, connected: appointmentsConnected } = useAppointmentWebSocket({
+    enabled: true,
+    filters: {
+      date: selectedDate.toISOString().split('T')[0],
+      ...(filterDoctor && { doctorId: filterDoctor }),
+    }
+  });
+
+  // WebSocket queue data (instant updates)
+  const { queue, loading: loadingQueue, connected: queueConnected } = useQueueWebSocket({
+    enabled: true,
+  });
+
+  // Track which appointments are in queue
+  const appointmentsInQueue = new Set<string>(
+    queue
+      .filter((q: any) => q.appointment)
+      .map((q: any) => {
+        const apt = q.appointment;
+        return typeof apt === 'string' ? apt : (apt._id?.toString() || apt.toString());
+      })
+  );
 
   const [formData, setFormData] = useState({
     patient: '',
@@ -82,16 +108,20 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   const [showPatientSearch, setShowPatientSearch] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const [filterDoctor, setFilterDoctor] = useState<string>('');
-  const [filterRoom, setFilterRoom] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
     fetchData();
-    fetchQueueData();
   }, []);
+
+  // Redirect on auth error
+  useEffect(() => {
+    if (appointmentsError && appointmentsError.message.includes('401')) {
+      router.push('/login');
+    }
+  }, [appointmentsError, router]);
 
   // Handle patientId prop - open form and pre-select patient
   useEffect(() => {
@@ -143,38 +173,6 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
     }
   }, [showPatientSearch]);
 
-  useEffect(() => {
-    if (selectedDate) {
-      fetchAppointmentsForDate(selectedDate);
-      fetchQueueData();
-    }
-  }, [selectedDate]);
-
-  const fetchQueueData = async () => {
-    try {
-      const queueRes = await fetch('/api/queue');
-      if (queueRes.ok) {
-        const queueData = await queueRes.json();
-        console.log('Queue data:', queueData);
-        if (queueData.success && Array.isArray(queueData.data)) {
-          const appointmentIds = new Set<string>(
-            queueData.data
-              .filter((q: any) => q.appointment)
-              .map((q: any) => {
-                // Handle both populated object and string ID
-                const apt = q.appointment;
-                return typeof apt === 'string' ? apt : (apt._id?.toString() || apt.toString());
-              })
-          );
-          setAppointmentsInQueue(appointmentIds);
-          console.log('Appointment IDs in queue:', appointmentIds);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch queue data:', error);
-    }
-  };
-
   const fetchData = async () => {
     try {
       const [patientsRes, doctorsRes] = await Promise.all([
@@ -206,35 +204,6 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
       setLoading(false);
     }
   };
-
-  const fetchAppointmentsForDate = async (date: Date) => {
-    try {
-      const dateStr = date.toISOString().split('T')[0];
-      let url = `/api/appointments?date=${dateStr}`;
-      if (filterDoctor) {
-        url += `&doctorId=${filterDoctor}`;
-      }
-      if (filterRoom) {
-        url += `&room=${encodeURIComponent(filterRoom)}`;
-      }
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setAppointments(data.data);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch appointments:', error);
-    }
-  };
-
-  useEffect(() => {
-    if (selectedDate) {
-      fetchAppointmentsForDate(selectedDate);
-      fetchQueueData();
-    }
-  }, [selectedDate, filterDoctor, filterRoom]);
 
   const filteredPatients = patients.filter((patient) => {
     if (!patientSearch.trim()) return true;
@@ -326,7 +295,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         setPatientSearch('');
         setSelectedPatient(null);
         setHighlightedIndex(-1);
-        fetchAppointmentsForDate(selectedDate);
+        // Data will auto-refresh via WebSocket
         setSuccess(isWalkIn ? `Walk-in appointment created! Queue number: ${queueNumber}` : 'Appointment scheduled successfully!');
         setTimeout(() => setSuccess(null), 5000);
       } else {
@@ -364,13 +333,12 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
       }
 
       if (data.success) {
-        fetchAppointmentsForDate(selectedDate);
+        // Data will auto-refresh via WebSocket
         setSuccess('Appointment updated successfully!');
         setTimeout(() => setSuccess(null), 3000);
         // Send reminder if status is confirmed
         if (status === 'confirmed') {
           // Trigger reminder (will be implemented)
-          console.log('Sending confirmation reminder...');
         }
       } else {
         setError('Error: ' + data.error);
@@ -446,7 +414,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         if (aptRes.ok) {
           const aptData = await aptRes.json();
           if (aptData.success) {
-            fetchAppointmentsForDate(selectedDate);
+            // Data will auto-refresh via WebSocket
             const patientName = typeof appointment.patient === 'string'
               ? 'Patient'
               : `${appointment.patient?.firstName || ''} ${appointment.patient?.lastName || ''}`.trim() || 'Patient';
@@ -455,7 +423,6 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
           }
         } else {
           // Queue was created but appointment update failed
-          fetchAppointmentsForDate(selectedDate);
           setSuccess(`Added to queue (${queueData.data.queueNumber}) but appointment status update failed`);
           setTimeout(() => setSuccess(null), 5000);
         }
@@ -464,8 +431,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         setTimeout(() => setSuccess(null), 5000);
       }
 
-      // Update local state to reflect appointment is now in queue
-      setAppointmentsInQueue(prev => new Set(prev).add(id));
+      // Queue state will auto-refresh via WebSocket
     } catch (error) {
       console.error('Failed to move to queue:', error);
       setError('Failed to move to queue');
@@ -600,8 +566,28 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Appointments</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage appointments and walk-in queue</p>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Appointments</h1>
+                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
+                      (appointmentsConnected && queueConnected) 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-yellow-50 border-yellow-200'
+                    }`}>
+                      <div className={`w-2 h-2 rounded-full ${
+                        (appointmentsConnected && queueConnected)
+                          ? 'bg-green-500 animate-pulse'
+                          : 'bg-yellow-500 animate-pulse'
+                      }`}></div>
+                      <span className={`text-xs font-medium ${
+                        (appointmentsConnected && queueConnected)
+                          ? 'text-green-700'
+                          : 'text-yellow-700'
+                      }`}>
+                        {(appointmentsConnected && queueConnected) ? 'Live' : 'Connecting...'}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage appointments and walk-in queue • Real-time via WebSocket</p>
                 </div>
               </div>
               <div className="flex gap-3 flex-wrap">

@@ -302,16 +302,6 @@ export default function TenantOnboardClient() {
         return;
       }
 
-      console.log('Sending onboarding request:', {
-        name: requestBody.name,
-        subdomain: requestBody.subdomain,
-        hasAdmin: !!requestBody.admin,
-        adminName: requestBody.admin?.name,
-        adminEmail: requestBody.admin?.email,
-        hasAdminPassword: !!requestBody.admin?.password,
-        fullRequestBody: requestBody,
-      });
-
       const response = await fetch('/api/tenants/onboard', {
         method: 'POST',
         headers: {

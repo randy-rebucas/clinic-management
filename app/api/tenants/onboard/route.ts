@@ -62,14 +62,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    console.log('Received onboarding request:', {
-      hasName: !!body.name,
-      hasSubdomain: !!body.subdomain,
-      hasAdmin: !!body.admin,
-      hasAdminName: !!body.admin?.name,
-      hasAdminEmail: !!body.admin?.email,
-      hasAdminPassword: !!body.admin?.password,
-    });
 
     const {
       name,
@@ -81,14 +73,7 @@ export async function POST(request: NextRequest) {
       settings,
       admin,
     } = body;
-    console.log('Onboarding data:', {
-      name: name ? `${name.substring(0, 20)}...` : 'missing',
-      subdomain: subdomain ? `${subdomain.substring(0, 20)}...` : 'missing',
-      hasAdmin: !!admin,
-      adminName: admin?.name ? `${admin.name.substring(0, 20)}...` : 'missing',
-      adminEmail: admin?.email ? `${admin.email.substring(0, 20)}...` : 'missing',
-      adminPassword: admin?.password,
-    });
+
     // Validate required fields
     if (!name || !subdomain || !admin?.name || !admin?.email || !admin?.password) {
       const missingFields = [];
@@ -232,7 +217,6 @@ export async function POST(request: NextRequest) {
     const tenantId = tenant._id;
 
     // Create all roles with permissions
-    console.log('Creating roles and permissions...');
     const rolesToCreate = [
       {
         name: 'admin',
@@ -382,8 +366,6 @@ export async function POST(request: NextRequest) {
       throw new Error('Admin role not found after creation');
     }
 
-    console.log('Creating admin profile and user...');
-
     // Validate admin password
     if (!admin.password || admin.password.length < 8) {
       throw new Error('Admin password must be at least 8 characters long');
@@ -402,7 +384,6 @@ export async function POST(request: NextRequest) {
 
     if (!adminProfile) {
       // Create Admin profile first
-      console.log('Creating Admin profile...');
       try {
         adminProfile = await Admin.create({
           tenantId: tenant._id,
@@ -414,13 +395,10 @@ export async function POST(request: NextRequest) {
           accessLevel: 'full',
           status: 'active',
         });
-        console.log('✅ Admin profile created:', adminProfile._id.toString());
       } catch (adminError: any) {
         console.error('❌ Error creating Admin profile:', adminError);
         throw new Error(`Failed to create Admin profile: ${adminError.message}`);
       }
-    } else {
-      console.log('ℹ️  Admin profile already exists:', adminProfile._id.toString());
     }
 
     // Check if User already exists (might have been created by Admin post-save hook)
@@ -430,11 +408,8 @@ export async function POST(request: NextRequest) {
 
     if (!adminUser) {
       // Create User manually with the provided password
-      console.log('Creating User account...');
       try {
-        console.log('Hashing password and creating user...', admin.password);
         const hashedPassword = await bcrypt.hash(admin.password, 10);
-        console.log('Password hashed, creating user document...', hashedPassword);
 
         adminUser = await User.create({
           name: admin.name.trim(),
@@ -444,11 +419,6 @@ export async function POST(request: NextRequest) {
           tenantId: tenant._id,
           adminProfile: adminProfile._id,
           status: 'active',
-        });
-        console.log('✅ User created successfully:', {
-          id: adminUser._id.toString(),
-          email: adminUser.email,
-          role: adminRole.name,
         });
       } catch (userError: any) {
         console.error('❌ Error creating User:', userError);
@@ -470,7 +440,6 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // User exists, update password and link to admin profile if needed
-      console.log('ℹ️  User already exists, updating password and profile link...');
       const hashedPassword = await bcrypt.hash(admin.password, 10);
       adminUser.password = hashedPassword;
       adminUser.role = adminRole._id;
@@ -478,7 +447,6 @@ export async function POST(request: NextRequest) {
       adminUser.adminProfile = adminProfile._id;
       adminUser.status = 'active';
       await adminUser.save();
-      console.log('✅ User updated successfully');
     }
 
     // Verify user was created/updated
@@ -494,15 +462,7 @@ export async function POST(request: NextRequest) {
       throw new Error('User was created but cannot be retrieved from database');
     }
 
-    console.log('✅ User verified in database:', {
-      id: verifyUser._id.toString(),
-      email: verifyUser.email,
-      role: (verifyUser as any).role?.name,
-      hasAdminProfile: !!(verifyUser as any).adminProfile,
-    });
-
     // Create tenant settings
-    console.log('Creating tenant settings...');
     const clinicAddress = tenant.address?.street
       ? `${tenant.address.street}${tenant.address.city ? `, ${tenant.address.city}` : ''}${tenant.address.state ? `, ${tenant.address.state}` : ''}${tenant.address.zipCode ? ` ${tenant.address.zipCode}` : ''}`
       : '';
@@ -533,8 +493,6 @@ export async function POST(request: NextRequest) {
         allowPartialPayments: true,
       },
     });
-
-    console.log('Seed data creation completed');
 
     return NextResponse.json({
       success: true,

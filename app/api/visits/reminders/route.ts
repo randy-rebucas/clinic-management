@@ -40,12 +40,6 @@ export async function POST(request: NextRequest) {
 
     // Send reminder email/SMS
     const patient = visit.patient as any;
-    console.log('Sending follow-up reminder:', {
-      to: patient.email,
-      patient: `${patient.firstName} ${patient.lastName}`,
-      followUpDate: visit.followUpDate.toLocaleDateString(),
-    });
-
     // TODO: Implement actual email/SMS sending
     // Example:
     // await sendEmail({

@@ -12,10 +12,8 @@ export async function GET(request: NextRequest) {
   try {
     // Verify session
     const session = await verifySession();
-    console.log('Medical rep session verification:', session);
     
     if (!session) {
-      console.log('No session found');
       return NextResponse.json(
         { success: false, error: 'Unauthorized - No session found' },
         { status: 401 }
@@ -24,7 +22,6 @@ export async function GET(request: NextRequest) {
 
     // Check if user is a medical representative
     if (session.role !== 'medical-representative') {
-      console.log('Invalid role:', session.role);
       return NextResponse.json(
         { success: false, error: 'Forbidden - Medical representative access only' },
         { status: 403 }

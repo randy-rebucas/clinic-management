@@ -92,7 +92,6 @@ class Monitoring {
 
       this.sentry = Sentry;
       this.initialized = true;
-      console.log('✅ Monitoring (Sentry) initialized');
     } catch (error) {
       console.warn('⚠️  Failed to initialize Sentry:', error);
       // Don't throw - monitoring should not break the application

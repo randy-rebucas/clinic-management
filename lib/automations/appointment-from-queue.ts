@@ -19,7 +19,6 @@ export async function updateAppointmentFromQueue(params: UpdateAppointmentFromQu
 
   // Prevent circular automation if this was triggered by appointment update
   if (skipAutomation) {
-    console.log('[Appointment Automation] ⏭️ Skipping automation (skipAutomation flag set)');
     return;
   }
 
@@ -36,7 +35,6 @@ export async function updateAppointmentFromQueue(params: UpdateAppointmentFromQu
     const newAppointmentStatus = statusMap[newQueueStatus];
 
     if (!newAppointmentStatus) {
-      console.log(`[Appointment Automation] No status mapping for queue status: ${newQueueStatus}`);
       return;
     }
 
@@ -87,9 +85,7 @@ export async function updateAppointmentFromQueue(params: UpdateAppointmentFromQu
     );
 
     if (updatedAppointment) {
-      console.log(`[Appointment Automation] ✅ Appointment ${updatedAppointment._id} status updated to '${newAppointmentStatus}' (from queue ${queueId})`);
     } else {
-      console.log(`[Appointment Automation] ℹ️ No active appointment found for patient ${patientId} (queue ${queueId})`);
     }
 
   } catch (error) {
