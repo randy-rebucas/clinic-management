@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
 import Room from '@/models/Room';
+import Doctor from '@/models/Doctor';
+import Patient from '@/models/Patient';
+import Appointment from '@/models/Appointment';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
@@ -25,47 +28,63 @@ export async function GET(
 
   try {
     await connectDB();
-    const { id } = await params;
     
+    // Ensure models are registered
+    await Promise.all([
+      import('@/models/Doctor'),
+      import('@/models/Patient'),
+      import('@/models/Room'),
+      import('@/models/Appointment'),
+    ]);
+    
+    const { id } = await params;
+
+    console.log('[GET /api/queue/[id]] Request received:', { id });
+
+    // Validate ObjectId
+    if (!Types.ObjectId.isValid(id)) {
+      console.error('[GET /api/queue/[id]] Invalid ObjectId:', id);
+      return NextResponse.json(
+        { success: false, error: 'Invalid queue ID' },
+        { status: 400 }
+      );
+    }
+
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
+    console.log('[GET /api/queue/[id]] Tenant context:', { tenantId, sessionTenantId: session.tenantId });
+
     // Build query with tenant filter
-    const query: any = { _id: id };
+    const query: any = { _id: new Types.ObjectId(id) };
     if (tenantId) {
       query.tenantId = new Types.ObjectId(tenantId);
     } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      query.tenantId = { $in: [null, undefined] };
     }
-    
+    console.log('[GET /api/queue/[id]] Query built:', query);
+    console.log('[GET /api/queue/[id]] Query:', JSON.stringify(query));
+
     // Build populate options with tenant filter
     const patientPopulateOptions: any = {
       path: 'patient',
       select: 'firstName lastName patientCode',
     };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: null }] };
-    }
-    
+
     const doctorPopulateOptions: any = {
       path: 'doctor',
       select: 'firstName lastName',
     };
-    if (tenantId) {
-      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-    
+
     const queue = await Queue.findOne(query)
       .populate(patientPopulateOptions)
       .populate(doctorPopulateOptions)
-      .populate('room', 'name roomNumber')
+      // .populate('room', 'name roomNumber')
       .populate('appointment', 'appointmentCode appointmentDate appointmentTime')
-      .lean();
+      .lean() as any;
+
+    //   console.log('[GET /api/queue/[id]] Queue found:', { found: !!queue, id: queue?._id });
 
     if (!queue) {
       return NextResponse.json(
@@ -75,10 +94,12 @@ export async function GET(
     }
 
     return NextResponse.json({ success: true, data: queue });
+
   } catch (error: any) {
-    console.error('Error fetching queue entry:', error);
+    console.error('[GET /api/queue/[id]] Error:', error);
+    console.error('[GET /api/queue/[id]] Error stack:', error.stack);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch queue entry' },
+      { success: false, error: 'Failed to fetch queue entry', details: error.message },
       { status: 500 }
     );
   }
@@ -104,7 +125,15 @@ export async function PUT(
     await connectDB();
     const { id } = await params;
     const body = await request.json();
-    
+
+    // Validate ObjectId
+    if (!Types.ObjectId.isValid(id)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid queue ID' },
+        { status: 400 }
+      );
+    }
+
     // Log incoming data for debugging
     console.log('Queue Update Request:', {
       queueId: id,
@@ -112,17 +141,17 @@ export async function PUT(
       hasVitals: !!body.vitals,
       vitalsData: body.vitals
     });
-    
+
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     // Build query with tenant filter
-    const query: any = { _id: id };
+    const query: any = { _id: new Types.ObjectId(id) };
     if (tenantId) {
       query.tenantId = new Types.ObjectId(tenantId);
     } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      query.tenantId = { $in: [null, undefined] };
     }
 
     // Update status timestamps
@@ -136,7 +165,7 @@ export async function PUT(
 
     // First, get the current queue entry to see what we're updating
     const currentQueue = await Queue.findOne(query);
-    
+
     if (!currentQueue) {
       return NextResponse.json(
         { success: false, error: 'Queue entry not found' },
@@ -182,24 +211,14 @@ export async function PUT(
       path: 'patient',
       select: 'firstName lastName patientCode',
     };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: null }] };
-    }
-    
+
     const doctorPopulateOptions: any = {
       path: 'doctor',
       select: 'firstName lastName',
     };
-    if (tenantId) {
-      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
 
     // Refetch with lean() to get plain object with vitals preserved
-    const updatedQueue = await Queue.findOne({ _id: id })
+    const updatedQueue = await Queue.findOne({ _id: new Types.ObjectId(id) })
       .populate(patientPopulateOptions)
       .populate(doctorPopulateOptions)
       .populate('room', 'name roomNumber')
@@ -247,17 +266,25 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-    
+
+    // Validate ObjectId
+    if (!Types.ObjectId.isValid(id)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid queue ID' },
+        { status: 400 }
+      );
+    }
+
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     // Build query with tenant filter
-    const query: any = { _id: id };
+    const query: any = { _id: new Types.ObjectId(id) };
     if (tenantId) {
       query.tenantId = new Types.ObjectId(tenantId);
     } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      query.tenantId = { $in: [null, undefined] };
     }
 
     const queue = await Queue.findOneAndUpdate(
@@ -277,7 +304,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error('Error cancelling queue entry:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to cancel queue entry' },
+      { success: false, error: 'Failed to cancel queue entry', details: error.message },
       { status: 500 }
     );
   }

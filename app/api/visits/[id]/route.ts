@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Visit from '@/models/Visit';
+import Queue from '@/models/Queue';
 import Prescription from '@/models/Prescription';
 import LabResult from '@/models/LabResult';
 import Imaging from '@/models/Imaging';
@@ -199,6 +200,53 @@ export async function PUT(
     
     await visit.populate(patientPopulateOptions);
     await visit.populate('provider', 'name email');
+    
+    // Update queue status based on visit status change
+    if (oldVisit && oldVisit.status !== body.status) {
+      const queueStatusMap: Record<string, string> = {
+        'open': 'in-progress',
+        'closed': 'completed',
+        'cancelled': 'cancelled'
+      };
+      
+      const newQueueStatus = queueStatusMap[body.status];
+      
+      if (newQueueStatus) {
+        try {
+          // Find and update queue entry for this patient
+          const queueQuery: any = {
+            patient: visit.patient._id || visit.patient,
+            status: { $in: ['waiting', 'in-progress'] } // Only update active queue entries
+          };
+          
+          if (tenantId) {
+            queueQuery.tenantId = new Types.ObjectId(tenantId);
+          } else {
+            queueQuery.tenantId = { $in: [null, undefined] };
+          }
+          
+          const updateData: any = { status: newQueueStatus };
+          
+          // Add completion timestamp if status is completed
+          if (newQueueStatus === 'completed') {
+            updateData.completedAt = new Date();
+          }
+          
+          const updatedQueue = await Queue.findOneAndUpdate(
+            queueQuery,
+            updateData,
+            { new: true, sort: { queuedAt: -1 } } // Update most recent queue entry
+          );
+          
+          if (updatedQueue) {
+            console.log(`Queue status updated to '${newQueueStatus}' for patient ${visit.patient._id || visit.patient}`);
+          }
+        } catch (queueError) {
+          console.error('Error updating queue status:', queueError);
+          // Don't fail visit update if queue update fails
+        }
+      }
+    }
     
     // Auto-create or update prescription if medications are present in treatment plan
     if (body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {

@@ -13,9 +13,21 @@ interface Patient {
   patientCode?: string;
 }
 
-export default function VisitFormClient({ patientId }: { patientId?: string } = {}) {
+interface QueueVitals {
+  bp?: string;
+  hr?: number;
+  rr?: number;
+  tempC?: number;
+  spo2?: number;
+  heightCm?: number;
+  weightKg?: number;
+  bmi?: number;
+}
+
+export default function VisitFormClient({ patientId, queueId }: { patientId?: string; queueId?: string } = {}) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [providerName, setProviderName] = useState('Dr. Provider');
+  const [queueVitals, setQueueVitals] = useState<QueueVitals | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +35,10 @@ export default function VisitFormClient({ patientId }: { patientId?: string } = 
 
   useEffect(() => {
     fetchData();
-  }, []);
+    if (queueId) {
+      fetchQueueVitals();
+    }
+  }, [queueId]);
 
   const fetchData = async () => {
     try {
@@ -57,6 +72,37 @@ export default function VisitFormClient({ patientId }: { patientId?: string } = 
       setError('Failed to load form data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchQueueVitals = async () => {
+    try {
+      const res = await fetch(`/api/queue/${queueId}`);
+
+      if (res.status === 401) {
+        router.push('/login');
+        return;
+      }
+      console.log('Fetching queue vitals for queueId:', queueId, 'Response:', res);
+      const data = await res.json();
+      console.log('Queue vitals data:', data);
+      if (data.success && data.data.vitals) {
+        console.log('Queue vitals found:', data.data.vitals);
+        // Map queue vitals to visit vitals format
+        setQueueVitals({
+          bp: data.data.vitals.bp,
+          hr: data.data.vitals.hr,
+          rr: data.data.vitals.rr,
+          tempC: data.data.vitals.tempC,
+          spo2: data.data.vitals.spo2,
+          heightCm: data.data.vitals.heightCm,
+          weightKg: data.data.vitals.weightKg,
+          bmi: data.data.vitals.bmi,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch queue vitals:', error);
+      setError('Failed to load queue vitals');
     }
   };
 
@@ -143,7 +189,7 @@ export default function VisitFormClient({ patientId }: { patientId?: string } = 
           {/* Header */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex items-center gap-4">
-              <button 
+              <button
                 onClick={handleCancel}
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
@@ -175,7 +221,10 @@ export default function VisitFormClient({ patientId }: { patientId?: string } = 
             ) : (
               <div className="p-6 sm:p-8">
                 <VisitForm
-                  initialData={patientId ? { patient: patientId } : undefined}
+                  initialData={{
+                    ...(patientId ? { patient: patientId } : {}),
+                    ...(queueVitals ? { vitals: queueVitals } : {}),
+                  }}
                   patients={patients}
                   onSubmit={handleSubmit}
                   onCancel={handleCancel}
