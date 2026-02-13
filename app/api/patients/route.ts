@@ -42,10 +42,7 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get('sortOrder') || 'desc';
     const limit = searchParams.get('limit');
     const page = searchParams.get('page') || '1';
-    console.log('GET /api/patients called with params:', {
-      search,
-      sex, active, minAge, maxAge, city, state, sortBy, sortOrder, limit, page, tenantId
-    });
+
     // Build filter query
     const filter: any = {};
     // Support global search (across all tenants) if ?global=true
@@ -99,14 +96,6 @@ export async function GET(request: NextRequest) {
         Object.assign(filter, tenantFilter);
       }
     }
-
-    // Debug logging
-    console.log('Patient search params:', {
-      search,
-      isGlobal,
-      tenantId,
-      filter,
-    });
 
     // Sex filter
     if (sex && sex !== 'all') {
@@ -264,8 +253,6 @@ export async function POST(request: NextRequest) {
         id instanceof Types.ObjectId ? id : new Types.ObjectId(id)
       );
     }
-
-    console.log('Creating patient with data:', JSON.stringify(body, null, 2));
 
     // Auto-generate patientCode if not provided
     // Use retry mechanism to handle race conditions

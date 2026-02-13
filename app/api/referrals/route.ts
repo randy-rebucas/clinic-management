@@ -185,7 +185,6 @@ export async function POST(request: NextRequest) {
     }
     
     // Debug: log the incoming body to see what's being sent
-    console.log('Incoming referral data:', JSON.stringify(body, null, 2));
 
     // Generate referral code if not provided (tenant-scoped)
     let referralCode = body.referralCode;

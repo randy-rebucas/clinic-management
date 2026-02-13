@@ -11,6 +11,7 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { emitVisitUpdate } from '@/lib/websocket/emitHelper';
 
 export async function GET(
   request: NextRequest,
@@ -238,9 +239,6 @@ export async function PUT(
             { new: true, sort: { queuedAt: -1 } } // Update most recent queue entry
           );
           
-          if (updatedQueue) {
-            console.log(`Queue status updated to '${newQueueStatus}' for patient ${visit.patient._id || visit.patient}`);
-          }
         } catch (queueError) {
           console.error('Error updating queue status:', queueError);
           // Don't fail visit update if queue update fails
@@ -324,6 +322,9 @@ export async function PUT(
       // Schedule reminder (async, don't wait)
       sendFollowUpReminder(visit).catch(console.error);
     }
+
+    // Emit WebSocket event for real-time updates
+    emitVisitUpdate(visit, { tenantId: tenantId || undefined });
     
     return NextResponse.json({ success: true, data: visit });
   } catch (error: any) {
@@ -395,11 +396,7 @@ async function sendFollowUpReminder(visit: any) {
   const patient = visit.patient;
   const followUpDate = visit.followUpDate;
   
-  console.log('Sending follow-up reminder:', {
-    to: patient.email,
-    patient: `${patient.firstName} ${patient.lastName}`,
-    followUpDate: followUpDate.toLocaleDateString(),
-  });
+  // TODO: Implement email service integration
   
   // TODO: Implement actual email sending
   // Update reminderSent flag after sending

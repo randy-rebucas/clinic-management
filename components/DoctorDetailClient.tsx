@@ -82,7 +82,6 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
         return;
       }
       const data = await res.json();
-      console.log('Fetched doctor:', data);
       if (data.success) {
         setDoctor(data.data);
       }
@@ -249,7 +248,6 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
   }
 
   const fullName = `${doctor.title || 'Dr.'} ${doctor.firstName} ${doctor.lastName}`;
-  console.log('Doctor specializationId:', doctor.specializationId?.name);
   const specializationName = (typeof doctor.specializationId === 'object' && doctor.specializationId?.name)
     ? doctor.specializationId.name
     : doctor.specialization || '';

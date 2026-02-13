@@ -9,6 +9,7 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { emitQueueUpdate } from '@/lib/websocket/emitHelper';
 
 export async function GET(
   request: NextRequest,
@@ -39,8 +40,6 @@ export async function GET(
     
     const { id } = await params;
 
-    console.log('[GET /api/queue/[id]] Request received:', { id });
-
     // Validate ObjectId
     if (!Types.ObjectId.isValid(id)) {
       console.error('[GET /api/queue/[id]] Invalid ObjectId:', id);
@@ -54,8 +53,6 @@ export async function GET(
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
-    console.log('[GET /api/queue/[id]] Tenant context:', { tenantId, sessionTenantId: session.tenantId });
-
     // Build query with tenant filter
     const query: any = { _id: new Types.ObjectId(id) };
     if (tenantId) {
@@ -63,8 +60,6 @@ export async function GET(
     } else {
       query.tenantId = { $in: [null, undefined] };
     }
-    console.log('[GET /api/queue/[id]] Query built:', query);
-    console.log('[GET /api/queue/[id]] Query:', JSON.stringify(query));
 
     // Build populate options with tenant filter
     const patientPopulateOptions: any = {
@@ -134,14 +129,6 @@ export async function PUT(
       );
     }
 
-    // Log incoming data for debugging
-    console.log('Queue Update Request:', {
-      queueId: id,
-      updateData: body,
-      hasVitals: !!body.vitals,
-      vitalsData: body.vitals
-    });
-
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
@@ -173,12 +160,6 @@ export async function PUT(
       );
     }
 
-    console.log('Current Queue before update:', {
-      _id: currentQueue._id,
-      currentVitals: currentQueue.vitals,
-      incomingVitals: body.vitals
-    });
-
     // Update fields - explicitly handle vitals for nested object (merge to preserve existing fields)
     if (body.vitals) {
       currentQueue.vitals = {
@@ -186,7 +167,6 @@ export async function PUT(
         ...body.vitals
       };
       currentQueue.markModified('vitals');
-      console.log('Vitals merged and set:', currentQueue.vitals);
     }
 
     // Update other fields
@@ -198,13 +178,6 @@ export async function PUT(
 
     // Save the updated document
     await currentQueue.save();
-
-    console.log('Queue After Save:', {
-      _id: currentQueue._id,
-      vitals: currentQueue.vitals,
-      hasVitals: !!currentQueue.vitals,
-      vitalsKeys: currentQueue.vitals ? Object.keys(currentQueue.vitals) : []
-    });
 
     // Build populate options with tenant filter
     const patientPopulateOptions: any = {
@@ -252,9 +225,10 @@ export async function PUT(
       }).catch((error) => {
         console.error('[Queue API] Error loading appointment automation module:', error);
       });
-    } else if (skipAutomation) {
-      console.log('[Queue API] ⏭️ Skipping appointment automation (triggered by appointment update)');
     }
+
+    // Emit WebSocket event for real-time updates
+    emitQueueUpdate(updatedQueue, { tenantId: tenantId || undefined });
 
     return NextResponse.json({ success: true, data: updatedQueue });
   } catch (error: any) {

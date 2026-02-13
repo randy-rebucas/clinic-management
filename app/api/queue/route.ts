@@ -171,7 +171,6 @@ export async function POST(request: NextRequest) {
     };
     
     const patient = await PatientModel.findOne(patientQuery).select('firstName lastName').lean();
-    console.log('Patient lookup result:', { patientId, tenantId, found: !!patient });
     
     if (!patient || Array.isArray(patient) || !('firstName' in patient) || !('lastName' in patient)) {
       return NextResponse.json(
@@ -191,7 +190,6 @@ export async function POST(request: NextRequest) {
       };
       
       const appointment = await AppointmentModel.findOne(appointmentQuery).lean();
-      console.log('Appointment lookup result:', { appointmentId, found: !!appointment });
       
       if (!appointment) {
         return NextResponse.json(

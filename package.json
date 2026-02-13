@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "tsx server.ts",
+    "dev:polling": "next dev",
     "dev:webpack": "next dev --no-turbo",
     "build": "next build",
-    "start": "next start",
+    "start": "NODE_ENV=production tsx server.ts",
+    "start:next": "next start",
     "lint": "eslint",
     "test": "vitest",
     "test:watch": "vitest --watch",
@@ -49,6 +51,8 @@
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "twilio": "^5.10.6",
     "vercel": "^50.5.0",
     "zod": "^4.1.12"

@@ -58,11 +58,7 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@clinic.com';
 
   if (!emailTransporter) {
-    console.log('Email (simulated):', {
-      to: options.to,
-      subject: options.subject,
-      note: 'SMTP not configured - email logged only',
-    });
+    // SMTP not configured - email logged only
     return {
       success: true,
       error: 'SMTP not configured - email logged only',

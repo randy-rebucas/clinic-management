@@ -5,19 +5,13 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { emitAppointmentUpdate } from '@/lib/websocket/emitHelper';
 
 // Email reminder function (placeholder - implement with your email service)
 async function sendAppointmentReminder(appointment: any) {
   const patient = appointment.patient;
   const appointmentDate = new Date(appointment.appointmentDate);
   const appointmentTime = appointment.appointmentTime;
-  
-  console.log('Sending appointment reminder:', {
-    to: patient.email,
-    patient: `${patient.firstName} ${patient.lastName}`,
-    date: appointmentDate.toLocaleDateString(),
-    time: appointmentTime,
-  });
   
   // TODO: Implement actual email sending
 }
@@ -193,6 +187,32 @@ export async function PUT(
         console.error('Error loading waitlist management module:', error);
       });
     }
+
+    // Trigger queue status update automation if status changed
+    const oldStatus = oldAppointment?.status;
+    const newStatus = body.status;
+    const skipAutomation = body._skipAutomation === true;
+    
+    if (oldStatus !== newStatus && newStatus && !skipAutomation) {
+      // Import and trigger queue update automation (async, don't wait)
+      import('@/lib/automations/queue-from-appointment').then(({ updateQueueFromAppointment }) => {
+        updateQueueFromAppointment({
+          appointmentId: appointment._id,
+          patientId: appointment.patient,
+          newAppointmentStatus: newStatus,
+          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+        }).catch((error) => {
+          console.error('[Appointment API] Error in queue automation:', error);
+          // Don't fail appointment update if queue update fails
+        });
+      }).catch((error) => {
+        console.error('[Appointment API] Error loading queue automation module:', error);
+      });
+    } else if (skipAutomation) {
+    }
+
+    // Emit WebSocket event for real-time updates
+    emitAppointmentUpdate(appointment, { tenantId: tenantId || undefined });
     
     return NextResponse.json({ success: true, data: appointment });
   } catch (error: any) {
