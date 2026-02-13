@@ -96,13 +96,14 @@ export async function GET(request: NextRequest) {
       .populate(doctorPopulateOptions)
       .populate('room', 'name roomNumber')
       .sort({ priority: 1, queuedAt: 1 }) // Priority first, then by time
-      .limit(display ? 20 : 100);
+      .limit(display ? 20 : 100)
+      .lean();
 
     // Calculate estimated wait times
     const queuesWithWaitTime = queues.map((queue: any, index: number) => {
       const estimatedWaitTime = index * 15; // 15 minutes per patient (adjustable)
       return {
-        ...queue.toObject(),
+        ...queue,
         estimatedWaitTime,
         position: index + 1,
       };

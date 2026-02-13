@@ -64,6 +64,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'calendar' | 'list' | 'queue'>('calendar');
   const defaultDuration = useSetting('appointmentSettings.defaultDuration', 30);
+  const [appointmentsInQueue, setAppointmentsInQueue] = useState<Set<string>>(new Set());
 
   const [formData, setFormData] = useState({
     patient: '',
@@ -89,6 +90,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
 
   useEffect(() => {
     fetchData();
+    fetchQueueData();
   }, []);
 
   // Handle patientId prop - open form and pre-select patient
@@ -144,8 +146,34 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   useEffect(() => {
     if (selectedDate) {
       fetchAppointmentsForDate(selectedDate);
+      fetchQueueData();
     }
   }, [selectedDate]);
+
+  const fetchQueueData = async () => {
+    try {
+      const queueRes = await fetch('/api/queue');
+      if (queueRes.ok) {
+        const queueData = await queueRes.json();
+        console.log('Queue data:', queueData);
+        if (queueData.success && Array.isArray(queueData.data)) {
+          const appointmentIds = new Set<string>(
+            queueData.data
+              .filter((q: any) => q.appointment)
+              .map((q: any) => {
+                // Handle both populated object and string ID
+                const apt = q.appointment;
+                return typeof apt === 'string' ? apt : (apt._id?.toString() || apt.toString());
+              })
+          );
+          setAppointmentsInQueue(appointmentIds);
+          console.log('Appointment IDs in queue:', appointmentIds);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch queue data:', error);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -204,6 +232,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   useEffect(() => {
     if (selectedDate) {
       fetchAppointmentsForDate(selectedDate);
+      fetchQueueData();
     }
   }, [selectedDate, filterDoctor, filterRoom]);
 
@@ -434,6 +463,9 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         setSuccess('Added to queue successfully!');
         setTimeout(() => setSuccess(null), 5000);
       }
+
+      // Update local state to reflect appointment is now in queue
+      setAppointmentsInQueue(prev => new Set(prev).add(id));
     } catch (error) {
       console.error('Failed to move to queue:', error);
       setError('Failed to move to queue');
@@ -859,6 +891,18 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                     >
                                       Complete
                                     </button>
+                                    {appointmentsInQueue.has(appointment._id) ? (
+                                      <span className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-semibold border border-green-200">
+                                        ✓ In Queue
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleMoveToQueue(appointment._id, true)}
+                                        className="px-3 py-1.5 text-orange-700 hover:bg-orange-50 rounded-lg transition-colors text-xs font-semibold border border-orange-200"
+                                      >
+                                        Move to Queue
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => handleStatusUpdate(appointment._id, 'no-show')}
                                       className="px-3 py-2 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 transition-colors text-xs font-semibold border border-yellow-200"
@@ -959,12 +1003,6 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                     Confirm
                                   </button>
                                   <button
-                                    onClick={() => handleMoveToQueue(appointment._id, true)}
-                                    className="px-3 py-1.5 text-orange-700 hover:bg-orange-50 rounded-lg transition-colors text-xs font-semibold border border-orange-200"
-                                  >
-                                    Move to Queue
-                                  </button>
-                                  <button
                                     onClick={() => handleStatusUpdate(appointment._id, 'cancelled')}
                                     className="px-3 py-1.5 text-red-700 hover:bg-red-50 rounded-lg transition-colors text-xs font-semibold border border-red-200"
                                   >
@@ -980,12 +1018,18 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                   >
                                     Complete
                                   </button>
-                                  <button
-                                    onClick={() => handleMoveToQueue(appointment._id)}
-                                    className="px-3 py-1.5 text-orange-700 hover:bg-orange-50 rounded-lg transition-colors text-xs font-semibold border border-orange-200"
-                                  >
-                                    Move to Queue
-                                  </button>
+                                  {appointmentsInQueue.has(appointment._id) ? (
+                                    <span className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-semibold border border-green-200">
+                                      ✓ In Queue
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleMoveToQueue(appointment._id)}
+                                      className="px-3 py-1.5 text-orange-700 hover:bg-orange-50 rounded-lg transition-colors text-xs font-semibold border border-orange-200"
+                                    >
+                                      Move to Queue
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => handleStatusUpdate(appointment._id, 'no-show')}
                                     className="px-3 py-1.5 text-yellow-700 hover:bg-yellow-50 rounded-lg transition-colors text-xs font-semibold border border-yellow-200"
@@ -1058,12 +1102,14 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                               }`}>
                               {appointment.status}
                             </span>
+                            {appointment.status !== 'confirmed' && (
                             <button
                               onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
                               className="px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-xs font-semibold border border-green-200"
                             >
                               Confirm
                             </button>
+                            )}
                           </div>
                         </div>
                       </div>

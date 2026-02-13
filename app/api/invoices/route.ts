@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
     const invoices = await Invoice.find(query)
       .populate(patientPopulateOptions)
       .populate('visit', 'visitCode date')
+      .populate('professionalFeeDoctor', 'firstName lastName')
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
 
@@ -149,10 +150,11 @@ export async function POST(request: NextRequest) {
 
     // Calculate totals
     const subtotal = body.items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
+    const professionalFee = body.professionalFee || 0;
     const discountTotal = body.discounts?.reduce((sum: number, disc: any) => sum + (disc.amount || 0), 0) || 0;
     const afterDiscount = subtotal - discountTotal;
     const tax = body.tax || 0;
-    const total = afterDiscount + tax;
+    const total = afterDiscount + professionalFee + tax;
 
     body.subtotal = subtotal;
     body.total = total;

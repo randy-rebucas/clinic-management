@@ -19,6 +19,11 @@ export interface IInvoice extends Document {
   invoiceNumber: string;
   items: IBillingItem[];
   subtotal?: number;
+  // Professional Fee (separate from facility/service fees)
+  professionalFee?: number;
+  professionalFeeDoctor?: Types.ObjectId; // Which doctor receives the PF
+  professionalFeeType?: 'consultation' | 'procedure' | 'reading' | 'other';
+  professionalFeeNotes?: string;
   discounts: Array<{
     type: 'pwd' | 'senior' | 'membership' | 'promotional' | 'other';
     reason?: string;
@@ -84,6 +89,21 @@ const InvoiceSchema: Schema = new Schema(
     invoiceNumber: { type: String, required: true },
     items: [BillingItemSchema],
     subtotal: Number,
+    // Professional Fee fields
+    professionalFee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    professionalFeeDoctor: {
+      type: Schema.Types.ObjectId,
+      ref: 'Doctor',
+    },
+    professionalFeeType: {
+      type: String,
+      enum: ['consultation', 'procedure', 'reading', 'other'],
+    },
+    professionalFeeNotes: String,
     discounts: [{
       type: {
         type: String,

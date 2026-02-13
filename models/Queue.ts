@@ -45,6 +45,18 @@ export interface IQueue extends Document {
   completionNotes?: string; // Notes when completing consultation
   nextAction?: 'billing' | 'pharmacy' | 'lab' | 'checkout'; // What happens after consultation
   
+  // Vital signs (captured before visit creation)
+  vitals?: {
+    bp?: string;           // Blood pressure (e.g., "120/80")
+    hr?: number;           // Heart rate (bpm)
+    rr?: number;           // Respiratory rate (breaths/min)
+    tempC?: number;        // Temperature in Celsius
+    spo2?: number;         // Oxygen saturation (%)
+    heightCm?: number;     // Height in cm
+    weightKg?: number;     // Weight in kg
+    bmi?: number;          // Body Mass Index
+  };
+  
   // Notes
   notes?: string;
   
@@ -98,6 +110,7 @@ const QueueSchema: Schema = new Schema(
       type: String,
       enum: ['billing', 'pharmacy', 'lab', 'checkout'],
     },
+    vitals: { type: Schema.Types.Mixed },
     notes: { type: String },
   },
   { timestamps: true }
