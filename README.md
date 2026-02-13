@@ -397,6 +397,7 @@ myclinicsoft/
 - `POST /api/queue` - Add to queue
 - `GET /api/queue/[id]` - Get queue entry
 - `PUT /api/queue/[id]` - Update queue entry
+- `PATCH /api/queue/[id]/vitals` - Update vital signs (BP, HR, RR, temp, SpO2, height, weight, BMI)
 - `DELETE /api/queue/[id]` - Remove from queue
 - `GET /api/queue/[id]/qr-code` - Get QR code
 - `POST /api/queue/check-in` - Check in patient
