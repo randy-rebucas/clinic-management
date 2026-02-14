@@ -85,7 +85,6 @@ export default function PatientNewClient() {
           payload.familyHistory = filteredFamilyHistory;
         }
       }
-      console.log('Submitting new patient payload:', payload);
 
       // Send the request to create a new patient
       const res = await fetch('/api/patients', {

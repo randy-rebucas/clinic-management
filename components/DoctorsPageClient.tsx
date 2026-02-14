@@ -103,7 +103,6 @@ export default function DoctorsPageClient() {
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.user) {
-          console.log(data.user.role);
           setCurrentUserRole(data.user.role);
           setCurrentUser(data.user);
         }
@@ -161,7 +160,6 @@ export default function DoctorsPageClient() {
       let data;
       if (contentType && contentType.includes('application/json')) {
         data = await res.json();
-        console.log('API response:', data);
       } else {
         const text = await res.text();
         console.error('API returned non-JSON response:', text.substring(0, 500));

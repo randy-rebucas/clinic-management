@@ -68,12 +68,6 @@ export async function GET(request: NextRequest) {
     };
 
     // In production, save backup to cloud storage (S3, Azure Blob, etc.)
-    // For now, we'll just log it
-    console.log('Daily backup created:', {
-      timestamp: backup.timestamp,
-      collections: backup.collections.length,
-      totalDocuments: backup.totalDocuments,
-    });
 
     // Log backup action (system user)
     await createAuditLog({

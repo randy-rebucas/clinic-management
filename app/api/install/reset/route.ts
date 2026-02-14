@@ -49,7 +49,6 @@ export async function POST() {
       );
     }
 
-    console.log('🗑️  Resetting database...');
 
     // Delete all collections in the correct order (respecting dependencies)
     const deletionResults: { [key: string]: number } = {};
@@ -100,7 +99,6 @@ export async function POST() {
 
       const totalDeleted = Object.values(deletionResults).reduce((sum, count) => sum + count, 0);
 
-      console.log('✅ Database reset complete');
 
       return NextResponse.json({
         success: true,

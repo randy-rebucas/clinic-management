@@ -39,7 +39,6 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log('Public patient registration with data:', JSON.stringify(body, null, 2));
     
     // Validate required fields
     if (!body.firstName || !body.lastName || !body.phone || !body.dateOfBirth) {

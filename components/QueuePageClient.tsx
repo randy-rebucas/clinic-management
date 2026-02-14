@@ -383,8 +383,6 @@ export default function QueuePageClient() {
       return;
     }
     
-    console.log('Updating vitals for queue ID:', selectedQueueForVitals._id);
-    console.log('Vitals data being sent:', vitalsData);
     
     try {
       const res = await fetch(`/api/queue/${selectedQueueForVitals._id}/vitals`, {
@@ -399,12 +397,10 @@ export default function QueuePageClient() {
       }
 
       const data = await res.json();
-      console.log('Vitals update response:', data);
       
       if (data.success) {
         // Update local state immediately for better UX
         if (data.data) {
-          console.log('Updated queue with vitals:', data.data.vitals);
           setQueue(prevQueue => 
             prevQueue.map(q => 
               q._id === selectedQueueForVitals._id 
@@ -462,7 +458,6 @@ export default function QueuePageClient() {
   });
 
   const activeQueue = filteredQueue.filter(q => q.status === 'waiting' || q.status === 'in-progress');
-  console.log('Active queue items:', activeQueue);
   return (
     <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
@@ -871,7 +866,6 @@ export default function QueuePageClient() {
                               <>
                                 <button
                                   onClick={() => {
-                                    console.log('Opening vitals form for:', item.patientName, 'Current vitals:', item.vitals);
                                     setSelectedQueueForVitals(item);
                                     setShowVitalsForm(true);
                                   }}
@@ -1212,18 +1206,6 @@ function VitalsForm({
   onCancel: () => void;
 }) {
   const hasInitialVitals = initialVitals && Object.keys(initialVitals).length > 0;
-  console.log('VitalsForm initialized with:', {
-    hasInitialVitals,
-    initialVitals,
-    bp: initialVitals?.bp,
-    hr: initialVitals?.hr,
-    rr: initialVitals?.rr,
-    tempC: initialVitals?.tempC,
-    spo2: initialVitals?.spo2,
-    heightCm: initialVitals?.heightCm,
-    weightKg: initialVitals?.weightKg,
-    bmi: initialVitals?.bmi
-  });
   
   const [vitals, setVitals] = useState({
     bp: initialVitals?.bp || '',
@@ -1265,7 +1247,6 @@ function VitalsForm({
       return;
     }
 
-    console.log('Submitting vitals data:', vitalsData);
     onSubmit(vitalsData);
   };
 

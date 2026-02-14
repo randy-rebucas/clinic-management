@@ -37,14 +37,12 @@ export async function createPrescriptionFromVisit(params: CreatePrescriptionFrom
 
     // Check if visit has medications in treatment plan
     if (!visit.treatmentPlan?.medications || visit.treatmentPlan.medications.length === 0) {
-      console.log('No medications in treatment plan, skipping prescription creation');
       return null;
     }
 
     // Check if prescription already exists for this visit
     const existingPrescription = await Prescription.findOne({ visit: visitId });
     if (existingPrescription) {
-      console.log('Prescription already exists for this visit:', existingPrescription._id);
       return existingPrescription;
     }
 
@@ -179,7 +177,6 @@ export async function createPrescriptionFromVisit(params: CreatePrescriptionFrom
       }
     }
 
-    console.log('Prescription created successfully:', prescriptionCode);
     return prescription;
   } catch (error) {
     console.error('Error creating prescription from visit:', error);
@@ -211,7 +208,6 @@ export async function updatePrescriptionFromVisit(params: CreatePrescriptionFrom
 
     // Check if visit has medications
     if (!visit.treatmentPlan?.medications || visit.treatmentPlan.medications.length === 0) {
-      console.log('No medications in treatment plan, skipping prescription update');
       return prescription;
     }
 
@@ -264,7 +260,6 @@ export async function updatePrescriptionFromVisit(params: CreatePrescriptionFrom
       },
     });
 
-    console.log('Prescription updated successfully:', prescription.prescriptionCode);
     return prescription;
   } catch (error) {
     console.error('Error updating prescription from visit:', error);

@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useVisitWebSocket } from '@/lib/hooks/useVisitWebSocket';
+import { useQueueWebSocket } from '@/lib/hooks/useQueueWebSocket';
 
 interface Visit {
   _id: string;
@@ -59,20 +61,26 @@ interface QueueItem {
 }
 
 export default function VisitsPageClient() {
-  const [visits, setVisits] = useState<Visit[]>([]);
-  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingQueue, setLoadingQueue] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const router = useRouter();
 
+  // WebSocket hooks for real-time updates (event-driven, not polling)
+  const { visits, loading, error: visitsError, connected: visitsConnected } = useVisitWebSocket({
+    enabled: true,
+  });
+
+  // WebSocket queue data for in-progress patients
+  const { queue: queueItems, loading: loadingQueue, error: queueError, connected: queueConnected } = useQueueWebSocket({
+    enabled: true,
+    filters: {
+      status: ['in-progress']
+    }
+  });
+
   useEffect(() => {
-    fetchData();
-    fetchInProgressQueue();
-    
     // Check for success message from query params (when redirected from new visit page)
     const params = new URLSearchParams(window.location.search);
     if (params.get('success') === 'true') {
@@ -81,49 +89,12 @@ export default function VisitsPageClient() {
       // Clean up URL
       window.history.replaceState({}, '', '/visits');
     }
-  }, []);
 
-  const fetchData = async () => {
-    try {
-      const res = await fetch('/api/visits');
-
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const contentType = res.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const data = await res.json();
-        if (data.success) setVisits(data.data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
-    } finally {
-      setLoading(false);
+    // Redirect on auth error
+    if (visitsError && visitsError.message.includes('401')) {
+      router.push('/login');
     }
-  };
-
-  const fetchInProgressQueue = async () => {
-    try {
-      const res = await fetch('/api/queue?status=in-progress');
-
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const contentType = res.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const data = await res.json();
-        if (data.success) setQueueItems(data.data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch queue:', error);
-    } finally {
-      setLoadingQueue(false);
-    }
-  };
+  }, [visitsError, router]);
 
   const filteredVisits = visits.filter(visit => {
     if (searchQuery) {
@@ -211,8 +182,28 @@ export default function VisitsPageClient() {
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Clinical Visits</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage consultations and clinical notes</p>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Clinical Visits</h1>
+                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
+                      (visitsConnected && queueConnected) 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-yellow-50 border-yellow-200'
+                    }`}>
+                      <div className={`w-2 h-2 rounded-full ${
+                        (visitsConnected && queueConnected)
+                          ? 'bg-green-500 animate-pulse'
+                          : 'bg-yellow-500 animate-pulse'
+                      }`}></div>
+                      <span className={`text-xs font-medium ${
+                        (visitsConnected && queueConnected)
+                          ? 'text-green-700'
+                          : 'text-yellow-700'
+                      }`}>
+                        {(visitsConnected && queueConnected) ? 'Live' : 'Connecting...'}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage consultations and clinical notes • Real-time via WebSocket</p>
                 </div>
               </div>
               <Link
@@ -457,7 +448,7 @@ export default function VisitsPageClient() {
                       <td className="px-5 py-4">
                         {visit.diagnoses.length > 0 ? (
                           <div className="flex flex-col gap-1">
-                            {visit.diagnoses.slice(0, 2).map((diag, idx) => (
+                            {visit.diagnoses.slice(0, 2).map((diag: any, idx: number) => (
                               <div key={idx} className="text-xs">
                                 {diag.code && <span className="font-mono text-teal-600 font-semibold">{diag.code}</span>}
                                 {diag.description && <span className="text-gray-600"> - {diag.description}</span>}

@@ -27,11 +27,6 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     
-    console.log('Vitals Update Request:', {
-      queueId: id,
-      vitalsData: body.vitals
-    });
-
     if (!body.vitals) {
       return NextResponse.json(
         { success: false, error: 'Vitals data is required' },
@@ -49,15 +44,11 @@ export async function PATCH(
       );
     }
 
-    console.log('Current vitals before update:', currentQueue.vitals);
-
     // Merge vitals - preserve existing fields and add/update new ones
     const mergedVitals = {
       ...(currentQueue.vitals || {}),
       ...body.vitals
     };
-
-    console.log('Merged vitals to save:', mergedVitals);
 
     // Update using findOneAndUpdate with $set operator
     const filter = { _id: id };
@@ -66,13 +57,6 @@ export async function PATCH(
 
     const updatedDoc = await Queue.findOneAndUpdate(filter, update, options);
     
-    console.log('Queue Update Result:', {
-      updateSuccess: !!updatedDoc,
-      hasVitals: !!updatedDoc?.vitals,
-      vitals: updatedDoc?.vitals,
-      vitalsKeys: updatedDoc?.vitals ? Object.keys(updatedDoc.vitals) : []
-    });
-
     if (!updatedDoc) {
       return NextResponse.json(
         { success: false, error: 'Failed to update queue' },

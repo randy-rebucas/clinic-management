@@ -83,11 +83,8 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
         router.push('/login');
         return;
       }
-      console.log('Fetching queue vitals for queueId:', queueId, 'Response:', res);
       const data = await res.json();
-      console.log('Queue vitals data:', data);
       if (data.success && data.data.vitals) {
-        console.log('Queue vitals found:', data.data.vitals);
         // Map queue vitals to visit vitals format
         setQueueVitals({
           bp: data.data.vitals.bp,

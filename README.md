@@ -9,6 +9,7 @@ A comprehensive, modern clinic management application built with Next.js 16 and 
 - **Doctor & Staff Management**: Manage doctor profiles, specializations, schedules, and staff members
 - **Appointment Scheduling**: Schedule and manage appointments with reminders and public booking
 - **Dashboard**: Real-time overview of clinic statistics, appointments, and quick actions
+- **Real-Time Updates**: WebSocket-based instant synchronization across all users and devices
 
 ### Clinical Features
 - **Visit Management**: Clinical notes, diagnoses (ICD-10), and visit history
@@ -142,10 +143,14 @@ This script will:
    ```
    This will prompt you to enter admin credentials (name, email, password).
 
-5. Run the development server:
+5. Run the development server with WebSocket support:
    ```bash
    npm run dev
    ```
+   
+   This starts the custom Next.js server with WebSocket support for real-time updates.
+   
+   > **Note**: For the old polling-based system (legacy), use `npm run dev:polling`
 
 6. Open [http://localhost:3000](http://localhost:3000) in your browser and log in with your admin credentials
 

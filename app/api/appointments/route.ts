@@ -348,13 +348,6 @@ async function sendAppointmentReminder(appointment: any) {
   const appointmentDate = new Date(appointment.appointmentDate);
   const appointmentTime = appointment.appointmentTime;
   
-  console.log('Sending appointment reminder:', {
-    to: patient.email,
-    patient: `${patient.firstName} ${patient.lastName}`,
-    date: appointmentDate.toLocaleDateString(),
-    time: appointmentTime,
-  });
-  
   // TODO: Implement actual email sending
   // Example with Nodemailer:
   // await transporter.sendMail({

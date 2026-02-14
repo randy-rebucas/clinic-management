@@ -9,7 +9,6 @@ import { sanitizeEmail, checkRateLimit, resetRateLimit } from '@/app/lib/securit
 
 export async function POST(request: NextRequest) {
 	try {
-		console.log('Medical representative login attempt');
 		
 		let body: { email?: string; password?: string };
 		try {
