@@ -64,11 +64,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
     const token = getAuthToken();
     if (!token) {
-      // No token available yet - retry after a short delay (max 5 attempts)
+      // No token available yet - retry after a short delay (max 3 attempts)
       // This handles the case where auth completes shortly after component mount
-      if (authRetryCountRef.current < 5) {
+      if (authRetryCountRef.current < 3) {
         authRetryCountRef.current++;
-        const delay = 500 * authRetryCountRef.current; // Progressive delay: 500ms, 1s, 1.5s, 2s, 2.5s
+        const delay = 300; // Fixed 300ms delay
         
         authRetryTimeoutRef.current = setTimeout(() => {
           connect();
@@ -77,14 +77,16 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         setState((prev) => ({
           ...prev,
           error: null,
-          connecting: false,
+          connecting: true, // Show connecting state during retry
         }));
       } else {
         // Max retries reached - user probably not authenticated
+        console.log('[WebSocket] No auth token found after retries, skipping connection');
         setState((prev) => ({
           ...prev,
           error: null, // Not an error, just not authenticated
           connecting: false,
+          connected: false,
         }));
       }
       return;
@@ -97,7 +99,23 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       authRetryTimeoutRef.current = null;
     }
 
+    console.log('[WebSocket] Attempting to connect...');
     setState((prev) => ({ ...prev, connecting: true, error: null }));
+
+    // Set a connection timeout (10 seconds)
+    const connectionTimeout = setTimeout(() => {
+      if (!socketRef.current?.connected) {
+        console.warn('[WebSocket] ⏱️ Connection timeout - falling back to non-real-time mode');
+        setState((prev) => ({
+          ...prev,
+          connected: false,
+          connecting: false,
+          error: null, // Not treating as error, just unavailable
+        }));
+        socketRef.current?.disconnect();
+        socketRef.current = null;
+      }
+    }, 10000);
 
     const socket = io({
       path: '/api/socket',
@@ -107,11 +125,14 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: 5,
+      timeout: 10000, // 10 second timeout
     });
 
     socketRef.current = socket;
 
     socket.on('connect', () => {
+      clearTimeout(connectionTimeout);
+      console.log('[WebSocket] ✅ Connected successfully');
       setState({
         connected: true,
         connecting: false,

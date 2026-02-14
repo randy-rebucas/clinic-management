@@ -11,7 +11,6 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
-import { emitVisitUpdate } from '@/lib/websocket/emitHelper';
 
 export async function GET(
   request: NextRequest,
@@ -322,9 +321,6 @@ export async function PUT(
       // Schedule reminder (async, don't wait)
       sendFollowUpReminder(visit).catch(console.error);
     }
-
-    // Emit WebSocket event for real-time updates
-    emitVisitUpdate(visit, { tenantId: tenantId || undefined });
     
     return NextResponse.json({ success: true, data: visit });
   } catch (error: any) {
