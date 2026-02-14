@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
   // Production optimizations
   compress: true,
   poweredByHeader: false, // Remove X-Powered-By header for security
+
+  // Dev-only: allow requests from local dev origins for HMR and assets
+  allowedDevOrigins: ["http://localhost:3000", "http://127.0.0.1:3000"],
   
   // Image optimization
   images: {

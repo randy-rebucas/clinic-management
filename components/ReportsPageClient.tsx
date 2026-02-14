@@ -15,6 +15,7 @@ interface ReportData {
 export default function ReportsPageClient() {
   const [dashboardData, setDashboardData] = useState<ReportData>({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [reportData, setReportData] = useState<any>(null);
   const [reportLoading, setReportLoading] = useState(false);
@@ -34,8 +35,14 @@ export default function ReportsPageClient() {
     fetchReports();
   }, []);
 
-  const fetchReports = async () => {
+  const fetchReports = async (isRefresh = false) => {
     try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      
       const res = await fetch('/api/reports/dashboard');
       
       if (res.status === 401) {
@@ -54,6 +61,7 @@ export default function ReportsPageClient() {
       }
       
       if (data.success) {
+        console.log('Dashboard data received:', data.data);
         setDashboardData(data.data?.overview || {});
       } else {
         console.error('Failed to fetch reports:', data.error);
@@ -62,6 +70,7 @@ export default function ReportsPageClient() {
       console.error('Failed to fetch reports:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -158,6 +167,19 @@ export default function ReportsPageClient() {
           </div>
         );
       case 'income':
+        // Robust fallback for total paid
+        const paid =
+          data.summary?.totalPaid ||
+          data.summary?.totalRevenue ||
+          data.summary?.paid ||
+          data.summary?.revenue ||
+          data.totalPaid ||
+          data.totalRevenue ||
+          data.paid ||
+          data.revenue ||
+          0;
+        const billed = data.summary?.totalBilled || data.totalBilled || 0;
+        const outstanding = data.summary?.totalOutstanding || data.totalOutstanding || 0;
         return (
           <div className="flex flex-col gap-6">
             <div className="flex items-center gap-3">
@@ -174,21 +196,24 @@ export default function ReportsPageClient() {
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Paid</p>
                 </div>
                 <p className="text-3xl font-bold text-green-700">
-                  {formatCurrency(data.summary?.totalPaid || 0)}
+                  {formatCurrency(paid)}
                 </p>
+                {paid === 0 && (
+                  <p className="text-xs text-yellow-600 mt-2">No paid value found in report data. Check API response and payment status mapping.</p>
+                )}
               </div>
               <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Billed</p>
                 </div>
-                <p className="text-3xl font-bold text-gray-900">{formatCurrency(data.summary?.totalBilled || 0)}</p>
+                <p className="text-3xl font-bold text-gray-900">{formatCurrency(billed)}</p>
               </div>
               <div className="bg-gradient-to-br from-yellow-50 to-yellow-100/50 border border-yellow-200 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Outstanding</p>
                 </div>
                 <p className="text-3xl font-bold text-yellow-700">
-                  {formatCurrency(data.summary?.totalOutstanding || 0)}
+                  {formatCurrency(outstanding)}
                 </p>
               </div>
             </div>
@@ -366,16 +391,34 @@ export default function ReportsPageClient() {
         <div className="flex flex-col gap-6">
           {/* Header */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-violet-500 to-violet-600 rounded-lg shadow-md">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gradient-to-br from-violet-500 to-violet-600 rounded-lg shadow-md">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Reports & Analytics</h1>
+                  <p className="text-sm sm:text-base text-gray-600 mt-1">View clinic performance metrics and reports</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  fetchReports(true);
+                  if (selectedReport) {
+                    fetchReport(selectedReport, selectedReport === 'consultations' || selectedReport === 'income' ? period : undefined);
+                  }
+                }}
+                disabled={refreshing || loading}
+                className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all flex items-center gap-2 text-sm font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refresh reports"
+              >
+                <svg className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-              </div>
-              <div>
-                <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Reports & Analytics</h1>
-                <p className="text-sm sm:text-base text-gray-600 mt-1">View clinic performance metrics and reports</p>
-              </div>
+                Refresh
+              </button>
             </div>
           </div>
 
