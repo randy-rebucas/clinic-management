@@ -77,6 +77,8 @@ interface VisitFormProps {
   providerName: string;
 }
 
+
+
 export default function VisitForm({
   initialData,
   patients,
@@ -84,7 +86,7 @@ export default function VisitForm({
   onCancel,
   providerName,
 }: VisitFormProps) {
-  const [formData, setFormData] = useState<VisitFormData>({
+  const [formData, setFormData] = useState<VisitFormData>(() => ({
     patient: initialData?.patient || '',
     visitType: initialData?.visitType || 'consultation',
     chiefComplaint: initialData?.chiefComplaint || '',
@@ -96,7 +98,7 @@ export default function VisitForm({
     treatmentPlan: initialData?.treatmentPlan || {},
     followUpDate: initialData?.followUpDate || '',
     notes: initialData?.notes || '',
-  });
+  }));
 
   const [icd10Search, setIcd10Search] = useState('');
   const [icd10Results, setIcd10Results] = useState<Array<{ code: string; description: string }>>([]);
@@ -107,6 +109,10 @@ export default function VisitForm({
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [activeTab, setActiveTab] = useState<'soap' | 'traditional' | 'treatment'>('soap');
+  // Dedicated vitals state, initialized from initialData.vitals
+  const [vitals, setVitals] = useState<VisitFormData['vitals']>(initialData?.vitals || {});
+
+
 
   useEffect(() => {
     if (icd10Search.length >= 2) {
@@ -273,9 +279,15 @@ export default function VisitForm({
     });
     setShowSignaturePad(false);
   };
-
+  console.log('Form data:', formData);
+  console.log('Selected patient:', initialData?.vitals);
+  console.log('Form key:', formKey);
+  // Sync vitals state with initialData.vitals
+  useEffect(() => {
+    setVitals(initialData?.vitals || {});
+  }, [formKey]);
   return (
-    <form onSubmit={handleSubmit}>
+    <form key={formKey} onSubmit={handleSubmit}>
       <div className="flex flex-col gap-6">
         {/* Basic Information */}
         <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
@@ -561,13 +573,8 @@ export default function VisitForm({
                         <p className="text-xs text-gray-500 mb-1.5">Format: 120/80</p>
                         <input
                           type="text"
-                          value={formData.vitals?.bp || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              vitals: { ...formData.vitals, bp: e.target.value },
-                            })
-                          }
+                          value={(vitals?.bp ?? '')}
+                          onChange={(e) => setVitals({ ...vitals, bp: e.target.value })}
                           placeholder="120/80"
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                         />
@@ -577,13 +584,8 @@ export default function VisitForm({
                         <p className="text-xs text-gray-500 mb-1.5">Beats per minute</p>
                         <input
                           type="number"
-                          value={formData.vitals?.hr || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              vitals: { ...formData.vitals, hr: parseInt(e.target.value) || undefined },
-                            })
-                          }
+                          value={(vitals?.hr ?? '')}
+                          onChange={(e) => setVitals({ ...vitals, hr: parseInt(e.target.value) || undefined })}
                           placeholder="72"
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                         />
@@ -594,13 +596,8 @@ export default function VisitForm({
                         <input
                           type="number"
                           step="0.1"
-                          value={formData.vitals?.tempC || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              vitals: { ...formData.vitals, tempC: parseFloat(e.target.value) || undefined },
-                            })
-                          }
+                          value={(vitals?.tempC ?? '')}
+                          onChange={(e) => setVitals({ ...vitals, tempC: parseFloat(e.target.value) || undefined })}
                           placeholder="37.0"
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                         />
@@ -610,13 +607,8 @@ export default function VisitForm({
                         <p className="text-xs text-gray-500 mb-1.5">Oxygen saturation</p>
                         <input
                           type="number"
-                          value={formData.vitals?.spo2 || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              vitals: { ...formData.vitals, spo2: parseInt(e.target.value) || undefined },
-                            })
-                          }
+                          value={(vitals?.spo2 ?? '')}
+                          onChange={(e) => setVitals({ ...vitals, spo2: parseInt(e.target.value) || undefined })}
                           placeholder="98"
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                         />
@@ -626,13 +618,8 @@ export default function VisitForm({
                         <p className="text-xs text-gray-500 mb-1.5">Breaths per minute</p>
                         <input
                           type="number"
-                          value={formData.vitals?.rr || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              vitals: { ...formData.vitals, rr: parseInt(e.target.value) || undefined },
-                            })
-                          }
+                          value={(vitals?.rr ?? '')}
+                          onChange={(e) => setVitals({ ...vitals, rr: parseInt(e.target.value) || undefined })}
                           placeholder="16"
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                         />
@@ -643,13 +630,8 @@ export default function VisitForm({
                         <input
                           type="number"
                           step="0.1"
-                          value={formData.vitals?.heightCm || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              vitals: { ...formData.vitals, heightCm: parseFloat(e.target.value) || undefined },
-                            })
-                          }
+                          value={(vitals?.heightCm ?? '')}
+                          onChange={(e) => setVitals({ ...vitals, heightCm: parseFloat(e.target.value) || undefined })}
                           placeholder="170"
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                         />
@@ -660,13 +642,8 @@ export default function VisitForm({
                         <input
                           type="number"
                           step="0.1"
-                          value={formData.vitals?.weightKg || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              vitals: { ...formData.vitals, weightKg: parseFloat(e.target.value) || undefined },
-                            })
-                          }
+                          value={(vitals?.weightKg ?? '')}
+                          onChange={(e) => setVitals({ ...vitals, weightKg: parseFloat(e.target.value) || undefined })}
                           placeholder="70"
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                         />
@@ -677,13 +654,8 @@ export default function VisitForm({
                         <input
                           type="number"
                           step="0.1"
-                          value={formData.vitals?.bmi || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              vitals: { ...formData.vitals, bmi: parseFloat(e.target.value) || undefined },
-                            })
-                          }
+                          value={(vitals?.bmi ?? '')}
+                          onChange={(e) => setVitals({ ...vitals, bmi: parseFloat(e.target.value) || undefined })}
                           placeholder="24.2"
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                         />
