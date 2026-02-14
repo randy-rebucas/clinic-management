@@ -52,57 +52,40 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const authRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const authRetryCountRef = useRef(0);
 
-  // Get auth token from localStorage
-  const getAuthToken = useCallback(() => {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('token') || sessionStorage.getItem('token');
-  }, []);
 
-  // Connect to WebSocket server
-  const connect = useCallback(() => {
+  // Move connect above all usages, and use function declaration
+  function connect() {
     if (!enabled || socketRef.current?.connected) return;
 
-    const token = getAuthToken();
+    const token = (typeof window === 'undefined') ? null : (localStorage.getItem('token') || sessionStorage.getItem('token'));
     if (!token) {
-      // No token available yet - retry after a short delay (max 3 attempts)
-      // This handles the case where auth completes shortly after component mount
       if (authRetryCountRef.current < 3) {
         authRetryCountRef.current++;
-        const delay = 300; // Fixed 300ms delay
-        
-        authRetryTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, delay);
-        
+        const delay = 300;
+        authRetryTimeoutRef.current = setTimeout(connect, delay);
         setState((prev) => ({
           ...prev,
           error: null,
-          connecting: true, // Show connecting state during retry
+          connecting: true,
         }));
       } else {
-        // Max retries reached - user probably not authenticated
         console.log('[WebSocket] No auth token found after retries, skipping connection');
         setState((prev) => ({
           ...prev,
-          error: null, // Not an error, just not authenticated
+          error: null,
           connecting: false,
           connected: false,
         }));
       }
       return;
     }
-
-    // Token found - reset retry counter and proceed with connection
     authRetryCountRef.current = 0;
     if (authRetryTimeoutRef.current) {
       clearTimeout(authRetryTimeoutRef.current);
       authRetryTimeoutRef.current = null;
     }
-
     console.log('[WebSocket] Attempting to connect...');
     setState((prev) => ({ ...prev, connecting: true, error: null }));
-
-    // Set a connection timeout (10 seconds)
     const connectionTimeout = setTimeout(() => {
       if (!socketRef.current?.connected) {
         console.warn('[WebSocket] ⏱️ Connection timeout - falling back to non-real-time mode');
@@ -110,13 +93,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
           ...prev,
           connected: false,
           connecting: false,
-          error: null, // Not treating as error, just unavailable
+          error: null,
         }));
         socketRef.current?.disconnect();
         socketRef.current = null;
       }
     }, 10000);
-
     const socket = io({
       path: '/api/socket',
       transports: ['websocket', 'polling'],
@@ -125,11 +107,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: 5,
-      timeout: 10000, // 10 second timeout
+      timeout: 10000,
     });
-
     socketRef.current = socket;
-
     socket.on('connect', () => {
       clearTimeout(connectionTimeout);
       console.log('[WebSocket] ✅ Connected successfully');
@@ -141,7 +121,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       });
       onConnect?.();
     });
-
     socket.on('disconnect', (reason) => {
       setState((prev) => ({
         ...prev,
@@ -149,15 +128,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         connecting: false,
       }));
       onDisconnect?.();
-
-      // Attempt manual reconnect if needed
       if (reconnect && reason === 'io server disconnect') {
         reconnectTimeoutRef.current = setTimeout(() => {
           socket.connect();
         }, 2000);
       }
     });
-
     socket.on('connect_error', (error) => {
       console.error('[WebSocket] ❌ Connection error:', error.message);
       const errorObj = new Error(error.message);
@@ -169,15 +145,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       }));
       onError?.(errorObj);
     });
-
     socket.on('error', (error) => {
       console.error('[WebSocket] ❌ Socket error:', error);
       const errorObj = new Error(error);
       setState((prev) => ({ ...prev, error: errorObj }));
       onError?.(errorObj);
     });
-
-  }, [enabled, getAuthToken, reconnect, onConnect, onDisconnect, onError]);
+  }
 
   // Disconnect from WebSocket server
   const disconnect = useCallback(() => {
