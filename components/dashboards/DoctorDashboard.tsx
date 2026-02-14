@@ -61,7 +61,6 @@ export default function DoctorDashboard() {
 
         if (!res.ok) {
           // throw new Error(`Dashboard API error: ${res.status} ${res.statusText}`);
-          console.log('Dashboard API response not ok:', res.status, res.statusText);
         }
 
         const data = await res.json();

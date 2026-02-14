@@ -39,11 +39,7 @@ export async function sendSMS(options: SMSOptions): Promise<{ success: boolean; 
   const fromNumber = options.from || process.env.TWILIO_PHONE_NUMBER;
 
   if (!client) {
-    console.log('SMS (simulated):', {
-      to: options.to,
-      message: options.message,
-      note: 'Twilio not configured - message logged only',
-    });
+    // Twilio not configured - message logged only
     return {
       success: true,
       error: 'Twilio not configured - message logged only',

@@ -280,12 +280,5 @@ async function sendBookingConfirmation(appointment: any) {
       console.error('Failed to send booking confirmation SMS:', error);
     });
   }
-
-  console.log('Booking confirmation sent:', {
-    to: patient.email,
-    phone: patient.phone,
-    patient: `${patient.firstName} ${patient.lastName}`,
-    code: appointment.appointmentCode,
-  });
 }
 

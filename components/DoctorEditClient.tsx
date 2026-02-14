@@ -75,7 +75,6 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
       const res = await fetch('/api/specializations');
       if (res.ok) {
         const data: SpecializationResponse = await res.json();
-        console.log('Fetched specializations:', data);
         if (data.success && data.data) {
           setSpecializations(data.data);
         }

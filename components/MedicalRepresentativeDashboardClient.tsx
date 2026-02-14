@@ -50,7 +50,6 @@ export default function MedicalRepresentativeDashboardClient() {
       setLoading(true);
       const res = await fetch('/api/medical-representatives/session');
       const data = await res.json();
-      console.log('Fetch medical representative data response:', data);
       if (!data.success) {
         if (res.status === 401) {
           router.push('/medical-representatives/login');

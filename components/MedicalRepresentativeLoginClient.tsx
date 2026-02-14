@@ -31,7 +31,6 @@ export default function MedicalRepresentativeLoginClient() {
             });
 
             const data = await res.json();
-            console.log('Login response data:', data);
             if (!res.ok || data?.error || data?.errors) {
                 const errorMsg = data?.error
                     || data?.errors?.email?.[0]
