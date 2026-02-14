@@ -5,7 +5,6 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
-import { emitAppointmentUpdate } from '@/lib/websocket/emitHelper';
 
 // Email reminder function (placeholder - implement with your email service)
 async function sendAppointmentReminder(appointment: any) {
@@ -210,9 +209,6 @@ export async function PUT(
       });
     } else if (skipAutomation) {
     }
-
-    // Emit WebSocket event for real-time updates
-    emitAppointmentUpdate(appointment, { tenantId: tenantId || undefined });
     
     return NextResponse.json({ success: true, data: appointment });
   } catch (error: any) {

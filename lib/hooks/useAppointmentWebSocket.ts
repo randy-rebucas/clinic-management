@@ -29,7 +29,7 @@ export function useAppointmentWebSocket(options: UseAppointmentWebSocketOptions 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const { socket, connected } = useWebSocket({ enabled });
+  const { socket, connected } = useWebSocket({ enabled, autoConnect: true });
 
   // Fetch initial appointments data
   const fetchAppointments = useCallback(async () => {
@@ -56,12 +56,23 @@ export function useAppointmentWebSocket(options: UseAppointmentWebSocketOptions 
       }
 
       if (!response.ok) {
-        throw new Error('Failed to fetch appointments');
+        // Parse error response to get detailed error message
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.error || `Failed to fetch appointments (${response.status})`;
+        console.error('[Appointment WebSocket] API Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        });
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
-      setAppointments(Array.isArray(data) ? data : data.appointments || []);
-      onUpdate?.(Array.isArray(data) ? data : data.appointments || []);
+      const nextAppointments = Array.isArray(data)
+        ? data
+        : data.data || data.appointments || [];
+      setAppointments(nextAppointments);
+      onUpdate?.(nextAppointments);
       
     } catch (err) {
       console.error('[Appointment WebSocket] Fetch error:', err);
@@ -71,19 +82,33 @@ export function useAppointmentWebSocket(options: UseAppointmentWebSocketOptions 
     }
   }, [filters, onUpdate]);
 
-  // Subscribe to appointment updates when connected
+  // Fetch initial data on mount (always, regardless of WebSocket)
+  useEffect(() => {
+    fetchAppointments();
+  }, [fetchAppointments]);
+
+  // Subscribe to appointment updates when WebSocket connects
   useEffect(() => {
     if (!socket || !connected) return;
 
+    console.log('[Appointment WebSocket] Connected, subscribing to updates');
     socket.emit('subscribe:appointments', filters);
-
-    // Fetch initial data
-    fetchAppointments();
 
     return () => {
       socket.emit('unsubscribe:appointments');
     };
-  }, [socket, connected, filters, fetchAppointments]);
+  }, [socket, connected, filters]);
+
+  // Polling fallback if WebSocket is not connected
+  useEffect(() => {
+    if (connected) return; // Don't poll if WebSocket is connected
+
+    const pollInterval = setInterval(() => {
+      fetchAppointments();
+    }, 10000); // Poll every 10 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [connected, fetchAppointments]);
 
   // Listen for appointment update events
   useWebSocketEvent('appointment:updated', (data: { appointment: any; timestamp: number }) => {
@@ -100,7 +125,7 @@ export function useAppointmentWebSocket(options: UseAppointmentWebSocketOptions 
         newAppointments[existingIndex] = data.appointment;
         
         // Filter out if date/status no longer matches
-        const aptDate = new Date(data.appointment.date).toISOString().split('T')[0];
+        const aptDate = new Date(data.appointment.appointmentDate).toISOString().split('T')[0];
         if (filters?.date && aptDate !== filters.date) {
           return newAppointments.filter((_, i) => i !== existingIndex);
         }
@@ -111,7 +136,7 @@ export function useAppointmentWebSocket(options: UseAppointmentWebSocketOptions 
         return newAppointments;
       } else {
         // Add new appointment if it matches filters
-        const aptDate = new Date(data.appointment.date).toISOString().split('T')[0];
+        const aptDate = new Date(data.appointment.appointmentDate).toISOString().split('T')[0];
         const matchesDate = !filters?.date || aptDate === filters.date;
         const matchesStatus = !filters?.status || data.appointment.status === filters.status;
         const matchesDoctor = !filters?.doctorId || data.appointment.doctor?._id === filters.doctorId;
@@ -122,19 +147,17 @@ export function useAppointmentWebSocket(options: UseAppointmentWebSocketOptions 
         return prevAppointments;
       }
     });
-
-    onUpdate?.(appointments);
-  }, [filters, appointments, onUpdate]);
+  }, [filters]);
 
   // Listen for bulk updates
   useWebSocketEvent('appointments:bulk-update', () => {
     fetchAppointments();
-  }, [fetchAppointments]);
+  }, []);
 
   // Listen for queue updates (queue changes may affect appointments)
   useWebSocketEvent('queue:updated', (data: { queueItem: any }) => {
     fetchAppointments();
-  }, [fetchAppointments]);
+  }, []);
 
   return {
     appointments,

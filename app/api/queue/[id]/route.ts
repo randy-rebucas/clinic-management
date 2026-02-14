@@ -9,7 +9,6 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
-import { emitQueueUpdate } from '@/lib/websocket/emitHelper';
 
 export async function GET(
   request: NextRequest,
@@ -226,9 +225,6 @@ export async function PUT(
         console.error('[Queue API] Error loading appointment automation module:', error);
       });
     }
-
-    // Emit WebSocket event for real-time updates
-    emitQueueUpdate(updatedQueue, { tenantId: tenantId || undefined });
 
     return NextResponse.json({ success: true, data: updatedQueue });
   } catch (error: any) {
