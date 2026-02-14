@@ -294,13 +294,19 @@ export default function VisitForm({
     });
     setShowSignaturePad(false);
   };
-  console.log('Form data:', formData);
-  console.log('Selected patient:', initialData?.vitals);
-  console.log('Form key:', formKey);
+
   // Sync vitals state with initialData.vitals
   useEffect(() => {
-    setVitals(initialData?.vitals || {});
-  }, [formKey]);
+    let timer: NodeJS.Timeout | undefined;
+    if (initialData?.vitals && JSON.stringify(initialData.vitals) !== JSON.stringify(vitals)) {
+      timer = setTimeout(() => setVitals(initialData.vitals), 0);
+    }
+    // Optionally reset to {} if no vitals:
+    else if (!initialData?.vitals && Object.keys(vitals ?? {}).length > 0) {
+      timer = setTimeout(() => setVitals({}), 0);
+    }
+    return () => { if (timer) clearTimeout(timer); };
+  }, [formKey, initialData?.vitals]);
   return (
     <form key={formKey} onSubmit={handleSubmit}>
       <div className="flex flex-col gap-6">
