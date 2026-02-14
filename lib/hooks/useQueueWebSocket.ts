@@ -29,7 +29,7 @@ export function useQueueWebSocket(options: UseQueueWebSocketOptions = {}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const { socket, connected } = useWebSocket({ enabled });
+  const { socket, connected } = useWebSocket({ enabled, autoConnect: true });
 
   // Fetch initial queue data
   const fetchQueue = useCallback(async () => {
@@ -71,19 +71,33 @@ export function useQueueWebSocket(options: UseQueueWebSocketOptions = {}) {
     }
   }, [filters, onUpdate]);
 
-  // Subscribe to queue updates when connected
+  // Fetch initial data on mount (always, regardless of WebSocket)
+  useEffect(() => {
+    fetchQueue();
+  }, [fetchQueue]);
+
+  // Subscribe to queue updates when WebSocket connects
   useEffect(() => {
     if (!socket || !connected) return;
 
+    console.log('[Queue WebSocket] Connected, subscribing to updates');
     socket.emit('subscribe:queue', filters);
-
-    // Fetch initial data
-    fetchQueue();
 
     return () => {
       socket.emit('unsubscribe:queue');
     };
-  }, [socket, connected, filters, fetchQueue]);
+  }, [socket, connected, filters]);
+
+  // Polling fallback if WebSocket is not connected
+  useEffect(() => {
+    if (connected) return; // Don't poll if WebSocket is connected
+
+    const pollInterval = setInterval(() => {
+      fetchQueue();
+    }, 10000); // Poll every 10 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [connected, fetchQueue]);
 
   // Listen for queue update events
   useWebSocketEvent('queue:updated', (data: { queueItem: any; timestamp: number }) => {

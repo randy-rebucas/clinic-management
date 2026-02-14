@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation';
 import AppointmentCalendar from './AppointmentCalendar';
 import { Modal } from './ui/Modal';
 import { useSetting } from './SettingsContext';
-import { useAppointmentWebSocket } from '@/lib/hooks/useAppointmentWebSocket';
-import { useQueueWebSocket } from '@/lib/hooks/useQueueWebSocket';
 
 interface Appointment {
   _id: string;
@@ -68,19 +66,12 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   const [filterDoctor, setFilterDoctor] = useState<string>('');
   const [filterRoom, setFilterRoom] = useState<string>('');
 
-  // WebSocket hooks for real-time updates (event-driven, not polling)
-  const { appointments, loading: loadingAppointments, error: appointmentsError, connected: appointmentsConnected } = useAppointmentWebSocket({
-    enabled: true,
-    filters: {
-      date: selectedDate.toISOString().split('T')[0],
-      ...(filterDoctor && { doctorId: filterDoctor }),
-    }
-  });
-
-  // WebSocket queue data (instant updates)
-  const { queue, loading: loadingQueue, connected: queueConnected } = useQueueWebSocket({
-    enabled: true,
-  });
+  // Appointments and queue state
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [loadingAppointments, setLoadingAppointments] = useState(true);
+  const [appointmentsError, setAppointmentsError] = useState<Error | null>(null);
+  const [queue, setQueue] = useState<any[]>([]);
+  const [loadingQueue, setLoadingQueue] = useState(true);
 
   // Track which appointments are in queue
   const appointmentsInQueue = new Set<string>(
@@ -116,9 +107,19 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
     fetchData();
   }, []);
 
+  // Fetch appointments when filters change
+  useEffect(() => {
+    fetchAppointments();
+  }, [selectedDate, filterDoctor]);
+
+  // Fetch queue data
+  useEffect(() => {
+    fetchQueue();
+  }, []);
+
   // Redirect on auth error
   useEffect(() => {
-    if (appointmentsError && appointmentsError.message.includes('401')) {
+    if (appointmentsError && typeof appointmentsError === 'object' && 'message' in appointmentsError && (appointmentsError as any).message.includes('401')) {
       router.push('/login');
     }
   }, [appointmentsError, router]);
@@ -172,6 +173,61 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showPatientSearch]);
+
+  const fetchAppointments = async () => {
+    try {
+      setLoadingAppointments(true);
+      setAppointmentsError(null);
+      
+      const params = new URLSearchParams();
+      params.append('date', selectedDate.toISOString().split('T')[0]);
+      if (filterDoctor) {
+        params.append('doctorId', filterDoctor);
+      }
+      
+      const response = await fetch(`/api/appointments?${params.toString()}`);
+      
+      if (response.status === 401) {
+        router.push('/login');
+        return;
+      }
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch appointments');
+      }
+      
+      const data = await response.json();
+      setAppointments(data.data || data.appointments || []);
+    } catch (error) {
+      console.error('Failed to fetch appointments:', error);
+      setAppointmentsError(error instanceof Error ? error : new Error('Failed to fetch appointments'));
+    } finally {
+      setLoadingAppointments(false);
+    }
+  };
+
+  const fetchQueue = async () => {
+    try {
+      setLoadingQueue(true);
+      
+      const response = await fetch('/api/queue');
+      
+      if (response.status === 401) {
+        router.push('/login');
+        return;
+      }
+      
+      if (response.ok) {
+        const data = await response.json();
+        setQueue(data.data || data.queue || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch queue:', error);
+    } finally {
+      setLoadingQueue(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -295,7 +351,9 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         setPatientSearch('');
         setSelectedPatient(null);
         setHighlightedIndex(-1);
-        // Data will auto-refresh via WebSocket
+        // Refresh data
+        fetchAppointments();
+        if (isWalkIn) fetchQueue();
         setSuccess(isWalkIn ? `Walk-in appointment created! Queue number: ${queueNumber}` : 'Appointment scheduled successfully!');
         setTimeout(() => setSuccess(null), 5000);
       } else {
@@ -333,7 +391,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
       }
 
       if (data.success) {
-        // Data will auto-refresh via WebSocket
+        // Refresh data
+        fetchAppointments();
         setSuccess('Appointment updated successfully!');
         setTimeout(() => setSuccess(null), 3000);
         // Send reminder if status is confirmed
@@ -354,7 +413,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   const handleMoveToQueue = async (id: string, autoConfirm: boolean = false) => {
     try {
       // Find the appointment to get patient and doctor info
-      const appointment = appointments.find(apt => apt._id === id);
+      const appointment = appointments.find((apt: any) => apt._id === id) as Appointment | undefined;
       if (!appointment) {
         setError('Appointment not found');
         setTimeout(() => setError(null), 5000);
@@ -414,7 +473,9 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         if (aptRes.ok) {
           const aptData = await aptRes.json();
           if (aptData.success) {
-            // Data will auto-refresh via WebSocket
+            // Refresh data
+            fetchQueue();
+            fetchAppointments();
             const patientName = typeof appointment.patient === 'string'
               ? 'Patient'
               : `${appointment.patient?.firstName || ''} ${appointment.patient?.lastName || ''}`.trim() || 'Patient';
@@ -431,7 +492,9 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         setTimeout(() => setSuccess(null), 5000);
       }
 
-      // Queue state will auto-refresh via WebSocket
+      // Refresh queue data
+      fetchQueue();
+      fetchAppointments();
     } catch (error) {
       console.error('Failed to move to queue:', error);
       setError('Failed to move to queue');
@@ -486,10 +549,10 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
 
   const getSelectedDateAppointments = () => {
     const dateStr = selectedDate.toISOString().split('T')[0];
-    return appointments.filter((apt) => {
+    return appointments.filter((apt: Appointment) => {
       const aptDate = new Date(apt.appointmentDate).toISOString().split('T')[0];
       return aptDate === dateStr;
-    }).sort((a, b) => {
+    }).sort((a: Appointment, b: Appointment) => {
       const timeA = a.appointmentTime || '00:00';
       const timeB = b.appointmentTime || '00:00';
       return timeA.localeCompare(timeB);
@@ -499,11 +562,11 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   const getWalkInQueue = () => {
     const today = new Date().toISOString().split('T')[0];
     return appointments
-      .filter((apt) => {
+      .filter((apt: Appointment) => {
         const aptDate = new Date(apt.appointmentDate).toISOString().split('T')[0];
         return apt.isWalkIn && aptDate === today && ['scheduled', 'confirmed'].includes(apt.status);
       })
-      .sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0));
+      .sort((a: Appointment, b: Appointment) => (a.queueNumber || 0) - (b.queueNumber || 0));
   };
 
   if (loading) {
@@ -568,29 +631,27 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                 <div>
                   <div className="flex items-center gap-2">
                     <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Appointments</h1>
-                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
-                      (appointmentsConnected && queueConnected) 
-                        ? 'bg-green-50 border-green-200' 
-                        : 'bg-yellow-50 border-yellow-200'
-                    }`}>
-                      <div className={`w-2 h-2 rounded-full ${
-                        (appointmentsConnected && queueConnected)
-                          ? 'bg-green-500 animate-pulse'
-                          : 'bg-yellow-500 animate-pulse'
-                      }`}></div>
-                      <span className={`text-xs font-medium ${
-                        (appointmentsConnected && queueConnected)
-                          ? 'text-green-700'
-                          : 'text-yellow-700'
-                      }`}>
-                        {(appointmentsConnected && queueConnected) ? 'Live' : 'Connecting...'}
-                      </span>
-                    </div>
                   </div>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage appointments and walk-in queue • Real-time via WebSocket</p>
+                  <p className="text-sm sm:text-base text-gray-600 mt-1">
+                    Manage appointments and walk-in queue
+                  </p>
                 </div>
               </div>
               <div className="flex gap-3 flex-wrap">
+                <button
+                  onClick={() => {
+                    fetchAppointments();
+                    fetchQueue();
+                  }}
+                  disabled={loadingAppointments || loadingQueue}
+                  className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all flex items-center gap-2 text-sm font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Refresh appointments and queue"
+                >
+                  <svg className={`w-5 h-5 ${loadingAppointments || loadingQueue ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh
+                </button>
                 <button
                   onClick={() => {
                     const selectedDateStr = selectedDate.toISOString().split('T')[0];
@@ -791,7 +852,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                       </div>
                     ) : (
                       <div className="flex flex-col gap-3">
-                        {selectedDateAppointments.map((appointment) => (
+                        {selectedDateAppointments.map((appointment: Appointment) => (
                           <div key={appointment._id} className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-blue-300 transition-all">
                             <div className="flex justify-between items-start gap-3">
                               <div className="flex-1">
@@ -937,7 +998,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                         </td>
                       </tr>
                     ) : (
-                      appointments.map((appointment) => (
+                      appointments.map((appointment: Appointment) => (
                         <tr key={appointment._id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-5 py-4">
                             <div className="text-sm font-bold text-gray-900">
@@ -1059,7 +1120,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                   </div>
                 ) : (
                   <div className="flex flex-col gap-3">
-                    {walkInQueue.map((appointment) => (
+                    {walkInQueue.map((appointment: Appointment) => (
                       <div key={appointment._id} className="bg-gradient-to-r from-orange-50 to-orange-100/50 border border-orange-200 rounded-xl p-4 hover:shadow-md transition-all">
                         <div className="flex justify-between items-center gap-3">
                           <div className="flex items-center gap-4">
