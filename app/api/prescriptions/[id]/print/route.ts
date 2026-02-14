@@ -3,6 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getSettings } from '@/lib/settings';
+import { getTenantContext } from '@/lib/tenant';
 
 export async function GET(
   request: NextRequest,
@@ -19,11 +21,24 @@ export async function GET(
     const { id } = await params;
     const searchParams = request.nextUrl.searchParams;
     const copyType = searchParams.get('copy') || 'patient'; // 'patient' or 'clinic'
+
+    // Get tenant context and settings
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const settings = await getSettings(tenantId);
+
+    // Digital signature toggle: use tenant setting if present, else fallback to query param
+    let showSignature = true;
+    if (typeof settings.prescriptionDigitalSignatureEnabled === 'boolean') {
+      showSignature = settings.prescriptionDigitalSignatureEnabled;
+    } else {
+      showSignature = searchParams.get('showSignature') !== '0';
+    }
     
     const prescription = await Prescription.findById(id)
       .populate('patient', 'firstName lastName patientCode email phone dateOfBirth')
       .populate('prescribedBy', 'name email')
-      .populate('visit', 'visitCode date');
+      .populate('visit', 'visitCode date followUpDate');
 
     if (!prescription) {
       return NextResponse.json(
@@ -40,6 +55,7 @@ export async function GET(
         printedAt: new Date(),
         printedBy: session.userId as any,
       };
+      console.log(`Updated patient copy tracking for prescription ${prescription._id}:`, prescription.visit);
       await prescription.save();
     } else if (copyType === 'clinic') {
       prescription.copies = prescription.copies || {};
@@ -53,7 +69,7 @@ export async function GET(
     }
 
     // Generate HTML for printable prescription
-    const html = generatePrescriptionHTML(prescription, copyType);
+    const html = generatePrescriptionHTML(prescription, copyType, showSignature);
 
     return new NextResponse(html, {
       headers: {
@@ -69,7 +85,7 @@ export async function GET(
   }
 }
 
-function generatePrescriptionHTML(prescription: any, copyType: string = 'patient'): string {
+function generatePrescriptionHTML(prescription: any, copyType: string = 'patient', showSignature: boolean = true): string {
   const patient = prescription.patient;
   const provider = prescription.prescribedBy;
   const date = new Date(prescription.issuedAt).toLocaleDateString();
@@ -216,15 +232,23 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
     `).join('')}
   </div>
 
-  ${prescription.notes ? `
-  <div style="margin-top: 30px;">
-    <h3>Additional Notes:</h3>
-    <p>${prescription.notes}</p>
-  </div>
-  ` : ''}
+  ${(() => {
+    // Use followUpDate from visit if available
+    let followUpDate = '';
+    if (prescription.visit && prescription.visit.followUpDate) {
+      followUpDate = new Date(prescription.visit.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    return (prescription.notes || followUpDate) ? `
+      <div style="margin-top: 30px;">
+        <h3>Additional Notes:</h3>
+        ${prescription.notes ? `<p>${prescription.notes}</p>` : ''}
+        ${followUpDate ? `<p><strong>Follow-up Date:</strong> ${followUpDate}</p>` : ''}
+      </div>
+    ` : '';
+  })()}
 
   <div class="signature-section">
-    ${prescription.digitalSignature ? `
+    ${showSignature && prescription.digitalSignature ? `
       <div style="margin-bottom: 20px;">
         <img src="${prescription.digitalSignature.signatureData}" alt="Signature" style="max-height: 80px;" />
       </div>

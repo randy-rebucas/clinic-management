@@ -25,7 +25,7 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    
+
     // Validate ObjectId format
     const mongoose = await import('mongoose');
     if (!mongoose.default.Types.ObjectId.isValid(id)) {
@@ -38,7 +38,7 @@ export async function GET(
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     // Build query with tenant filter
     const query: any = { _id: id };
     if (tenantId) {
@@ -61,7 +61,12 @@ export async function GET(
     const prescription = await Prescription.findOne(query)
       .populate(patientPopulateOptions)
       .populate('prescribedBy', 'name email')
-      .populate('visit', 'visitCode date');
+      .populate('visit', 'visitCode date followUpDate');
+
+    console.log('Fetched prescription with visit data:', {
+      prescriptionId: prescription?._id,
+      visit: prescription?.visit,
+    });
 
     if (!prescription) {
       return NextResponse.json(
@@ -77,7 +82,7 @@ export async function GET(
     } else {
       prescriptionData = prescription;
     }
-    
+
     // Optionally populate medicineId references if they exist (non-blocking)
     if (prescriptionData.medications && Array.isArray(prescriptionData.medications)) {
       const Medicine = mongoose.default.models.Medicine;
@@ -97,7 +102,7 @@ export async function GET(
               // Silently skip if medicine not found - not critical
             }
           });
-        
+
         // Wait for all medicine lookups, but don't fail if some fail
         await Promise.allSettled(medicinePromises);
       }
@@ -149,7 +154,7 @@ export async function PUT(
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     // Build query with tenant filter
     const query: any = { _id: id };
     if (tenantId) {
@@ -162,14 +167,14 @@ export async function PUT(
       new: true,
       runValidators: true,
     });
-    
+
     if (!prescription) {
       return NextResponse.json(
         { success: false, error: 'Prescription not found' },
         { status: 404 }
       );
     }
-    
+
     // Build populate options with tenant filter
     const patientPopulateOptions: any = {
       path: 'patient',
@@ -180,7 +185,7 @@ export async function PUT(
     } else {
       patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
     }
-    
+
     await prescription.populate(patientPopulateOptions);
     await prescription.populate('prescribedBy', 'name email');
     await prescription.populate('visit', 'visitCode date');
@@ -227,11 +232,11 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-    
+
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     // Build query with tenant filter
     const query: any = { _id: id };
     if (tenantId) {
@@ -239,7 +244,7 @@ export async function DELETE(
     } else {
       query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
     }
-    
+
     const prescription = await Prescription.findOneAndDelete(query);
 
     if (!prescription) {
