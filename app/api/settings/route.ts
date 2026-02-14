@@ -53,6 +53,10 @@ export async function GET() {
       ...defaultSettingsData,
       ...settings.toObject(),
     };
+    // Ensure digital signature toggle is present (default true)
+    if (typeof settingsObj.prescriptionDigitalSignatureEnabled === 'undefined') {
+      settingsObj.prescriptionDigitalSignatureEnabled = true;
+    }
     
     // Add integration status based on environment variables
     settingsObj.integrationStatus = {
@@ -116,6 +120,10 @@ export async function PUT(request: NextRequest) {
       if (tenantId && !settingsData.tenantId) {
         settingsData.tenantId = new Types.ObjectId(tenantId);
       }
+      // Ensure digital signature toggle is present (default true)
+      if (typeof settingsData.prescriptionDigitalSignatureEnabled === 'undefined') {
+        settingsData.prescriptionDigitalSignatureEnabled = true;
+      }
       settings = await Settings.create(settingsData);
     } else {
       // Update settings - merge with defaults to ensure all fields exist
@@ -125,6 +133,10 @@ export async function PUT(request: NextRequest) {
         ...settings.toObject(),
         ...body,
       };
+      // Ensure digital signature toggle is present (default true)
+      if (typeof updatedData.prescriptionDigitalSignatureEnabled === 'undefined') {
+        updatedData.prescriptionDigitalSignatureEnabled = true;
+      }
       Object.assign(settings, updatedData);
       await settings.save();
     }

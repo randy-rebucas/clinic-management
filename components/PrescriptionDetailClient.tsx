@@ -26,6 +26,7 @@ interface Prescription {
     _id: string;
     visitCode: string;
     date: string;
+    followUpDate?: string;
   };
   medications: Array<{
     name: string;
@@ -377,6 +378,13 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                     <p className="text-sm font-medium text-gray-900">
                       {new Date(prescription.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </p>
+                  </div>
+                )}
+                {/* Follow-up Date */}
+                {prescription.visit?.followUpDate && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Follow-up Date</p>
+                    <p className="text-sm font-medium text-gray-900">{new Date(prescription.visit.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                   </div>
                 )}
                 {prescription.prescribedBy && (

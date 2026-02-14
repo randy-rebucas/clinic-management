@@ -109,6 +109,9 @@ export interface ISettings extends Document {
     showNotifications: boolean;
   };
 
+  // Prescription Settings
+  prescriptionDigitalSignatureEnabled?: boolean;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -243,6 +246,8 @@ const SettingsSchema = new Schema<ISettings>(
       sidebarCollapsed: { type: Boolean, default: true },
       showNotifications: { type: Boolean, default: true },
     },
+    // Prescription Settings
+    prescriptionDigitalSignatureEnabled: { type: Boolean, default: true },
   },
   {
     timestamps: true,
