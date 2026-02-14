@@ -34,10 +34,18 @@ export async function GET(
     } else {
       showSignature = searchParams.get('showSignature') !== '0';
     }
-    
+    const settingInfo = await getSettings(tenantId);
+
     const prescription = await Prescription.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth')
-      .populate('prescribedBy', 'name email')
+      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth address gender')
+      .populate({
+        path: 'prescribedBy',
+        select: 'name email doctorProfile licenseNumber',
+        populate: {
+          path: 'doctorProfile',
+          select: 'licenseNumber'
+        }
+      })
       .populate('visit', 'visitCode date followUpDate');
 
     if (!prescription) {
@@ -55,7 +63,7 @@ export async function GET(
         printedAt: new Date(),
         printedBy: session.userId as any,
       };
-      console.log(`Updated patient copy tracking for prescription ${prescription._id}:`, prescription.visit);
+
       await prescription.save();
     } else if (copyType === 'clinic') {
       prescription.copies = prescription.copies || {};
@@ -69,7 +77,7 @@ export async function GET(
     }
 
     // Generate HTML for printable prescription
-    const html = generatePrescriptionHTML(prescription, copyType, showSignature);
+    const html = generatePrescriptionHTML(prescription, copyType, showSignature, settingInfo);
 
     return new NextResponse(html, {
       headers: {
@@ -77,7 +85,7 @@ export async function GET(
       },
     });
   } catch (error: any) {
-    console.error('Error generating prescription print:', error);
+
     return NextResponse.json(
       { success: false, error: 'Failed to generate prescription' },
       { status: 500 }
@@ -85,7 +93,8 @@ export async function GET(
   }
 }
 
-function generatePrescriptionHTML(prescription: any, copyType: string = 'patient', showSignature: boolean = true): string {
+function generatePrescriptionHTML(prescription: any, copyType: string = 'patient', showSignature: boolean = true, settingInfo: any): string {
+
   const patient = prescription.patient;
   const provider = prescription.prescribedBy;
   const date = new Date(prescription.issuedAt).toLocaleDateString();
@@ -129,7 +138,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
     }
     .info-row {
       display: flex;
-      margin-bottom: 8px;
+      margin-bottom: 2px;
     }
     .info-label {
       font-weight: bold;
@@ -139,20 +148,22 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
       margin-top: 30px;
     }
     .medication-item {
-      border: 1px solid #ddd;
-      padding: 15px;
-      margin-bottom: 15px;
+      border: 1px solid #ddd; 
+      padding: 6px;
+      margin-bottom: 4px;
       border-radius: 5px;
     }
     .medication-name {
       font-size: 18px;
       font-weight: bold;
       color: #1f2937;
-      margin-bottom: 8px;
     }
     .medication-details {
       margin-left: 20px;
       color: #4b5563;
+      font-family: monospace;
+      font-size: large;
+      font-style: italic;
     }
     .signature-section {
       margin-top: 40px;
@@ -173,95 +184,151 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
       color: #6b7280;
       text-align: center;
     }
+    .footer p {
+      margin: unset;
+    }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h1>
-    <div style="text-align: right; margin-top: -30px;">
-      <strong>Code:</strong> ${prescription.prescriptionCode}
-      ${!isPatientCopy ? `<br><small style="color: #6b7280;">Archived: ${new Date().toLocaleString()}</small>` : ''}
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <h1 style="margin-bottom: 4px;">${settingInfo && settingInfo.clinicName ? settingInfo.clinicName : 'Clinic Name'}</h1>
+        <div style="font-size: 14px; color: #374151;">${settingInfo && settingInfo.clinicAddress ? settingInfo.clinicAddress : ''}</div>
+        <div style="font-size: 14px; color: #374151;">${settingInfo && settingInfo.clinicPhone ? 'Tel: ' + settingInfo.clinicPhone : ''}</div>
+        <div style="font-size: 14px; color: #374151;">${settingInfo && settingInfo.clinicEmail ? 'Email: ' + settingInfo.clinicEmail : ''}</div>
+      </div>
+      <div style="text-align: right;">
+        <h2 style="margin: 0; color: #2563eb;">PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h2>
+        <strong>Code:</strong> ${prescription.prescriptionCode}<br>
+        ${!isPatientCopy ? `<small style="color: #6b7280;">Archived: ${new Date().toLocaleString()}</small>` : ''}
+      </div>
     </div>
   </div>
 
-  <div class="info-section">
-    <div class="info-row">
-      <div class="info-label">Patient:</div>
-      <div>${patient.firstName} ${patient.lastName}${patient.patientCode ? ` (ID: ${patient.patientCode})` : ''}</div>
+  <div class="info-section" style="display: flex; flex-wrap: wrap;">
+    <div style="flex: 1; min-width: 280px;">
+      <div class="info-row">
+        <div class="info-label">Patient:</div>
+        <div>${patient.firstName} ${patient.lastName}</div>
+      </div>
+      ${patient.dateOfBirth ? `
+      <div class="info-row">
+        <div class="info-label">Date of Birth:</div>
+        <div>${new Date(patient.dateOfBirth).toLocaleDateString()}</div>
+      </div>
+      ` : ''}
+      ${patient.gender ? `
+      <div class="info-row">
+        <div class="info-label">Gender:</div>
+        <div>${patient.gender}</div>
+      </div>
+      ` : ''}
+      ${patient.dateOfBirth ? `
+      <div class="info-row">
+        <div class="info-label">Age:</div>
+        <div>${(() => {
+        const dob = new Date(patient.dateOfBirth);
+        const now = new Date();
+        let age = now.getFullYear() - dob.getFullYear();
+        const m = now.getMonth() - dob.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) {
+          age--;
+        }
+        return age;
+      })()}</div>
+      </div>
+      ` : ''}
+     
+
     </div>
-    ${patient.dateOfBirth ? `
+    <div style="flex: 1; min-width: 280px;">
+            ${patient.phone ? `
+      <div class="info-row">
+        <div class="info-label">Phone:</div>
+        <div>${patient.phone}</div>
+      </div>
+      ` : ''}
     <div class="info-row">
-      <div class="info-label">Date of Birth:</div>
-      <div>${new Date(patient.dateOfBirth).toLocaleDateString()}</div>
+        <div class="info-label">Date Issued:</div>
+        <div>${date}</div>
+      </div>
+      ${provider ? `
+      <div class="info-row">
+        <div class="info-label">Prescribed By:</div>
+        <div>${provider.name}</div>
+      </div>
+      ` : ''}
     </div>
-    ` : ''}
-    ${patient.phone ? `
-    <div class="info-row">
-      <div class="info-label">Phone:</div>
-      <div>${patient.phone}</div>
-    </div>
-    ` : ''}
-    <div class="info-row">
-      <div class="info-label">Date Issued:</div>
-      <div>${date}</div>
-    </div>
-    ${provider ? `
-    <div class="info-row">
-      <div class="info-label">Prescribed By:</div>
-      <div>${provider.name}</div>
-    </div>
-    ` : ''}
+     ${patient.address ? `
+      <div class="info-row">
+        <div class="info-label">Address:</div>
+        <div>${(() => {
+        if (typeof patient.address === 'object' && patient.address !== null) {
+          const { street, city, state, zipCode } = patient.address;
+          return [street, city, state, zipCode].filter(Boolean).join(', ');
+        }
+        return patient.address;
+      })()}</div>
+      </div>
+      ` : ''}
   </div>
 
   <div class="medications">
-    <h2 style="border-bottom: 1px solid #ddd; padding-bottom: 5px;">Medications</h2>
+    <div style="margin-bottom: 10px;">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Pharmacy_Rx_symbol_used_on_prescriptions.svg/250px-Pharmacy_Rx_symbol_used_on_prescriptions.svg.png?20101204175118" alt="Rx" style="height: 40px; vertical-align: middle;" />
+    </div>
     ${prescription.medications.map((med: any, index: number) => `
       <div class="medication-item">
-        <div class="medication-name">${index + 1}. ${med.name}${med.genericName ? ` (${med.genericName})` : ''}</div>
-        <div class="medication-details">
-          ${med.strength ? `<div><strong>Strength:</strong> ${med.strength}</div>` : ''}
-          ${med.dose ? `<div><strong>Dose:</strong> ${med.dose}</div>` : ''}
-          ${med.frequency ? `<div><strong>Frequency:</strong> ${med.frequency}</div>` : ''}
-          ${med.durationDays ? `<div><strong>Duration:</strong> ${med.durationDays} day(s)</div>` : ''}
-          ${med.quantity ? `<div><strong>Quantity:</strong> ${med.quantity}</div>` : ''}
-          ${med.form ? `<div><strong>Form:</strong> ${med.form}</div>` : ''}
-          ${med.route ? `<div><strong>Route:</strong> ${med.route}</div>` : ''}
-          ${med.instructions ? `<div style="margin-top: 8px;"><strong>Instructions:</strong> ${med.instructions}</div>` : ''}
+        <div class="medication-name" style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
+          <span>${index + 1}. ${med.name}</span>
+          ${med.genericName ? `<span>(${med.genericName})</span>` : ''}
+          ${med.quantity ? `<span><strong>Qty:</strong> ${med.quantity}</span>` : ''}
+        </div>
+        <div class="medication-details" style="display: flex; flex-wrap: wrap; gap: 16px;">
+          ${med.instructions ? `<span><strong>Sig:</strong> <b>${med.instructions}</b></span>` : ''}
         </div>
       </div>
     `).join('')}
   </div>
 
   ${(() => {
-    // Use followUpDate from visit if available
-    let followUpDate = '';
-    if (prescription.visit && prescription.visit.followUpDate) {
-      followUpDate = new Date(prescription.visit.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-    return (prescription.notes || followUpDate) ? `
-      <div style="margin-top: 30px;">
-        <h3>Additional Notes:</h3>
-        ${prescription.notes ? `<p>${prescription.notes}</p>` : ''}
-        ${followUpDate ? `<p><strong>Follow-up Date:</strong> ${followUpDate}</p>` : ''}
+      // Use followUpDate from visit if available
+      let followUpDate = '';
+      if (prescription.visit && prescription.visit.followUpDate) {
+        followUpDate = new Date(prescription.visit.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+      return (prescription.notes || followUpDate) ? `
+      <div style="margin-top: 10px; line-height: 1.2;">
+        <h3 style="margin-bottom: 4px;">Additional Notes:</h3>
+        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+          ${prescription.notes ? `<span>${prescription.notes}</span>` : ''}
+          ${followUpDate ? `<span><strong>Follow-up Date:</strong> ${followUpDate}</span>` : ''}
+        </div>
       </div>
     ` : '';
-  })()}
+    })()}
 
   <div class="signature-section">
-    ${showSignature && prescription.digitalSignature ? `
-      <div style="margin-bottom: 20px;">
-        <img src="${prescription.digitalSignature.signatureData}" alt="Signature" style="max-height: 80px;" />
-      </div>
-    ` : ''}
+   
     <div class="signature-box">
       <div>${provider ? provider.name : 'Provider'}</div>
-      <div style="font-size: 12px; margin-top: 5px;">Licensed Physician</div>
+      <div style="font-size: 12px; margin-top: 5px;">
+        ${(() => {
+      return settingInfo.licenseNumber ? `License No: ${settingInfo.licenseNumber}` : 'License No: ____________';
+    })()}
+      </div>
     </div>
   </div>
 
   <div class="footer">
-    <p>This is a computer-generated prescription. Please verify all information before dispensing.</p>
-    <p>For questions, please contact the prescribing physician.</p>
+    <p>This prescription was generated digitally by ${settingInfo && settingInfo.clinicName ? settingInfo.clinicName : 'the clinic'}.</p>
+    <p>Please verify all information before dispensing. For questions or concerns, contact:</p>
+    <p>
+      ${settingInfo && settingInfo.clinicPhone ? 'Tel: ' + settingInfo.clinicPhone : ''}<br>
+      ${settingInfo && settingInfo.clinicEmail ? 'Email: ' + settingInfo.clinicEmail : ''}
+    </p>
+    <p style="margin-top: 8px; font-weight: bold; color: #2563eb;">Powered by: DevCom Digital Marketing Services</p>
   </div>
 </body>
 </html>
