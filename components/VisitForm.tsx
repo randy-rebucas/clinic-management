@@ -187,6 +187,21 @@ export default function VisitForm({
     initialData?.notes,
   ]);
 
+  // Helper to format vitals for SOAP notes
+  function formatVitalsForSoap(vitals: any) {
+    if (!vitals || Object.keys(vitals).length === 0) return '';
+    const parts = [];
+    if (vitals.bp) parts.push(`BP: ${vitals.bp}`);
+    if (vitals.hr) parts.push(`HR: ${vitals.hr}`);
+    if (vitals.tempC) parts.push(`Temp: ${vitals.tempC}°C`);
+    if (vitals.spo2) parts.push(`SpO2: ${vitals.spo2}%`);
+    if (vitals.rr) parts.push(`RR: ${vitals.rr}`);
+    if (vitals.heightCm) parts.push(`Height: ${vitals.heightCm}cm`);
+    if (vitals.weightKg) parts.push(`Weight: ${vitals.weightKg}kg`);
+    if (vitals.bmi) parts.push(`BMI: ${vitals.bmi}`);
+    return parts.length ? 'Vitals: ' + parts.join(', ') : '';
+  }
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!formData.patient || !selectedPatient) {
@@ -499,7 +514,18 @@ export default function VisitForm({
                     </label>
                     <p className="text-xs text-gray-600 mb-2">Measurable observations, vital signs, and physical examination findings</p>
                     <textarea
-                      value={formData.soapNotes?.objective || ''}
+                      value={(() => {
+                        const vitalsText = formatVitalsForSoap(initialData?.vitals);
+                        const userText = formData.soapNotes?.objective || '';
+                        // If vitals present and not already in userText, prepend
+                        if (vitalsText && userText && !userText.startsWith(vitalsText)) {
+                          return vitalsText + '\n' + userText;
+                        } else if (vitalsText && !userText) {
+                          return vitalsText;
+                        } else {
+                          return userText;
+                        }
+                      })()}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
