@@ -150,17 +150,9 @@ export default function VisitForm({
 
   }, [formData.patient, patients]);
 
-  // Update form data when initialData changes (e.g., when queue vitals are loaded)
-  useEffect(() => {
-    if (initialData?.vitals && Object.keys(initialData.vitals).length > 0) {
-      setFormData(prev => ({
-        ...prev,
-        vitals: { ...prev.vitals, ...initialData.vitals }
-      }));
-    }
-  }, [initialData?.vitals]);
 
   useEffect(() => {
+
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (!target.closest('.patient-search-container')) {
@@ -168,12 +160,26 @@ export default function VisitForm({
         setHighlightedIndex(-1);
       }
     };
-
     if (showPatientSearch) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showPatientSearch]);
+
+  // Use a key on the form to force remount when initialData changes
+  const formKey = JSON.stringify([
+    initialData?.patient,
+    initialData?.visitType,
+    initialData?.chiefComplaint,
+    initialData?.historyOfPresentIllness,
+    initialData?.vitals,
+    initialData?.physicalExam,
+    initialData?.diagnoses,
+    initialData?.soapNotes,
+    initialData?.treatmentPlan,
+    initialData?.followUpDate,
+    initialData?.notes,
+  ]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
