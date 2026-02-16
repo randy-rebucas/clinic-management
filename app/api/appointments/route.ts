@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import { registerAllModels } from '@/models';
 import Appointment from '@/models/Appointment';
 import Doctor from '@/models/Doctor';
 import Patient from '@/models/Patient';
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+    registerAllModels();
     const searchParams = request.nextUrl.searchParams;
     const date = searchParams.get('date');
     const doctorId = searchParams.get('doctorId');
@@ -129,6 +131,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
+    registerAllModels();
     const body = await request.json();
     
     // Get tenant context from session or headers
