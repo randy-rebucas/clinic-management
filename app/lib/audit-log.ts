@@ -37,12 +37,12 @@ export async function logAudit({
 }: LogAuditArgs) {
   try {
     await AuditLog.create({
-      userId: Types.ObjectId(userId),
+      userId: new Types.ObjectId(userId),
       userEmail,
       userRole,
       action,
       resource,
-      resourceId: resourceId ? Types.ObjectId(resourceId) : undefined,
+      resourceId: resourceId ? new Types.ObjectId(resourceId) : undefined,
       changes,
       description,
       success,
