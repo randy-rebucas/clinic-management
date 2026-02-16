@@ -148,15 +148,13 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
       margin-top: 30px;
     }
     .medication-item {
-      border: 1px solid #ddd; 
-      padding: 6px;
-      margin-bottom: 4px;
-      border-radius: 5px;
+      padding-top: 6px;
     }
     .medication-name {
       font-size: 18px;
       font-weight: bold;
       color: #1f2937;
+      line-height: 18px;
     }
     .medication-details {
       margin-left: 20px;
@@ -164,21 +162,20 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
       font-family: monospace;
       font-size: large;
       font-style: italic;
+      line-height: 18px;
     }
     .signature-section {
-      margin-top: 40px;
       text-align: right;
     }
     .signature-box {
       display: inline-block;
       border-top: 1px solid #333;
       padding-top: 5px;
-      margin-top: 60px;
+      margin-top: 38px;
       min-width: 200px;
     }
     .footer {
-      margin-top: 40px;
-      padding-top: 20px;
+      padding-top: 4px;
       border-top: 1px solid #ddd;
       font-size: 12px;
       color: #6b7280;
@@ -186,6 +183,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
     }
     .footer p {
       margin: unset;
+      line-height: 14px;
     }
   </style>
 </head>
@@ -253,12 +251,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
         <div class="info-label">Date Issued:</div>
         <div>${date}</div>
       </div>
-      ${provider ? `
-      <div class="info-row">
-        <div class="info-label">Prescribed By:</div>
-        <div>${provider.name}</div>
-      </div>
-      ` : ''}
+     
     </div>
      ${patient.address ? `
       <div class="info-row">
@@ -275,9 +268,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
   </div>
 
   <div class="medications">
-    <div style="margin-bottom: 10px;">
-      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Pharmacy_Rx_symbol_used_on_prescriptions.svg/250px-Pharmacy_Rx_symbol_used_on_prescriptions.svg.png?20101204175118" alt="Rx" style="height: 40px; vertical-align: middle;" />
-    </div>
+
     ${prescription.medications.map((med: any, index: number) => `
       <div class="medication-item">
         <div class="medication-name" style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
