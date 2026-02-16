@@ -1,6 +1,7 @@
 import LoginForm from '@/components/LoginForm';
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
+import Image from 'next/image';
 
 export default async function LoginPage() {
   const session = await verifySession();
@@ -26,9 +27,7 @@ export default async function LoginPage() {
         {/* Logo and Header */}
         <div className="text-center mb-8 sm:mb-10">
           <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-3xl shadow-xl mb-6 sm:mb-8 transform transition-transform hover:scale-105">
-            <svg className="w-12 h-12 sm:w-14 sm:h-14 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
+            <Image src="/logo.png" alt="MyClinicSoft Logo" width={48} height={48} className="w-12 h-12 sm:w-16 sm:h-16" />
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-3 sm:mb-4 tracking-tight">
             Welcome Back
