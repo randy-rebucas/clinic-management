@@ -1,5 +1,23 @@
+
 import AuditLog from '@/models/AuditLog';
 import { Types } from 'mongoose';
+
+interface LogAuditArgs {
+  userId: string;
+  userEmail?: string;
+  userRole?: string;
+  action: string;
+  resource: string;
+  resourceId?: string;
+  changes?: any;
+  description?: string;
+  success: boolean;
+  requestMethod?: string;
+  requestPath?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  metadata?: any;
+}
 
 export async function logAudit({
   userId,
@@ -16,7 +34,7 @@ export async function logAudit({
   ipAddress,
   userAgent,
   metadata,
-}) {
+}: LogAuditArgs) {
   try {
     await AuditLog.create({
       userId: Types.ObjectId(userId),
