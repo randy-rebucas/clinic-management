@@ -47,6 +47,7 @@ interface VisitFormData {
       duration: string;
       quantity?: number;
       instructions?: string;
+      _highlightId?: number;
     }>;
     procedures?: Array<{
       name: string;
@@ -261,17 +262,23 @@ export default function VisitForm({
     setIcd10Search('');
   };
 
+  const [newMedHighlight, setNewMedHighlight] = useState<number | null>(null);
   const addMedication = () => {
-    setFormData({
-      ...formData,
-      treatmentPlan: {
-        ...formData.treatmentPlan,
-        medications: [
-          { name: '', dosage: '', frequency: '', duration: '', quantity: 1, instructions: '' },
-          ...(formData.treatmentPlan?.medications || []),
-        ],
-      },
+    setFormData(prev => {
+      const newMed = { name: '', dosage: '', frequency: '', duration: '', quantity: 1, instructions: '' };
+      setNewMedHighlight(Date.now());
+      return {
+        ...prev,
+        treatmentPlan: {
+          ...prev.treatmentPlan,
+          medications: [
+            { ...newMed, _highlightId: Date.now() },
+            ...(prev.treatmentPlan?.medications || []),
+          ],
+        },
+      };
     });
+    setTimeout(() => setNewMedHighlight(null), 3000);
   };
 
   const removeMedication = (index: number) => {
@@ -798,7 +805,10 @@ export default function VisitForm({
                     {formData.treatmentPlan?.medications && formData.treatmentPlan.medications.length > 0 ? (
                       <div className="flex flex-col gap-3">
                         {formData.treatmentPlan.medications.map((med, index) => (
-                          <div key={index} className="bg-gradient-to-r from-white to-emerald-50/50 border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all">
+                          <div
+                            key={med._highlightId || index}
+                            className={`bg-gradient-to-r from-white to-emerald-50/50 border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all ${med._highlightId && newMedHighlight === med._highlightId ? 'ring-2 ring-emerald-400 ring-offset-2' : ''}`}
+                          >
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                               <div className="md:col-span-3">
                                 <label className="block text-xs font-semibold text-gray-700 mb-2">Medication Name</label>
