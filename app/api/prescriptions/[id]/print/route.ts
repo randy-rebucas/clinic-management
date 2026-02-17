@@ -110,7 +110,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
     @media print {
       @page {
         size: A4;
-        margin: 20mm;
+        margin: 10mm;
       }
       body {
         margin: 0;
@@ -145,7 +145,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
       width: 150px;
     }
     .medications {
-      margin-top: 30px;
+      margin-top: 20px;
     }
     .medication-item {
       padding-top: 6px;
@@ -154,15 +154,13 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
       font-size: 18px;
       font-weight: bold;
       color: #1f2937;
-      line-height: 18px;
     }
     .medication-details {
       margin-left: 20px;
       color: #4b5563;
       font-family: monospace;
-      font-size: large;
+      font-size: 18px;
       font-style: italic;
-      line-height: 18px;
     }
     .signature-section {
       text-align: right;
@@ -188,44 +186,48 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
   </style>
 </head>
 <body>
-  <div class="header">
-    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-      <div>
-        <h1 style="margin-bottom: 4px;">${settingInfo && settingInfo.clinicName ? settingInfo.clinicName : 'Clinic Name'}</h1>
-        <div style="font-size: 14px; color: #374151;">${settingInfo && settingInfo.clinicAddress ? settingInfo.clinicAddress : ''}</div>
-        <div style="font-size: 14px; color: #374151;">${settingInfo && settingInfo.clinicPhone ? 'Tel: ' + settingInfo.clinicPhone : ''}</div>
-        <div style="font-size: 14px; color: #374151;">${settingInfo && settingInfo.clinicEmail ? 'Email: ' + settingInfo.clinicEmail : ''}</div>
-      </div>
-      <div style="text-align: right;">
-        <h2 style="margin: 0; color: #2563eb;">PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h2>
-        <strong>Code:</strong> ${prescription.prescriptionCode}<br>
-        ${!isPatientCopy ? `<small style="color: #6b7280;">Archived: ${new Date().toLocaleString()}</small>` : ''}
+  <div style="display: flex; flex-direction: column; min-height: 100vh;">
+    <!-- HEADER ROW -->
+    <div class="header" style="flex: 0 0 auto;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <h1 style="margin-bottom: 4px;">${settingInfo && settingInfo.clinicName ? settingInfo.clinicName : 'Clinic Name'}</h1>
+          <div style="font-size: 14px; color: #374151;">${settingInfo && settingInfo.clinicAddress ? settingInfo.clinicAddress : ''}</div>
+          <div style="font-size: 14px; color: #374151;">${settingInfo && settingInfo.clinicPhone ? 'Tel: ' + settingInfo.clinicPhone : ''}</div>
+          <div style="font-size: 14px; color: #374151;">${settingInfo && settingInfo.clinicEmail ? 'Email: ' + settingInfo.clinicEmail : ''}</div>
+        </div>
+        <div style="text-align: right;">
+          <h2 style="margin: 0; color: #2563eb;">PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h2>
+          <strong>Code:</strong> ${prescription.prescriptionCode}<br>
+          ${!isPatientCopy ? `<small style="color: #6b7280;">Archived: ${new Date().toLocaleString()}</small>` : ''}
+        </div>
       </div>
     </div>
-  </div>
 
-  <div class="info-section" style="display: flex; flex-wrap: wrap;">
-    <div style="flex: 1; min-width: 280px;">
-      <div class="info-row">
-        <div class="info-label">Patient:</div>
-        <div>${patient.firstName} ${patient.lastName}</div>
-      </div>
-      ${patient.dateOfBirth ? `
-      <div class="info-row">
-        <div class="info-label">Date of Birth:</div>
-        <div>${new Date(patient.dateOfBirth).toLocaleDateString()}</div>
-      </div>
-      ` : ''}
-      ${patient.gender ? `
-      <div class="info-row">
-        <div class="info-label">Gender:</div>
-        <div>${patient.gender}</div>
-      </div>
-      ` : ''}
-      ${patient.dateOfBirth ? `
-      <div class="info-row">
-        <div class="info-label">Age:</div>
-        <div>${(() => {
+    <!-- CONTENT ROW -->
+    <div style="flex: 1 1 auto;">
+      <div class="info-section" style="display: flex; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 280px;">
+          <div class="info-row">
+            <div class="info-label">Patient:</div>
+            <div>${patient.firstName} ${patient.lastName}</div>
+          </div>
+          ${patient.dateOfBirth ? `
+          <div class="info-row">
+            <div class="info-label">Date of Birth:</div>
+            <div>${new Date(patient.dateOfBirth).toLocaleDateString()}</div>
+          </div>
+          ` : ''}
+          ${patient.gender ? `
+          <div class="info-row">
+            <div class="info-label">Gender:</div>
+            <div>${patient.gender}</div>
+          </div>
+          ` : ''}
+          ${patient.dateOfBirth ? `
+          <div class="info-row">
+            <div class="info-label">Age:</div>
+            <div>${(() => {
         const dob = new Date(patient.dateOfBirth);
         const now = new Date();
         let age = now.getFullYear() - dob.getFullYear();
@@ -235,91 +237,91 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
         }
         return age;
       })()}</div>
-      </div>
-      ` : ''}
-     
-
-    </div>
-    <div style="flex: 1; min-width: 280px;">
-            ${patient.phone ? `
-      <div class="info-row">
-        <div class="info-label">Phone:</div>
-        <div>${patient.phone}</div>
-      </div>
-      ` : ''}
-    <div class="info-row">
-        <div class="info-label">Date Issued:</div>
-        <div>${date}</div>
-      </div>
-     
-    </div>
-     ${patient.address ? `
-      <div class="info-row">
-        <div class="info-label">Address:</div>
-        <div>${(() => {
+          </div>
+          ` : ''}
+        </div>
+        <div style="flex: 1; min-width: 280px;">
+          ${patient.phone ? `
+          <div class="info-row">
+            <div class="info-label">Phone:</div>
+            <div>${patient.phone}</div>
+          </div>
+          ` : ''}
+          <div class="info-row">
+            <div class="info-label">Date Issued:</div>
+            <div>${date}</div>
+          </div>
+        </div>
+        ${patient.address ? `
+        <div class="info-row">
+          <div class="info-label">Address:</div>
+          <div>${(() => {
         if (typeof patient.address === 'object' && patient.address !== null) {
           const { street, city, state, zipCode } = patient.address;
           return [street, city, state, zipCode].filter(Boolean).join(', ');
         }
         return patient.address;
       })()}</div>
-      </div>
-      ` : ''}
-  </div>
-
-  <div class="medications">
-
-    ${prescription.medications.map((med: any, index: number) => `
-      <div class="medication-item">
-        <div class="medication-name" style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
-          <span>${index + 1}. ${med.name}</span>
-          ${med.genericName ? `<span>(${med.genericName})</span>` : ''}
-          ${med.quantity ? `<span><strong>Qty:</strong> ${med.quantity}</span>` : ''}
         </div>
-        <div class="medication-details" style="display: flex; flex-wrap: wrap; gap: 16px;">
-          ${med.instructions ? `<span><strong>Sig:</strong> <b>${med.instructions}</b></span>` : ''}
-        </div>
+        ` : ''}
       </div>
-    `).join('')}
-  </div>
 
-  ${(() => {
+      <div class="medications">
+        ${prescription.medications.map((med: any, index: number) => `
+          <div class="medication-item">
+            <div class="medication-name" style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
+              <span>${index + 1}. ${med.name}</span>
+              ${med.genericName ? `<span>(${med.genericName})</span>` : ''}
+              ${med.quantity ? `<span><strong>Qty:</strong> ${med.quantity}</span>` : ''}
+            </div>
+            <div class="medication-details" style="display: flex; flex-wrap: wrap; gap: 16px;">
+              ${med.instructions ? `<span><strong>Sig:</strong> <b>${med.instructions}</b></span>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      
+    </div>
+
+    <!-- FOOTER ROW -->
+    <div class="footer" style="flex: 0 0 auto;">
+    ${(() => {
       // Use followUpDate from visit if available
       let followUpDate = '';
       if (prescription.visit && prescription.visit.followUpDate) {
         followUpDate = new Date(prescription.visit.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       }
       return (prescription.notes || followUpDate) ? `
-      <div style="margin-top: 10px; line-height: 1.2;">
-        <h3 style="margin-bottom: 4px;">Additional Notes:</h3>
-        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
-          ${prescription.notes ? `<span>${prescription.notes}</span>` : ''}
-          ${followUpDate ? `<span><strong>Follow-up Date:</strong> ${followUpDate}</span>` : ''}
+        <div style="margin-top: 10px; line-height: 1.2; text-align: left;">
+          <h3 style="margin-bottom: 4px;">Additional Notes:</h3>
+          <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+            ${prescription.notes ? `<span>${prescription.notes}</span>` : ''}
+            ${followUpDate ? `<span style="font-weight: bold;"><strong>Follow-up Date:</strong> ${followUpDate}</span>` : ''}
+          </div>
         </div>
-      </div>
-    ` : '';
+        ` : '';
     })()}
 
-  <div class="signature-section">
-   
-    <div class="signature-box">
-      <div>${provider ? provider.name : 'Provider'}</div>
-      <div style="font-size: 12px; margin-top: 5px;">
-        ${(() => {
+      <div class="signature-section">
+        <div class="signature-box">
+          <div>${provider ? provider.name : 'Provider'}</div>
+          <div style="font-size: 12px; margin-top: 5px;">
+            ${(() => {
       return settingInfo.licenseNumber ? `License No: ${settingInfo.licenseNumber}` : 'License No: ____________';
     })()}
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
 
-  <div class="footer">
-    <p>This prescription was generated digitally by ${settingInfo && settingInfo.clinicName ? settingInfo.clinicName : 'the clinic'}.</p>
-    <p>Please verify all information before dispensing. For questions or concerns, contact:</p>
-    <p>
-      ${settingInfo && settingInfo.clinicPhone ? 'Tel: ' + settingInfo.clinicPhone : ''}<br>
-      ${settingInfo && settingInfo.clinicEmail ? 'Email: ' + settingInfo.clinicEmail : ''}
-    </p>
-    <p style="margin-top: 8px; font-weight: bold; color: #2563eb;">Powered by: DevCom Digital Marketing Services</p>
+      <p>This prescription was generated digitally by ${settingInfo && settingInfo.clinicName ? settingInfo.clinicName : 'the clinic'}.</p>
+      <p>Please verify all information before dispensing. For questions or concerns, contact:</p>
+      <p>
+        ${settingInfo && settingInfo.clinicPhone ? 'Tel: ' + settingInfo.clinicPhone : ''}<br>
+        ${settingInfo && settingInfo.clinicEmail ? 'Email: ' + settingInfo.clinicEmail : ''}
+      </p>
+      <p style="margin-top: 8px; font-weight: bold; color: #2563eb;">Powered by: DevCom Digital Marketing Services</p>
+    </div>
   </div>
 </body>
 </html>
