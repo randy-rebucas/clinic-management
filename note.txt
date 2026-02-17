@@ -1,0 +1,77 @@
+# Features Missing or Not Fully Implemented (as of Feb 2026)
+
+## Recently Scaffolded/Planned
+- Health check API endpoint: Implemented in app/api/health (liveness, readiness, full checks)
+- Automated backup/restore: Bash scripts in scripts/backup for MongoDB backup/restore
+- Rate limiting: Middleware scaffolded in app/api/lib/rate-limit.ts
+- Internationalization (i18n): Config scaffolded in lib/i18n.ts
+- Audit log viewing UI: Scaffolded in components/AuditLogViewer.tsx
+
+## Still Missing or Not Fully Implemented
+1. **Accessibility Audits**
+	- No automated accessibility testing or audit scripts mentioned.
+2. **CI/CD Pipeline Configuration**
+	- No .github/ or similar directory for workflow configuration found.
+3. **Mobile App or PWA Support**
+	- No mention of mobile app or explicit PWA support.
+4. **User Impersonation for Admins**
+	- No admin user impersonation feature mentioned.
+5. **Multi-Tenancy**
+	 - Multi-tenancy context utilities scaffolded in lib/tenant.ts. Tenant model pattern present. To fully implement:
+		 - Ensure all core models (Patient, Appointment, etc.) include tenantId field and index.
+		 - Use getTenantContext() or getTenantId() in API handlers to scope data per tenant.
+		 - Add tenant onboarding/admin UI as needed.
+6. **Automated Dependency Audits**
+	- No mention of automated dependency audit tools/scripts.
+7. **API Versioning**
+	- API versioning scaffolded: /api/v1/ endpoints now supported (see app/api/v1/)
+8. **Customizable Notification Templates**
+	- No mention of customizable notification/email/SMS templates.
+9. **User Activity Analytics**
+	- No explicit user activity analytics (logins, usage patterns) described.
+
+---
+
+If you want to prioritize or implement any of these, review the README and codebase for further planning.
+Automated Backups & Restore
+
+The README and best practices mention automated database backups and restore procedures, but there is no clear mention of backup/restore scripts, endpoints, or documentation in the visible structure.
+Health Checks & Monitoring
+
+Health checks for production readiness are recommended, but there is no explicit mention of a health check endpoint (e.g., /api/health) or monitoring scripts.
+Rate Limiting
+
+Rate limiting is mentioned as a best practice, but there is no clear evidence of middleware or configuration for rate limiting in the API layer.
+Internationalization (i18n)
+
+There is no mention or evidence of i18n support (multiple languages/locales) in the UI or backend.
+Accessibility Audits
+
+While accessibility is mentioned, there is no explicit mention of automated accessibility testing or audits.
+CI/CD Pipeline Configuration
+
+The README recommends CI/CD, but there is no .github or similar directory visible for workflow configuration.
+Mobile App or PWA Support
+
+There is no mention of a mobile app or explicit PWA (Progressive Web App) support.
+User Impersonation for Admins
+
+Some advanced admin features (like user impersonation for troubleshooting) are not mentioned.
+Multi-Tenancy
+
+If the app is intended for multiple clinics/organizations, there is no mention of multi-tenancy support.
+Audit Log Viewing UI
+
+While audit logging is implemented, a dedicated UI for viewing and filtering audit logs is not explicitly mentioned.
+Automated Dependency Audits
+
+Regular dependency audits are recommended, but there is no mention of automated tools/scripts for this.
+API Versioning
+
+No mention of API versioning strategy (e.g., /api/v1/).
+Customizable Notification Templates
+
+Notification/email/SMS templates are not mentioned as customizable.
+User Activity Analytics
+
+While reporting is present, user activity analytics (logins, usage patterns) are not explicitly mentioned.
