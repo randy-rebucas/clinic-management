@@ -651,9 +651,37 @@ export default function PatientsPageClient() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600" aria-label="Loading spinner"></div>
-            <span className="ml-4 text-gray-600 font-medium">Loading patients...</span>
+          <div className="flex flex-col gap-3 mt-4" aria-busy="true" aria-live="polite">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm animate-pulse flex flex-col">
+                <div className="p-4 sm:p-6 flex items-center gap-4 justify-between flex-wrap sm:flex-nowrap">
+                  {/* Avatar skeleton */}
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center text-white text-lg font-bold flex-shrink-0 shadow-md" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <div className="h-5 bg-gray-200 rounded w-32 mb-1" />
+                        <div className="h-4 bg-gray-100 rounded w-16" />
+                        <div className="h-4 bg-blue-100 rounded w-12" />
+                        <div className="h-4 bg-gray-100 rounded w-10" />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-sm">
+                        <div className="h-4 bg-gray-100 rounded w-24" />
+                        <div className="h-4 bg-gray-100 rounded w-20" />
+                        <div className="h-4 bg-gray-100 rounded w-20" />
+                        <div className="h-4 bg-gray-100 rounded w-24" />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Actions skeleton */}
+                  <div className="flex gap-2 items-center flex-shrink-0">
+                    <div className="w-10 h-10 bg-gray-100 rounded-lg" />
+                    <div className="w-10 h-10 bg-gray-100 rounded-lg" />
+                    <div className="w-10 h-10 bg-gray-100 rounded-lg" />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         ) : null}
         
