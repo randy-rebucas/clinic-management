@@ -186,7 +186,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
   </style>
 </head>
 <body>
-  <div style="display: flex; flex-direction: column; min-height: 100vh;">
+  <div style="display: flex; flex-direction: column; min-height: calc(100vh - 50px);">
     <!-- HEADER ROW -->
     <div class="header" style="flex: 0 0 auto;">
       <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -272,10 +272,11 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
             <div class="medication-name" style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
               <span>${index + 1}. ${med.name}</span>
               ${med.genericName ? `<span>(${med.genericName})</span>` : ''}
-              ${med.quantity ? `<span><strong>Qty:</strong> ${med.quantity}</span>` : ''}
+              ${med.quantity ? `<span>` : ''}
             </div>
-            <div class="medication-details" style="display: flex; flex-wrap: wrap; gap: 16px;">
-              ${med.instructions ? `<span><strong>Sig:</strong> <b>${med.instructions}</b></span>` : ''}
+            <div class="medication-details" style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between;">
+              ${med.instructions ? `<span><strong>Sig:</strong> <b>${med.instructions}</b></span>` : ''} 
+              ${med.quantity ? `<span><strong>#</strong> ${med.quantity}</span>` : ''}
             </div>
           </div>
         `).join('')}

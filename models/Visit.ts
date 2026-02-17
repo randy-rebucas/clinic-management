@@ -184,6 +184,7 @@ const VisitSchema: Schema = new Schema(
         dosage: { type: String },
         frequency: { type: String },
         duration: { type: String },
+        quantity: { type: Number },
         instructions: { type: String },
       }],
       procedures: [{
