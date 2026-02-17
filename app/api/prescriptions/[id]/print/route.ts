@@ -106,6 +106,11 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
 <head>
   <meta charset="UTF-8">
   <title>Prescription ${prescription.prescriptionCode}</title>
+  <script>
+    window.onload = function() {
+      setTimeout(function() { window.print(); }, 200);
+    };
+  </script>
   <style>
     @media print {
       @page {
