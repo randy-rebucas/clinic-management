@@ -43,6 +43,7 @@ export interface ITreatmentPlan {
     dosage: string;
     frequency: string;
     duration: string;
+    quantity?: number;
     instructions?: string;
   }>;
   procedures?: Array<{
