@@ -188,9 +188,8 @@ export async function POST(request: NextRequest) {
     if (tenantId && !visitData.tenantId) {
       visitData.tenantId = new Types.ObjectId(tenantId);
     }
-    
+
     const visit = await Visit.create(visitData);
-    
     // Build populate options with tenant filter
     const patientPopulateOptions: any = {
       path: 'patient',
