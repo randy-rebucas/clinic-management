@@ -44,6 +44,54 @@ export default function PatientsPageClient() {
   const [success, setSuccess] = useState<string | null>(null);
   const router = useRouter();
 
+  // --- Autocomplete State ---
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<Patient[]>([]);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [autocompleteIndex, setAutocompleteIndex] = useState(-1);
+
+  // --- Autocomplete Logic ---
+  useEffect(() => {
+    if (!searchQuery) {
+      setAutocompleteSuggestions([]);
+      setShowAutocomplete(false);
+      setAutocompleteIndex(-1);
+      return;
+    }
+    // Suggest from patients list (local, fast)
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) {
+      setAutocompleteSuggestions([]);
+      setShowAutocomplete(false);
+      setAutocompleteIndex(-1);
+      return;
+    }
+    // Match by name, email, code (limit 8)
+    const suggestions = patients.filter((p: Patient) => {
+      return (
+        (p.firstName && p.firstName.toLowerCase().includes(q)) ||
+        (p.lastName && p.lastName.toLowerCase().includes(q)) ||
+        (p.email && p.email.toLowerCase().includes(q)) ||
+        (p.patientCode && p.patientCode.toLowerCase().includes(q))
+      );
+    }).slice(0, 8);
+    setAutocompleteSuggestions(suggestions);
+    setShowAutocomplete(suggestions.length > 0);
+    setAutocompleteIndex(suggestions.length > 0 ? 0 : -1);
+  }, [searchQuery, patients]);
+
+  // --- Autocomplete Select Handler ---
+  function handleAutocompleteSelect(suggestion: Patient) {
+    setSearchQuery(suggestion.firstName + ' ' + suggestion.lastName);
+    setShowAutocomplete(false);
+    setAutocompleteSuggestions([]);
+    setAutocompleteIndex(-1);
+    // Optionally, filter immediately to this patient
+    // Or navigate to patient detail:
+    if (suggestion._id) {
+      router.push(`/patients/${suggestion._id}`);
+    }
+  }
+
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -59,13 +107,17 @@ export default function PatientsPageClient() {
 
   const handleSearchForm = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setDebouncedSearchQuery(searchQuery);
+    // Only update debouncedSearchQuery if not already set (prevents double fetch)
+    if (debouncedSearchQuery !== searchQuery) {
+      setDebouncedSearchQuery(searchQuery);
+    }
   };
 
   // Fetch patients when filters or search change
   useEffect(() => {
     fetchPatients();
-  }, [debouncedSearchQuery, sortBy, filters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearchQuery, sortBy, JSON.stringify(filters)]);
 
   const fetchPatients = async () => {
     try {
@@ -167,6 +219,8 @@ export default function PatientsPageClient() {
       state: '',
       global: false,
     });
+    setSearchQuery('');
+    setDebouncedSearchQuery('');
   };
 
   const handleDeleteClick = (id: string) => {
@@ -216,11 +270,11 @@ export default function PatientsPageClient() {
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen" aria-busy="true" aria-live="polite">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4" style={{ minHeight: '50vh', justifyContent: 'center' }}>
             <div className="relative">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div>
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600" aria-label="Loading spinner"></div>
             </div>
             <p className="text-gray-600 font-medium">Loading patients...</p>
           </div>
@@ -353,13 +407,45 @@ export default function PatientsPageClient() {
                     placeholder="Search by name, email, phone, code, or location..."
                     value={searchQuery}
                     onChange={handleSearchInput}
+                    onKeyDown={e => {
+                      if (e.key === 'Escape') {
+                        setSearchQuery('');
+                      }
+                      // Keyboard navigation for autocomplete
+                      if (autocompleteSuggestions.length > 0) {
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setAutocompleteIndex(i => Math.min(i + 1, autocompleteSuggestions.length - 1));
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setAutocompleteIndex(i => Math.max(i - 1, 0));
+                        } else if (e.key === 'Enter' && autocompleteIndex >= 0) {
+                          e.preventDefault();
+                          handleAutocompleteSelect(autocompleteSuggestions[autocompleteIndex]);
+                        }
+                      }
+                    }}
+                    autoFocus
+                    aria-label="Search patients"
+                    autoComplete="off"
                     className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+                    onBlur={() => setTimeout(() => setShowAutocomplete(false), 100)}
+                    onFocus={() => {
+                      if (autocompleteSuggestions.length > 0) setShowAutocomplete(true);
+                    }}
                   />
                   {searchQuery && (
                     <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
                       <button
                         type="button"
+                        aria-label="Clear search"
+                        tabIndex={0}
                         onClick={() => setSearchQuery('')}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            setSearchQuery('');
+                          }
+                        }}
                         className="cursor-pointer p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -367,6 +453,29 @@ export default function PatientsPageClient() {
                         </svg>
                       </button>
                     </div>
+                  )}
+                  {/* Autocomplete Dropdown */}
+                  {showAutocomplete && autocompleteSuggestions.length > 0 && (
+                    <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto animate-in fade-in text-sm" role="listbox">
+                      {autocompleteSuggestions.map((s, idx) => (
+                        <li
+                          key={s._id}
+                          role="option"
+                          aria-selected={autocompleteIndex === idx}
+                          className={`px-4 py-2 cursor-pointer hover:bg-blue-50 ${autocompleteIndex === idx ? 'bg-blue-100 text-blue-900 font-semibold' : ''}`}
+                          onMouseDown={e => { e.preventDefault(); handleAutocompleteSelect(s); }}
+                          onMouseEnter={() => setAutocompleteIndex(idx)}
+                        >
+                          <span className="font-bold">{s.firstName} {s.lastName}</span>
+                          {s.patientCode && (
+                            <span className="ml-2 text-xs bg-gray-100 text-gray-700 rounded px-2 py-0.5">{s.patientCode}</span>
+                          )}
+                          {s.email && (
+                            <span className="ml-2 text-xs text-gray-500">{s.email}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
               </div>
@@ -413,7 +522,12 @@ export default function PatientsPageClient() {
               id="global-search-toggle"
               type="checkbox"
               checked={filters.global}
-              onChange={e => setFilters(f => ({ ...f, global: e.target.checked }))}
+              onChange={e => {
+                setFilters(f => ({ ...f, global: e.target.checked }));
+                // When toggling global, also clear search to avoid confusion
+                setSearchQuery('');
+                setDebouncedSearchQuery('');
+              }}
               className="form-checkbox h-4 w-4 text-blue-600 transition-all"
             />
             <label htmlFor="global-search-toggle" className="text-xs text-gray-700 select-none cursor-pointer">
