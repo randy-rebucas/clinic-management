@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
 
     // Get query parameters
     const searchParams = request.nextUrl.searchParams;
+
     const search = searchParams.get('search') || '';
     const sex = searchParams.get('sex') || '';
     const active = searchParams.get('active');
@@ -46,8 +47,10 @@ export async function GET(request: NextRequest) {
     // Build filter query
     const filter: any = {};
     const isGlobal = searchParams.get('global') === 'true';
+
     let tenantFilter: any = {};
     if (!isGlobal) {
+   
       if (tenantId) {
         // Support patients with multiple tenantIds (array)
         tenantFilter.$or = [
@@ -68,16 +71,25 @@ export async function GET(request: NextRequest) {
     // Search filter - search across multiple fields
     if (search) {
       const searchRegex = new RegExp(search, 'i');
+      let phoneCondition;
+      if (/\d/.test(search)) {
+        // If search contains digits, search phone by digits only
+        phoneCondition = { phone: { $regex: search.replace(/\D/g, ''), $options: 'i' } };
+      } else {
+        // Otherwise, search phone as text
+        phoneCondition = { phone: searchRegex };
+      }
       const searchConditions = [
         { firstName: searchRegex },
         { lastName: searchRegex },
         { middleName: searchRegex },
         { email: searchRegex },
-        { phone: { $regex: search.replace(/\D/g, ''), $options: 'i' } },
+        phoneCondition,
         { patientCode: searchRegex },
         { 'address.city': searchRegex },
         { 'address.state': searchRegex },
       ];
+    
       if (isGlobal) {
         // Global search: show all patients matching search (no tenant restriction)
         filter.$or = searchConditions;
@@ -136,7 +148,7 @@ export async function GET(request: NextRequest) {
     } else {
       sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
     }
-
+ 
     // Pagination - use settings default if limit not provided
     const settings = await getSettings();
     const defaultLimit = settings.generalSettings?.itemsPerPage || 20;
@@ -145,6 +157,7 @@ export async function GET(request: NextRequest) {
     const skip = (pageNum - 1) * limitNum;
 
     // Build query
+
     const query = Patient.find(filter).sort(sort).skip(skip).limit(limitNum);
 
     // Execute query

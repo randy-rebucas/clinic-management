@@ -80,14 +80,13 @@ export default function PatientsPageClient() {
   }, [searchQuery, patients]);
 
   // --- Autocomplete Select Handler ---
-  function handleAutocompleteSelect(suggestion: Patient) {
+  // Only navigate on Enter, not on click
+  function handleAutocompleteSelect(suggestion: Patient, navigate: boolean = false) {
     setSearchQuery(suggestion.firstName + ' ' + suggestion.lastName);
     setShowAutocomplete(false);
     setAutocompleteSuggestions([]);
     setAutocompleteIndex(-1);
-    // Optionally, filter immediately to this patient
-    // Or navigate to patient detail:
-    if (suggestion._id) {
+    if (navigate && suggestion._id) {
       router.push(`/patients/${suggestion._id}`);
     }
   }
@@ -268,20 +267,20 @@ export default function PatientsPageClient() {
     }
   };
 
-  if (loading) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen" aria-busy="true" aria-live="polite">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4" style={{ minHeight: '50vh', justifyContent: 'center' }}>
-            <div className="relative">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600" aria-label="Loading spinner"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading patients...</p>
-          </div>
-        </div>
-      </section>
-    );
-  }
+  // if (loading) {
+  //   return (
+  //     <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen" aria-busy="true" aria-live="polite">
+  //       <div className="max-w-7xl mx-auto">
+  //         <div className="flex flex-col items-center gap-4" style={{ minHeight: '50vh', justifyContent: 'center' }}>
+  //           <div className="relative">
+  //             <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600" aria-label="Loading spinner"></div>
+  //           </div>
+  //           <p className="text-gray-600 font-medium">Loading patients...</p>
+  //         </div>
+  //       </div>
+  //     </section>
+  //   );
+  // }
 
   return (
     <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
@@ -421,7 +420,7 @@ export default function PatientsPageClient() {
                           setAutocompleteIndex(i => Math.max(i - 1, 0));
                         } else if (e.key === 'Enter' && autocompleteIndex >= 0) {
                           e.preventDefault();
-                          handleAutocompleteSelect(autocompleteSuggestions[autocompleteIndex]);
+                          handleAutocompleteSelect(autocompleteSuggestions[autocompleteIndex], true);
                         }
                       }
                     }}
@@ -463,7 +462,7 @@ export default function PatientsPageClient() {
                           role="option"
                           aria-selected={autocompleteIndex === idx}
                           className={`px-4 py-2 cursor-pointer hover:bg-blue-50 ${autocompleteIndex === idx ? 'bg-blue-100 text-blue-900 font-semibold' : ''}`}
-                          onMouseDown={e => { e.preventDefault(); handleAutocompleteSelect(s); }}
+                          onMouseDown={e => { e.preventDefault(); handleAutocompleteSelect(s, false); }}
                           onMouseEnter={() => setAutocompleteIndex(idx)}
                         >
                           <span className="font-bold">{s.firstName} {s.lastName}</span>
@@ -651,7 +650,13 @@ export default function PatientsPageClient() {
           )}
         </div>
 
-
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600" aria-label="Loading spinner"></div>
+            <span className="ml-4 text-gray-600 font-medium">Loading patients...</span>
+          </div>
+        ) : null}
+        
         {/* Patients List */}
         {filteredPatients.length === 0 && patients.length > 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200">
