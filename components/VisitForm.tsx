@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, FormEvent, useRef } from 'react';
+import { useState, useEffect, FormEvent, useRef, useCallback } from 'react';
 import SignaturePad from './SignaturePad';
 
 interface VisitFormData {
@@ -113,6 +113,7 @@ export default function VisitForm({
   const [activeTab, setActiveTab] = useState<'soap' | 'traditional' | 'treatment'>('soap');
   // Dedicated vitals state, initialized from initialData.vitals
   const [vitals, setVitals] = useState<VisitFormData['vitals']>(initialData?.vitals || {});
+  const [medicationNameOptions, setMedicationNameOptions] = useState<string[]>([]);
 
   const chiefComplaintInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -137,6 +138,29 @@ export default function VisitForm({
     }
   }, [icd10Search]);
 
+  // Fetch medication names for autocomplete
+  const fetchMedicationNames = useCallback((search: string = '') => {
+    fetch(`/api/medications/autocomplete?search=${encodeURIComponent(search)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data)) {
+          setMedicationNameOptions(data.data);
+        }
+      })
+      .catch(() => setMedicationNameOptions([]));
+  }, []);
+
+  // Fetch on mount
+  useEffect(() => {
+    fetchMedicationNames();
+  }, [fetchMedicationNames]);
+
+  // Optionally, fetch as user types in any medication name input
+  // (for better UX, debounce in real use)
+  const handleMedicationNameInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    fetchMedicationNames(value);
+  };
   // Sync selected patient when formData.patient changes
   useEffect(() => {
     if (formData.patient) {
@@ -816,8 +840,8 @@ export default function VisitForm({
                                   type="text"
                                   placeholder="e.g., Amoxicillin"
                                   value={med.name}
-                                  list={`medication-names-list-${index}`}
-                                  autoComplete="off"
+                                  list="medication-names-autocomplete"
+                                  autoComplete="on"
                                   onChange={(e) => {
                                     const medications = [...(formData.treatmentPlan?.medications || [])];
                                     medications[index] = { ...med, name: e.target.value };
@@ -828,6 +852,15 @@ export default function VisitForm({
                                   }}
                                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                                 />
+                                {/* Global datalist for medication autocomplete */}
+                                {index === 0 && (
+                                  <datalist id="medication-names-autocomplete">
+                                    {medicationNameOptions.map((name, i) => (
+                                      <option value={name} key={i} />
+                                    ))}
+                                  </datalist>
+                                )}
+                                   
                                 <datalist id={`medication-names-list-${index}`}>
                                   {Array.from(new Set((formData.treatmentPlan?.medications || [])
                                     .map((m) => m.name)
