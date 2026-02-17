@@ -45,18 +45,24 @@ export async function GET(request: NextRequest) {
 
     // Build filter query
     const filter: any = {};
-    // Support global search (across all tenants) if ?global=true
     const isGlobal = searchParams.get('global') === 'true';
-    const tenantFilter: any = {};
-    if (tenantId) {
-      // Ensure tenantIds is an array and match if user's tenantId is present
-      tenantFilter.tenantIds = { $in: [new Types.ObjectId(tenantId)] };
-    } else {
-      tenantFilter.$or = [
-        { tenantIds: { $exists: false } },
-        { tenantIds: null },
-        { tenantIds: { $size: 0 } }
-      ];
+    let tenantFilter: any = {};
+    if (!isGlobal) {
+      if (tenantId) {
+        // Support patients with multiple tenantIds (array)
+        tenantFilter.$or = [
+          { tenantIds: { $in: [new Types.ObjectId(tenantId)] } },
+          { tenantIds: { $exists: false } },
+          { tenantIds: null },
+          { tenantIds: { $size: 0 } }
+        ];
+      } else {
+        tenantFilter.$or = [
+          { tenantIds: { $exists: false } },
+          { tenantIds: null },
+          { tenantIds: { $size: 0 } }
+        ];
+      }
     }
 
     // Search filter - search across multiple fields
@@ -73,28 +79,18 @@ export async function GET(request: NextRequest) {
         { 'address.state': searchRegex },
       ];
       if (isGlobal) {
-        // Merge global and tenant scope: show both global and tenant matches
-        filter.$or = [
-          // Global search (all tenants)
-          { $or: searchConditions },
-          // Tenant-scoped search
-          { $and: [tenantFilter, { $or: searchConditions }] }
-        ];
+        // Global search: show all patients matching search (no tenant restriction)
+        filter.$or = searchConditions;
       } else {
-        // Only tenant scope
-        filter.$and = [
-          tenantFilter,
-          { $or: searchConditions }
-        ];
+        // Tenant search: restrict to tenant, then search
+        filter.$and = [tenantFilter, { $or: searchConditions }];
       }
     } else {
-      // No search, just use tenant filter (unless global)
-      if (isGlobal) {
-        // No search, global: show all patients
-        // (no filter needed)
-      } else {
+      // No search: restrict by tenant if not global
+      if (!isGlobal) {
         Object.assign(filter, tenantFilter);
       }
+      // If global, filter remains empty (all patients)
     }
 
     // Sex filter
