@@ -16,6 +16,7 @@ interface MedicationFromTreatmentPlan {
   name: string;
   dosage: string;
   frequency: string;
+  quantity?: number;
   duration?: string;
   instructions?: string;
 }
@@ -91,6 +92,7 @@ export async function createPrescriptionFromVisit(params: CreatePrescriptionFrom
         name: med.name,
         dose: med.dosage,
         frequency: med.frequency,
+        quantity: med.quantity,
         durationDays,
         instructions: med.instructions || [med.dosage, med.frequency, med.duration].filter(Boolean).join(' ') || 'As directed',
       };
@@ -233,6 +235,7 @@ export async function updatePrescriptionFromVisit(params: CreatePrescriptionFrom
         name: med.name,
         dose: med.dosage,
         frequency: med.frequency,
+        quantity: med.quantity,
         durationDays,
         instructions: med.instructions || [med.dosage, med.frequency, med.duration].filter(Boolean).join(' ') || 'As directed',
       };

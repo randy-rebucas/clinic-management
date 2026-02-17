@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, useRef } from 'react';
 import SignaturePad from './SignaturePad';
 
 interface VisitFormData {
@@ -45,6 +45,7 @@ interface VisitFormData {
       dosage: string;
       frequency: string;
       duration: string;
+      quantity?: number;
       instructions?: string;
     }>;
     procedures?: Array<{
@@ -112,7 +113,7 @@ export default function VisitForm({
   // Dedicated vitals state, initialized from initialData.vitals
   const [vitals, setVitals] = useState<VisitFormData['vitals']>(initialData?.vitals || {});
 
-
+  const chiefComplaintInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (icd10Search.length >= 2) {
@@ -266,8 +267,8 @@ export default function VisitForm({
       treatmentPlan: {
         ...formData.treatmentPlan,
         medications: [
+          { name: '', dosage: '', frequency: '', duration: '', quantity: 1, instructions: '' },
           ...(formData.treatmentPlan?.medications || []),
-          { name: '', dosage: '', frequency: '', duration: '', instructions: '' },
         ],
       },
     });
@@ -440,6 +441,13 @@ export default function VisitForm({
                 type="text"
                 value={formData.chiefComplaint}
                 onChange={(e) => setFormData({ ...formData, chiefComplaint: e.target.value })}
+                ref={el => { chiefComplaintInputRef.current = el; }}
+                onFocus={e => {
+                  // Slide to top on focus with margin
+                  const yOffset = -125;
+                  const y = e.target.getBoundingClientRect().top + window.pageYOffset + yOffset;
+                  window.scrollTo({ top: y, behavior: 'smooth' });
+                }}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
               />
             </div>
@@ -792,12 +800,14 @@ export default function VisitForm({
                         {formData.treatmentPlan.medications.map((med, index) => (
                           <div key={index} className="bg-gradient-to-r from-white to-emerald-50/50 border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all">
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                              <div className="md:col-span-2">
+                              <div className="md:col-span-3">
                                 <label className="block text-xs font-semibold text-gray-700 mb-2">Medication Name</label>
                                 <input
                                   type="text"
                                   placeholder="e.g., Amoxicillin"
                                   value={med.name}
+                                  list={`medication-names-list-${index}`}
+                                  autoComplete="off"
                                   onChange={(e) => {
                                     const medications = [...(formData.treatmentPlan?.medications || [])];
                                     medications[index] = { ...med, name: e.target.value };
@@ -808,6 +818,14 @@ export default function VisitForm({
                                   }}
                                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                                 />
+                                <datalist id={`medication-names-list-${index}`}>
+                                  {Array.from(new Set((formData.treatmentPlan?.medications || [])
+                                    .map((m) => m.name)
+                                    .filter((name) => name && name !== med.name)))
+                                    .map((name, i) => (
+                                      <option value={name} key={i} />
+                                    ))}
+                                </datalist>
                               </div>
                               <div>
                                 <label className="block text-xs font-semibold text-gray-700 mb-2">Dosage</label>
@@ -843,7 +861,7 @@ export default function VisitForm({
                                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                                 />
                               </div>
-                              <div className="md:col-span-2">
+                              <div>
                                 <label className="block text-xs font-semibold text-gray-700 mb-2">Duration</label>
                                 <div className="flex items-center gap-2">
                                   <input
@@ -853,6 +871,24 @@ export default function VisitForm({
                                     onChange={(e) => {
                                       const medications = [...(formData.treatmentPlan?.medications || [])];
                                       medications[index] = { ...med, duration: e.target.value };
+                                      setFormData({
+                                        ...formData,
+                                        treatmentPlan: { ...formData.treatmentPlan, medications },
+                                      });
+                                    }}
+                                    className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-2">Quantity</label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="number"
+                                    value={med.quantity ? med.quantity.toString() : '1'}
+                                    onChange={(e) => {
+                                      const medications = [...(formData.treatmentPlan?.medications || [])];
+                                      medications[index] = { ...med, quantity: e.target.value ? parseInt(e.target.value) : undefined };
                                       setFormData({
                                         ...formData,
                                         treatmentPlan: { ...formData.treatmentPlan, medications },
