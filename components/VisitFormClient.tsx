@@ -104,6 +104,18 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
   };
 
   const handleSubmit = async (formData: any) => {
+    // Client-side validation for medications
+    if (
+      formData?.treatmentPlan?.medications &&
+      Array.isArray(formData.treatmentPlan.medications)
+    ) {
+      for (const [i, med] of formData.treatmentPlan.medications.entries()) {
+        if (!med.name || typeof med.name !== 'string' || !med.name.trim()) {
+          setError(`Medication #${i + 1} is missing a name. Please enter a medication name.`);
+          return;
+        }
+      }
+    }
     try {
       setSubmitting(true);
       setError(null);
