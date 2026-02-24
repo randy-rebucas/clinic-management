@@ -246,21 +246,23 @@ export async function PUT(
     }
     
     // Auto-create or update prescription if medications are present in treatment plan
+    let prescriptionId: string | undefined;
     if (body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {
-      // Import and trigger prescription creation/update (async, don't wait)
-      import('@/lib/automations/prescription-from-visit').then(({ updatePrescriptionFromVisit }) => {
-        updatePrescriptionFromVisit({
+      try {
+        const { updatePrescriptionFromVisit } = await import('@/lib/automations/prescription-from-visit');
+        const prescription = await updatePrescriptionFromVisit({
           visitId: visit._id,
           tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
           createdBy: session.userId,
-          shouldSendNotification: false, // Don't send notification on update, only on creation
-        }).catch((error) => {
-          console.error('Error auto-updating prescription from visit:', error);
-          // Don't fail the visit update if prescription update fails
+          shouldSendNotification: false,
         });
-      }).catch((error) => {
-        console.error('Error loading prescription automation module:', error);
-      });
+        if (prescription && (prescription as any)._id) {
+          prescriptionId = (prescription as any)._id.toString();
+        }
+      } catch (error) {
+        console.error('Error auto-updating prescription from visit:', error);
+        // Don't fail the visit update if prescription update fails
+      }
     }
     
     // Check if visit status changed to 'closed' - trigger automatic invoice generation
@@ -322,7 +324,7 @@ export async function PUT(
       sendFollowUpReminder(visit).catch(console.error);
     }
     
-    return NextResponse.json({ success: true, data: visit });
+    return NextResponse.json({ success: true, data: visit, prescriptionId });
   } catch (error: any) {
     console.error('Error updating visit:', error);
     if (error.name === 'ValidationError') {

@@ -202,6 +202,10 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
       }
 
       if (data.success) {
+        const prescriptionId = data.prescriptionId;
+        if (prescriptionId) {
+          window.open(`/api/prescriptions/${prescriptionId}/print`, '_blank');
+        }
         router.push('/visits?success=true');
       } else {
         setError('Error: ' + data.error);
