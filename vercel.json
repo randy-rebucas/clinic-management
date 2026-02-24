@@ -79,6 +79,66 @@
     {
       "path": "/api/cron/document-expiry-tracking",
       "schedule": "30 9 * * *"
+    },
+    {
+      "path": "/api/cron/end-of-day-cleanup",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/birthday-greetings",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/feedback-collection",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-reports",
+      "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/cron/monthly-reports",
+      "schedule": "0 8 1 * *"
+    },
+    {
+      "path": "/api/cron/weekly-staff-performance",
+      "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/cron/monthly-staff-performance",
+      "schedule": "0 9 1 * *"
+    },
+    {
+      "path": "/api/cron/trial-expiration",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/usage-alerts",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/data-retention",
+      "schedule": "0 2 * * 0"
+    },
+    {
+      "path": "/api/cron/lab-notifications",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/membership-expiry",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/referral-followup",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/visit-followup",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/patient-reengagement",
+      "schedule": "0 10 * * 1"
     }
   ]
 }

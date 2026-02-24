@@ -266,6 +266,72 @@ export const automationRegistry: Record<string, AutomationConfig> = {
     category: 'appointment',
     priority: 'medium',
   },
+
+  // End-of-day operations
+  'end-of-day-cleanup': {
+    id: 'end-of-day-cleanup',
+    name: 'End-of-Day Cleanup',
+    description: 'Marks all active queue entries and pending appointments as completed at 6 PM',
+    enabled: true,
+    schedule: '0 10 * * *', // 10:00 UTC = 18:00 PHT
+    category: 'operations',
+    priority: 'high',
+  },
+
+  // Lab result notifications batch
+  'lab-notifications': {
+    id: 'lab-notifications',
+    name: 'Lab Result Notifications',
+    description: 'Notifies patients when their lab results are available (polls every 30 min)',
+    enabled: true,
+    schedule: '*/30 * * * *',
+    category: 'clinical',
+    priority: 'high',
+  },
+
+  // Membership expiry
+  'membership-expiry': {
+    id: 'membership-expiry',
+    name: 'Membership Expiry Reminders',
+    description: 'Sends renewal reminders at 30/14/7/3/1 days before expiry and auto-expires past-due memberships',
+    enabled: true,
+    schedule: '0 8 * * *',
+    category: 'patient',
+    priority: 'medium',
+  },
+
+  // Referral follow-up
+  'referral-followup': {
+    id: 'referral-followup',
+    name: 'Referral Follow-Up Tracker',
+    description: 'Reminds patients of upcoming referral follow-up dates and escalates stale urgent referrals',
+    enabled: true,
+    schedule: '0 9 * * *',
+    category: 'clinical',
+    priority: 'medium',
+  },
+
+  // Visit follow-up
+  'visit-followup': {
+    id: 'visit-followup',
+    name: 'Visit Follow-Up Reminders',
+    description: 'Sends reminders for upcoming follow-up dates set in the visit treatment plan',
+    enabled: true,
+    schedule: '0 8 * * *',
+    category: 'appointment',
+    priority: 'medium',
+  },
+
+  // Patient re-engagement
+  'patient-reengagement': {
+    id: 'patient-reengagement',
+    name: 'Patient Re-Engagement',
+    description: 'Sends friendly outreach to patients inactive for 6+ months to encourage rebooking',
+    enabled: true,
+    schedule: '0 10 * * 1', // Weekly on Monday
+    category: 'patient',
+    priority: 'low',
+  },
 };
 
 /**
