@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, FormEvent, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import SignaturePad from './SignaturePad';
 
 interface VisitFormData {
@@ -63,6 +64,8 @@ interface VisitFormData {
       instructions?: string;
     };
   };
+  _id?: string;
+  status?: 'draft' | 'open' | 'closed' | 'cancelled';
   followUpDate?: string;
   notes?: string;
   digitalSignature?: {
@@ -76,19 +79,25 @@ interface VisitFormProps {
   patients: Array<{ _id: string; firstName: string; lastName: string; email?: string; phone?: string; patientCode?: string }>;
   onSubmit: (data: VisitFormData) => void;
   onCancel?: () => void;
+  onDraftSaved?: (draftId: string) => void;
   providerName: string;
 }
 
 
+
+const LOCAL_DRAFT_KEY = 'visit_form_draft';
 
 export default function VisitForm({
   initialData,
   patients,
   onSubmit,
   onCancel,
+  onDraftSaved,
   providerName,
 }: VisitFormProps) {
   const [formData, setFormData] = useState<VisitFormData>(() => ({
+    _id: initialData?._id,
+    status: initialData?.status,
     patient: initialData?.patient || '',
     visitType: initialData?.visitType || 'consultation',
     chiefComplaint: initialData?.chiefComplaint || '',
@@ -113,9 +122,145 @@ export default function VisitForm({
   const [activeTab, setActiveTab] = useState<'soap' | 'traditional' | 'treatment'>('soap');
   // Dedicated vitals state, initialized from initialData.vitals
   const [vitals, setVitals] = useState<VisitFormData['vitals']>(initialData?.vitals || {});
-  const [medicationNameOptions, setMedicationNameOptions] = useState<string[]>([]);
+  const [medicationNameOptions, setMedicationNameOptions] = useState<{ name: string; dosage?: string; frequency?: string; duration?: string; source?: string }[]>([]);
+  const [activeMedSuggestionIndex, setActiveMedSuggestionIndex] = useState<number | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const initializedRef = useRef(false);
+  // Draft feature state
+  const [draftId, setDraftId] = useState<string | undefined>(initialData?._id && initialData?.status === 'draft' ? initialData._id : undefined);
+  const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [localDraftBanner, setLocalDraftBanner] = useState(false);
+  const [localDraftTimestamp, setLocalDraftTimestamp] = useState<string>('');
 
   const chiefComplaintInputRef = useRef<HTMLInputElement | null>(null);
+  const router = useRouter();
+
+  // On mount: check localStorage for a saved draft (only for new visits)
+  useEffect(() => {
+    if (initialData?._id) return; // editing existing — skip
+    try {
+      const raw = localStorage.getItem(LOCAL_DRAFT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { timestamp: string; data: Partial<VisitFormData>; vitals: VisitFormData['vitals'] };
+        if (parsed?.data) {
+          setLocalDraftBanner(true);
+          setLocalDraftTimestamp(parsed.timestamp);
+        }
+      }
+    } catch {
+      // ignore corrupt data
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-save to localStorage (debounced 1.5s) whenever form is dirty
+  useEffect(() => {
+    if (!isDirty) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          LOCAL_DRAFT_KEY,
+          JSON.stringify({ timestamp: new Date().toISOString(), data: formData, vitals })
+        );
+      } catch { /* quota exceeded etc */ }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [isDirty, formData, vitals]);
+
+  // Save draft to server
+  const handleSaveDraft = useCallback(async () => {
+    if (!formData.patient || !selectedPatient) {
+      alert('Please select a patient before saving a draft.');
+      return;
+    }
+    setDraftSaveStatus('saving');
+    try {
+      const payload = { ...formData, vitals, status: 'draft' };
+      let res: Response;
+      if (draftId) {
+        res = await fetch(`/api/visits/${draftId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        res = await fetch('/api/visits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save draft');
+      const savedId: string = json.data._id;
+      setDraftId(savedId);
+      setIsDirty(false);
+      setDraftSaveStatus('saved');
+      onDraftSaved?.(savedId);
+      // Clear local draft once server draft exists
+      localStorage.removeItem(LOCAL_DRAFT_KEY);
+      setTimeout(() => setDraftSaveStatus('idle'), 3000);
+    } catch (err: any) {
+      console.error(err);
+      setDraftSaveStatus('error');
+      setTimeout(() => setDraftSaveStatus('idle'), 4000);
+    }
+  }, [formData, vitals, draftId, selectedPatient, onDraftSaved]);
+
+  // Restore local draft
+  const restoreLocalDraft = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_DRAFT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { data: Partial<VisitFormData>; vitals: VisitFormData['vitals'] };
+      if (parsed.data) setFormData(prev => ({ ...prev, ...parsed.data }));
+      if (parsed.vitals) setVitals(parsed.vitals);
+    } catch { /* ignore */ }
+    setLocalDraftBanner(false);
+  }, []);
+
+  const dismissLocalDraft = useCallback(() => {
+    localStorage.removeItem(LOCAL_DRAFT_KEY);
+    setLocalDraftBanner(false);
+  }, []);
+
+  // Track dirty state — fires after initial mount whenever formData or vitals change
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      return;
+    }
+    setIsDirty(true);
+  }, [formData, vitals]);
+
+  // Block browser-level navigation (refresh / tab close)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
+  // Block in-app link navigation when dirty
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleLinkClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest('a[href]') as HTMLAnchorElement | null;
+      if (!anchor) return;
+      const href = anchor.getAttribute('href') ?? '';
+      if (!href || href.startsWith('#') || href === window.location.pathname) return;
+      if (!window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    document.addEventListener('click', handleLinkClick, true);
+    return () => document.removeEventListener('click', handleLinkClick, true);
+  }, [isDirty]);
 
   useEffect(() => {
     if (icd10Search.length >= 2) {
@@ -235,8 +380,23 @@ export default function VisitForm({
       setShowPatientSearch(true);
       return;
     }
-    onSubmit(formData);
+    setIsDirty(false);
+    localStorage.removeItem(LOCAL_DRAFT_KEY);
+    // Merge the separate `vitals` state back into formData before submitting
+    // (vitals inputs update the dedicated `vitals` state, not formData.vitals)
+    onSubmit({ ...formData, vitals });
   };
+
+  // Draft status badge label
+  const draftBadge = draftSaveStatus === 'saving'
+    ? 'Saving draft…'
+    : draftSaveStatus === 'saved'
+    ? '✓ Draft saved'
+    : draftSaveStatus === 'error'
+    ? '✗ Save failed'
+    : draftId
+    ? 'Draft'
+    : null;
 
   const filteredPatients = patients.filter((patient) => {
     if (!patientSearch.trim()) return true;
@@ -341,6 +501,18 @@ export default function VisitForm({
   }, [formKey, initialData?.vitals]);
   return (
     <form key={formKey} onSubmit={handleSubmit}>
+      {/* Local draft restore banner */}
+      {localDraftBanner && (
+        <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 bg-amber-50 border border-amber-300 rounded-lg text-sm">
+          <span className="text-amber-800 font-medium">
+            📝 You have an unsaved local draft from {new Date(localDraftTimestamp).toLocaleString()}. Restore it?
+          </span>
+          <div className="flex gap-2 shrink-0">
+            <button type="button" onClick={restoreLocalDraft} className="px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-xs font-semibold">Restore</button>
+            <button type="button" onClick={dismissLocalDraft} className="px-3 py-1.5 bg-white text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors text-xs font-semibold">Dismiss</button>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col gap-6">
         {/* Basic Information */}
         <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
@@ -836,39 +1008,78 @@ export default function VisitForm({
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                               <div className="md:col-span-3">
                                 <label className="block text-xs font-semibold text-gray-700 mb-2">Medication Name</label>
-                                <input
-                                  type="text"
-                                  placeholder="e.g., Amoxicillin"
-                                  value={med.name}
-                                  list="medication-names-autocomplete"
-                                  autoComplete="on"
-                                  onChange={(e) => {
-                                    const medications = [...(formData.treatmentPlan?.medications || [])];
-                                    medications[index] = { ...med, name: e.target.value };
-                                    setFormData({
-                                      ...formData,
-                                      treatmentPlan: { ...formData.treatmentPlan, medications },
-                                    });
-                                  }}
-                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                                />
-                                {/* Global datalist for medication autocomplete */}
-                                {index === 0 && (
-                                  <datalist id="medication-names-autocomplete">
-                                    {medicationNameOptions.map((name, i) => (
-                                      <option value={name} key={i} />
-                                    ))}
-                                  </datalist>
-                                )}
-                                   
-                                <datalist id={`medication-names-list-${index}`}>
-                                  {Array.from(new Set((formData.treatmentPlan?.medications || [])
-                                    .map((m) => m.name)
-                                    .filter((name) => name && name !== med.name)))
-                                    .map((name, i) => (
-                                      <option value={name} key={i} />
-                                    ))}
-                                </datalist>
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    placeholder="e.g., Amoxicillin"
+                                    value={med.name}
+                                    autoComplete="off"
+                                    onFocus={() => {
+                                      setActiveMedSuggestionIndex(index);
+                                      fetchMedicationNames(med.name || '');
+                                    }}
+                                    onBlur={() => {
+                                      setTimeout(() => setActiveMedSuggestionIndex(null), 150);
+                                    }}
+                                    onChange={(e) => {
+                                      const medications = [...(formData.treatmentPlan?.medications || [])];
+                                      medications[index] = { ...med, name: e.target.value };
+                                      setFormData({
+                                        ...formData,
+                                        treatmentPlan: { ...formData.treatmentPlan, medications },
+                                      });
+                                      handleMedicationNameInput(e);
+                                      setActiveMedSuggestionIndex(index);
+                                    }}
+                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                                  />
+                                  {activeMedSuggestionIndex === index && medicationNameOptions.length > 0 && (() => {
+                                    const filtered = med.name
+                                      ? medicationNameOptions.filter((s) =>
+                                          s.name.toLowerCase().includes(med.name.toLowerCase())
+                                        )
+                                      : medicationNameOptions;
+                                    return filtered.length > 0 ? (
+                                      <div className="absolute z-20 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-52 overflow-y-auto">
+                                        <div className="flex flex-col gap-0.5 p-1">
+                                          {filtered.slice(0, 20).map((suggestion, i) => (
+                                            <button
+                                              key={i}
+                                              type="button"
+                                              onMouseDown={(e) => e.preventDefault()}
+                                              onClick={() => {
+                                                const medications = [...(formData.treatmentPlan?.medications || [])];
+                                                medications[index] = {
+                                                  ...med,
+                                                  name: suggestion.name,
+                                                  ...(suggestion.dosage ? { dosage: suggestion.dosage } : {}),
+                                                  ...(suggestion.frequency ? { frequency: suggestion.frequency } : {}),
+                                                  ...(suggestion.duration ? { duration: suggestion.duration } : {}),
+                                                };
+                                                setFormData({
+                                                  ...formData,
+                                                  treatmentPlan: { ...formData.treatmentPlan, medications },
+                                                });
+                                                setActiveMedSuggestionIndex(null);
+                                              }}
+                                              className="w-full text-left px-3 py-2 rounded-md hover:bg-emerald-50 transition-colors border border-transparent hover:border-emerald-200"
+                                            >
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span className="text-sm font-medium text-gray-800">{suggestion.name}</span>
+                                                {(suggestion.dosage || suggestion.frequency) && (
+                                                  <span className="text-xs text-gray-400 shrink-0">{[suggestion.dosage, suggestion.frequency].filter(Boolean).join(' · ')}</span>
+                                                )}
+                                              </div>
+                                              {suggestion.source === 'catalog' && (
+                                                <span className="text-[10px] text-emerald-600 font-medium">catalog</span>
+                                              )}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null;
+                                  })()}
+                                </div>
                               </div>
                               <div>
                                 <label className="block text-xs font-semibold text-gray-700 mb-2">Dosage</label>
@@ -876,6 +1087,7 @@ export default function VisitForm({
                                   type="text"
                                   placeholder="e.g., 500mg"
                                   value={med.dosage}
+                                  list="dosage-options"
                                   onChange={(e) => {
                                     const medications = [...(formData.treatmentPlan?.medications || [])];
                                     medications[index] = { ...med, dosage: e.target.value };
@@ -886,6 +1098,13 @@ export default function VisitForm({
                                   }}
                                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                                 />
+                                {index === 0 && (
+                                  <datalist id="dosage-options">
+                                    {['5mg','10mg','25mg','50mg','100mg','125mg','200mg','250mg','400mg','500mg','625mg','875mg','1g','2g','5ml','10ml','15ml','20ml'].map((d) => (
+                                      <option value={d} key={d} />
+                                    ))}
+                                  </datalist>
+                                )}
                               </div>
                               <div>
                                 <label className="block text-xs font-semibold text-gray-700 mb-2">Frequency</label>
@@ -893,6 +1112,7 @@ export default function VisitForm({
                                   type="text"
                                   placeholder="e.g., 3x daily"
                                   value={med.frequency}
+                                  list="frequency-options"
                                   onChange={(e) => {
                                     const medications = [...(formData.treatmentPlan?.medications || [])];
                                     medications[index] = { ...med, frequency: e.target.value };
@@ -903,6 +1123,13 @@ export default function VisitForm({
                                   }}
                                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                                 />
+                                {index === 0 && (
+                                  <datalist id="frequency-options">
+                                    {['Once daily (OD)','Twice daily (BID)','Three times daily (TID)','Four times daily (QID)','Every 6 hours','Every 8 hours','Every 12 hours','Every 24 hours','At bedtime (HS)','As needed (PRN)','Once weekly','Twice weekly'].map((f) => (
+                                      <option value={f} key={f} />
+                                    ))}
+                                  </datalist>
+                                )}
                               </div>
                               <div>
                                 <label className="block text-xs font-semibold text-gray-700 mb-2">Duration</label>
@@ -911,6 +1138,7 @@ export default function VisitForm({
                                     type="text"
                                     placeholder="e.g., 7 days"
                                     value={med.duration}
+                                    list="duration-options"
                                     onChange={(e) => {
                                       const medications = [...(formData.treatmentPlan?.medications || [])];
                                       medications[index] = { ...med, duration: e.target.value };
@@ -922,6 +1150,13 @@ export default function VisitForm({
                                     className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                                   />
                                 </div>
+                                {index === 0 && (
+                                  <datalist id="duration-options">
+                                    {['1 day','3 days','5 days','7 days','10 days','14 days','3 weeks','1 month','2 months','3 months','6 months','Ongoing','Until finished'].map((d) => (
+                                      <option value={d} key={d} />
+                                    ))}
+                                  </datalist>
+                                )}
                               </div>
                               <div>
                                 <label className="block text-xs font-semibold text-gray-700 mb-2">Quantity</label>
@@ -1276,15 +1511,38 @@ export default function VisitForm({
         </div>
 
         {/* Form Actions */}
-        <div className="flex justify-end gap-3 pt-6 border-t border-gray-200 mt-6">
-          {onCancel && (
-            <button type="button" className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold" onClick={onCancel}>
-              Cancel
+        <div className="flex flex-wrap justify-between items-center gap-3 pt-6 border-t border-gray-200 mt-6">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={draftSaveStatus === 'saving'}
+              className="px-5 py-2.5 bg-amber-50 border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors text-sm font-semibold disabled:opacity-60 flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+              </svg>
+              Save Draft
             </button>
-          )}
-          <button type="submit" className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold shadow-md">
-            Save Visit
-          </button>
+            {draftBadge && (
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                draftSaveStatus === 'saved' ? 'bg-green-100 text-green-700'
+                : draftSaveStatus === 'error' ? 'bg-red-100 text-red-700'
+                : draftSaveStatus === 'saving' ? 'bg-gray-100 text-gray-500'
+                : 'bg-amber-100 text-amber-700'
+              }`}>{draftBadge}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            {onCancel && (
+              <button type="button" className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold" onClick={() => { setIsDirty(false); onCancel?.(); }}>
+                Cancel
+              </button>
+            )}
+            <button type="submit" className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold shadow-md">
+              Save Visit
+            </button>
+          </div>
         </div>
       </div>
     </form>
