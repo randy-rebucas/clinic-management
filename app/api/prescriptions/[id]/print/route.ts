@@ -272,7 +272,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
       </div>
 
       <div class="medications">
-        ${prescription.medications.map((med: any, index: number) => `
+        ${prescription.medications.reverse().map((med: any, index: number) => `
           <div class="medication-item">
             <div class="medication-name" style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
               <span>${index + 1}. ${med.name}</span>

@@ -486,6 +486,7 @@ Additional documentation is available in the `docs/` directory:
 
 ## Development
 
+
 ```bash
 # First time setup (automated installation)
 npm run install:setup
@@ -510,7 +511,69 @@ npm start
 
 # Run linter
 npm run lint
+
+# Run tests (unit/integration)
+npm run test
+
+# Run tests with coverage
+npm run test:coverage
 ```
+
+## User Roles & Permissions
+
+The app uses role-based access control. Main roles include:
+
+| Role         | Permissions                                                                 |
+|--------------|-----------------------------------------------------------------------------|
+| Admin        | Full access to all features, settings, and user management                  |
+| Doctor       | Manage own schedule, patients, visits, prescriptions, lab results           |
+| Staff        | Manage appointments, queue, billing, inventory, documents                   |
+| Receptionist | Schedule appointments, manage queue, basic patient info                     |
+| Patient      | Access own records, book appointments, view lab results, download documents |
+
+See `lib/permissions.ts` for implementation details.
+
+## Continuous Integration (CI/CD)
+
+Automated CI/CD pipelines are recommended for linting, testing, and deployment. Example: GitHub Actions, GitLab CI, or similar. If using GitHub Actions, add a workflow file like `.github/workflows/ci.yml` for:
+
+- Linting (`npm run lint`)
+- Testing (`npm run test`)
+- Build & deploy
+
+## Extending the Application
+
+To add a new resource/module:
+1. Create a Mongoose model in `models/`
+2. Add API handlers in `app/api/[resource]/`
+3. Add UI in `components/` and `app/[resource]/`
+4. Update docs if needed
+
+Follow the modular patterns in the codebase for maintainability.
+
+## API Authentication
+
+All API endpoints require authentication via JWT. Obtain a token by logging in (`/api/login`). Include the token in the `Authorization: Bearer <token>` header for protected requests.
+
+## Public Booking
+
+The `/book` page allows public users to book appointments without an account. Confirmation and reminders are sent via SMS/email if configured.
+
+## Testing
+
+Tests are located in the `__tests__/` directory. Use Vitest or Jest as configured. To run all tests:
+
+```bash
+npm run test
+```
+
+For coverage:
+
+```bash
+npm run test:coverage
+```
+
+Refer to `vitest.config.ts` or `jest.config.js` for configuration details.
 
 ### Known Issues
 
