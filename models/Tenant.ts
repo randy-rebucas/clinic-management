@@ -37,7 +37,22 @@ export interface ITenant extends Document {
   subscription?: {
     plan?: string;
     status?: 'active' | 'cancelled' | 'expired';
+    billingCycle?: 'monthly' | 'yearly';
     expiresAt?: Date;
+    renewalAt?: Date;
+    paypalOrderId?: string;
+    paypalSubscriptionId?: string;
+    paymentHistory?: Array<{
+      transactionId: string;
+      orderId: string;
+      amount: number;
+      currency: string;
+      payerEmail?: string;
+      plan: string;
+      billingCycle: 'monthly' | 'yearly';
+      status: 'completed' | 'refunded' | 'failed';
+      paidAt: Date;
+    }>;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -106,7 +121,28 @@ const TenantSchema = new Schema<ITenant>(
         enum: ['active', 'cancelled', 'expired'],
         default: 'active',
       },
+      billingCycle: {
+        type: String,
+        enum: ['monthly', 'yearly'],
+        default: 'monthly',
+      },
       expiresAt: { type: Date },
+      renewalAt: { type: Date },
+      paypalOrderId: { type: String },
+      paypalSubscriptionId: { type: String },
+      paymentHistory: [
+        {
+          transactionId: { type: String, required: true },
+          orderId: { type: String, required: true },
+          amount: { type: Number, required: true },
+          currency: { type: String, default: 'USD' },
+          payerEmail: { type: String },
+          plan: { type: String, required: true },
+          billingCycle: { type: String, enum: ['monthly', 'yearly'], default: 'monthly' },
+          status: { type: String, enum: ['completed', 'refunded', 'failed'], default: 'completed' },
+          paidAt: { type: Date, default: Date.now },
+        },
+      ],
     },
   },
   {

@@ -26,18 +26,31 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { orderId, plan } = body;
-    const finalOrderId = orderId;
+    const { orderId, plan, billingCycle = 'monthly' } = body;
 
-    if (!finalOrderId) {
+    if (!orderId) {
       return NextResponse.json(
         { error: 'Order ID is required' },
         { status: 400 }
       );
     }
 
+    if (!plan || !['basic', 'professional', 'enterprise'].includes(plan)) {
+      return NextResponse.json(
+        { error: 'Valid plan is required (basic, professional, enterprise)' },
+        { status: 400 }
+      );
+    }
+
+    if (!['monthly', 'yearly'].includes(billingCycle)) {
+      return NextResponse.json(
+        { error: 'Valid billingCycle is required (monthly, yearly)' },
+        { status: 400 }
+      );
+    }
+
     // Capture PayPal order
-    const captureResult = await capturePayPalOrder(finalOrderId);
+    const captureResult = await capturePayPalOrder(orderId);
 
     if (!captureResult.success) {
       return NextResponse.json(
@@ -49,7 +62,7 @@ export async function POST(request: NextRequest) {
     // Update tenant subscription
     await connectDB();
     const tenant = await Tenant.findById(tenantId);
-    
+
     if (!tenant) {
       return NextResponse.json(
         { error: 'Tenant not found' },
@@ -57,16 +70,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate expiration date (30 days from now for monthly subscription)
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
+    // Calculate expiration and renewal date
+    const now = new Date();
+    const expiresAt = new Date(now);
+    if (billingCycle === 'yearly') {
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+    } else {
+      expiresAt.setDate(expiresAt.getDate() + 30);
+    }
 
-    // Update subscription
-    tenant.subscription = {
-      plan: plan || 'professional',
-      status: 'active',
-      expiresAt,
+    // Build payment history entry
+    const paymentEntry = {
+      transactionId: captureResult.transactionId || orderId,
+      orderId,
+      amount: captureResult.amount || 0,
+      currency: captureResult.currency || 'USD',
+      payerEmail: captureResult.payerEmail,
+      plan,
+      billingCycle,
+      status: 'completed' as const,
+      paidAt: now,
     };
+
+    // Update subscription fields
+    if (!tenant.subscription) {
+      tenant.subscription = {} as any;
+    }
+    tenant.subscription.plan = plan;
+    tenant.subscription.status = 'active';
+    tenant.subscription.billingCycle = billingCycle;
+    tenant.subscription.expiresAt = expiresAt;
+    tenant.subscription.renewalAt = expiresAt;
+    tenant.subscription.paypalOrderId = orderId;
+
+    if (!tenant.subscription.paymentHistory) {
+      tenant.subscription.paymentHistory = [];
+    }
+    tenant.subscription.paymentHistory.push(paymentEntry);
 
     await tenant.save();
 
@@ -76,7 +116,9 @@ export async function POST(request: NextRequest) {
       subscription: {
         plan: tenant.subscription.plan,
         status: tenant.subscription.status,
+        billingCycle: tenant.subscription.billingCycle,
         expiresAt: tenant.subscription.expiresAt,
+        renewalAt: tenant.subscription.renewalAt,
       },
       transactionId: captureResult.transactionId,
     });
@@ -88,3 +130,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
