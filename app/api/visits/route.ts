@@ -74,7 +74,8 @@ export async function GET(request: NextRequest) {
     const visits = await Visit.find(query)
       .populate(patientPopulateOptions)
       .populate('provider', 'name email')
-      .sort({ date: -1 });
+      .sort({ date: -1 })
+      .limit(searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 0);
 
     return NextResponse.json({ success: true, data: visits });
   } catch (error: any) {

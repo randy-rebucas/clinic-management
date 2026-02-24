@@ -21,6 +21,7 @@
     "setup:admin": "tsx scripts/create-admin.ts",
     "seed": "tsx scripts/seed-data.ts",
     "seed:specializations": "tsx scripts/seed-specializations.ts",
+    "seed:medicines": "tsx scripts/seed-medicines.ts",
     "tenant:onboard": "tsx scripts/onboard-tenant.ts",
     "tenant:delete": "tsx scripts/delete-tenant.ts",
     "db:reset": "tsx scripts/reset-db.ts",
