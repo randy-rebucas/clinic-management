@@ -75,7 +75,8 @@ export async function createPayPalOrder(
   amount: number,
   currency: string = 'USD',
   tenantId: string,
-  appUrl?: string
+  appUrl?: string,
+  billingCycle: 'monthly' | 'yearly' = 'monthly'
 ): Promise<{ orderId: string; approvalUrl: string }> {
   try {
     const accessToken = await getPayPalAccessToken();
@@ -83,6 +84,7 @@ export async function createPayPalOrder(
     const baseUrl = PAYPAL_API_BASE[environment as keyof typeof PAYPAL_API_BASE] || PAYPAL_API_BASE.sandbox;
     // Use provided appUrl (from request origin) or fall back to env var
     const resolvedAppUrl = appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const cycleLabel = billingCycle === 'yearly' ? 'Annual' : 'Monthly';
 
     const response = await fetch(`${baseUrl}/v2/checkout/orders`, {
       method: 'POST',
@@ -96,7 +98,7 @@ export async function createPayPalOrder(
         purchase_units: [
           {
             reference_id: `subscription-${tenantId}-${Date.now()}`,
-            description: `MyClinicSoft Subscription - ${planName}`,
+            description: `MyClinicSoft ${planName} Plan (${cycleLabel})`,
             amount: {
               currency_code: currency,
               value: amount.toFixed(2),
@@ -107,7 +109,7 @@ export async function createPayPalOrder(
           brand_name: 'MyClinicSoft',
           landing_page: 'BILLING',
           user_action: 'PAY_NOW',
-          return_url: `${resolvedAppUrl}/subscription/success?plan=${planName}`,
+          return_url: `${resolvedAppUrl}/subscription/success?plan=${planName}&cycle=${billingCycle}`,
           cancel_url: `${resolvedAppUrl}/subscription?canceled=true`,
         },
       }),
@@ -197,29 +199,55 @@ export async function capturePayPalOrder(orderId: string): Promise<{
 }
 
 /**
- * Verify PayPal webhook signature (for webhook events)
+ * Verify PayPal webhook signature using PayPal's verify-webhook-signature API
  */
 export async function verifyPayPalWebhook(
   headers: Record<string, string | null>,
   body: string,
   webhookId: string
 ): Promise<boolean> {
-  // Note: PayPal webhook verification requires additional setup
-  // For now, we'll implement basic verification
-  // In production, use PayPal's webhook verification SDK
-  
   const authAlgo = headers['paypal-auth-algo'];
   const certUrl = headers['paypal-cert-url'];
   const transmissionId = headers['paypal-transmission-id'];
   const transmissionSig = headers['paypal-transmission-sig'];
   const transmissionTime = headers['paypal-transmission-time'];
 
-  // Basic validation - in production, verify signature with PayPal
-  return !!(
-    authAlgo &&
-    certUrl &&
-    transmissionId &&
-    transmissionSig &&
-    transmissionTime
-  );
+  // All required headers must be present
+  if (!authAlgo || !certUrl || !transmissionId || !transmissionSig || !transmissionTime) {
+    return false;
+  }
+
+  try {
+    const token = await getPayPalAccessToken();
+    const environment = process.env.PAYPAL_ENVIRONMENT || 'sandbox';
+    const baseUrl = PAYPAL_API_BASE[environment as keyof typeof PAYPAL_API_BASE] || PAYPAL_API_BASE.sandbox;
+
+    const verifyResponse = await fetch(`${baseUrl}/v1/notifications/verify-webhook-signature`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        auth_algo: authAlgo,
+        cert_url: certUrl,
+        transmission_id: transmissionId,
+        transmission_sig: transmissionSig,
+        transmission_time: transmissionTime,
+        webhook_id: webhookId,
+        webhook_event: JSON.parse(body),
+      }),
+    });
+
+    if (!verifyResponse.ok) {
+      console.error('PayPal webhook verification API error:', await verifyResponse.text());
+      return false;
+    }
+
+    const result = await verifyResponse.json();
+    return result.verification_status === 'SUCCESS';
+  } catch (error: any) {
+    console.error('Error verifying PayPal webhook:', error);
+    return false;
+  }
 }
