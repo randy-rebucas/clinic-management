@@ -44,53 +44,6 @@ export default function PatientsPageClient() {
   const [success, setSuccess] = useState<string | null>(null);
   const router = useRouter();
 
-  // --- Autocomplete State ---
-  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<Patient[]>([]);
-  const [showAutocomplete, setShowAutocomplete] = useState(false);
-  const [autocompleteIndex, setAutocompleteIndex] = useState(-1);
-
-  // --- Autocomplete Logic ---
-  useEffect(() => {
-    if (!searchQuery) {
-      setAutocompleteSuggestions([]);
-      setShowAutocomplete(false);
-      setAutocompleteIndex(-1);
-      return;
-    }
-    // Suggest from patients list (local, fast)
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) {
-      setAutocompleteSuggestions([]);
-      setShowAutocomplete(false);
-      setAutocompleteIndex(-1);
-      return;
-    }
-    // Match by name, email, code (limit 8)
-    const suggestions = patients.filter((p: Patient) => {
-      return (
-        (p.firstName && p.firstName.toLowerCase().includes(q)) ||
-        (p.lastName && p.lastName.toLowerCase().includes(q)) ||
-        (p.email && p.email.toLowerCase().includes(q)) ||
-        (p.patientCode && p.patientCode.toLowerCase().includes(q))
-      );
-    }).slice(0, 8);
-    setAutocompleteSuggestions(suggestions);
-    setShowAutocomplete(suggestions.length > 0);
-    setAutocompleteIndex(suggestions.length > 0 ? 0 : -1);
-  }, [searchQuery, patients]);
-
-  // --- Autocomplete Select Handler ---
-  // Only navigate on Enter, not on click
-  function handleAutocompleteSelect(suggestion: Patient, navigate: boolean = false) {
-    setSearchQuery(suggestion.firstName + ' ' + suggestion.lastName);
-    setShowAutocomplete(false);
-    setAutocompleteSuggestions([]);
-    setAutocompleteIndex(-1);
-    if (navigate && suggestion._id) {
-      router.push(`/patients/${suggestion._id}`);
-    }
-  }
-
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -410,28 +363,11 @@ export default function PatientsPageClient() {
                       if (e.key === 'Escape') {
                         setSearchQuery('');
                       }
-                      // Keyboard navigation for autocomplete
-                      if (autocompleteSuggestions.length > 0) {
-                        if (e.key === 'ArrowDown') {
-                          e.preventDefault();
-                          setAutocompleteIndex(i => Math.min(i + 1, autocompleteSuggestions.length - 1));
-                        } else if (e.key === 'ArrowUp') {
-                          e.preventDefault();
-                          setAutocompleteIndex(i => Math.max(i - 1, 0));
-                        } else if (e.key === 'Enter' && autocompleteIndex >= 0) {
-                          e.preventDefault();
-                          handleAutocompleteSelect(autocompleteSuggestions[autocompleteIndex], true);
-                        }
-                      }
                     }}
                     autoFocus
                     aria-label="Search patients"
                     autoComplete="off"
                     className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-                    onBlur={() => setTimeout(() => setShowAutocomplete(false), 100)}
-                    onFocus={() => {
-                      if (autocompleteSuggestions.length > 0) setShowAutocomplete(true);
-                    }}
                   />
                   {searchQuery && (
                     <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
@@ -453,29 +389,7 @@ export default function PatientsPageClient() {
                       </button>
                     </div>
                   )}
-                  {/* Autocomplete Dropdown */}
-                  {showAutocomplete && autocompleteSuggestions.length > 0 && (
-                    <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto animate-in fade-in text-sm" role="listbox">
-                      {autocompleteSuggestions.map((s, idx) => (
-                        <li
-                          key={s._id}
-                          role="option"
-                          aria-selected={autocompleteIndex === idx}
-                          className={`px-4 py-2 cursor-pointer hover:bg-blue-50 ${autocompleteIndex === idx ? 'bg-blue-100 text-blue-900 font-semibold' : ''}`}
-                          onMouseDown={e => { e.preventDefault(); handleAutocompleteSelect(s, false); }}
-                          onMouseEnter={() => setAutocompleteIndex(idx)}
-                        >
-                          <span className="font-bold">{s.firstName} {s.lastName}</span>
-                          {s.patientCode && (
-                            <span className="ml-2 text-xs bg-gray-100 text-gray-700 rounded px-2 py-0.5">{s.patientCode}</span>
-                          )}
-                          {s.email && (
-                            <span className="ml-2 text-xs text-gray-500">{s.email}</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+
                 </div>
               </div>
               {/* Sort Dropdown */}
