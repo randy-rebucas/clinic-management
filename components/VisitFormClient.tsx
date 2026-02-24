@@ -31,12 +31,18 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [serverDraft, setServerDraft] = useState<any | null>(null);
+  const [showDraftBanner, setShowDraftBanner] = useState(false);
+  const [activeInitialData, setActiveInitialData] = useState<any | null>(null);
   const router = useRouter();
 
   useEffect(() => {
     fetchData();
     if (queueId) {
       fetchQueueVitals();
+    }
+    if (!patientId) {
+      fetchLatestDraft();
     }
   }, [queueId]);
 
@@ -74,6 +80,46 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
       setLoading(false);
     }
   };
+
+  const fetchLatestDraft = async () => {
+    try {
+      const res = await fetch('/api/visits?status=draft&limit=1');
+      if (!res.ok) return;
+      const data = await res.json();
+      const draft = data?.data?.[0];
+      if (draft) {
+        setServerDraft(draft);
+        setShowDraftBanner(true);
+      }
+    } catch {
+      // non-fatal
+    }
+  };
+
+  const restoreServerDraft = () => {
+    if (!serverDraft) return;
+    setActiveInitialData({
+      _id: serverDraft._id,
+      status: serverDraft.status,
+      patient: serverDraft.patient?._id ?? serverDraft.patient,
+      visitType: serverDraft.visitType,
+      chiefComplaint: serverDraft.chiefComplaint,
+      historyOfPresentIllness: serverDraft.historyOfPresentIllness,
+      vitals: serverDraft.vitals,
+      physicalExam: serverDraft.physicalExam,
+      diagnoses: serverDraft.diagnoses,
+      soapNotes: serverDraft.soapNotes,
+      treatmentPlan: serverDraft.treatmentPlan,
+      followUpDate: serverDraft.followUpDate
+        ? new Date(serverDraft.followUpDate).toISOString().split('T')[0]
+        : '',
+      notes: serverDraft.notes,
+      digitalSignature: serverDraft.digitalSignature,
+    });
+    setShowDraftBanner(false);
+  };
+
+  const dismissServerDraft = () => setShowDraftBanner(false);
 
   const fetchQueueVitals = async () => {
     try {
@@ -120,15 +166,26 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
       setSubmitting(true);
       setError(null);
 
-      const res = await fetch('/api/visits', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          date: new Date(),
-          followUpDate: formData.followUpDate ? new Date(formData.followUpDate) : undefined,
-        }),
-      });
+      // If the form was loaded from a draft, PATCH it (promote to open) instead of POSTing a new visit
+      const draftIdToPromote: string | undefined = (formData as any)._id;
+      const payload = {
+        ...formData,
+        status: 'open',
+        date: new Date(),
+        followUpDate: formData.followUpDate ? new Date(formData.followUpDate) : undefined,
+      };
+
+      const res = draftIdToPromote
+        ? await fetch(`/api/visits/${draftIdToPromote}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+        : await fetch('/api/visits', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
 
       if (res.status === 401) {
         router.push('/login');
@@ -229,14 +286,48 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
               </div>
             ) : (
               <div className="p-6 sm:p-8">
+                {/* Server draft banner */}
+                {showDraftBanner && serverDraft && (
+                  <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 bg-amber-50 border border-amber-300 rounded-lg text-sm">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                      </svg>
+                      <div>
+                        <p className="font-semibold text-amber-800">You have a saved draft</p>
+                        <p className="text-amber-700 text-xs mt-0.5">
+                          Last updated: {new Date(serverDraft.updatedAt).toLocaleString()}
+                          {serverDraft.patient?.firstName && ` — Patient: ${serverDraft.patient.firstName} ${serverDraft.patient.lastName}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={restoreServerDraft}
+                        className="px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-xs font-semibold"
+                      >
+                        Continue Editing
+                      </button>
+                      <button
+                        type="button"
+                        onClick={dismissServerDraft}
+                        className="px-3 py-1.5 bg-white text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors text-xs font-semibold"
+                      >
+                        Start Fresh
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <VisitForm
-                  initialData={{
+                  initialData={activeInitialData ?? {
                     ...(patientId ? { patient: patientId } : {}),
                     ...(queueVitals ? { vitals: queueVitals } : {}),
                   }}
                   patients={patients}
                   onSubmit={handleSubmit}
                   onCancel={handleCancel}
+                  onDraftSaved={(id) => setServerDraft((prev: any) => ({ ...prev, _id: id }))}
                   providerName={providerName}
                 />
               </div>
