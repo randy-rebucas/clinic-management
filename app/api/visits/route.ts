@@ -206,24 +206,26 @@ export async function POST(request: NextRequest) {
     await visit.populate('provider', 'name email');
     
     // Auto-create prescription if medications are present in treatment plan
+    let prescriptionId: string | undefined;
     if (body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {
-      // Import and trigger prescription creation (async, don't wait)
-      import('@/lib/automations/prescription-from-visit').then(({ createPrescriptionFromVisit }) => {
-        createPrescriptionFromVisit({
+      try {
+        const { createPrescriptionFromVisit } = await import('@/lib/automations/prescription-from-visit');
+        const prescription = await createPrescriptionFromVisit({
           visitId: visit._id,
           tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
           createdBy: session.userId,
           shouldSendNotification: true,
-        }).catch((error) => {
-          console.error('Error auto-creating prescription from visit:', error);
-          // Don't fail the visit creation if prescription creation fails
         });
-      }).catch((error) => {
-        console.error('Error loading prescription automation module:', error);
-      });
+        if (prescription && (prescription as any)._id) {
+          prescriptionId = (prescription as any)._id.toString();
+        }
+      } catch (error) {
+        console.error('Error auto-creating prescription from visit:', error);
+        // Don't fail the visit creation if prescription creation fails
+      }
     }
     
-    return NextResponse.json({ success: true, data: visit }, { status: 201 });
+    return NextResponse.json({ success: true, data: visit, prescriptionId }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating visit:', error);
     if (error.name === 'ValidationError') {
