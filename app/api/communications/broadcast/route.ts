@@ -6,6 +6,7 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { sendSMS } from '@/lib/sms';
 import { sendEmail } from '@/lib/email';
+import { sanitizeSearch } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
   const session = await verifySession();
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
         // For now, we'll skip complex age filtering
       }
       if (filters.city) {
-        patientQuery['address.city'] = { $regex: filters.city, $options: 'i' };
+        patientQuery['address.city'] = { $regex: sanitizeSearch(filters.city), $options: 'i' };
       }
       if (filters.hasInsurance !== undefined) {
         if (filters.hasInsurance) {

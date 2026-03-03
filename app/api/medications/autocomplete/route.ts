@@ -6,6 +6,7 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { sanitizeSearch } from '@/lib/utils';
 
 export interface MedicineSuggestion {
   name: string;
@@ -28,7 +29,8 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || '';
 
     const tenantFilter: any = tenantId ? { tenantId: new Types.ObjectId(tenantId) } : {};
-    const searchRegex = search ? { $regex: search, $options: 'i' } : undefined;
+    const safeSearch = search ? sanitizeSearch(search) : '';
+    const searchRegex = safeSearch ? { $regex: safeSearch, $options: 'i' } : undefined;
 
     // 1. Query Medicine catalog — primary source, returns full suggestion objects
     const medicineFilter: any = { active: true, ...tenantFilter };

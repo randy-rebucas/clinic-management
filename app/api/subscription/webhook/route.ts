@@ -18,14 +18,18 @@ export async function POST(request: NextRequest) {
 
     // Verify webhook signature using PayPal's API
     const webhookId = process.env.PAYPAL_WEBHOOK_ID;
-    if (webhookId) {
+    if (!webhookId) {
+      if (process.env.NODE_ENV === 'production') {
+        console.error('PAYPAL_WEBHOOK_ID not configured — rejecting webhook in production');
+        return NextResponse.json({ error: 'Webhook not configured' }, { status: 503 });
+      }
+      console.warn('PAYPAL_WEBHOOK_ID not configured — skipping signature verification (dev only)');
+    } else {
       const isValid = await verifyPayPalWebhook(headers, rawBody, webhookId);
       if (!isValid) {
         console.warn('Invalid PayPal webhook signature — rejecting request');
         return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
       }
-    } else {
-      console.warn('PAYPAL_WEBHOOK_ID not configured — skipping signature verification');
     }
 
     const eventType = body.event_type;

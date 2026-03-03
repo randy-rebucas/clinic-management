@@ -5,6 +5,7 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { sanitizeSearch } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -41,10 +42,11 @@ export async function GET(request: NextRequest) {
       query.category = category;
     }
     if (search) {
+      const safeSearch = sanitizeSearch(search);
       const searchConditions = [
-        { name: { $regex: search, $options: 'i' } },
-        { genericName: { $regex: search, $options: 'i' } },
-        { brandNames: { $in: [new RegExp(search, 'i')] } },
+        { name: { $regex: safeSearch, $options: 'i' } },
+        { genericName: { $regex: safeSearch, $options: 'i' } },
+        { brandNames: { $in: [new RegExp(safeSearch, 'i')] } },
       ];
       
       // Combine tenant filter with search conditions

@@ -4,6 +4,7 @@ import Document from '@/models/Document';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getCloudinaryFileUrl, extractPublicIdFromUrl, isCloudinaryConfigured } from '@/lib/cloudinary';
+import { Types } from 'mongoose';
 
 export async function GET(
   request: NextRequest,
@@ -18,7 +19,13 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    const document = await Document.findById(id);
+
+    // Scope lookup to the session's tenant to prevent cross-tenant document access
+    const docQuery: any = { _id: id };
+    if (session.tenantId) {
+      docQuery.tenantId = new Types.ObjectId(session.tenantId);
+    }
+    const document = await Document.findOne(docQuery);
 
     if (!document) {
       return NextResponse.json(

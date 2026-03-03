@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Specialization from '@/models/Specialization';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { sanitizeSearch } from '@/lib/utils';
 
 /**
  * GET /api/specializations
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
     
     if (search) {
-      query.name = { $regex: search, $options: 'i' };
+      query.name = { $regex: sanitizeSearch(search), $options: 'i' };
     }
 
     const specializations = await Specialization.find(query)

@@ -7,6 +7,7 @@ import { getSettings } from '@/lib/settings';
 import logger from '@/lib/logger';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { sanitizeSearch } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   // User authentication check
@@ -70,11 +71,13 @@ export async function GET(request: NextRequest) {
 
     // Search filter - search across multiple fields
     if (search) {
-      const searchRegex = new RegExp(search, 'i');
+      const safeSearch = sanitizeSearch(search);
+      const searchRegex = new RegExp(safeSearch, 'i');
       let phoneCondition;
       if (/\d/.test(search)) {
         // If search contains digits, search phone by digits only
-        phoneCondition = { phone: { $regex: search.replace(/\D/g, ''), $options: 'i' } };
+        const safeDigits = search.replace(/\D/g, '').slice(0, 20);
+        phoneCondition = { phone: { $regex: safeDigits, $options: 'i' } };
       } else {
         // Otherwise, search phone as text
         phoneCondition = { phone: searchRegex };
@@ -152,8 +155,8 @@ export async function GET(request: NextRequest) {
     // Pagination - use settings default if limit not provided
     const settings = await getSettings();
     const defaultLimit = settings.generalSettings?.itemsPerPage || 20;
-    const pageNum = parseInt(page);
-    const limitNum = limit ? parseInt(limit) : defaultLimit;
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(500, Math.max(1, limit ? parseInt(limit) : defaultLimit));
     const skip = (pageNum - 1) * limitNum;
 
     // Build query
