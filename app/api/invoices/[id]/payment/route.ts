@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { Types } from 'mongoose';
 
 export async function POST(
   request: NextRequest,
@@ -19,7 +20,12 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
 
-    const invoice = await Invoice.findById(id);
+    // Scope lookup to the session's tenant to prevent cross-tenant access
+    const invoiceQuery: any = { _id: id };
+    if (session.tenantId) {
+      invoiceQuery.tenantId = new Types.ObjectId(session.tenantId);
+    }
+    const invoice = await Invoice.findOne(invoiceQuery);
     if (!invoice) {
       return NextResponse.json(
         { success: false, error: 'Invoice not found' },

@@ -15,10 +15,13 @@ const KEY_LENGTH = 32; // 256 bits
  */
 function getEncryptionKey(): Buffer {
   const key = process.env.ENCRYPTION_KEY;
-  
+
   if (!key) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('ENCRYPTION_KEY environment variable is required in production');
+    }
     console.warn('ENCRYPTION_KEY not set. Using default key (NOT SECURE FOR PRODUCTION)');
-    // Generate a default key (NOT SECURE - only for development)
+    // Insecure default — development only
     return crypto.scryptSync('default-key-change-in-production', 'salt', KEY_LENGTH);
   }
   

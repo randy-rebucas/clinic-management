@@ -5,6 +5,7 @@ import { verifySession } from '@/app/lib/dal';
 import { isAdmin } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { sanitizeSearch } from '@/lib/utils';
 
 // GET /api/medical-representatives - Get all medical representatives
 export async function GET(request: NextRequest) {
@@ -24,8 +25,8 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const company = searchParams.get('company');
     const search = searchParams.get('search');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '50')));
     const skip = (page - 1) * limit;
 
     // Build query
@@ -39,13 +40,14 @@ export async function GET(request: NextRequest) {
     }
     
     if (status) query.status = status;
-    if (company) query.company = { $regex: company, $options: 'i' };
+    if (company) query.company = { $regex: sanitizeSearch(company), $options: 'i' };
     if (search) {
+      const safeSearch = sanitizeSearch(search);
       const searchConditions = [
-        { firstName: { $regex: search, $options: 'i' } },
-        { lastName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { company: { $regex: search, $options: 'i' } },
+        { firstName: { $regex: safeSearch, $options: 'i' } },
+        { lastName: { $regex: safeSearch, $options: 'i' } },
+        { email: { $regex: safeSearch, $options: 'i' } },
+        { company: { $regex: safeSearch, $options: 'i' } },
       ];
       
       // Combine tenant filter with search conditions

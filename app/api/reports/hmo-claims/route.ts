@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { sanitizeSearch } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
     };
 
     if (provider) {
-      query['insurance.provider'] = { $regex: provider, $options: 'i' };
+      query['insurance.provider'] = { $regex: sanitizeSearch(provider), $options: 'i' };
     }
 
     if (status) {

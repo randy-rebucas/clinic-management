@@ -4,6 +4,7 @@ import { Nurse, Receptionist, Accountant, User } from '@/models';
 import { verifySession } from '@/app/lib/dal';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { sanitizeSearch } from '@/lib/utils';
 
 // GET /api/staff - Get all staff members (nurses, receptionists, accountants)
 export async function GET(request: NextRequest) {
@@ -23,8 +24,8 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type'); // 'nurse', 'receptionist', 'accountant', or 'all'
     const status = searchParams.get('status');
     const search = searchParams.get('search');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '20')));
     const skip = (page - 1) * limit;
 
     // Build query filters with tenant filter
@@ -38,11 +39,12 @@ export async function GET(request: NextRequest) {
       
       if (status) baseQuery.status = status;
       if (search) {
+        const safeSearch = sanitizeSearch(search);
         const searchConditions = [
-          { firstName: { $regex: search, $options: 'i' } },
-          { lastName: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } },
-          { employeeId: { $regex: search, $options: 'i' } },
+          { firstName: { $regex: safeSearch, $options: 'i' } },
+          { lastName: { $regex: safeSearch, $options: 'i' } },
+          { email: { $regex: safeSearch, $options: 'i' } },
+          { employeeId: { $regex: safeSearch, $options: 'i' } },
         ];
         
         // Combine tenant filter with search conditions
