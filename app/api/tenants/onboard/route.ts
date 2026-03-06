@@ -9,6 +9,7 @@ import Settings from '@/models/Settings';
 import Admin from '@/models/Admin';
 import bcrypt from 'bcryptjs';
 import { DEFAULT_ROLE_PERMISSIONS } from '@/lib/permissions';
+import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 
 const RESERVED_WORDS = [
   'www',
@@ -45,6 +46,12 @@ function validateSubdomain(subdomain: string): { valid: boolean; error?: string 
 }
 
 export async function POST(request: NextRequest) {
+  // Rate-limit self-registration to 5 attempts per 15 minutes per IP
+  const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   try {
     let body;
     try {

@@ -3,12 +3,19 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Tenant from '@/models/Tenant';
 import { Types } from 'mongoose';
+import { verifySession } from '@/app/lib/dal';
+import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 
 // GET /api/patients/[id]/tenants
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const session = await verifySession();
+  if (!session) {
+    return unauthorizedResponse();
+  }
+
   try {
     await connectDB();
     const { id } = await params;

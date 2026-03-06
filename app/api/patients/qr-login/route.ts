@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { SignJWT } from 'jose';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
@@ -98,19 +99,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create a patient session cookie
-    // Store patient session in a cookie (simpler approach for patient portal)
-    const patientSessionData = {
+    // Sign a JWT so the patient_session cookie cannot be tampered with
+    const secretKey = process.env.SESSION_SECRET;
+    if (!secretKey) {
+      return NextResponse.json({ success: false, error: 'Server configuration error' }, { status: 500 });
+    }
+    const encodedKey = new TextEncoder().encode(secretKey);
+    const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const patientJwt = await new SignJWT({
       patientId: patient._id.toString(),
       patientCode: patient.patientCode,
       type: 'patient',
       email: patient.email || `patient-${patient.patientCode}@clinic.local`,
-    };
+    })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('7d')
+      .sign(encodedKey);
 
-    // Create a response with patient session cookie
-    const expires = new Date();
-    expires.setDate(expires.getDate() + 7);
-    
     const response = NextResponse.json({
       success: true,
       data: {
@@ -123,8 +130,8 @@ export async function POST(request: NextRequest) {
       message: 'Login successful',
     });
 
-    // Set patient session cookie (7 days expiration)
-    response.cookies.set('patient_session', JSON.stringify(patientSessionData), {
+    // Set signed JWT as the patient session cookie (7 days)
+    response.cookies.set('patient_session', patientJwt, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

@@ -234,10 +234,11 @@ export async function getUserPermissions(userId: string | Types.ObjectId, tenant
 export async function hasPermission(
   userId: string | Types.ObjectId,
   resource: string,
-  action: string
+  action: string,
+  tenantId?: string | null
 ): Promise<boolean> {
   try {
-    const permissions = await getUserPermissions(userId);
+    const permissions = await getUserPermissions(userId, tenantId);
     
     for (const perm of permissions) {
       // Check if resource matches (wildcard or exact)

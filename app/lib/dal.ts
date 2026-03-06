@@ -85,9 +85,9 @@ export async function decrypt(session: string | undefined = ''): Promise<Session
 }
 
 export async function createSession(
-  userId: string, 
-  email: string, 
-  role: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative',
+  userId: string,
+  email: string,
+  role: 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative',
   roleId?: string,
   tenantId?: string
 ) {
@@ -291,4 +291,41 @@ export async function getUser() {
 export async function getCurrentUserId(): Promise<string | null> {
   const session = await verifySession();
   return session?.userId || null;
+}
+
+export interface PatientSessionPayload {
+  patientId: string;
+  patientCode: string;
+  type: 'patient';
+  email: string;
+}
+
+/**
+ * Verify the signed patient_session JWT from the request cookie.
+ * Returns the decoded payload or null if missing / invalid / expired.
+ * Use this in all patient-portal API routes instead of JSON.parse().
+ */
+export async function verifyPatientSession(
+  cookieValue: string | undefined
+): Promise<PatientSessionPayload | null> {
+  try {
+    if (!cookieValue) return null;
+    const key = process.env.SESSION_SECRET;
+    if (!key) return null;
+    const encoded = new TextEncoder().encode(key);
+    const { payload } = await jwtVerify(cookieValue, encoded, {
+      algorithms: ['HS256'],
+    });
+    if (
+      typeof payload !== 'object' ||
+      !payload ||
+      typeof (payload as any).patientId !== 'string' ||
+      (payload as any).type !== 'patient'
+    ) {
+      return null;
+    }
+    return payload as unknown as PatientSessionPayload;
+  } catch {
+    return null;
+  }
 }

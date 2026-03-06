@@ -9,9 +9,11 @@ interface EnvConfig {
 }
 
 const envConfig: EnvConfig = {
-  required: ['MONGODB_URI', 'SESSION_SECRET'],
+  required: ['MONGODB_URI', 'SESSION_SECRET', 'CRON_SECRET', 'ENCRYPTION_KEY'],
   optional: [
-    'ROOT_DOMAIN', // Root domain for multi-tenant subdomain detection (e.g., 'example.com' or 'localhost')
+    'ROOT_DOMAIN', // Root domain for multi-tenant subdomain detection
+    'INSTALL_SECRET', // Required to access /api/install/* routes in production
+    'LAB_WEBHOOK_SECRET', // HMAC secret for third-party lab webhook verification
     'TWILIO_ACCOUNT_SID',
     'TWILIO_AUTH_TOKEN',
     'TWILIO_PHONE_NUMBER',
@@ -23,8 +25,6 @@ const envConfig: EnvConfig = {
     'CLOUDINARY_CLOUD_NAME',
     'CLOUDINARY_API_KEY',
     'CLOUDINARY_API_SECRET',
-    'CRON_SECRET',
-    'ENCRYPTION_KEY',
     'SENTRY_DSN', // Sentry DSN for error tracking and monitoring
   ],
 };
@@ -51,6 +51,16 @@ export function validateEnv(): { valid: boolean; errors: string[] } {
   // Validate SESSION_SECRET length if set
   if (process.env.SESSION_SECRET && process.env.SESSION_SECRET.length < 32) {
     errors.push('SESSION_SECRET must be at least 32 characters long');
+  }
+
+  // Validate CRON_SECRET length if set
+  if (process.env.CRON_SECRET && process.env.CRON_SECRET.length < 32) {
+    errors.push('CRON_SECRET must be at least 32 characters long');
+  }
+
+  // Validate ENCRYPTION_KEY — must be a 64-char hex string (32 bytes for AES-256)
+  if (process.env.ENCRYPTION_KEY && !/^[0-9a-fA-F]{64}$/.test(process.env.ENCRYPTION_KEY)) {
+    errors.push('ENCRYPTION_KEY must be a 64-character hex string (32 bytes for AES-256)');
   }
 
   // Validate MONGODB_URI format if set

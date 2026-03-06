@@ -154,7 +154,8 @@ export function isAdmin(session: { role?: string } | null): boolean {
 }
 
 /**
- * Default permissions by role - centralized for reuse
+ * Default permissions by role — single source of truth for this module.
+ * Referenced by hasPermission, requirePermission, and requirePagePermission.
  */
 const defaultRolePermissions: Record<string, Record<string, string[]>> = {
   doctor: {
@@ -321,38 +322,9 @@ export async function requirePermission(
       }
     }
 
-    // Default permissions based on role for common operations
-    const defaultPermissions: Record<string, Record<string, string[]>> = {
-      doctor: {
-        read: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'documents', 'queue', 'referrals', 'reports', 'medicines', 'services', 'rooms'],
-        write: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'documents', 'queue', 'referrals'],
-        delete: ['prescriptions'],
-      },
-      nurse: {
-        read: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'queue', 'medicines', 'rooms'],
-        write: ['patients', 'visits', 'queue', 'lab-results'],
-        delete: [],
-      },
-      receptionist: {
-        read: ['patients', 'appointments', 'queue', 'invoices', 'visits', 'doctors', 'services', 'rooms'],
-        write: ['patients', 'appointments', 'queue', 'invoices'],
-        delete: [],
-      },
-      accountant: {
-        read: ['patients', 'invoices', 'reports', 'visits'],
-        write: ['invoices'],
-        delete: [],
-      },
-      'medical-representative': {
-        read: ['doctors', 'appointments'],
-        write: [],
-        delete: [],
-      },
-    };
-
     // Check default role permissions
-    if (session.role && defaultPermissions[session.role]) {
-      const rolePerms = defaultPermissions[session.role];
+    if (session.role && defaultRolePermissions[session.role]) {
+      const rolePerms = defaultRolePermissions[session.role];
       if (rolePerms[action]?.includes(resource)) {
         return null; // Permission granted via default role permissions
       }
@@ -448,38 +420,9 @@ export async function requirePagePermission(
       }
     }
 
-    // Default permissions based on role
-    const defaultPermissions: Record<string, Record<string, string[]>> = {
-      doctor: {
-        read: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'documents', 'queue', 'referrals', 'reports', 'medicines', 'services', 'rooms'],
-        write: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'documents', 'queue', 'referrals'],
-        delete: ['prescriptions'],
-      },
-      nurse: {
-        read: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'queue', 'medicines', 'rooms'],
-        write: ['patients', 'visits', 'queue', 'lab-results'],
-        delete: [],
-      },
-      receptionist: {
-        read: ['patients', 'appointments', 'queue', 'invoices', 'visits', 'doctors', 'services', 'rooms'],
-        write: ['patients', 'appointments', 'queue', 'invoices'],
-        delete: [],
-      },
-      accountant: {
-        read: ['patients', 'invoices', 'reports', 'visits'],
-        write: ['invoices'],
-        delete: [],
-      },
-      'medical-representative': {
-        read: ['doctors', 'appointments'],
-        write: [],
-        delete: [],
-      },
-    };
-
     // Check default role permissions
-    if (session.role && defaultPermissions[session.role]) {
-      const rolePerms = defaultPermissions[session.role];
+    if (session.role && defaultRolePermissions[session.role]) {
+      const rolePerms = defaultRolePermissions[session.role];
       if (rolePerms[action]?.includes(resource)) {
         return; // Permission granted
       }

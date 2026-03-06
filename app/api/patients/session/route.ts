@@ -10,6 +10,7 @@ import Invoice from '@/models/Invoice';
 import Document from '@/models/Document';
 import Referral from '@/models/Referral';
 import logger from '@/lib/logger';
+import { verifyPatientSession } from '@/app/lib/dal';
 
 // Ensure Doctor model is registered for populate calls
 void Doctor;
@@ -20,29 +21,13 @@ void Doctor;
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get patient session from cookie
+    // Verify the signed patient_session JWT
     const sessionCookie = request.cookies.get('patient_session');
-    
-    if (!sessionCookie?.value) {
+    const sessionData = await verifyPatientSession(sessionCookie?.value);
+
+    if (!sessionData) {
       return NextResponse.json(
         { success: false, error: 'Not authenticated. Please login.' },
-        { status: 401 }
-      );
-    }
-
-    let sessionData;
-    try {
-      sessionData = JSON.parse(sessionCookie.value);
-    } catch {
-      return NextResponse.json(
-        { success: false, error: 'Invalid session. Please login again.' },
-        { status: 401 }
-      );
-    }
-
-    if (!sessionData.patientId || sessionData.type !== 'patient') {
-      return NextResponse.json(
-        { success: false, error: 'Invalid session type. Please login again.' },
         { status: 401 }
       );
     }

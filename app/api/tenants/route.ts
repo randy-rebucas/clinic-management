@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomBytes } from 'crypto';
 import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
 import User from '@/models/User';
+import bcrypt from 'bcryptjs';
+import { verifySession } from '@/app/lib/dal';
+import { unauthorizedResponse, isAdmin } from '@/app/lib/auth-helpers';
 
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    const tenants = await Tenant.find({ isActive: true }).select('slug name settings isActive createdAt').lean();
+    // Only expose minimal fields needed for subdomain/clinic selection UI
+    const tenants = await Tenant.find({ isActive: true }).select('slug name isActive').lean();
     return NextResponse.json({ success: true, data: tenants });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -14,6 +19,15 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // Require admin authentication to create tenants
+  const session = await verifySession();
+  if (!session) {
+    return unauthorizedResponse();
+  }
+  if (!isAdmin(session)) {
+    return NextResponse.json({ success: false, error: 'Forbidden: Admin access required' }, { status: 403 });
+  }
+
   try {
     await connectDB();
 
@@ -76,31 +90,31 @@ export async function POST(request: NextRequest) {
 
     // Automatically create admin user for the tenant
     const adminEmail = `admin@${tenant.slug}.local`;
-    const adminPassword = `Admin${tenant.slug}123!`;
-    
+    // Cryptographically random temporary password (not Math.random)
+    const tempPassword = randomBytes(12).toString('base64url');
+    const hashedPassword = await bcrypt.hash(tempPassword, 12);
+
     try {
-      const adminUser = await User.create({
+      await User.create({
         email: adminEmail,
-        password: adminPassword,
+        password: hashedPassword,
         name: 'Administrator',
         role: 'admin',
         tenantId: tenant._id,
         isActive: true,
       });
-
     } catch (userError: any) {
-      // Log error but don't fail tenant creation if user creation fails
       console.error('Failed to create admin user:', userError.message);
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: tenant,
       adminUser: {
         email: adminEmail,
-        password: adminPassword,
-        note: 'Admin user created automatically. Please change the password after first login.'
-      }
+        temporaryPassword: tempPassword,
+        note: 'Temporary password — change immediately after first login.',
+      },
     }, { status: 201 });
   } catch (error: any) {
     if (error.code === 11000) {

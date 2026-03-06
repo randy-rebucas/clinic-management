@@ -4,35 +4,18 @@ import Appointment from '@/models/Appointment';
 import Doctor from '@/models/Doctor';
 import { sendSMS } from '@/lib/sms';
 import logger from '@/lib/logger';
+import { verifyPatientSession } from '@/app/lib/dal';
 
 /**
  * Get available doctors and time slots for patient booking
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get patient session from cookie
     const sessionCookie = request.cookies.get('patient_session');
-    
-    if (!sessionCookie?.value) {
+    const sessionData = await verifyPatientSession(sessionCookie?.value);
+    if (!sessionData) {
       return NextResponse.json(
         { success: false, error: 'Not authenticated. Please login.' },
-        { status: 401 }
-      );
-    }
-
-    let sessionData;
-    try {
-      sessionData = JSON.parse(sessionCookie.value);
-    } catch {
-      return NextResponse.json(
-        { success: false, error: 'Invalid session. Please login again.' },
-        { status: 401 }
-      );
-    }
-
-    if (!sessionData.patientId || sessionData.type !== 'patient') {
-      return NextResponse.json(
-        { success: false, error: 'Invalid session type.' },
         { status: 401 }
       );
     }
@@ -132,29 +115,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get patient session from cookie
     const sessionCookie = request.cookies.get('patient_session');
-    
-    if (!sessionCookie?.value) {
+    const sessionData = await verifyPatientSession(sessionCookie?.value);
+    if (!sessionData) {
       return NextResponse.json(
         { success: false, error: 'Not authenticated. Please login.' },
-        { status: 401 }
-      );
-    }
-
-    let sessionData;
-    try {
-      sessionData = JSON.parse(sessionCookie.value);
-    } catch {
-      return NextResponse.json(
-        { success: false, error: 'Invalid session. Please login again.' },
-        { status: 401 }
-      );
-    }
-
-    if (!sessionData.patientId || sessionData.type !== 'patient') {
-      return NextResponse.json(
-        { success: false, error: 'Invalid session type.' },
         { status: 401 }
       );
     }
