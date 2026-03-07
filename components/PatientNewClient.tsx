@@ -138,15 +138,15 @@ export default function PatientNewClient() {
   };
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex items-start gap-4">
               <Link
                 href="/patients"
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
+                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -154,14 +154,14 @@ export default function PatientNewClient() {
               </Link>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
+                  <div className="p-1.5 bg-blue-600 rounded-lg">
                     <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
                     </svg>
                   </div>
                   <div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">New Patient</h1>
-                    <p className="text-sm sm:text-base text-gray-600 mt-1">Add a new patient to the system</p>
+                    <h1 className="text-base font-semibold text-gray-900">New Patient</h1>
+                    <p className="text-xs text-gray-500">Add a new patient to the system</p>
                   </div>
                 </div>
               </div>
@@ -184,11 +184,11 @@ export default function PatientNewClient() {
           )}
 
           {/* Form Card */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {submitting ? (
               <div className="flex flex-col items-center justify-center gap-4 p-12" style={{ minHeight: '300px' }}>
                 <div className="relative">
-                  <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
                 </div>
                 <p className="text-gray-600 font-medium">Creating patient...</p>
               </div>

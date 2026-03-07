@@ -317,9 +317,9 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
             <div className="h-20 w-[400px] bg-gray-200 rounded-xl animate-pulse"></div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
               {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -335,7 +335,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
 
   if (!patient) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: '50vh' }}>
             <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-4">
@@ -343,10 +343,10 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">Patient not found</h2>
+            <h2 className="text-base font-semibold text-gray-900">Patient not found</h2>
             <Link 
               href="/patients"
-              className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
+              className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
             >
               Back to Patients
             </Link>
@@ -384,15 +384,15 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
   const totalPaid = invoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex items-start gap-4">
               <Link 
                 href="/patients"
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
+                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -404,7 +404,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                     {patient.firstName.charAt(0)}{patient.lastName.charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
+                    <h1 className="text-base font-semibold text-gray-900 mb-2">
                       {fullName}
                     </h1>
                     <div className="flex items-center gap-3 flex-wrap">
@@ -433,7 +433,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                     </button>
                     <Link 
                       href={`/patients/${patient._id}/edit`}
-                      className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all text-sm font-semibold shadow-md flex items-center gap-2"
+                      className="px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-semibold flex items-center gap-2"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -448,7 +448,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
 
           {/* Quick Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-4 sm:p-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Visits</p>
                 <div className="p-1.5 bg-blue-500 rounded-lg">
@@ -459,7 +459,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
               </div>
               <p className="text-3xl sm:text-4xl font-bold text-blue-700">{visits.length}</p>
             </div>
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-4 sm:p-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Appointments</p>
                 <div className="p-1.5 bg-purple-500 rounded-lg">
@@ -470,7 +470,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
               </div>
               <p className="text-3xl sm:text-4xl font-bold text-purple-700">{appointments.length}</p>
             </div>
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-4 sm:p-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Prescriptions</p>
                 <div className="p-1.5 bg-emerald-500 rounded-lg">
@@ -481,7 +481,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
               </div>
               <p className="text-3xl sm:text-4xl font-bold text-emerald-700">{prescriptions.length}</p>
             </div>
-            <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-4 sm:p-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Invoices</p>
                 <div className="p-1.5 bg-amber-500 rounded-lg">
@@ -492,7 +492,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
               </div>
               <p className="text-3xl sm:text-4xl font-bold text-amber-700">{invoices.length}</p>
             </div>
-            <div className="bg-gradient-to-br from-teal-50 to-teal-100 rounded-xl border border-teal-200 p-4 sm:p-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-teal-600 uppercase tracking-wide">Lab Results</p>
                 <div className="p-1.5 bg-teal-500 rounded-lg">
@@ -503,7 +503,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
               </div>
               <p className="text-3xl sm:text-4xl font-bold text-teal-700">{labResults.length}</p>
             </div>
-            <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl border border-red-200 p-4 sm:p-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-red-600 uppercase tracking-wide">Outstanding</p>
                 <div className="p-1.5 bg-red-500 rounded-lg">
@@ -517,7 +517,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
           </div>
 
           {/* Quick Actions */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="p-4 sm:p-6 border-b border-gray-200 bg-gray-50/50">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-teal-100 rounded-lg">
@@ -525,14 +525,14 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">Quick Actions</h3>
+                <h3 className="text-sm font-semibold text-gray-900">Quick Actions</h3>
               </div>
             </div>
             <div className="p-4 sm:p-6">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 <Link 
                   href={`/appointments/new?patientId=${patientId}`}
-                  className="px-4 py-3 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg hover:shadow-md hover:border-blue-300 transition-all text-sm font-semibold flex items-center justify-center gap-2"
+                  className="px-4 py-3 bg-white border border-gray-200 rounded-lg hover:border-blue-300 transition-colors text-sm font-semibold flex items-center justify-center gap-2"
                 >
                   <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -541,7 +541,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                 </Link>
                 <Link 
                   href={`/visits/new?patientId=${patientId}`}
-                  className="px-4 py-3 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg hover:shadow-md hover:border-emerald-300 transition-all text-sm font-semibold flex items-center justify-center gap-2"
+                  className="px-4 py-3 bg-white border border-gray-200 rounded-lg hover:border-emerald-300 transition-colors text-sm font-semibold flex items-center justify-center gap-2"
                 >
                   <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -550,7 +550,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                 </Link>
                 <Link 
                   href={`/prescriptions/new?patientId=${patientId}`}
-                  className="px-4 py-3 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg hover:shadow-md hover:border-purple-300 transition-all text-sm font-semibold flex items-center justify-center gap-2"
+                  className="px-4 py-3 bg-white border border-gray-200 rounded-lg hover:border-purple-300 transition-colors text-sm font-semibold flex items-center justify-center gap-2"
                 >
                   <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
@@ -559,7 +559,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                 </Link>
                 <Link 
                   href={`/invoices/new?patientId=${patientId}`}
-                  className="px-4 py-3 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg hover:shadow-md hover:border-amber-300 transition-all text-sm font-semibold flex items-center justify-center gap-2"
+                  className="px-4 py-3 bg-white border border-gray-200 rounded-lg hover:border-amber-300 transition-colors text-sm font-semibold flex items-center justify-center gap-2"
                 >
                   <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -568,7 +568,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                 </Link>
                 <Link 
                   href={`/lab-results/new?patientId=${patientId}`}
-                  className="px-4 py-3 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg hover:shadow-md hover:border-teal-300 transition-all text-sm font-semibold flex items-center justify-center gap-2"
+                  className="px-4 py-3 bg-white border border-gray-200 rounded-lg hover:border-teal-300 transition-colors text-sm font-semibold flex items-center justify-center gap-2"
                 >
                   <svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -577,7 +577,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                 </Link>
                 <button 
                   onClick={() => setShowQR(!showQR)}
-                  className="px-4 py-3 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg hover:shadow-md hover:border-blue-300 transition-all text-sm font-semibold flex items-center justify-center gap-2"
+                  className="px-4 py-3 bg-white border border-gray-200 rounded-lg hover:border-blue-300 transition-colors text-sm font-semibold flex items-center justify-center gap-2"
                 >
                   <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
@@ -597,7 +597,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                   </svg>
                 </div>
-                <h2 className="text-2xl font-bold text-gray-900">Patient QR Code</h2>
+                <h2 className="text-base font-semibold text-gray-900">Patient QR Code</h2>
               </div>
               <div className="flex flex-col items-center gap-4">
                 <div className="p-6 bg-white border-2 border-gray-200 rounded-xl shadow-md">
@@ -643,7 +643,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
           )}
 
           {/* Tabs */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="border-b border-gray-200 bg-gray-50/50 overflow-x-auto">
             <nav className="flex -mb-px min-w-max">
               {[
@@ -684,14 +684,14 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Basic Information */}
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
                     <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-blue-500 rounded-lg">
+                      <div className="p-1.5 bg-blue-600 rounded-lg">
                         <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                         </svg>
                       </div>
-                      <h3 className="text-lg font-bold text-gray-900">Basic Information</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">Basic Information</h3>
                     </div>
                     <dl className="space-y-3">
                       <div>
@@ -732,14 +732,14 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                   </div>
 
                   {/* Contact Information */}
-                  <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
                     <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-purple-500 rounded-lg">
+                      <div className="p-1.5 bg-purple-600 rounded-lg">
                         <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                         </svg>
                       </div>
-                      <h3 className="text-lg font-bold text-gray-900">Contact Information</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">Contact Information</h3>
                     </div>
                     <dl className="space-y-3">
                       <div>
@@ -761,14 +761,14 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                 </div>
 
                 {/* Emergency Contact */}
-                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-emerald-500 rounded-lg">
+                    <div className="p-1.5 bg-emerald-600 rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900">Emergency Contact</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">Emergency Contact</h3>
                   </div>
                   <dl className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -790,14 +790,14 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
 
                 {/* Identifiers */}
                 {(patient.identifiers?.philHealth || patient.identifiers?.govId) && (
-                  <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border border-amber-200 rounded-xl p-5">
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
                     <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-amber-500 rounded-lg">
+                      <div className="p-1.5 bg-amber-600 rounded-lg">
                         <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
                         </svg>
                       </div>
-                      <h3 className="text-lg font-bold text-gray-900">Identifiers</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">Identifiers</h3>
                     </div>
                     <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {patient.identifiers.philHealth && (
@@ -817,14 +817,14 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                 )}
 
                 {/* Medical Information */}
-                <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-200 rounded-xl p-5">
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-red-500 rounded-lg">
+                    <div className="p-1.5 bg-red-600 rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900">Medical Information</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">Medical Information</h3>
                   </div>
                   <div className="space-y-4">
                     <div>
@@ -900,11 +900,11 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">No medical records found</h3>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-2">No medical records found</h3>
                     <p className="text-sm text-gray-600 mb-4">Medical records will appear here once visits are created.</p>
                     <Link
                       href={`/visits/new?patientId=${patientId}`}
-                      className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-block"
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold inline-block"
                     >
                       Create First Visit
                     </Link>
@@ -921,7 +921,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                             <div className="absolute -left-[21px] top-0 w-5 h-5 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full border-4 border-white shadow-md"></div>
                             
                             {/* Timeline content */}
-                            <div className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-5 hover:shadow-lg hover:border-blue-300 transition-all">
+                            <div className="bg-white border border-gray-200 rounded-xl p-5 hover:border-blue-300 transition-colors">
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -994,11 +994,11 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">No appointments found</h3>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-2">No appointments found</h3>
                     <p className="text-sm text-gray-600 mb-4">Schedule an appointment for this patient.</p>
                     <Link
                       href={`/appointments/new?patientId=${patientId}`}
-                      className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-block"
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold inline-block"
                     >
                       Schedule Appointment
                     </Link>
@@ -1011,7 +1011,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                         <Link
                           key={apt._id}
                           href={`/appointments/${apt._id}`}
-                          className="block p-4 border border-gray-200 rounded-xl hover:shadow-md hover:border-blue-300 transition-all bg-gradient-to-r from-white to-gray-50"
+                          className="block p-4 border border-gray-200 rounded-xl hover:border-blue-300 transition-colors bg-white"
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
@@ -1071,11 +1071,11 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">No prescriptions found</h3>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-2">No prescriptions found</h3>
                     <p className="text-sm text-gray-600 mb-4">Create a prescription for this patient.</p>
                     <Link
                       href={`/prescriptions/new?patientId=${patientId}`}
-                      className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-block"
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold inline-block"
                     >
                       New Prescription
                     </Link>
@@ -1088,7 +1088,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                         <Link
                           key={prescription._id}
                           href={`/prescriptions/${prescription._id}`}
-                          className="block p-4 border border-gray-200 rounded-xl hover:shadow-md hover:border-purple-300 transition-all bg-gradient-to-r from-white to-gray-50"
+                          className="block p-4 border border-gray-200 rounded-xl hover:border-purple-300 transition-colors bg-white"
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
@@ -1136,11 +1136,11 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">No invoices found</h3>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-2">No invoices found</h3>
                     <p className="text-sm text-gray-600 mb-4">Create an invoice for this patient.</p>
                     <Link
                       href={`/invoices/new?patientId=${patientId}`}
-                      className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-block"
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold inline-block"
                     >
                       Create Invoice
                     </Link>
@@ -1153,7 +1153,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                         <Link
                           key={invoice._id}
                           href={`/invoices/${invoice._id}`}
-                          className="block p-4 border border-gray-200 rounded-xl hover:shadow-md hover:border-amber-300 transition-all bg-gradient-to-r from-white to-gray-50"
+                          className="block p-4 border border-gray-200 rounded-xl hover:border-amber-300 transition-colors bg-white"
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
@@ -1204,11 +1204,11 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">No lab results found</h3>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-2">No lab results found</h3>
                     <p className="text-sm text-gray-600 mb-4">Add lab results for this patient.</p>
                     <Link
                       href={`/lab-results/new?patientId=${patientId}`}
-                      className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-block"
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold inline-block"
                     >
                       Add Lab Result
                     </Link>
@@ -1221,7 +1221,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                         <Link
                           key={lab._id}
                           href={`/lab-results/${lab._id}`}
-                          className="block p-4 border border-gray-200 rounded-xl hover:shadow-md hover:border-teal-300 transition-all bg-gradient-to-r from-white to-gray-50"
+                          className="block p-4 border border-gray-200 rounded-xl hover:border-teal-300 transition-colors bg-white"
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
@@ -1267,13 +1267,13 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                         </svg>
                       </div>
-                      <h3 className="text-lg font-bold text-gray-900 mb-2">No files uploaded</h3>
+                      <h3 className="text-sm font-semibold text-gray-900 mb-2">No files uploaded</h3>
                       <p className="text-sm text-gray-600">Upload lab results, prescriptions, or other documents above.</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
                       {patient.attachments.map((file) => (
-                        <div key={file._id} className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:shadow-md hover:border-blue-300 transition-all bg-gradient-to-r from-white to-gray-50">
+                        <div key={file._id} className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:border-blue-300 transition-colors bg-white">
                           <div className="flex items-center gap-4 flex-1 min-w-0">
                             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
                               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1371,14 +1371,14 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
   };
 
   return (
-    <div className="border border-gray-200 rounded-xl p-5 sm:p-6 bg-gradient-to-br from-gray-50 to-white">
+    <div className="border border-gray-200 rounded-xl p-5 bg-gray-50">
       <div className="flex items-center gap-3 mb-5">
-        <div className="p-2 bg-blue-500 rounded-lg">
+        <div className="p-1.5 bg-blue-600 rounded-lg">
           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
         </div>
-        <h3 className="text-lg font-bold text-gray-900">Upload File</h3>
+        <h3 className="text-sm font-semibold text-gray-900">Upload File</h3>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -1406,7 +1406,7 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
         <button
           type="submit"
           disabled={!file || uploading}
-          className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md"
+          className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {uploading ? 'Uploading...' : 'Upload File'}
         </button>

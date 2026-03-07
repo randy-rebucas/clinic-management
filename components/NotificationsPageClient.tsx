@@ -77,13 +77,13 @@ export default function NotificationsPageClient() {
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-pink-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-pink-100 border-t-pink-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
             </div>
-            <p className="text-gray-600 font-medium">Loading notifications...</p>
+            <p className="text-sm text-gray-500">Loading notifications...</p>
           </div>
         </div>
       </section>
@@ -94,14 +94,14 @@ export default function NotificationsPageClient() {
   const readNotifications = notifications.filter(n => n.read);
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-pink-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Error Message */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-start gap-3">
-                <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
+                <div className="p-1.5 bg-red-600 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                   </svg>
@@ -112,23 +112,23 @@ export default function NotificationsPageClient() {
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-pink-500 to-pink-600 rounded-lg shadow-md">
+                <div className="p-1.5 bg-pink-600 rounded-lg">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Notifications</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">View and manage your notifications</p>
+                  <h1 className="text-base font-semibold text-gray-900">Notifications</h1>
+                  <p className="text-xs text-gray-500">View and manage your notifications</p>
                 </div>
               </div>
               {unreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}
-                  className="px-5 py-2.5 bg-gradient-to-r from-pink-500 to-pink-600 text-white rounded-lg hover:from-pink-600 hover:to-pink-700 transition-all flex items-center gap-2 text-sm font-semibold shadow-md"
+                  className="px-5 py-2.5 bg-pink-600 text-white rounded-lg hover:bg-pink-700 transition-colors flex items-center gap-2 text-sm font-semibold shadow-md"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -147,7 +147,7 @@ export default function NotificationsPageClient() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                   </svg>
                 </div>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">No notifications</h2>
+                <h2 className="text-sm font-semibold text-gray-900 mb-2">No notifications</h2>
                 <p className="text-sm text-gray-600 font-medium">You&apos;re all caught up!</p>
               </div>
             </div>
@@ -159,12 +159,12 @@ export default function NotificationsPageClient() {
                 <div className="p-5 border-b border-gray-200 bg-gray-50/50">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-pink-500 rounded-lg">
+                      <div className="p-1.5 bg-pink-600 rounded-lg">
                         <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                         </svg>
                       </div>
-                      <h2 className="text-lg font-bold text-gray-900">Unread ({unreadNotifications.length})</h2>
+                      <h2 className="text-sm font-semibold text-gray-900">Unread ({unreadNotifications.length})</h2>
                     </div>
                   </div>
                 </div>
@@ -173,12 +173,12 @@ export default function NotificationsPageClient() {
                     {unreadNotifications.map((notification) => (
                       <div
                         key={notification._id}
-                        className="bg-gradient-to-r from-pink-50 to-pink-100/30 border-2 border-pink-200 rounded-xl p-5 hover:shadow-md transition-all"
+                        className="bg-pink-50 border border-pink-200 rounded-xl p-5 hover:border-pink-300 transition-colors"
                       >
                         <div className="flex justify-between items-start gap-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <h3 className="text-lg font-bold text-gray-900">{notification.title}</h3>
+                              <h3 className="text-sm font-semibold text-gray-900">{notification.title}</h3>
                               <span className="px-2.5 py-1 bg-pink-500 text-white text-xs font-semibold rounded-full border border-pink-600">
                                 New
                               </span>
@@ -211,12 +211,12 @@ export default function NotificationsPageClient() {
               <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                 <div className="p-5 border-b border-gray-200 bg-gray-50/50">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-gray-500 rounded-lg">
+                    <div className="p-1.5 bg-gray-600 rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                     </div>
-                    <h2 className="text-lg font-bold text-gray-900">Read ({readNotifications.length})</h2>
+                    <h2 className="text-sm font-semibold text-gray-900">Read ({readNotifications.length})</h2>
                   </div>
                 </div>
                 <div className="p-5">

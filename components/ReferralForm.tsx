@@ -183,14 +183,14 @@ export default function ReferralForm({
       <div className="max-h-[80vh] overflow-y-auto">
         <div className="flex flex-col gap-6 p-4 sm:p-6">
           {/* Referral Type & Patient Selection */}
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 border border-orange-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-orange-500 rounded-lg">
+              <div className="p-1.5 bg-orange-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Referral Information</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Referral Information</h3>
             </div>
             <div className="flex flex-col gap-4">
               {/* Referral Type */}
@@ -274,14 +274,14 @@ export default function ReferralForm({
 
           {/* Doctor to Doctor Fields */}
           {formData.type === 'doctor_to_doctor' && (
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-blue-500 rounded-lg">
+                <div className="p-1.5 bg-blue-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">Doctor Information</h3>
+                <h3 className="text-sm font-semibold text-gray-900">Doctor Information</h3>
               </div>
               <div className="flex flex-col gap-4">
                 <div>
@@ -325,14 +325,14 @@ export default function ReferralForm({
 
           {/* External Referral Fields */}
           {formData.type === 'external' && (
-            <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 rounded-xl p-5">
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-indigo-500 rounded-lg">
+                <div className="p-1.5 bg-indigo-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">External Referral Information</h3>
+                <h3 className="text-sm font-semibold text-gray-900">External Referral Information</h3>
               </div>
               <div className="flex flex-col gap-4">
                 <div>
@@ -404,14 +404,14 @@ export default function ReferralForm({
           )}
 
           {/* Referral Details */}
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-emerald-500 rounded-lg">
+              <div className="p-1.5 bg-emerald-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Referral Details</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Referral Details</h3>
             </div>
             <div className="flex flex-col gap-4">
               {/* Reason for Referral */}
@@ -463,14 +463,14 @@ export default function ReferralForm({
           </div>
 
           {/* Medical Information */}
-          <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 border border-cyan-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-cyan-500 rounded-lg">
+              <div className="p-1.5 bg-cyan-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Medical Information</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Medical Information</h3>
             </div>
             <div className="flex flex-col gap-4">
               {/* Chief Complaint */}
@@ -512,14 +512,14 @@ export default function ReferralForm({
           </div>
 
           {/* Medications & Notes */}
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-purple-500 rounded-lg">
+              <div className="p-1.5 bg-purple-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Medications & Notes</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Medications & Notes</h3>
             </div>
             <div className="flex flex-col gap-4">
               {/* Medications */}
@@ -614,7 +614,7 @@ export default function ReferralForm({
                 Cancel
               </button>
             )}
-            <button type="submit" className="px-4 py-2.5 text-sm bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all font-semibold shadow-md">
+            <button type="submit" className="px-4 py-2.5 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-semibold">
               Create Referral
             </button>
           </div>

@@ -183,13 +183,13 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100 border-t-blue-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
             </div>
-            <p className="text-gray-600 font-medium">Loading prescription...</p>
+            <p className="text-sm text-gray-500">Loading prescription...</p>
           </div>
         </div>
       </section>
@@ -198,7 +198,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
 
   if (!prescription) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
@@ -206,11 +206,11 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">{error || 'Prescription not found'}</h2>
+            <h2 className="text-base font-semibold text-gray-900">{error || 'Prescription not found'}</h2>
             <p className="text-sm text-gray-600 mb-4">The prescription you&apos;re looking for doesn&apos;t exist or has been removed.</p>
             <Link 
               href="/prescriptions"
-              className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all text-sm font-semibold shadow-md"
+              className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold"
             >
               Back to Prescriptions
             </Link>
@@ -230,9 +230,9 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
   );
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Notifications */}
           {error && (
             <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
@@ -262,25 +262,25 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => router.push('/prescriptions')}
-                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg shadow-md">
+                  <div className="p-1.5 bg-indigo-600 rounded-lg">
                     <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
                   </div>
                   <div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Prescription {prescription.prescriptionCode}</h1>
+                    <h1 className="text-base font-semibold text-gray-900">Prescription {prescription.prescriptionCode}</h1>
                     <div className="flex items-center gap-2 mt-1">
                       {prescription.patient && (
                         <>
@@ -304,7 +304,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
               <div className="flex gap-3 flex-wrap">
                 <button 
                   onClick={() => handlePrint('patient')}
-                  className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold flex items-center gap-2 shadow-md"
+                  className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold flex items-center gap-2 shadow-md"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -323,7 +323,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                 {prescription.status !== 'dispensed' && (
                   <button 
                     onClick={() => setShowDispenseForm(true)}
-                    className="px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold shadow-md"
+                    className="px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold"
                   >
                     Record Dispense
                   </button>
@@ -334,14 +334,14 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
 
           <div className="flex flex-col gap-4">
             {/* Patient Info */}
-            <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 rounded-xl p-5 shadow-sm">
+            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-indigo-500 rounded-lg">
+                <div className="p-1.5 bg-indigo-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">Patient Information</h3>
+                <h3 className="text-sm font-semibold text-gray-900">Patient Information</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {prescription.patient && (
@@ -410,16 +410,16 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
             {/* Medications */}
             <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-emerald-500 rounded-lg">
+                <div className="p-1.5 bg-emerald-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">Medications</h3>
+                <h3 className="text-sm font-semibold text-gray-900">Medications</h3>
               </div>
               <div className="flex flex-col gap-3">
                 {(prescription.medications || []).map((medication, index) => (
-                  <div key={index} className="bg-gradient-to-r from-white to-emerald-50/50 border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all">
+                  <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
                     <div className="flex items-start justify-between mb-3">
                       <p className="text-sm font-bold text-gray-900">
                         {index + 1}. {medication.name}
@@ -489,12 +489,12 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
             {prescription.drugInteractions && prescription.drugInteractions.length > 0 && (
               <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-red-500 rounded-lg">
+                  <div className="p-1.5 bg-red-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900">Drug Interactions</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Drug Interactions</h3>
                 </div>
                 <div className="flex flex-col gap-3">
                   {prescription.drugInteractions.map((interaction, idx) => (
@@ -537,16 +537,16 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
             {prescription.copies && (
               <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-amber-500 rounded-lg">
+                  <div className="p-1.5 bg-amber-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900">Archive Status</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Archive Status</h3>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {prescription.copies.patientCopy && (
-                    <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-lg p-4">
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
                       <h4 className="text-sm font-bold text-gray-900 mb-3">Patient Copy</h4>
                       {prescription.copies.patientCopy.printedAt && (
                         <p className="text-xs text-gray-700 mb-2">
@@ -563,7 +563,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                     </div>
                   )}
                   {prescription.copies.clinicCopy && (
-                    <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-lg p-4">
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
                       <h4 className="text-sm font-bold text-gray-900 mb-3">Clinic Copy</h4>
                       {prescription.copies.clinicCopy.archivedAt && (
                         <p className="text-xs text-gray-700 mb-2">
@@ -584,14 +584,14 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
             {/* Dispensing Status */}
             <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-purple-500 rounded-lg">
+                <div className="p-1.5 bg-purple-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">Dispensing Status</h3>
+                <h3 className="text-sm font-semibold text-gray-900">Dispensing Status</h3>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-lg p-4 mb-4">
+              <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
                 <div className="flex justify-between items-center mb-3">
                   <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Prescribed</p>
                   <p className="text-sm font-bold text-gray-900">{totalPrescribed}</p>
@@ -611,7 +611,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                 <div className="flex flex-col gap-3">
                   <h4 className="text-sm font-bold text-gray-900 mb-1">Dispense History</h4>
                   {(prescription.pharmacyDispenses || []).map((dispense, index) => (
-                    <div key={index} className="bg-gradient-to-r from-white to-purple-50/50 border border-purple-200 rounded-lg p-4 hover:shadow-md transition-all">
+                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
                       <div className="flex justify-between items-start gap-3">
                         <div className="flex-1">
                           <p className="text-sm font-bold text-gray-900 mb-1">
@@ -645,12 +645,12 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
             {prescription.notes && (
               <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-gray-500 rounded-lg">
+                  <div className="p-1.5 bg-gray-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900">Notes</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Notes</h3>
                 </div>
                 <p className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 p-4 rounded-lg border border-gray-200">{prescription.notes}</p>
               </div>
@@ -660,12 +660,12 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
             {prescription.digitalSignature && (
               <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-green-500 rounded-lg">
+                  <div className="p-1.5 bg-green-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900">Digital Signature</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Digital Signature</h3>
                 </div>
                 <div className="flex items-center gap-4 bg-green-50 border border-green-200 rounded-lg p-4">
                   <div className="border-2 border-green-300 rounded-lg p-2 bg-white shadow-sm">
@@ -700,12 +700,12 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
           >
             <div className="p-6 sm:p-8">
               <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-md">
+                <div className="p-1.5 bg-green-600 rounded-lg">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <h2 className="text-2xl font-bold text-gray-900">Record Dispense</h2>
+                <h2 className="text-base font-semibold text-gray-900">Record Dispense</h2>
               </div>
               <div className="py-4">
                 <div className="flex flex-col gap-4">
@@ -765,7 +765,7 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                     </button>
                     <button
                       onClick={handleDispense}
-                      className="px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold shadow-md"
+                      className="px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold"
                     >
                       Record Dispense
                     </button>

@@ -310,13 +310,13 @@ export default function DoctorsPageClient() {
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8">
+      <section className="py-6 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: '400px' }}>
             <div className="relative">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
             </div>
-            <p className="text-gray-600 font-medium">Loading doctors...</p>
+            <p className="text-sm text-gray-500">Loading doctors...</p>
           </div>
         </div>
       </section>
@@ -339,9 +339,9 @@ export default function DoctorsPageClient() {
   });
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Notifications */}
           {error && (
             <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
@@ -365,25 +365,25 @@ export default function DoctorsPageClient() {
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
+                  <div className="p-1.5 bg-blue-600 rounded-lg">
                     <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                     </svg>
                   </div>
                   <div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Doctors & Staff</h1>
-                    <p className="text-sm sm:text-base text-gray-600 mt-1">Manage doctor profiles, schedules, and performance metrics</p>
+                    <h1 className="text-base font-semibold text-gray-900">Doctors & Staff</h1>
+                    <p className="text-xs text-gray-500">Manage doctor profiles, schedules, and performance metrics</p>
                   </div>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                 <button 
                   onClick={handleAddSelfAsDoctor}
-                  className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 inline-flex items-center gap-2 shadow-md hover:shadow-lg font-medium text-sm"
+                  className="px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors duration-200 inline-flex items-center gap-2 shadow-md hover:shadow-lg font-medium text-sm"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -392,7 +392,7 @@ export default function DoctorsPageClient() {
                 </button>
                 <button 
                   onClick={() => setShowForm(true)}
-                  className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 inline-flex items-center gap-2 shadow-md hover:shadow-lg font-medium text-sm"
+                  className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 inline-flex items-center gap-2 shadow-md hover:shadow-lg font-medium text-sm"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -404,7 +404,7 @@ export default function DoctorsPageClient() {
           </div>
 
           {/* View Mode Tabs */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="flex border-b border-gray-200 bg-gray-50/50">
               <button
                 onClick={() => setViewMode('list')}
@@ -474,7 +474,7 @@ export default function DoctorsPageClient() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-gray-900">Delete Doctor</h2>
+            <h2 className="text-sm font-semibold text-gray-900">Delete Doctor</h2>
           </div>
           <p className="text-sm text-gray-600 mb-6 leading-relaxed">
             Are you sure you want to delete <strong className="text-gray-900">{deleteConfirm.doctorName}</strong>? This action cannot be undone and will also delete the associated user account.
@@ -512,7 +512,7 @@ export default function DoctorsPageClient() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">Add New Doctor</h2>
+            <h2 className="text-base font-semibold text-gray-900">Add New Doctor</h2>
           </div>
           <form onSubmit={handleSubmit}>
             <div className="flex flex-col gap-4">
@@ -645,7 +645,7 @@ export default function DoctorsPageClient() {
                 </button>
                 <button 
                   type="submit"
-                  className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
                 >
                   Add Doctor
                 </button>
@@ -659,7 +659,7 @@ export default function DoctorsPageClient() {
       {viewMode === 'list' && (
         <>
           {/* Search and Filters */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
             <div className="flex flex-col gap-4">
               <div className="relative">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
@@ -711,9 +711,9 @@ export default function DoctorsPageClient() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="flex justify-between items-center p-4 sm:p-6 border-b border-gray-200 bg-gray-50/50">
-              <h3 className="text-lg sm:text-xl font-bold text-gray-900">Doctor Profiles</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Doctor Profiles</h3>
               <div className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
                 {filteredDoctors.length} {filteredDoctors.length === 1 ? 'doctor' : 'doctors'}
               </div>
@@ -725,7 +725,7 @@ export default function DoctorsPageClient() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                 </div>
-                <h4 className="text-lg font-bold text-gray-900 mb-2">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">
                   {searchQuery || filterStatus !== 'all' ? 'No doctors match your filters' : 'No doctors found'}
                 </h4>
                 <p className="text-sm text-gray-600 mb-4">
@@ -734,7 +734,7 @@ export default function DoctorsPageClient() {
                 {!searchQuery && filterStatus === 'all' && (
                   <button 
                     onClick={() => setShowForm(true)}
-                    className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
+                    className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
                   >
                     Add First Doctor
                   </button>
@@ -751,7 +751,7 @@ export default function DoctorsPageClient() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2 mb-2">
-                            <h4 className="text-lg font-bold text-gray-900">
+                            <h4 className="text-sm font-semibold text-gray-900">
                               {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
                             </h4>
                             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -856,9 +856,9 @@ export default function DoctorsPageClient() {
 
       {/* Roster View */}
       {viewMode === 'roster' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="p-4 sm:p-6 border-b border-gray-200 bg-gray-50/50">
-            <h3 className="text-lg sm:text-xl font-bold text-gray-900">Duty Roster</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Duty Roster</h3>
             <p className="text-sm text-gray-600 mt-1">Weekly schedule overview for active doctors</p>
           </div>
           <div className="overflow-x-auto">
@@ -932,13 +932,13 @@ export default function DoctorsPageClient() {
       {viewMode === 'performance' && (
         <div className="grid grid-cols-1 gap-4">
           {doctors.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
               <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-4">
                 <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
               </div>
-              <h4 className="text-lg font-bold text-gray-900 mb-2">No performance data available</h4>
+              <h4 className="text-sm font-semibold text-gray-900 mb-2">No performance data available</h4>
               <p className="text-sm text-gray-600">Performance metrics will appear here once doctors have appointments</p>
             </div>
           ) : (
@@ -953,14 +953,14 @@ export default function DoctorsPageClient() {
               const completionRate = total > 0 ? (completed / total) * 100 : 0;
 
               return (
-                <div key={doctor._id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+                <div key={doctor._id} className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white text-lg font-bold shadow-md">
                         {doctor.firstName.charAt(0)}{doctor.lastName.charAt(0)}
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold text-gray-900">
+                        <h3 className="text-sm font-semibold text-gray-900">
                           {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
                         </h3>
                         <p className="text-sm text-gray-600">
@@ -998,24 +998,24 @@ export default function DoctorsPageClient() {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-                    <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200">
-                      <p className="text-2xl sm:text-3xl font-bold text-blue-700 mb-1">{total}</p>
+                    <div className="p-4 bg-white border border-gray-200 rounded-xl">
+                      <p className="text-xl font-bold text-blue-700 mb-1">{total}</p>
                       <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total</p>
                     </div>
-                    <div className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200">
-                      <p className="text-2xl sm:text-3xl font-bold text-emerald-700 mb-1">{completed}</p>
+                    <div className="p-4 bg-white border border-gray-200 rounded-xl">
+                      <p className="text-xl font-bold text-emerald-700 mb-1">{completed}</p>
                       <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Completed</p>
                     </div>
-                    <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200">
-                      <p className="text-2xl sm:text-3xl font-bold text-purple-700 mb-1">{completionRate.toFixed(1)}%</p>
+                    <div className="p-4 bg-white border border-gray-200 rounded-xl">
+                      <p className="text-xl font-bold text-purple-700 mb-1">{completionRate.toFixed(1)}%</p>
                       <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Completion</p>
                     </div>
-                    <div className="p-4 bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200">
-                      <p className="text-2xl sm:text-3xl font-bold text-amber-700 mb-1">{cancellationRate.toFixed(1)}%</p>
+                    <div className="p-4 bg-white border border-gray-200 rounded-xl">
+                      <p className="text-xl font-bold text-amber-700 mb-1">{cancellationRate.toFixed(1)}%</p>
                       <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Cancelled</p>
                     </div>
-                    <div className="p-4 bg-gradient-to-br from-red-50 to-red-100 rounded-xl border border-red-200">
-                      <p className="text-2xl sm:text-3xl font-bold text-red-700 mb-1">{noShowRate.toFixed(1)}%</p>
+                    <div className="p-4 bg-white border border-gray-200 rounded-xl">
+                      <p className="text-xl font-bold text-red-700 mb-1">{noShowRate.toFixed(1)}%</p>
                       <p className="text-xs font-semibold text-red-600 uppercase tracking-wide">No-Show</p>
                     </div>
                   </div>

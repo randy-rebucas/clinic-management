@@ -219,13 +219,13 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-cyan-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-cyan-100 border-t-cyan-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
             </div>
-            <p className="text-gray-600 font-medium">Loading rooms...</p>
+            <p className="text-sm text-gray-500">Loading rooms...</p>
           </div>
         </div>
       </section>
@@ -233,14 +233,14 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-cyan-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Error/Success Messages */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-start gap-3">
-                <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
+                <div className="p-1.5 bg-red-600 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                   </svg>
@@ -252,7 +252,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
           {success && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-start gap-3">
-                <div className="p-2 bg-green-500 rounded-lg flex-shrink-0">
+                <div className="p-1.5 bg-green-600 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
@@ -263,22 +263,22 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-lg shadow-md">
+                <div className="p-1.5 bg-cyan-600 rounded-lg">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Rooms Management</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage clinic rooms and their availability</p>
+                  <h1 className="text-base font-semibold text-gray-900">Rooms Management</h1>
+                  <p className="text-xs text-gray-500">Manage clinic rooms and their availability</p>
                 </div>
               </div>
               <button
                 onClick={() => { resetForm(); setShowModal(true); }}
-                className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-lg hover:from-cyan-600 hover:to-cyan-700 transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
+                className="px-5 py-2.5 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors inline-flex items-center gap-2 text-sm font-semibold shadow-md"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -299,7 +299,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                 </div>
                 <div className="text-xs font-semibold text-gray-500 uppercase">Total</div>
               </div>
-              <div className="text-2xl font-bold text-gray-900">{rooms.length}</div>
+              <div className="text-base font-semibold text-gray-900">{rooms.length}</div>
             </div>
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
@@ -352,12 +352,12 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-cyan-500 rounded-lg">
+                <div className="p-1.5 bg-cyan-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                   </svg>
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">Filters</h2>
+                <h2 className="text-sm font-semibold text-gray-900">Filters</h2>
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 {/* Type Dropdown */}
@@ -400,11 +400,11 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                 </div>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">No rooms found</h2>
+                <h2 className="text-sm font-semibold text-gray-900 mb-2">No rooms found</h2>
                 <p className="text-sm text-gray-600 font-medium mb-4">Get started by adding your first room.</p>
                 <button
                   onClick={() => { resetForm(); setShowModal(true); }}
-                  className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-lg hover:from-cyan-600 hover:to-cyan-700 transition-all font-semibold shadow-md"
+                  className="px-5 py-2.5 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors font-semibold"
                 >
                   Add First Room
                 </button>
@@ -414,10 +414,10 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {rooms.map((room) => (
                 <div key={room._id} className="bg-white border border-gray-200 rounded-xl hover:shadow-md transition-all overflow-hidden">
-                  <div className="p-5 border-b border-gray-100 bg-gradient-to-r from-cyan-50 to-cyan-100/30">
+                  <div className="p-4 border-b border-gray-100 bg-white">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="text-lg font-bold text-gray-900">{room.name}</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">{room.name}</h3>
                         <p className="text-sm text-gray-600 font-medium">
                           {room.building}{room.floor ? `, Floor ${room.floor}` : ''}
                         </p>
@@ -486,14 +486,14 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
         {showModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
-              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-cyan-50 to-cyan-100/50">
+              <div className="p-4 border-b border-gray-200 bg-white">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-cyan-500 rounded-lg">
+                  <div className="p-1.5 bg-cyan-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900">
+                  <h2 className="text-sm font-semibold text-gray-900">
                     {editingRoom ? 'Edit Room' : 'Add New Room'}
                   </h2>
                 </div>
@@ -637,7 +637,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                   <button
                     type="submit"
                     disabled={saving}
-                    className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-lg hover:from-cyan-600 hover:to-cyan-700 disabled:from-cyan-400 disabled:to-cyan-500 transition-all font-semibold shadow-md"
+                    className="px-5 py-2.5 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50 transition-colors font-semibold"
                   >
                     {saving ? 'Saving...' : editingRoom ? 'Update Room' : 'Create Room'}
                   </button>

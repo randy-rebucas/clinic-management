@@ -203,13 +203,13 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-4xl mx-auto">
           <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: '400px' }}>
             <div className="relative">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
             </div>
-            <p className="text-gray-600 font-medium">Loading doctor...</p>
+            <p className="text-sm text-gray-500">Loading doctor...</p>
           </div>
         </div>
       </section>
@@ -217,9 +217,9 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-4xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Notifications */}
           {error && (
             <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm">
@@ -243,24 +243,24 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex items-center gap-4">
               <Link
                 href={`/doctors/${doctorId}`}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
+                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
+                <div className="p-1.5 bg-blue-600 rounded-lg">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Edit Doctor</h1>
+                  <h1 className="text-base font-semibold text-gray-900">Edit Doctor</h1>
                   <p className="text-sm text-gray-600 mt-1">Update doctor profile information</p>
                 </div>
               </div>
@@ -268,18 +268,18 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
           </div>
 
           {/* Form */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <form onSubmit={handleSubmit}>
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-4">
                 {/* Basic Information */}
                 <div>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-blue-500 rounded-lg">
+                    <div className="p-1.5 bg-blue-600 rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                       </svg>
                     </div>
-                    <h2 className="text-lg font-bold text-gray-900">Basic Information</h2>
+                    <h2 className="text-sm font-semibold text-gray-900">Basic Information</h2>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -330,12 +330,12 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                 {/* Contact Information */}
                 <div>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-purple-500 rounded-lg">
+                    <div className="p-1.5 bg-purple-600 rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                       </svg>
                     </div>
-                    <h2 className="text-lg font-bold text-gray-900">Contact Information</h2>
+                    <h2 className="text-sm font-semibold text-gray-900">Contact Information</h2>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -364,12 +364,12 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                 {/* Professional Information */}
                 <div>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-emerald-500 rounded-lg">
+                    <div className="p-1.5 bg-emerald-600 rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
                       </svg>
                     </div>
-                    <h2 className="text-lg font-bold text-gray-900">Professional Information</h2>
+                    <h2 className="text-sm font-semibold text-gray-900">Professional Information</h2>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -439,12 +439,12 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                 {/* Bio */}
                 <div>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-amber-500 rounded-lg">
+                    <div className="p-1.5 bg-amber-600 rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                     </div>
-                    <h2 className="text-lg font-bold text-gray-900">Bio</h2>
+                    <h2 className="text-sm font-semibold text-gray-900">Bio</h2>
                   </div>
                   <textarea
                     value={formData.bio}
@@ -466,7 +466,7 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                    className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
                   >
                     {submitting ? (
                       <>

@@ -211,13 +211,13 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: '400px' }}>
             <div className="relative">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
             </div>
-            <p className="text-gray-600 font-medium">Loading doctor...</p>
+            <p className="text-sm text-gray-500">Loading doctor...</p>
           </div>
         </div>
       </section>
@@ -226,7 +226,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
 
   if (!doctor) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: '400px' }}>
             <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-4">
@@ -234,10 +234,10 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Doctor not found</h2>
+            <h2 className="text-sm font-semibold text-gray-900 mb-2">Doctor not found</h2>
             <Link 
               href="/doctors"
-              className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
+              className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
             >
               Back to Doctors
             </Link>
@@ -259,9 +259,9 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
   const completionRate = total > 0 ? (completed / total) * 100 : 0;
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Notifications */}
           {error && (
             <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
@@ -285,11 +285,11 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex items-start gap-4">
               <Link 
                 href="/doctors"
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
+                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -301,7 +301,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                     {doctor.firstName.charAt(0)}{doctor.lastName.charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-1">{fullName}</h1>
+                    <h1 className="text-base font-semibold text-gray-900 mb-1">{fullName}</h1>
                     <div className="flex flex-wrap items-center gap-3">
                       <p className="text-base text-gray-600">{doctor.specializationId?.name}</p>
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
@@ -317,7 +317,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                   </div>
                   <Link
                     href={`/doctors/${doctorId}/edit`}
-                    className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-flex items-center gap-2 flex-shrink-0"
+                    className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold inline-flex items-center gap-2 flex-shrink-0"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -330,7 +330,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
           </div>
 
           {/* Tabs */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="border-b border-gray-200 bg-gray-50/50 overflow-x-auto">
               <nav className="flex -mb-px min-w-max">
                 {[
@@ -369,16 +369,16 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
 
             <div className="p-6">
               {activeTab === 'profile' && (
-                <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl border border-blue-200 p-6">
+                    <div className="bg-white border border-gray-200 rounded-xl p-5">
                       <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-blue-500 rounded-lg">
+                        <div className="p-1.5 bg-blue-600 rounded-lg">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                           </svg>
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900">Basic Information</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">Basic Information</h3>
                       </div>
                       <div className="flex flex-col gap-4">
                         <div>
@@ -413,14 +413,14 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                         </div>
                       </div>
                     </div>
-                    <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-xl border border-purple-200 p-6">
+                    <div className="bg-white border border-gray-200 rounded-xl p-5">
                       <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-purple-500 rounded-lg">
+                        <div className="p-1.5 bg-purple-600 rounded-lg">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                           </svg>
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900">Contact Information</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">Contact Information</h3>
                       </div>
                       <div className="flex flex-col gap-4">
                         <div>
@@ -445,14 +445,14 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                     </div>
                   </div>
                   {doctor.qualifications && doctor.qualifications.length > 0 && (
-                    <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-xl border border-emerald-200 p-6">
+                    <div className="bg-white border border-gray-200 rounded-xl p-5">
                       <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-emerald-500 rounded-lg">
+                        <div className="p-1.5 bg-emerald-600 rounded-lg">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
                           </svg>
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900">Qualifications</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">Qualifications</h3>
                       </div>
                       <ul className="flex flex-col gap-3">
                         {doctor.qualifications.map((qual, idx) => (
@@ -467,14 +467,14 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                     </div>
                   )}
                   {doctor.bio && (
-                    <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 rounded-xl border border-amber-200 p-6">
+                    <div className="bg-white border border-gray-200 rounded-xl p-5">
                       <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-amber-500 rounded-lg">
+                        <div className="p-1.5 bg-amber-600 rounded-lg">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900">Bio</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">Bio</h3>
                       </div>
                       <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{doctor.bio}</p>
                     </div>
@@ -483,15 +483,15 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
               )}
 
               {activeTab === 'schedule' && (
-                <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-4">
                   <div className="flex justify-between items-center">
                     <div>
-                      <h3 className="text-xl font-bold text-gray-900">Weekly Schedule</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">Weekly Schedule</h3>
                       <p className="text-sm text-gray-600 mt-1">Manage doctor availability throughout the week</p>
                     </div>
                     <button 
                       onClick={() => setShowScheduleForm(true)}
-                      className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-flex items-center gap-2"
+                      className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold inline-flex items-center gap-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -506,7 +506,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                         return (
                           <div key={day} className={`rounded-xl border p-4 transition-all ${
                             schedule && schedule.isAvailable
-                              ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-200'
+                              ? 'bg-white border-gray-200'
                               : 'bg-gray-50 border-gray-200'
                           }`}>
                             <div className="flex justify-between items-start mb-2">
@@ -554,7 +554,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                         </div>
-                        <h2 className="text-2xl font-bold text-gray-900">Edit Schedule</h2>
+                        <h2 className="text-base font-semibold text-gray-900">Edit Schedule</h2>
                       </div>
                       <div className="flex flex-col gap-4">
                         <div>
@@ -609,7 +609,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                           </button>
                           <button 
                             onClick={handleUpdateSchedule}
-                            className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
+                            className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
                           >
                             Save Schedule
                           </button>
@@ -621,15 +621,15 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
               )}
 
               {activeTab === 'notes' && (
-                <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-4">
                   <div className="flex justify-between items-center">
                     <div>
-                      <h3 className="text-xl font-bold text-gray-900">Internal Notes</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">Internal Notes</h3>
                       <p className="text-sm text-gray-600 mt-1">Private notes visible only to staff members</p>
                     </div>
                     <button 
                       onClick={() => setShowNoteForm(true)}
-                      className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-flex items-center gap-2"
+                      className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold inline-flex items-center gap-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -699,7 +699,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                         </div>
-                        <h2 className="text-2xl font-bold text-gray-900">Add Internal Note</h2>
+                        <h2 className="text-base font-semibold text-gray-900">Add Internal Note</h2>
                       </div>
                       <form onSubmit={handleAddNote}>
                         <div className="flex flex-col gap-4">
@@ -733,7 +733,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                             </button>
                             <button 
                               type="submit"
-                              className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
+                              className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
                             >
                               Add Note
                             </button>
@@ -746,15 +746,15 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
               )}
 
               {activeTab === 'performance' && (
-                <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-4">
                   <div className="flex justify-between items-center">
                     <div>
-                      <h3 className="text-xl font-bold text-gray-900">Performance Metrics</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">Performance Metrics</h3>
                       <p className="text-sm text-gray-600 mt-1">Appointment statistics and completion rates</p>
                     </div>
                     <button 
                       onClick={handleRefreshPerformance}
-                      className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-flex items-center gap-2"
+                      className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold inline-flex items-center gap-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -763,25 +763,25 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                     </button>
                   </div>
                   {metrics ? (
-                    <div className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-4">
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                        <div className="p-6 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200">
+                        <div className="p-6 bg-white border border-gray-200 rounded-xl">
                           <p className="text-3xl sm:text-4xl font-bold text-blue-700 mb-2">{total}</p>
                           <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total Appointments</p>
                         </div>
-                        <div className="p-6 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200">
+                        <div className="p-6 bg-white border border-gray-200 rounded-xl">
                           <p className="text-3xl sm:text-4xl font-bold text-emerald-700 mb-2">{completed}</p>
                           <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">Completed</p>
                           <p className="text-xs text-emerald-600 font-medium">{Math.round(completionRate)}% completion rate</p>
                         </div>
-                        <div className="p-6 bg-gradient-to-br from-red-50 to-red-100 rounded-xl border border-red-200">
+                        <div className="p-6 bg-white border border-gray-200 rounded-xl">
                           <p className="text-3xl sm:text-4xl font-bold text-red-700 mb-2">{cancelled}</p>
                           <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-1">Cancelled</p>
                           <p className="text-xs text-red-600 font-medium">
                             {total > 0 ? Math.round((cancelled / total) * 100) : 0}% cancellation rate
                           </p>
                         </div>
-                        <div className="p-6 bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200">
+                        <div className="p-6 bg-white border border-gray-200 rounded-xl">
                           <p className="text-3xl sm:text-4xl font-bold text-amber-700 mb-2">{noShow}</p>
                           <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">No-Show</p>
                           <p className="text-xs text-amber-600 font-medium">

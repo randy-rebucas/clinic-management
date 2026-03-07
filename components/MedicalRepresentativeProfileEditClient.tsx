@@ -158,7 +158,7 @@ export default function MedicalRepresentativeProfileEditClient() {
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <h1 className="text-3xl font-bold text-gray-900">Edit Profile</h1>
+          <h1 className="text-base font-semibold text-gray-900">Edit Profile</h1>
         </div>
 
         {/* Messages */}

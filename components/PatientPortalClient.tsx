@@ -370,7 +370,7 @@ export default function PatientPortalClient() {
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50/30 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="relative">
-            <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100 border-t-blue-600 mx-auto mb-6"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600 mx-auto mb-6"></div>
           </div>
           <p className="text-gray-600 text-base font-medium">Loading your portal...</p>
         </div>
@@ -391,7 +391,7 @@ export default function PatientPortalClient() {
           <p className="text-gray-600 text-base mb-6">{error}</p>
           <Link
             href="/patient/login"
-            className="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
+            className="inline-flex items-center px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
           >
             Return to Login
           </Link>
@@ -497,9 +497,9 @@ export default function PatientPortalClient() {
         return (
           <div className="grid sm:grid-cols-2 gap-6">
             {/* Contact Information */}
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-blue-500 rounded-lg">
+                <div className="p-1.5 bg-blue-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
@@ -527,9 +527,9 @@ export default function PatientPortalClient() {
             </div>
 
             {/* Emergency Contact */}
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-purple-500 rounded-lg">
+                <div className="p-1.5 bg-purple-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
@@ -561,9 +561,9 @@ export default function PatientPortalClient() {
             </div>
 
             {/* Allergies */}
-            <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-200 rounded-xl p-5">
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-red-500 rounded-lg">
+                <div className="p-1.5 bg-red-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
@@ -586,9 +586,9 @@ export default function PatientPortalClient() {
             </div>
 
             {/* Pre-existing Conditions */}
-            <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border border-amber-200 rounded-xl p-5">
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-amber-500 rounded-lg">
+                <div className="p-1.5 bg-amber-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
@@ -620,9 +620,9 @@ export default function PatientPortalClient() {
             {/* Referrals */}
             {referrals.length > 0 && (
               <div className="sm:col-span-2">
-                <div className="bg-gradient-to-br from-teal-50 to-teal-100/50 border border-teal-200 rounded-xl p-5">
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-teal-500 rounded-lg">
+                    <div className="p-1.5 bg-teal-600 rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                       </svg>
@@ -996,13 +996,13 @@ export default function PatientPortalClient() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Patient Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8 mb-6">
+        <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8 mb-6">
           <div className="flex items-center gap-4">
             <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-2xl font-bold shadow-md">
               {patient.firstName.charAt(0)}{patient.lastName.charAt(0)}
             </div>
             <div className="min-w-0 flex-1">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+              <h2 className="text-base font-semibold text-gray-900 mb-2">
                 {patient.firstName} {patient.lastName}
               </h2>
               <div className="flex flex-wrap items-center gap-2">
@@ -1053,7 +1053,7 @@ export default function PatientPortalClient() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-left hover:shadow-md hover:border-blue-300 transition-all active:scale-[0.98]"
+                    className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:shadow-md hover:border-blue-300 transition-all active:scale-[0.98]"
                   >
                     <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tab.color} flex items-center justify-center text-white mb-3 shadow-md`}>
                       {tab.icon}
@@ -1071,7 +1071,7 @@ export default function PatientPortalClient() {
             </div>
           ) : (
             /* Mobile Content View */
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="p-5 sm:p-6">
                 <div className="flex items-center gap-3 mb-5">
                   <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${tabs.find(t => t.id === activeTab)?.color} flex items-center justify-center text-white shadow-md`}>
@@ -1224,7 +1224,7 @@ export default function PatientPortalClient() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900">Book Appointment</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Book Appointment</h3>
                   <p className="text-sm text-gray-600 mt-0.5">Schedule your next visit</p>
                 </div>
               </div>

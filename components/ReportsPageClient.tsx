@@ -109,25 +109,25 @@ export default function ReportsPageClient() {
     switch (reportType) {
       case 'consultations':
         return (
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-500 rounded-lg">
+              <div className="p-1.5 bg-blue-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h4 className="text-lg font-bold text-gray-900">Consultations Summary</h4>
+              <h4 className="text-sm font-semibold text-gray-900">Consultations Summary</h4>
             </div>
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-2">
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Total</p>
               </div>
-              <p className="text-3xl font-bold text-gray-900">{data.summary?.totalConsultations || 0}</p>
+              <p className="text-base font-semibold text-gray-900">{data.summary?.totalConsultations || 0}</p>
             </div>
             {data.summary?.byType && (
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-indigo-500 rounded-lg">
+                  <div className="p-1.5 bg-indigo-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                     </svg>
@@ -147,7 +147,7 @@ export default function ReportsPageClient() {
             {data.summary?.byProvider && (
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-cyan-500 rounded-lg">
+                  <div className="p-1.5 bg-cyan-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
@@ -181,38 +181,38 @@ export default function ReportsPageClient() {
         const billed = data.summary?.totalBilled || data.totalBilled || 0;
         const outstanding = data.summary?.totalOutstanding || data.totalOutstanding || 0;
         return (
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-500 rounded-lg">
+              <div className="p-1.5 bg-emerald-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h4 className="text-lg font-bold text-gray-900">Income Summary</h4>
+              <h4 className="text-sm font-semibold text-gray-900">Income Summary</h4>
             </div>
             <div className="grid grid-cols-1 gap-4">
-              <div className="bg-gradient-to-br from-green-50 to-green-100/50 border border-green-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Paid</p>
                 </div>
-                <p className="text-3xl font-bold text-green-700">
+                <p className="text-xl font-bold text-green-700">
                   {formatCurrency(paid)}
                 </p>
                 {paid === 0 && (
                   <p className="text-xs text-yellow-600 mt-2">No paid value found in report data. Check API response and payment status mapping.</p>
                 )}
               </div>
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Billed</p>
                 </div>
-                <p className="text-3xl font-bold text-gray-900">{formatCurrency(billed)}</p>
+                <p className="text-base font-semibold text-gray-900">{formatCurrency(billed)}</p>
               </div>
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100/50 border border-yellow-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Outstanding</p>
                 </div>
-                <p className="text-3xl font-bold text-yellow-700">
+                <p className="text-xl font-bold text-yellow-700">
                   {formatCurrency(outstanding)}
                 </p>
               </div>
@@ -220,7 +220,7 @@ export default function ReportsPageClient() {
             {data.breakdowns?.byPaymentMethod && (
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-blue-500 rounded-lg">
+                  <div className="p-1.5 bg-blue-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                     </svg>
@@ -241,19 +241,19 @@ export default function ReportsPageClient() {
         );
       case 'demographics':
         return (
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-500 rounded-lg">
+              <div className="p-1.5 bg-purple-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
-              <h4 className="text-lg font-bold text-gray-900">Demographics Summary</h4>
+              <h4 className="text-sm font-semibold text-gray-900">Demographics Summary</h4>
             </div>
             {data.demographics?.ageGroups && (
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-purple-500 rounded-lg">
+                  <div className="p-1.5 bg-purple-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
@@ -274,33 +274,33 @@ export default function ReportsPageClient() {
         );
       case 'inventory':
         return (
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-teal-500 rounded-lg">
+              <div className="p-1.5 bg-teal-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
               </div>
-              <h4 className="text-lg font-bold text-gray-900">Inventory Summary</h4>
+              <h4 className="text-sm font-semibold text-gray-900">Inventory Summary</h4>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Items</p>
                 </div>
-                <p className="text-3xl font-bold text-gray-900">{data.summary?.totalItems || 0}</p>
+                <p className="text-base font-semibold text-gray-900">{data.summary?.totalItems || 0}</p>
               </div>
-              <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Low Stock</p>
                 </div>
-                <p className="text-3xl font-bold text-red-700">{data.summary?.lowStockCount || 0}</p>
+                <p className="text-xl font-bold text-red-700">{data.summary?.lowStockCount || 0}</p>
               </div>
             </div>
             {data.lowStockItems && data.lowStockItems.length > 0 && (
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-red-500 rounded-lg">
+                  <div className="p-1.5 bg-red-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
@@ -325,34 +325,34 @@ export default function ReportsPageClient() {
         );
       case 'hmo-claims':
         return (
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-500 rounded-lg">
+              <div className="p-1.5 bg-amber-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h4 className="text-lg font-bold text-gray-900">HMO Claims Summary</h4>
+              <h4 className="text-sm font-semibold text-gray-900">HMO Claims Summary</h4>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Claims</p>
                 </div>
-                <p className="text-3xl font-bold text-gray-900">{data.summary?.totalClaims || 0}</p>
+                <p className="text-base font-semibold text-gray-900">{data.summary?.totalClaims || 0}</p>
               </div>
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100/50 border border-yellow-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Pending</p>
                 </div>
-                <p className="text-3xl font-bold text-yellow-700">{data.summary?.pendingClaims || 0}</p>
+                <p className="text-xl font-bold text-yellow-700">{data.summary?.pendingClaims || 0}</p>
               </div>
             </div>
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-2">
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Backlog Amount</p>
               </div>
-              <p className="text-3xl font-bold text-gray-900">{formatCurrency(data.summary?.backlogAmount || 0)}</p>
+              <p className="text-base font-semibold text-gray-900">{formatCurrency(data.summary?.backlogAmount || 0)}</p>
             </div>
           </div>
         );
@@ -372,13 +372,13 @@ export default function ReportsPageClient() {
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-violet-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-violet-100 border-t-violet-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
             </div>
-            <p className="text-gray-600 font-medium">Loading reports...</p>
+            <p className="text-sm text-gray-500">Loading reports...</p>
           </div>
         </div>
       </section>
@@ -386,21 +386,21 @@ export default function ReportsPageClient() {
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-violet-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-violet-500 to-violet-600 rounded-lg shadow-md">
+                <div className="p-1.5 bg-violet-600 rounded-lg">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Reports & Analytics</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">View clinic performance metrics and reports</p>
+                  <h1 className="text-base font-semibold text-gray-900">Reports & Analytics</h1>
+                  <p className="text-xs text-gray-500">View clinic performance metrics and reports</p>
                 </div>
               </div>
               <button
@@ -425,9 +425,9 @@ export default function ReportsPageClient() {
           {/* Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-b border-blue-200 p-4">
+              <div className="bg-white border-b border-gray-200 p-4">
                 <div className="flex items-center justify-between">
-                  <div className="p-2 bg-blue-500 rounded-lg">
+                  <div className="p-1.5 bg-blue-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
@@ -436,16 +436,16 @@ export default function ReportsPageClient() {
                 </div>
               </div>
               <div className="p-5">
-                <p className="text-3xl font-bold text-gray-900">
+                <p className="text-base font-semibold text-gray-900">
                   {dashboardData.periodVisits || dashboardData.totalConsultations || 0}
                 </p>
               </div>
             </div>
 
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-b border-emerald-200 p-4">
+              <div className="bg-white border-b border-gray-200 p-4">
                 <div className="flex items-center justify-between">
-                  <div className="p-2 bg-emerald-500 rounded-lg">
+                  <div className="p-1.5 bg-emerald-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
@@ -454,16 +454,16 @@ export default function ReportsPageClient() {
                 </div>
               </div>
               <div className="p-5">
-                <p className="text-3xl font-bold text-emerald-600">
+                <p className="text-xl font-bold text-emerald-600">
                   {formatCurrency(dashboardData.periodRevenue || dashboardData.totalIncome || 0)}
                 </p>
               </div>
             </div>
 
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-b border-purple-200 p-4">
+              <div className="bg-white border-b border-gray-200 p-4">
                 <div className="flex items-center justify-between">
-                  <div className="p-2 bg-purple-500 rounded-lg">
+                  <div className="p-1.5 bg-purple-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
@@ -472,16 +472,16 @@ export default function ReportsPageClient() {
                 </div>
               </div>
               <div className="p-5">
-                <p className="text-3xl font-bold text-gray-900">
+                <p className="text-base font-semibold text-gray-900">
                   {dashboardData.totalPatients || 0}
                 </p>
               </div>
             </div>
 
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-br from-violet-50 to-violet-100/50 border-b border-violet-200 p-4">
+              <div className="bg-white border-b border-gray-200 p-4">
                 <div className="flex items-center justify-between">
-                  <div className="p-2 bg-violet-500 rounded-lg">
+                  <div className="p-1.5 bg-violet-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
@@ -490,7 +490,7 @@ export default function ReportsPageClient() {
                 </div>
               </div>
               <div className="p-5">
-                <p className="text-3xl font-bold text-violet-600">6</p>
+                <p className="text-xl font-bold text-violet-600">6</p>
               </div>
             </div>
           </div>
@@ -501,12 +501,12 @@ export default function ReportsPageClient() {
               <div className="p-5 border-b border-gray-200 bg-gray-50/50">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-violet-500 rounded-lg">
+                    <div className="p-1.5 bg-violet-600 rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900">Available Reports</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">Available Reports</h3>
                   </div>
                   {(selectedReport === 'consultations' || selectedReport === 'income') && (
                     <select
@@ -646,21 +646,21 @@ export default function ReportsPageClient() {
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
               <div className="p-5 border-b border-gray-200 bg-gray-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-violet-500 rounded-lg">
+                  <div className="p-1.5 bg-violet-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900">Report Details</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Report Details</h3>
                 </div>
               </div>
               <div className="p-6">
                 {reportLoading ? (
                   <div className="flex flex-col items-center gap-4 min-h-[200px] justify-center">
                     <div className="relative">
-                      <div className="animate-spin rounded-full h-16 w-16 border-4 border-violet-100 border-t-violet-600"></div>
+                      <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
                     </div>
-                    <p className="text-sm text-gray-600 font-medium">Loading report...</p>
+                    <p className="text-sm text-sm text-gray-500">Loading report...</p>
                   </div>
                 ) : reportData ? (
                   <div className="max-h-[500px] overflow-y-auto">

@@ -230,13 +230,11 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100 border-t-blue-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading visit...</p>
+          <div className="flex flex-col items-center gap-3 min-h-[50vh] justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
+            <p className="text-sm text-gray-500">Loading visit...</p>
           </div>
         </div>
       </section>
@@ -245,19 +243,19 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
 
   if (!visit) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex flex-col items-center gap-3 min-h-[50vh] justify-center">
+            <div className="inline-flex items-center justify-center w-10 h-10 bg-red-100 rounded-full">
+              <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">Visit not found</h2>
-            <p className="text-sm text-gray-600 mb-4">The visit you&apos;re looking for doesn&apos;t exist or has been removed.</p>
+            <h2 className="text-base font-semibold text-gray-900">Visit not found</h2>
+            <p className="text-sm text-gray-500">The visit you&apos;re looking for doesn&apos;t exist or has been removed.</p>
             <Link
               href="/visits"
-              className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold shadow-md"
+              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-semibold"
             >
               Back to Visits
             </Link>
@@ -268,43 +266,41 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+    <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex items-center gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="flex items-center gap-3">
                 <Link
                   href="/visits"
-                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </Link>
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg shadow-md">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Visit {visit.visitCode}</h1>
-                    <p className="text-sm sm:text-base text-gray-600 mt-1">
-                      {visit.patient
-                        ? `${visit.patient.firstName} ${visit.patient.lastName} • ${new Date(visit.date).toLocaleDateString()}`
-                        : `No patient assigned • ${new Date(visit.date).toLocaleDateString()}`
-                      }
-                    </p>
-                  </div>
+                <div className="p-1.5 bg-teal-600 rounded-lg">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-base font-semibold text-gray-900">Visit {visit.visitCode}</h1>
+                  <p className="text-xs text-gray-500">
+                    {visit.patient
+                      ? `${visit.patient.firstName} ${visit.patient.lastName} • ${new Date(visit.date).toLocaleDateString()}`
+                      : `No patient assigned • ${new Date(visit.date).toLocaleDateString()}`
+                    }
+                  </p>
                 </div>
               </div>
-              <div className="flex gap-3 flex-wrap">
+              <div className="flex gap-2 flex-wrap">
                 <select
                   value={visit.status}
                   onChange={(e) => handleStatusChange(e.target.value)}
-                  className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm bg-white font-semibold"
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-xs bg-white font-semibold text-gray-700"
                 >
                   <option value="open">Open</option>
                   <option value="closed">Closed</option>
@@ -314,29 +310,29 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                   <>
                     <button
                       onClick={() => handlePrint('medical-certificate')}
-                      className="px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold flex items-center gap-2 shadow-md"
+                      className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-green-50 hover:text-green-700 transition-colors text-xs font-semibold flex items-center gap-1.5"
                       title="Print Medical Certificate"
                     >
-                      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      Medical Certificate
+                      Med. Certificate
                     </button>
                     <button
                       onClick={() => handlePrint('lab-request')}
-                      className="px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all text-sm font-semibold flex items-center gap-2 shadow-md"
+                      className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-purple-50 hover:text-purple-700 transition-colors text-xs font-semibold flex items-center gap-1.5"
                       title="Print Lab Request"
                     >
-                      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       Lab Request
                     </button>
                     <button
                       onClick={() => setEditing(true)}
-                      className="px-4 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold flex items-center gap-2 shadow-md"
+                      className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-teal-50 hover:text-teal-700 transition-colors text-xs font-semibold flex items-center gap-1.5"
                     >
-                      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
                       Edit
@@ -349,8 +345,8 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
 
           {/* Edit Mode */}
           {editing ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-6 sm:p-8">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="p-5">
                 <VisitForm
                   initialData={{
                     patient: visit.patient?._id || '',
@@ -380,14 +376,14 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
             /* View Mode */
             <div className="flex flex-col gap-4">
               {/* Patient Info */}
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-blue-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="p-1.5 bg-blue-600 rounded-lg">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900">Patient Information</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Patient Information</h3>
                 </div>
                 {visit.patient ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -419,14 +415,14 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
 
               {/* SOAP Notes */}
               {visit.soapNotes && (
-                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-teal-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-1.5 bg-teal-600 rounded-lg">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900">SOAP Notes</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">SOAP Notes</h3>
                   </div>
                   <div className="flex flex-col gap-4">
                     {visit.soapNotes.subjective && (
@@ -459,18 +455,18 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
 
               {/* Diagnoses */}
               {visit.diagnoses && visit.diagnoses.length > 0 && (
-                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-red-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-1.5 bg-red-600 rounded-lg">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900">Diagnoses</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">Diagnoses</h3>
                   </div>
                   <div className="flex flex-col gap-3">
                     {visit.diagnoses.map((diag, idx) => (
-                      <div key={idx} className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
+                      <div key={idx} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
                         <div className="flex justify-between items-start gap-3">
                           <div className="flex-1">
                             {diag.code && (
@@ -496,21 +492,21 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
 
               {/* Treatment Plan */}
               {visit.treatmentPlan && (
-                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-emerald-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-1.5 bg-emerald-600 rounded-lg">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900">Treatment Plan</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">Treatment Plan</h3>
                   </div>
                   {visit.treatmentPlan.medications && visit.treatmentPlan.medications.length > 0 && (
-                    <div className="mb-5">
-                      <p className="text-sm font-bold text-gray-900 mb-3">Medications</p>
-                      <div className="flex flex-col gap-3">
+                    <div className="mb-4">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Medications</p>
+                      <div className="flex flex-col gap-2">
                         {visit.treatmentPlan.medications.map((med, idx) => (
-                          <div key={idx} className="bg-gradient-to-r from-white to-emerald-50/50 border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all">
+                          <div key={idx} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
                             <p className="text-sm font-bold text-gray-900 mb-1">{med.name}</p>
                             <p className="text-xs text-gray-600 font-medium">
                               {med.dosage} • {med.frequency} • {med.duration}
@@ -546,14 +542,14 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
 
               {/* Digital Signature */}
               {visit.digitalSignature && (
-                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-green-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-1.5 bg-green-600 rounded-lg">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900">Digital Signature</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">Digital Signature</h3>
                   </div>
                   <div className="flex items-center gap-4 bg-green-50 border border-green-200 rounded-lg p-4">
                     <div className="border-2 border-green-300 rounded-lg p-2 bg-white shadow-sm">
@@ -577,28 +573,28 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
 
               {/* Additional Notes */}
               {visit.notes && (
-                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-gray-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-1.5 bg-gray-500 rounded-lg">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900">Additional Notes</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">Additional Notes</h3>
                   </div>
                   <p className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 p-4 rounded-lg border border-gray-200">{visit.notes}</p>
                 </div>
               )}
 
               {/* Clinical Images/Attachments */}
-              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-purple-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="p-1.5 bg-purple-600 rounded-lg">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900">Clinical Images & Attachments</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Clinical Images & Attachments</h3>
                 </div>
 
                 {/* File Upload Section */}
@@ -606,11 +602,11 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
 
                 {/* Display Attachments */}
                 {visit.attachments && visit.attachments.length > 0 && (
-                  <div className="mt-5">
-                    <p className="text-sm font-bold text-gray-900 mb-4">Uploaded Files</p>
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Uploaded Files</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {visit.attachments.map((attachment, idx) => (
-                        <div key={attachment._id || idx} className="bg-gradient-to-r from-white to-purple-50/50 border border-purple-200 rounded-lg overflow-hidden hover:shadow-md transition-all">
+                        <div key={attachment._id || idx} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                           <div className="p-4">
                             {attachment.url && attachment.contentType?.startsWith('image/') ? (
                               <div className="mb-3">
@@ -690,7 +686,7 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
   };
 
   return (
-    <div className="bg-purple-50 border border-purple-200 rounded-lg">
+    <div className="bg-gray-50 border border-gray-200 rounded-lg">
       <div className="p-4">
         <form onSubmit={handleSubmit}>
           <div className="flex flex-col gap-4">
@@ -720,7 +716,7 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
             <button
               type="submit"
               disabled={!file || uploading}
-              className="w-full px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 disabled:from-purple-300 disabled:to-purple-400 disabled:cursor-not-allowed transition-all text-sm font-semibold shadow-md"
+              className="w-full px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-300 disabled:cursor-not-allowed transition-colors text-sm font-semibold"
             >
               {uploading ? 'Uploading...' : 'Upload File'}
             </button>

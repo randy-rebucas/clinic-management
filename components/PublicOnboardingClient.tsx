@@ -409,7 +409,7 @@ export default function PublicOnboardingClient() {
                   {patientCode && (
                     <div className="bg-white rounded-lg p-3 sm:p-4 mb-3 border border-green-200">
                       <p className="text-xs sm:text-sm text-gray-600 mb-1">Your Patient Code:</p>
-                      <p className="text-lg sm:text-xl font-bold text-gray-900 break-all">{patientCode}</p>
+                      <p className="text-sm font-semibold text-gray-900 break-all">{patientCode}</p>
                       <p className="text-xs text-gray-500 mt-2">
                         Please save this code for future reference when booking appointments or accessing your records.
                       </p>

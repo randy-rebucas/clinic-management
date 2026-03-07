@@ -5,7 +5,13 @@
       "Bash(npm run build:*)",
       "Bash(npm run lint)",
       "mcp__ide__getDiagnostics",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(powershell -NoProfile -Command \":*)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File \"c:/Users/corew/clinic-management/fix-styles.ps1\")",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File \"c:/Users/corew/clinic-management/fix-styles2.ps1\")",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File \"c:/Users/corew/clinic-management/fix-styles3.ps1\")",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File \"c:/Users/corew/clinic-management/fix-styles4.ps1\")",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File \"c:/Users/corew/clinic-management/fix-styles5.ps1\")"
     ]
   }
 }

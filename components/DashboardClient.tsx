@@ -318,7 +318,7 @@ export default function DashboardClient() {
           {/* Header */}
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
             <div>
-              <h1 className="text-3xl font-bold mb-1">Dashboard</h1>
+              <h1 className="text-base font-semibold mb-1">Dashboard</h1>
               <p className="text-sm text-gray-500">Welcome back! Here&apos;s an overview of your clinic.</p>
             </div>
             <div className="flex gap-2">
@@ -385,7 +385,7 @@ export default function DashboardClient() {
           {/* Recent and Upcoming Appointments */}
           <div className="flex gap-3 flex-col lg:flex-row">
             {/* Recent Appointments */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex-1">
+            <div className="bg-white rounded-lg border border-gray-200 p-4 flex-1">
               <div className="flex justify-between items-center mb-3">
                 <h2 className="text-lg font-semibold">Today&apos;s Appointments</h2>
                 <Link href="/appointments" className="text-sm text-blue-600 hover:text-blue-700 hover:underline">
@@ -427,7 +427,7 @@ export default function DashboardClient() {
             </div>
 
             {/* Upcoming Appointments */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex-1">
+            <div className="bg-white rounded-lg border border-gray-200 p-4 flex-1">
               <div className="flex justify-between items-center mb-3">
                 <h2 className="text-lg font-semibold">Upcoming Appointments</h2>
                 <Link href="/appointments" className="text-sm text-blue-600 hover:text-blue-700 hover:underline">
@@ -462,7 +462,7 @@ export default function DashboardClient() {
           </div>
 
           {/* Quick Actions */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
             <h2 className="text-lg font-semibold mb-2">Quick Actions</h2>
             <div className="flex gap-3 flex-wrap">
               {quickActions.map((action) => {

@@ -357,9 +357,9 @@ export default function InvoiceForm({
       <div className="max-h-[80vh] overflow-y-auto">
         <div className="flex flex-col gap-6 p-4 sm:p-6">
           {/* Patient Selection */}
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-emerald-500 rounded-lg">
+              <div className="p-1.5 bg-emerald-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
@@ -428,14 +428,14 @@ export default function InvoiceForm({
           </div>
 
           {/* Invoice Items */}
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-blue-500 rounded-lg">
+              <div className="p-1.5 bg-blue-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">
+              <h3 className="text-sm font-semibold text-gray-900">
                 Invoice Items <span className="text-red-600">*</span>
               </h3>
             </div>
@@ -483,7 +483,7 @@ export default function InvoiceForm({
             ) : (
               <div className="flex flex-col gap-3">
                 {formData.items.map((item, index) => (
-                  <div key={index} className="bg-gradient-to-r from-white to-blue-50/50 border border-blue-200 rounded-lg p-4 hover:shadow-md transition-all">
+                  <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                       <div className="md:col-span-5">
                         <div className="text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Description</div>
@@ -543,14 +543,14 @@ export default function InvoiceForm({
           </div>
 
           {/* Discounts */}
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border border-amber-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-amber-500 rounded-lg">
+              <div className="p-1.5 bg-amber-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Discounts</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Discounts</h3>
             </div>
             <div className="flex flex-wrap gap-2 mb-4">
               {selectedPatient?.discountEligibility?.pwd?.eligible && (
@@ -664,14 +664,14 @@ export default function InvoiceForm({
           </div>
 
           {/* Professional Fee */}
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-purple-500 rounded-lg">
+              <div className="p-1.5 bg-purple-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Professional Fee (PF)</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Professional Fee (PF)</h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -741,14 +741,14 @@ export default function InvoiceForm({
           </div>
 
           {/* Tax & Insurance */}
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-gray-500 rounded-lg">
+              <div className="p-1.5 bg-gray-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-5m-6 5v-5m6 5h.01M9 17h.01M9 12h.01M12 12h.01M15 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Tax & Insurance</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Tax & Insurance</h3>
             </div>
             <div className="flex flex-col gap-4">
               {/* Tax */}
@@ -837,14 +837,14 @@ export default function InvoiceForm({
           </div>
 
           {/* Totals Summary */}
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-emerald-500 rounded-lg">
+              <div className="p-1.5 bg-emerald-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-5m-6 5v-5m6 5h.01M9 17h.01M9 12h.01M12 12h.01M15 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Summary</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Summary</h3>
             </div>
             <div className="bg-white rounded-lg p-4 space-y-3 border border-emerald-200">
               <div className="flex justify-between">
@@ -871,7 +871,7 @@ export default function InvoiceForm({
               )}
               <div className="border-t border-gray-300 pt-3">
                 <div className="flex justify-between">
-                  <span className="text-lg font-bold text-gray-900">Total:</span>
+                  <span className="text-sm font-semibold text-gray-900">Total:</span>
                   <span className="text-lg font-bold text-emerald-600">{formatCurrency(total)}</span>
                 </div>
               </div>
@@ -886,7 +886,7 @@ export default function InvoiceForm({
                 Cancel
               </button>
             )}
-            <button type="submit" className="px-4 py-2.5 text-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-md">
+            <button type="submit" className="px-4 py-2.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-semibold">
               Create Invoice
             </button>
           </div>

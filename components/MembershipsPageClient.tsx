@@ -279,13 +279,13 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-emerald-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-emerald-100 border-t-emerald-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
             </div>
-            <p className="text-gray-600 font-medium">Loading memberships...</p>
+            <p className="text-sm text-gray-500">Loading memberships...</p>
           </div>
         </div>
       </section>
@@ -293,21 +293,21 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-emerald-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Error/Success Messages */}
           {message && (
             <div className={`rounded-xl p-4 shadow-sm ${message.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
               <div className="flex items-start gap-3">
                 {message.type === 'success' ? (
-                  <div className="p-2 bg-green-500 rounded-lg flex-shrink-0">
+                  <div className="p-1.5 bg-green-600 rounded-lg flex-shrink-0">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                   </div>
                 ) : (
-                  <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
+                  <div className="p-1.5 bg-red-600 rounded-lg flex-shrink-0">
                     <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                     </svg>
@@ -319,32 +319,32 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-md">
+              <div className="p-1.5 bg-emerald-600 rounded-lg">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
               <div>
-                <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Memberships</h1>
-                <p className="text-sm sm:text-base text-gray-600 mt-1">Manage patient loyalty program memberships</p>
+                <h1 className="text-base font-semibold text-gray-900">Memberships</h1>
+                <p className="text-xs text-gray-500">Manage patient loyalty program memberships</p>
               </div>
             </div>
           </div>
 
           {/* Current User's Active Membership */}
           {!loadingUserMembership && currentUserMembership && (
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-2 border-emerald-200 rounded-xl shadow-lg p-6 sm:p-8">
+            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-5">
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl shadow-md">
+                  <div className="p-1.5 bg-emerald-600 rounded-lg">
                     <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
                     </svg>
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Your Active Membership</h2>
+                    <h2 className="text-base font-semibold text-gray-900">Your Active Membership</h2>
                     <p className="text-sm text-gray-600 mt-1">Membership #{currentUserMembership.membershipNumber}</p>
                   </div>
                 </div>
@@ -362,7 +362,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-white rounded-lg p-4 border border-emerald-200">
                   <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Tier</div>
-                  <div className="text-lg font-bold text-gray-900">{getTierBadge(currentUserMembership.tier)}</div>
+                  <div className="text-sm font-semibold text-gray-900">{getTierBadge(currentUserMembership.tier)}</div>
                 </div>
                 <div className="bg-white rounded-lg p-4 border border-emerald-200">
                   <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Current Points</div>
@@ -383,7 +383,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                 <div className="bg-white rounded-lg p-6 border border-emerald-200">
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <h3 className="text-lg font-bold text-gray-900 mb-1">Upgrade Your Membership</h3>
+                      <h3 className="text-sm font-semibold text-gray-900 mb-1">Upgrade Your Membership</h3>
                       <p className="text-sm text-gray-600">Unlock more benefits and higher discounts</p>
                     </div>
                   </div>
@@ -407,7 +407,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                         </div>
                         <button
                           onClick={() => handleUpgradeTier(currentUserMembership, tier.value)}
-                          className="w-full px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold text-sm shadow-md"
+                          className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-semibold text-sm shadow-md"
                         >
                           Upgrade to {tier.label}
                         </button>
@@ -418,15 +418,15 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
               )}
 
               {currentUserMembership.tier === 'platinum' && (
-                <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-6 border border-purple-200">
+                <div className="bg-white border border-gray-200 rounded-lg p-5">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-500 rounded-lg">
+                    <div className="p-1.5 bg-purple-600 rounded-lg">
                       <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                       </svg>
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-gray-900">You&apos;re at the Highest Tier!</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">You&apos;re at the Highest Tier!</h3>
                       <p className="text-sm text-gray-600">You&apos;re already enjoying all the premium benefits of Platinum membership.</p>
                     </div>
                   </div>
@@ -446,7 +446,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                 </div>
                 <div className="text-xs font-semibold text-gray-500 uppercase">Total</div>
               </div>
-              <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
+              <div className="text-base font-semibold text-gray-900">{stats.total}</div>
             </div>
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
@@ -509,12 +509,12 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-emerald-500 rounded-lg">
+                <div className="p-1.5 bg-emerald-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">Search & Filter</h2>
+                <h2 className="text-sm font-semibold text-gray-900">Search & Filter</h2>
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex-1" style={{ minWidth: 0 }}>
@@ -570,7 +570,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                 </div>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">No memberships found</h2>
+                <h2 className="text-sm font-semibold text-gray-900 mb-2">No memberships found</h2>
                 <p className="text-sm text-gray-600 font-medium">No membership records match your filters.</p>
               </div>
             </div>
@@ -653,14 +653,14 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
           {showModal && selectedMembership && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-                <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-emerald-100/50 flex justify-between items-center">
+                <div className="p-4 border-b border-gray-200 bg-white flex justify-between items-center">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500 rounded-lg">
+                    <div className="p-1.5 bg-emerald-600 rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
                     </div>
-                    <h2 className="text-xl font-bold text-gray-900">Membership Details</h2>
+                    <h2 className="text-sm font-semibold text-gray-900">Membership Details</h2>
                   </div>
                   <button onClick={() => setShowModal(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -684,14 +684,14 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                     <div>
                       <h3 className="text-lg font-medium mb-4">Points Summary</h3>
                       <div className="space-y-2">
-                        <div className="text-3xl font-bold text-blue-600">{selectedMembership.points.toLocaleString()} pts</div>
+                        <div className="text-xl font-bold text-blue-600">{selectedMembership.points.toLocaleString()} pts</div>
                         <div><span className="text-gray-500">Total Earned:</span> {selectedMembership.totalPointsEarned.toLocaleString()}</div>
                         <div><span className="text-gray-500">Total Redeemed:</span> {selectedMembership.totalPointsRedeemed.toLocaleString()}</div>
                         <div><span className="text-gray-500">Discount:</span> <span className="text-green-600 font-medium">{selectedMembership.discountPercentage}%</span></div>
                       </div>
                       <button
                         onClick={() => setShowPointsModal(true)}
-                        className="mt-4 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-md"
+                        className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-semibold"
                       >
                         Adjust Points
                       </button>
@@ -761,14 +761,14 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
           {showPointsModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-                <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-emerald-100/50">
+                <div className="p-4 border-b border-gray-200 bg-white">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500 rounded-lg">
+                    <div className="p-1.5 bg-emerald-600 rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                       </svg>
                     </div>
-                    <h2 className="text-xl font-bold text-gray-900">Adjust Points</h2>
+                    <h2 className="text-sm font-semibold text-gray-900">Adjust Points</h2>
                   </div>
                 </div>
                 <div className="p-6 space-y-4">
@@ -814,7 +814,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                   </button>
                   <button
                     onClick={handleAddPoints}
-                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-md"
+                    className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-semibold"
                   >
                     Save
                   </button>

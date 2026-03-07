@@ -351,13 +351,13 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-indigo-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-100 border-t-indigo-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
             </div>
-            <p className="text-gray-600 font-medium">Loading medicines...</p>
+            <p className="text-sm text-gray-500">Loading medicines...</p>
           </div>
         </div>
       </section>
@@ -365,14 +365,14 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-indigo-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Error/Success Messages */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-start gap-3">
-                <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
+                <div className="p-1.5 bg-red-600 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                   </svg>
@@ -384,7 +384,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
           {success && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-start gap-3">
-                <div className="p-2 bg-green-500 rounded-lg flex-shrink-0">
+                <div className="p-1.5 bg-green-600 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
@@ -395,22 +395,22 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg shadow-md">
+                <div className="p-1.5 bg-indigo-600 rounded-lg">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Medicines Catalog</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage medicine database for prescriptions</p>
+                  <h1 className="text-base font-semibold text-gray-900">Medicines Catalog</h1>
+                  <p className="text-xs text-gray-500">Manage medicine database for prescriptions</p>
                 </div>
               </div>
               <button
                 onClick={() => { resetForm(); setShowModal(true); }}
-                className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
+                className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors inline-flex items-center gap-2 text-sm font-semibold shadow-md"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -424,47 +424,47 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-indigo-500 rounded-lg">
+                <div className="p-1.5 bg-indigo-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                   </svg>
                 </div>
                 <div className="text-xs font-semibold text-gray-500 uppercase">Total Medicines</div>
               </div>
-              <div className="text-3xl font-bold text-gray-900">{medicines.length}</div>
+              <div className="text-base font-semibold text-gray-900">{medicines.length}</div>
             </div>
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-red-500 rounded-lg">
+                <div className="p-1.5 bg-red-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                 </div>
                 <div className="text-xs font-semibold text-gray-500 uppercase">Prescription Only</div>
               </div>
-              <div className="text-3xl font-bold text-red-600">{medicines.filter(m => m.requiresPrescription).length}</div>
+              <div className="text-xl font-bold text-red-600">{medicines.filter(m => m.requiresPrescription).length}</div>
             </div>
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-purple-500 rounded-lg">
+                <div className="p-1.5 bg-purple-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
                 </div>
                 <div className="text-xs font-semibold text-gray-500 uppercase">Controlled</div>
               </div>
-              <div className="text-3xl font-bold text-purple-600">{medicines.filter(m => m.controlledSubstance).length}</div>
+              <div className="text-xl font-bold text-purple-600">{medicines.filter(m => m.controlledSubstance).length}</div>
             </div>
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-green-500 rounded-lg">
+                <div className="p-1.5 bg-green-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
                 <div className="text-xs font-semibold text-gray-500 uppercase">Active</div>
               </div>
-              <div className="text-3xl font-bold text-green-600">{medicines.filter(m => m.active).length}</div>
+              <div className="text-xl font-bold text-green-600">{medicines.filter(m => m.active).length}</div>
             </div>
           </div>
 
@@ -472,12 +472,12 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-indigo-500 rounded-lg">
+                <div className="p-1.5 bg-indigo-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">Search & Filter</h2>
+                <h2 className="text-sm font-semibold text-gray-900">Search & Filter</h2>
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 {/* Search Input */}
@@ -547,11 +547,11 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                   </svg>
                 </div>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">No medicines found</h2>
+                <h2 className="text-sm font-semibold text-gray-900 mb-2">No medicines found</h2>
                 <p className="text-sm text-gray-600 font-medium mb-4">Get started by adding your first medicine.</p>
                 <button
                   onClick={() => { resetForm(); setShowModal(true); }}
-                  className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all font-semibold shadow-md"
+                  className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold"
                 >
                   Add First Medicine
                 </button>
@@ -632,14 +632,14 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
         {showModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto mx-4">
-              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-indigo-100/50">
+              <div className="p-4 border-b border-gray-200 bg-white">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-indigo-500 rounded-lg">
+                  <div className="p-1.5 bg-indigo-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                     </svg>
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900">
+                  <h2 className="text-sm font-semibold text-gray-900">
                     {editingMedicine ? 'Edit Medicine' : 'Add New Medicine'}
                   </h2>
                 </div>
@@ -837,7 +837,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                   <button
                     type="submit"
                     disabled={saving}
-                    className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 disabled:from-indigo-400 disabled:to-indigo-500 transition-all font-semibold shadow-md"
+                    className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors font-semibold"
                   >
                     {saving ? 'Saving...' : editingMedicine ? 'Update Medicine' : 'Create Medicine'}
                   </button>

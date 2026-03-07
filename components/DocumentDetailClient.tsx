@@ -186,13 +186,13 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-purple-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-100 border-t-purple-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
             </div>
-            <p className="text-gray-600 font-medium">Loading document...</p>
+            <p className="text-sm text-gray-500">Loading document...</p>
           </div>
         </div>
       </section>
@@ -201,7 +201,7 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
 
   if (error || !document) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-purple-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-6 shadow-sm">
             <div className="flex items-start gap-3">
@@ -211,7 +211,7 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
                 </svg>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-red-800 mb-1">Error</h3>
+                <h3 className="text-sm font-semibold text-red-800 mb-1">Error</h3>
                 <p className="text-sm text-red-700 mb-4">{error || 'Document not found'}</p>
                 <button
                   onClick={() => router.push('/documents')}
@@ -228,36 +228,36 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-purple-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex items-center gap-4">
               <Link
                 href="/documents"
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
               <div className="flex items-center gap-3 flex-1">
-                <div className="p-2 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-md">
+                <div className="p-1.5 bg-purple-600 rounded-lg">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Document Details</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Document #{document.documentCode}</p>
+                  <h1 className="text-base font-semibold text-gray-900">Document Details</h1>
+                  <p className="text-xs text-gray-500">Document #{document.documentCode}</p>
                 </div>
               </div>
               <div className="flex gap-2">
                 {document.documentType === 'pdf' || document.documentType === 'image' ? (
                   <button
                     onClick={handleView}
-                    className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center gap-2 text-sm font-semibold shadow-md"
+                    className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-semibold shadow-md"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -268,7 +268,7 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
                 ) : null}
                 <button
                   onClick={handleDownload}
-                  className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all flex items-center gap-2 text-sm font-semibold shadow-md"
+                  className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm font-semibold shadow-md"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -284,15 +284,15 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
             <div className="p-6 sm:p-8">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Left Column */}
-                <div className="flex flex-col gap-6">
-                  <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
+                <div className="flex flex-col gap-4">
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
                     <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-purple-500 rounded-lg">
+                      <div className="p-1.5 bg-purple-600 rounded-lg">
                         <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                       </div>
-                      <h2 className="text-lg font-bold text-gray-900">Document Information</h2>
+                      <h2 className="text-sm font-semibold text-gray-900">Document Information</h2>
                     </div>
                     <div className="space-y-3 text-sm">
                       <div className="flex justify-between">
@@ -332,14 +332,14 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
                     </div>
                   </div>
 
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
                     <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-blue-500 rounded-lg">
+                      <div className="p-1.5 bg-blue-600 rounded-lg">
                         <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                         </svg>
                       </div>
-                      <h2 className="text-lg font-bold text-gray-900">File Information</h2>
+                      <h2 className="text-sm font-semibold text-gray-900">File Information</h2>
                     </div>
                     <div className="space-y-3 text-sm">
                       <div className="flex justify-between">
@@ -365,15 +365,15 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
                 </div>
 
                 {/* Right Column */}
-                <div className="flex flex-col gap-6">
-                  <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 border border-cyan-200 rounded-xl p-5">
+                <div className="flex flex-col gap-4">
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
                     <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-cyan-500 rounded-lg">
+                      <div className="p-1.5 bg-cyan-600 rounded-lg">
                         <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                       </div>
-                      <h2 className="text-lg font-bold text-gray-900">Relationships</h2>
+                      <h2 className="text-sm font-semibold text-gray-900">Relationships</h2>
                     </div>
                     <div className="space-y-3 text-sm">
                       {document.patient ? (
@@ -425,14 +425,14 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
                     </div>
                   </div>
 
-                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
                     <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-gray-500 rounded-lg">
+                      <div className="p-1.5 bg-gray-600 rounded-lg">
                         <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </div>
-                      <h2 className="text-lg font-bold text-gray-900">Metadata</h2>
+                      <h2 className="text-sm font-semibold text-gray-900">Metadata</h2>
                     </div>
                     <div className="space-y-3 text-sm">
                       <div className="flex justify-between">
@@ -475,13 +475,13 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
               <div className="p-5 border-b border-gray-200 bg-gray-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-emerald-500 rounded-lg">
+                  <div className="p-1.5 bg-emerald-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                     </svg>
                   </div>
-                  <h2 className="text-lg font-bold text-gray-900">Preview</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">Preview</h2>
                 </div>
               </div>
               <div className="p-5">
@@ -513,12 +513,12 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
               <div className="p-5 border-b border-gray-200 bg-gray-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-500 rounded-lg">
+                  <div className="p-1.5 bg-amber-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
-                  <h2 className="text-lg font-bold text-gray-900">Referral Information</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">Referral Information</h2>
                 </div>
               </div>
               <div className="p-5">
@@ -556,12 +556,12 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
               <div className="p-5 border-b border-gray-200 bg-gray-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-indigo-500 rounded-lg">
+                  <div className="p-1.5 bg-indigo-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                   </div>
-                  <h2 className="text-lg font-bold text-gray-900">Imaging Information</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">Imaging Information</h2>
                 </div>
               </div>
               <div className="p-5">
@@ -599,12 +599,12 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
               <div className="p-5 border-b border-gray-200 bg-gray-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-teal-500 rounded-lg">
+                  <div className="p-1.5 bg-teal-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
                     </svg>
                   </div>
-                  <h2 className="text-lg font-bold text-gray-900">Medical Certificate Information</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">Medical Certificate Information</h2>
                 </div>
               </div>
               <div className="p-5">
@@ -642,12 +642,12 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
               <div className="p-5 border-b border-gray-200 bg-gray-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-rose-500 rounded-lg">
+                  <div className="p-1.5 bg-rose-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
-                  <h2 className="text-lg font-bold text-gray-900">Lab Result Information</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">Lab Result Information</h2>
                 </div>
               </div>
               <div className="p-5">
@@ -680,12 +680,12 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
               <div className="p-5 border-b border-gray-200 bg-gray-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-violet-500 rounded-lg">
+                  <div className="p-1.5 bg-violet-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                     </svg>
                   </div>
-                  <h2 className="text-lg font-bold text-gray-900">Tags</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">Tags</h2>
                 </div>
               </div>
               <div className="p-5">
@@ -708,12 +708,12 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
               <div className="p-5 border-b border-gray-200 bg-gray-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gray-500 rounded-lg">
+                  <div className="p-1.5 bg-gray-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                   </div>
-                  <h2 className="text-lg font-bold text-gray-900">Notes</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">Notes</h2>
                 </div>
               </div>
               <div className="p-5">

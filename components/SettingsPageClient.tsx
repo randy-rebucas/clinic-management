@@ -307,29 +307,29 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-slate-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-slate-500 to-slate-600 rounded-lg shadow-md">
+                <div className="p-1.5 bg-slate-600 rounded-lg">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Settings</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage clinic settings and preferences</p>
+                  <h1 className="text-base font-semibold text-gray-900">Settings</h1>
+                  <p className="text-xs text-gray-500">Manage clinic settings and preferences</p>
                 </div>
               </div>
               {isAdmin && (
                 <button 
                   onClick={handleSave} 
                   disabled={saving} 
-                  className="px-5 py-2.5 bg-gradient-to-r from-slate-500 to-slate-600 text-white rounded-lg hover:from-slate-600 hover:to-slate-700 disabled:from-slate-400 disabled:to-slate-500 disabled:cursor-not-allowed transition-all text-sm font-semibold flex items-center gap-2 shadow-md"
+                  className="px-5 py-2.5 bg-slate-600 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-semibold flex items-center gap-2"
                 >
                   {saving ? (
                     <>
@@ -388,7 +388,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
           </div>
         )}
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-white rounded-lg border border-gray-200">
           <div className="border-b border-gray-200 overflow-x-auto">
             <nav className="flex -mb-px min-w-max">
               {['clinic', 'hours', 'appointments', 'communication', 'billing', 'queue', 'general', 'display', 'integrations'].map((tab) => (
@@ -417,14 +417,14 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
 
           <div className="p-6">
             {activeTab === 'clinic' && (
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 bg-blue-500 rounded-lg">
+                  <div className="p-1.5 bg-blue-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                     </svg>
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900">Clinic Information</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Clinic Information</h3>
                 </div>
                 <div className="flex flex-col gap-4">
                   <LabeledTextField
@@ -482,14 +482,14 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'hours' && (
-              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 bg-emerald-500 rounded-lg">
+                  <div className="p-1.5 bg-emerald-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900">Business Hours</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Business Hours</h3>
                 </div>
                 <div className="flex flex-col gap-4">
                   {DAYS.map((day) => {
@@ -605,14 +605,14 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'communication' && (
-              <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 border border-cyan-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 bg-cyan-500 rounded-lg">
+                  <div className="p-1.5 bg-cyan-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                     </svg>
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900">Communication Settings</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Communication Settings</h3>
                 </div>
                 <div className="flex flex-col gap-4">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -728,14 +728,14 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'queue' && (
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 bg-purple-500 rounded-lg">
+                  <div className="p-1.5 bg-purple-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900">Queue Settings</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Queue Settings</h3>
                 </div>
                 <div className="flex flex-col gap-4">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -847,14 +847,14 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'display' && (
-              <div className="bg-gradient-to-br from-violet-50 to-violet-100/50 border border-violet-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 bg-violet-500 rounded-lg">
+                  <div className="p-1.5 bg-violet-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
                     </svg>
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900">Display Settings</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Display Settings</h3>
                 </div>
                 <div className="flex flex-col gap-4">
                   <div>
@@ -897,17 +897,17 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             {activeTab === 'integrations' && (
               <div className="flex flex-col gap-4">
                 {/* Twilio Integration */}
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="flex flex-col gap-4">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-500 rounded-lg">
+                        <div className="p-1.5 bg-blue-600 rounded-lg">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                           </svg>
                         </div>
                         <div>
-                          <h3 className="text-xl font-bold text-gray-900 mb-1">Twilio (SMS)</h3>
+                          <h3 className="text-sm font-semibold text-gray-900 mb-1">Twilio (SMS)</h3>
                           <p className="text-sm text-gray-600">Configure SMS notifications via Twilio</p>
                         </div>
                       </div>
@@ -963,17 +963,17 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
 
                 {/* SMTP Integration */}
-                <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 rounded-xl p-5">
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="flex flex-col gap-4">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-500 rounded-lg">
+                        <div className="p-1.5 bg-indigo-600 rounded-lg">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                           </svg>
                         </div>
                         <div>
-                          <h3 className="text-xl font-bold text-gray-900 mb-1">SMTP (Email)</h3>
+                          <h3 className="text-sm font-semibold text-gray-900 mb-1">SMTP (Email)</h3>
                           <p className="text-sm text-gray-600">Configure email notifications via SMTP</p>
                         </div>
                       </div>
@@ -1035,17 +1035,17 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
 
                 {/* Cloudinary Integration */}
-                <div className="bg-gradient-to-br from-teal-50 to-teal-100/50 border border-teal-200 rounded-xl p-5">
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="flex flex-col gap-4">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-teal-500 rounded-lg">
+                        <div className="p-1.5 bg-teal-600 rounded-lg">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                           </svg>
                         </div>
                         <div>
-                          <h3 className="text-xl font-bold text-gray-900 mb-1">Cloudinary (File Storage)</h3>
+                          <h3 className="text-sm font-semibold text-gray-900 mb-1">Cloudinary (File Storage)</h3>
                           <p className="text-sm text-gray-600">Configure document and image storage via Cloudinary</p>
                         </div>
                       </div>

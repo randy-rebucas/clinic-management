@@ -82,13 +82,11 @@ export default function DoctorDashboard() {
 
   if (loading || !dashboardData) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-4 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading dashboard...</p>
+          <div className="flex flex-col items-center gap-3 min-h-[50vh] justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-100 border-t-blue-600"></div>
+            <p className="text-sm text-gray-500">Loading dashboard...</p>
           </div>
         </div>
       </section>
@@ -225,50 +223,50 @@ export default function DoctorDashboard() {
   };
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+    <section className="py-4 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-md">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-white rounded-lg border border-gray-200 px-4 py-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-emerald-600 rounded-lg">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Doctor Dashboard</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Your clinical overview and patient management</p>
+                  <h1 className="text-base font-semibold text-gray-900">Doctor Dashboard</h1>
+                  <p className="text-xs text-gray-500">Your clinical overview and patient management</p>
                 </div>
               </div>
-              <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
+              <div className="flex gap-1 bg-gray-100 p-0.5 rounded-md">
                 <button
                   onClick={() => setPeriod('today')}
-                  className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-                    period === 'today' 
-                      ? 'bg-white text-blue-600 shadow-sm' 
-                      : 'text-gray-600 hover:text-gray-900'
+                  className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+                    period === 'today'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
                   Today
                 </button>
                 <button
                   onClick={() => setPeriod('week')}
-                  className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-                    period === 'week' 
-                      ? 'bg-white text-blue-600 shadow-sm' 
-                      : 'text-gray-600 hover:text-gray-900'
+                  className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+                    period === 'week'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
                   Week
                 </button>
                 <button
                   onClick={() => setPeriod('month')}
-                  className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-                    period === 'month' 
-                      ? 'bg-white text-blue-600 shadow-sm' 
-                      : 'text-gray-600 hover:text-gray-900'
+                  className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+                    period === 'month'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
                   Month
@@ -278,36 +276,26 @@ export default function DoctorDashboard() {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {statCards.map((card: any) => {
-              const gradientClasses: Record<string, string> = {
-                blue: 'from-blue-50 to-blue-100',
-                amber: 'from-amber-50 to-amber-100',
-                green: 'from-emerald-50 to-emerald-100',
-                purple: 'from-purple-50 to-purple-100',
-                teal: 'from-teal-50 to-teal-100',
-                orange: 'from-orange-50 to-orange-100',
-              };
-              const borderClasses: Record<string, string> = {
-                blue: 'border-blue-200',
-                amber: 'border-amber-200',
-                green: 'border-emerald-200',
-                purple: 'border-purple-200',
-                teal: 'border-teal-200',
-                orange: 'border-orange-200',
+              const accentClasses: Record<string, string> = {
+                blue: 'border-l-blue-500',
+                amber: 'border-l-amber-500',
+                green: 'border-l-emerald-500',
+                purple: 'border-l-purple-500',
+                teal: 'border-l-teal-500',
+                orange: 'border-l-orange-500',
               };
               return (
                 <Link key={card.title} href={card.href} className="group">
-                  <div className={`bg-gradient-to-br ${gradientClasses[card.iconColor] || 'from-gray-50 to-gray-100'} rounded-xl border ${borderClasses[card.iconColor] || 'border-gray-200'} p-6 relative overflow-hidden hover:shadow-lg transition-all`}>
-                    <div className="flex justify-between items-start gap-4">
+                  <div className={`bg-white rounded-lg border border-gray-200 border-l-4 ${accentClasses[card.iconColor] || 'border-l-gray-400'} p-3.5 hover:shadow-md transition-all`}>
+                    <div className="flex justify-between items-center gap-3">
                       <div className="flex-grow min-w-0">
-                        <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">{card.title}</p>
-                        <p className="text-3xl sm:text-4xl font-bold text-gray-900">{card.value}</p>
+                        <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">{card.title}</p>
+                        <p className="text-2xl font-bold text-gray-900 mt-0.5">{card.value}</p>
                       </div>
-                      <div className={`rounded-xl p-3 bg-white/80 backdrop-blur-sm shadow-md group-hover:scale-110 transition-transform`}>
-                        <div className={`rounded-lg p-2 flex items-center justify-center ${getIconBgColor(card.iconColor)} text-white`}>
-                          {card.icon}
-                        </div>
+                      <div className={`rounded-lg p-2 flex-shrink-0 ${getIconBgColor(card.iconColor)} text-white group-hover:scale-110 transition-transform`}>
+                        {card.icon}
                       </div>
                     </div>
                   </div>
@@ -317,40 +305,38 @@ export default function DoctorDashboard() {
           </div>
 
           {/* My Appointments and Recent Visits */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* My Appointments */}
             {dashboardData.myAppointments && dashboardData.myAppointments.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-4 sm:p-6 border-b border-gray-200 bg-gray-50/50">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-amber-100 rounded-lg">
-                        <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <h2 className="text-lg font-bold text-gray-900">My Today&apos;s Appointments</h2>
-                    </div>
-                    <Link href="/appointments" className="text-sm font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
-                      View all
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-gray-200 flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 bg-amber-100 rounded">
+                      <svg className="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                    </Link>
+                    </div>
+                    <h2 className="text-sm font-semibold text-gray-800">My Today&apos;s Appointments</h2>
                   </div>
+                  <Link href="/appointments" className="text-xs font-medium text-blue-600 hover:text-blue-700 inline-flex items-center gap-0.5">
+                    View all
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </Link>
                 </div>
-                <div className="p-4 sm:p-6">
-                  <div className="flex flex-col gap-3">
+                <div className="p-3">
+                  <div className="flex flex-col gap-1.5">
                     {dashboardData.myAppointments.map((apt) => (
                       <Link key={apt._id} href={`/appointments/${apt._id}`}>
-                        <div className="bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-amber-300 transition-all">
+                        <div className="border border-gray-100 rounded-md px-3 py-2 hover:bg-amber-50 hover:border-amber-200 transition-all">
                           <div className="flex justify-between items-center">
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-gray-900 truncate">{apt.patient}</p>
+                              <p className="text-sm font-medium text-gray-900 truncate">{apt.patient}</p>
                             </div>
                             <div className="text-right ml-3 flex-shrink-0">
-                              <p className="text-xs font-semibold text-gray-900">{formatTime(apt.time)}</p>
-                              <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold mt-1 ${getBadgeColor(apt.status)}`}>
+                              <p className="text-xs font-medium text-gray-700">{formatTime(apt.time)}</p>
+                              <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-medium mt-0.5 ${getBadgeColor(apt.status)}`}>
                                 {apt.status}
                               </span>
                             </div>
@@ -365,37 +351,35 @@ export default function DoctorDashboard() {
 
             {/* My Recent Visits */}
             {dashboardData.myVisits && dashboardData.myVisits.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-4 sm:p-6 border-b border-gray-200 bg-gray-50/50">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-emerald-100 rounded-lg">
-                        <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <h2 className="text-lg font-bold text-gray-900">My Recent Visits</h2>
-                    </div>
-                    <Link href="/visits" className="text-sm font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
-                      View all
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-gray-200 flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 bg-emerald-100 rounded">
+                      <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                    </Link>
+                    </div>
+                    <h2 className="text-sm font-semibold text-gray-800">My Recent Visits</h2>
                   </div>
+                  <Link href="/visits" className="text-xs font-medium text-blue-600 hover:text-blue-700 inline-flex items-center gap-0.5">
+                    View all
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </Link>
                 </div>
-                <div className="p-4 sm:p-6">
-                  <div className="flex flex-col gap-3">
+                <div className="p-3">
+                  <div className="flex flex-col gap-1.5">
                     {dashboardData.myVisits.map((visit) => (
                       <Link key={visit._id} href={`/visits/${visit._id}`}>
-                        <div className="bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-emerald-300 transition-all">
+                        <div className="border border-gray-100 rounded-md px-3 py-2 hover:bg-emerald-50 hover:border-emerald-200 transition-all">
                           <div className="flex justify-between items-center">
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-gray-900 truncate">{visit.patient}</p>
-                              <p className="text-xs text-gray-600 mt-0.5">{visit.diagnosis}</p>
+                              <p className="text-sm font-medium text-gray-900 truncate">{visit.patient}</p>
+                              <p className="text-xs text-gray-500">{visit.diagnosis}</p>
                             </div>
                             <div className="text-right ml-3 flex-shrink-0">
-                              <p className="text-xs font-semibold text-gray-900">{formatDate(visit.date)}</p>
+                              <p className="text-xs font-medium text-gray-700">{formatDate(visit.date)}</p>
                             </div>
                           </div>
                         </div>
@@ -408,29 +392,27 @@ export default function DoctorDashboard() {
           </div>
 
           {/* Quick Actions */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-4 sm:p-6 border-b border-gray-200 bg-gray-50/50">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-teal-100 rounded-lg">
-                  <svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                </div>
-                <h2 className="text-lg font-bold text-gray-900">Quick Actions</h2>
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-gray-200 flex items-center gap-2">
+              <div className="p-1 bg-teal-100 rounded">
+                <svg className="w-3.5 h-3.5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
               </div>
+              <h2 className="text-sm font-semibold text-gray-800">Quick Actions</h2>
             </div>
-            <div className="p-4 sm:p-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {quickActions.map((action: any) => (
                   <Link key={action.title} href={action.href} className="group">
-                    <div className="bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-xl p-5 cursor-pointer transition-all hover:shadow-lg hover:border-blue-300 h-full">
-                      <div className="flex flex-col gap-3">
-                        <div className={`rounded-xl p-3 w-fit ${getIconBgLight(action.iconColor)} group-hover:scale-110 transition-transform`}>
+                    <div className="border border-gray-200 rounded-lg p-3 transition-all hover:border-blue-300 hover:bg-blue-50 h-full">
+                      <div className="flex flex-col gap-2">
+                        <div className={`rounded-md p-1.5 w-fit ${getIconBgLight(action.iconColor)} group-hover:scale-110 transition-transform`}>
                           {action.icon}
                         </div>
                         <div>
-                          <p className="text-sm font-bold text-gray-900 mb-1">{action.title}</p>
-                          <p className="text-xs text-gray-600 leading-relaxed">{action.description}</p>
+                          <p className="text-xs font-semibold text-gray-800">{action.title}</p>
+                          <p className="text-[11px] text-gray-500 leading-snug mt-0.5">{action.description}</p>
                         </div>
                       </div>
                     </div>

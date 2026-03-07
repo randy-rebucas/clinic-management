@@ -244,7 +244,7 @@ ${errorDetails.componentStack || 'No component stack available'}`;
                   this.setState({ hasError: false, error: null, errorInfo: null, errorTimestamp: null });
                   window.location.reload();
                 }}
-                className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md"
+                className="flex-1 bg-blue-600 text-white py-2.5 px-4 rounded-lg hover:bg-blue-700 transition-colors font-semibold"
               >
                 Reload Page
               </button>

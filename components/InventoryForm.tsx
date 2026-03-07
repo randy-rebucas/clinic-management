@@ -99,14 +99,14 @@ export default function InventoryForm({
     <form onSubmit={handleSubmit}>
       <div className="flex flex-col gap-6 p-4 sm:p-6">
         {/* Basic Information */}
-        <div className="bg-gradient-to-br from-teal-50 to-teal-100/50 border border-teal-200 rounded-xl p-5">
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-teal-500 rounded-lg">
+            <div className="p-1.5 bg-teal-600 rounded-lg">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
             </div>
-            <h3 className="text-lg font-bold text-gray-900">Basic Information</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Basic Information</h3>
           </div>
           <div className="flex flex-col md:flex-row gap-4 flex-wrap">
             {/* Item Name */}
@@ -156,14 +156,14 @@ export default function InventoryForm({
         </div>
 
         {/* Stock Information */}
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-blue-500 rounded-lg">
+            <div className="p-1.5 bg-blue-600 rounded-lg">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <h3 className="text-lg font-bold text-gray-900">Stock Information</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Stock Information</h3>
           </div>
           <div className="flex flex-col md:flex-row gap-4 flex-wrap">
 
@@ -246,14 +246,14 @@ export default function InventoryForm({
         </div>
 
         {/* Additional Information */}
-        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-emerald-500 rounded-lg">
+            <div className="p-1.5 bg-emerald-600 rounded-lg">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
             </div>
-            <h3 className="text-lg font-bold text-gray-900">Additional Information</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Additional Information</h3>
           </div>
           <div className="flex flex-col md:flex-row gap-4 flex-wrap">
 
@@ -296,14 +296,14 @@ export default function InventoryForm({
         </div>
 
         {/* Notes */}
-        <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-gray-500 rounded-lg">
+            <div className="p-1.5 bg-gray-600 rounded-lg">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
             </div>
-            <h3 className="text-lg font-bold text-gray-900">Notes</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Notes</h3>
           </div>
           <textarea
             rows={3}
@@ -328,7 +328,7 @@ export default function InventoryForm({
           )}
           <button
             type="submit"
-            className="px-4 py-2.5 text-sm bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all font-semibold shadow-md"
+            className="px-4 py-2.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-semibold"
           >
             {isEdit ? 'Update Item' : 'Add Item'}
           </button>

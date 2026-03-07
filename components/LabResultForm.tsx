@@ -137,9 +137,9 @@ export default function LabResultForm({
       <div className="max-h-[80vh] overflow-y-auto">
         <div className="flex flex-col gap-6 p-4 sm:p-6">
           {/* Patient Selection */}
-          <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 border border-cyan-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-cyan-500 rounded-lg">
+              <div className="p-1.5 bg-cyan-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
@@ -203,14 +203,14 @@ export default function LabResultForm({
           </div>
 
           {/* Test Information */}
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-blue-500 rounded-lg">
+              <div className="p-1.5 bg-blue-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Test Information</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Test Information</h3>
             </div>
             <div className="flex flex-col gap-4">
               {/* Test Type */}
@@ -300,14 +300,14 @@ export default function LabResultForm({
           </div>
 
           {/* Instructions */}
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-gray-500 rounded-lg">
+              <div className="p-1.5 bg-gray-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Instructions & Notes</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Instructions & Notes</h3>
             </div>
             <div className="flex flex-col gap-4">
               {/* Special Instructions */}
@@ -356,7 +356,7 @@ export default function LabResultForm({
             )}
             <button
               type="submit"
-              className="px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white rounded-lg font-semibold transition-all shadow-md text-sm"
+              className="px-4 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-semibold transition-colors text-sm"
             >
               Create Lab Order
             </button>

@@ -348,9 +348,9 @@ export default function PrescriptionForm({
       <div className="max-h-[80vh] overflow-y-auto">
         <div className="flex flex-col gap-6 p-4">
           {/* Patient Selection */}
-          <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-indigo-500 rounded-lg">
+              <div className="p-1.5 bg-indigo-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
@@ -466,15 +466,15 @@ export default function PrescriptionForm({
           )}
 
           {/* Medications */}
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-500 rounded-lg">
+                <div className="p-1.5 bg-emerald-600 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                   </svg>
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">Medications</h2>
+                <h2 className="text-sm font-semibold text-gray-900">Medications</h2>
               </div>
               <div className="flex items-center gap-3">
                 {checkingInteractions && (
@@ -491,7 +491,7 @@ export default function PrescriptionForm({
                 <button
                   type="button"
                   onClick={addMedication}
-                  className="px-3 py-1.5 text-xs bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-sm"
+                  className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-semibold shadow-sm"
                 >
                   + Add Medication
                 </button>
@@ -505,9 +505,9 @@ export default function PrescriptionForm({
             ) : (
               <div className="flex flex-col gap-4">
                 {formData.medications.map((medication, index) => (
-                  <div key={index} className="bg-gradient-to-r from-white to-emerald-50/50 border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all">
+                  <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
                     <div className="flex justify-between items-start mb-4">
-                      <h3 className="text-lg font-bold text-gray-900">Medication {index + 1}</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">Medication {index + 1}</h3>
                       <button
                         type="button"
                         onClick={() => removeMedication(index)}
@@ -692,9 +692,9 @@ export default function PrescriptionForm({
           </div>
 
           {/* Additional Notes */}
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-gray-500 rounded-lg">
+              <div className="p-1.5 bg-gray-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
@@ -710,9 +710,9 @@ export default function PrescriptionForm({
           </div>
 
           {/* Digital Signature */}
-          <div className="bg-gradient-to-br from-green-50 to-green-100/50 border border-green-200 rounded-xl p-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-green-500 rounded-lg">
+              <div className="p-1.5 bg-green-600 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
@@ -742,7 +742,7 @@ export default function PrescriptionForm({
               <button
                 type="button"
                 onClick={() => setShowSignaturePad(true)}
-                className="w-full px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold shadow-md"
+                className="w-full px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold"
               >
                 + Add Digital Signature
               </button>
@@ -763,7 +763,7 @@ export default function PrescriptionForm({
             )}
             <button 
               type="submit"
-              className="px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all text-sm font-semibold shadow-md"
+              className="px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold"
             >
               Create Prescription
             </button>

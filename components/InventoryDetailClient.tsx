@@ -141,13 +141,13 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-teal-100 border-t-teal-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-600"></div>
             </div>
-            <p className="text-gray-600 font-medium">Loading inventory item...</p>
+            <p className="text-sm text-gray-500">Loading inventory item...</p>
           </div>
         </div>
       </section>
@@ -156,11 +156,11 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
 
   if (error) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="bg-red-50 border border-red-200 rounded-xl p-6 shadow-sm">
             <div className="flex items-start gap-3">
-              <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
+              <div className="p-1.5 bg-red-600 rounded-lg flex-shrink-0">
                 <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
@@ -184,7 +184,7 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
 
   if (!item) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
+      <section className="py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
@@ -192,10 +192,10 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">Inventory item not found</h2>
+            <h2 className="text-base font-semibold text-gray-900">Inventory item not found</h2>
             <Link 
               href="/inventory"
-              className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold shadow-md"
+              className="px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-semibold"
             >
               Back to Inventory
             </Link>
@@ -209,28 +209,28 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
   const needsReorder = item.quantity <= item.reorderLevel;
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
+    <section className="py-6 sm:py-6 px-4 sm:px-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-8">
             <div className="flex items-center gap-4 mb-6">
               <Link 
                 href="/inventory"
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
               <div className="flex items-center gap-3 flex-1">
-                <div className="p-2 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg shadow-md">
+                <div className="p-1.5 bg-teal-600 rounded-lg">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                   </svg>
                 </div>
                 <div className="flex-1">
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
+                  <h1 className="text-base font-semibold text-gray-900 mb-2">
                     {item.name}
                   </h1>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -247,7 +247,7 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
               <div className="flex items-center gap-2">
                 <Link 
                   href={`/inventory/${itemId}/edit`}
-                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold flex items-center gap-2 shadow-md"
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold flex items-center gap-2 shadow-md"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -268,7 +268,7 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                   </div>
                   <p className="text-xs font-semibold text-gray-500 uppercase">Current Stock</p>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">{item.quantity} {item.unit}</p>
+                <p className="text-base font-semibold text-gray-900">{item.quantity} {item.unit}</p>
               </div>
               <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
@@ -279,7 +279,7 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                   </div>
                   <p className="text-xs font-semibold text-gray-500 uppercase">Unit Cost</p>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">{formatCurrency(item.unitCost)}</p>
+                <p className="text-base font-semibold text-gray-900">{formatCurrency(item.unitCost)}</p>
               </div>
               <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
@@ -301,7 +301,7 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                   </div>
                   <p className="text-xs font-semibold text-gray-500 uppercase">Reorder Level</p>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">{item.reorderLevel} {item.unit}</p>
+                <p className="text-base font-semibold text-gray-900">{item.reorderLevel} {item.unit}</p>
               </div>
             </div>
           </div>
@@ -310,19 +310,19 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm mb-3">
               <div className="p-5 border-b border-gray-200 bg-gray-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-teal-500 rounded-lg">
+                  <div className="p-1.5 bg-teal-600 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900">Quick Actions</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Quick Actions</h3>
                 </div>
               </div>
               <div className="p-5">
                 <div className="flex gap-3 flex-wrap">
                   <Link 
                     href={`/inventory/${itemId}/restock`}
-                    className="px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold flex items-center gap-2 flex-1 min-w-[150px] shadow-md"
+                    className="px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold flex items-center gap-2 flex-1 min-w-[150px] shadow-md"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -331,7 +331,7 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                   </Link>
                   <Link 
                     href={`/inventory/${itemId}/adjust`}
-                    className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold flex items-center gap-2 flex-1 min-w-[150px] shadow-md"
+                    className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold flex items-center gap-2 flex-1 min-w-[150px] shadow-md"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -340,7 +340,7 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                   </Link>
                   <Link 
                     href={`/inventory/${itemId}/edit`}
-                    className="px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all text-sm font-semibold flex items-center gap-2 flex-1 min-w-[150px] shadow-md"
+                    className="px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-semibold flex items-center gap-2 flex-1 min-w-[150px] shadow-md"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -419,12 +419,12 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                       {/* Basic Information */}
                       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                         <div className="flex items-center gap-3 mb-4">
-                          <div className="p-2 bg-teal-500 rounded-lg">
+                          <div className="p-1.5 bg-teal-600 rounded-lg">
                             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                           </div>
-                          <h3 className="text-lg font-bold text-gray-900">Basic Information</h3>
+                          <h3 className="text-sm font-semibold text-gray-900">Basic Information</h3>
                         </div>
                         <dl className="space-y-3">
                           <div>
@@ -455,12 +455,12 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                       {/* Stock Information */}
                       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                         <div className="flex items-center gap-3 mb-4">
-                          <div className="p-2 bg-blue-500 rounded-lg">
+                          <div className="p-1.5 bg-blue-600 rounded-lg">
                             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                             </svg>
                           </div>
-                          <h3 className="text-lg font-bold text-gray-900">Stock Information</h3>
+                          <h3 className="text-sm font-semibold text-gray-900">Stock Information</h3>
                         </div>
                         <dl className="space-y-3">
                           <div>
@@ -488,12 +488,12 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                     {/* Financial Information */}
                     <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                       <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-emerald-500 rounded-lg">
+                        <div className="p-1.5 bg-emerald-600 rounded-lg">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900">Financial Information</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">Financial Information</h3>
                       </div>
                       <dl className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
@@ -516,12 +516,12 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                     {/* Dates & References */}
                     <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                       <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-purple-500 rounded-lg">
+                        <div className="p-1.5 bg-purple-600 rounded-lg">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900">Dates & References</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">Dates & References</h3>
                       </div>
                       <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {item.expiryDate && (
@@ -582,12 +582,12 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                     {item.medicineId && (
                       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                         <div className="flex items-center gap-3 mb-4">
-                          <div className="p-2 bg-indigo-500 rounded-lg">
+                          <div className="p-1.5 bg-indigo-600 rounded-lg">
                             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                             </svg>
                           </div>
-                          <h3 className="text-lg font-bold text-gray-900">Related Medicine</h3>
+                          <h3 className="text-sm font-semibold text-gray-900">Related Medicine</h3>
                         </div>
                         <dl className="space-y-3">
                           <div>
@@ -608,12 +608,12 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                     {item.notes && (
                       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                         <div className="flex items-center gap-3 mb-4">
-                          <div className="p-2 bg-gray-500 rounded-lg">
+                          <div className="p-1.5 bg-gray-600 rounded-lg">
                             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </div>
-                          <h3 className="text-lg font-bold text-gray-900">Notes</h3>
+                          <h3 className="text-sm font-semibold text-gray-900">Notes</h3>
                         </div>
                         <p className="text-sm font-medium text-gray-700 whitespace-pre-wrap">{item.notes}</p>
                       </div>
@@ -631,7 +631,7 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900 mb-2">No transaction history</h3>
+                        <h3 className="text-sm font-semibold text-gray-900 mb-2">No transaction history</h3>
                         <p className="text-sm text-gray-600 font-medium">Transaction history will appear here once items are restocked or adjusted.</p>
                       </div>
                     ) : (

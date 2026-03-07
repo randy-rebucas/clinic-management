@@ -113,7 +113,7 @@ export default function MedicalRepresentativeDashboardClient() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Medical Representative Portal</h1>
+              <h1 className="text-base font-semibold text-gray-900">Medical Representative Portal</h1>
               <p className="text-sm text-gray-600">{medicalRep.company}</p>
             </div>
             <div className="flex items-center gap-4">
@@ -165,7 +165,7 @@ export default function MedicalRepresentativeDashboardClient() {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Total Visits</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalVisits}</p>
+                <p className="text-base font-semibold text-gray-900">{stats.totalVisits}</p>
               </div>
             </div>
           </div>
@@ -179,7 +179,7 @@ export default function MedicalRepresentativeDashboardClient() {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">This Month</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.thisMonth}</p>
+                <p className="text-base font-semibold text-gray-900">{stats.thisMonth}</p>
               </div>
             </div>
           </div>
@@ -193,7 +193,7 @@ export default function MedicalRepresentativeDashboardClient() {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Active Products</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.activeProducts}</p>
+                <p className="text-base font-semibold text-gray-900">{stats.activeProducts}</p>
               </div>
             </div>
           </div>
@@ -207,7 +207,7 @@ export default function MedicalRepresentativeDashboardClient() {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Territory</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.territorySize}</p>
+                <p className="text-base font-semibold text-gray-900">{stats.territorySize}</p>
               </div>
             </div>
           </div>
@@ -218,7 +218,7 @@ export default function MedicalRepresentativeDashboardClient() {
           {/* Profile Information */}
           <div className="lg:col-span-2 bg-white rounded-lg shadow">
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900">Profile Information</h2>
+              <h2 className="text-sm font-semibold text-gray-900">Profile Information</h2>
             </div>
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -294,7 +294,7 @@ export default function MedicalRepresentativeDashboardClient() {
           {/* Quick Actions */}
           <div className="lg:col-span-1 bg-white rounded-lg shadow">
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900">Quick Actions</h2>
+              <h2 className="text-sm font-semibold text-gray-900">Quick Actions</h2>
             </div>
             <div className="p-6 space-y-3">
               <button
@@ -356,7 +356,7 @@ export default function MedicalRepresentativeDashboardClient() {
         {/* Recent Activity */}
         <div className="mt-6 bg-white rounded-lg shadow">
           <div className="p-6 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-900">Recent Activity</h2>
+            <h2 className="text-sm font-semibold text-gray-900">Recent Activity</h2>
           </div>
           <div className="p-6">
             <div className="text-center py-8 text-gray-500">

@@ -513,16 +513,16 @@ export default function VisitForm({
           </div>
         </div>
       )}
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-4">
         {/* Basic Information */}
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-blue-500 rounded-lg">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-1.5 bg-blue-600 rounded-lg">
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
             </div>
-            <h2 className="text-lg font-bold text-gray-900">Basic Information</h2>
+            <h2 className="text-sm font-semibold text-gray-900">Basic Information</h2>
           </div>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col md:flex-row gap-4">
@@ -989,10 +989,10 @@ export default function VisitForm({
                       </div>
                       <button
                         type="button"
-                        className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors text-sm font-semibold flex items-center gap-2 shadow-md"
+                        className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-xs font-semibold flex items-center gap-1.5"
                         onClick={addMedication}
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                         </svg>
                         Add Medication
@@ -1003,7 +1003,7 @@ export default function VisitForm({
                         {formData.treatmentPlan.medications.map((med, index) => (
                           <div
                             key={med._highlightId || index}
-                            className={`bg-gradient-to-r from-white to-emerald-50/50 border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all ${med._highlightId && newMedHighlight === med._highlightId ? 'ring-2 ring-emerald-400 ring-offset-2' : ''}`}
+                            className={`bg-white border border-gray-200 rounded-lg p-4 transition-all ${med._highlightId && newMedHighlight === med._highlightId ? 'ring-2 ring-emerald-400 ring-offset-2' : ''}`}
                           >
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                               <div className="md:col-span-3">
@@ -1252,17 +1252,17 @@ export default function VisitForm({
         </div>
 
         {/* Diagnoses Section */}
-        <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-200 rounded-xl p-5">
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
           <div className="flex justify-between items-center mb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-red-600 rounded-lg">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
               <div>
                 <div className='flex flex-col gap-1 md:flex-row md:items-center md:gap-2'>
-                  <h2 className="text-lg font-bold text-gray-900">Diagnoses (ICD-10)</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">Diagnoses (ICD-10)</h2>
                   <a
                     href="https://icd.who.int/browse10/2019/en"
                     target="_blank"
@@ -1276,15 +1276,15 @@ export default function VisitForm({
                     Browse ICD-10
                   </a>
                 </div>
-                <p className="text-xs text-gray-600 mt-1">Add ICD-10 coded diagnoses for this visit. Mark the primary diagnosis.</p>
+                <p className="text-xs text-gray-500 mt-0.5">Add ICD-10 coded diagnoses for this visit. Mark the primary diagnosis.</p>
               </div>
             </div>
             <button
               type="button"
-              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-semibold flex items-center gap-2 shadow-md"
+              className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-xs font-semibold flex items-center gap-1.5"
               onClick={addDiagnosis}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
               Add Diagnosis
@@ -1372,25 +1372,25 @@ export default function VisitForm({
         </div>
 
         {/* Digital Signature */}
-        <div className="bg-gradient-to-br from-green-50 to-green-100/50 border border-green-200 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-green-500 rounded-lg">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-1.5 bg-green-600 rounded-lg">
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
               </svg>
             </div>
-            <h3 className="text-lg font-bold text-gray-900">Digital Signature</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Digital Signature</h3>
           </div>
           {formData.digitalSignature ? (
-            <div className="bg-white border border-green-300 rounded-lg p-4">
+            <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
               <div className="flex justify-between items-center">
                 <div>
-                  <p className="text-sm font-bold text-green-700">Digital Signature Added</p>
-                  <p className="text-xs text-green-600 font-medium mt-1">Signed by: {formData.digitalSignature.providerName}</p>
+                  <p className="text-sm font-semibold text-green-800">Signature Added</p>
+                  <p className="text-xs text-green-600 mt-0.5">Signed by: {formData.digitalSignature.providerName}</p>
                 </div>
                 <button
                   type="button"
-                  className="px-4 py-2 text-green-700 hover:bg-green-50 rounded-lg transition-colors text-sm font-semibold border border-green-200"
+                  className="px-3 py-1.5 text-xs text-green-700 hover:bg-green-100 rounded-lg transition-colors font-semibold border border-green-200"
                   onClick={() => {
                     setFormData({ ...formData, digitalSignature: undefined });
                     setShowSignaturePad(true);
@@ -1403,7 +1403,7 @@ export default function VisitForm({
           ) : (
             <button
               type="button"
-              className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold shadow-md flex items-center justify-center gap-2"
+              className="w-full px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold flex items-center justify-center gap-2"
               onClick={() => setShowSignaturePad(true)}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1457,18 +1457,16 @@ export default function VisitForm({
         )}
 
         {/* Clinical Images Upload */}
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-purple-500 rounded-lg">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-1.5 bg-purple-600 rounded-lg">
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
             <div>
-              <label className="block text-sm font-bold text-gray-900">Clinical Images & Attachments</label>
-              <p className="text-xs text-gray-600 mt-1">
-                Upload clinical images, X-rays, or other documents related to this visit
-              </p>
+              <label className="block text-sm font-semibold text-gray-900">Clinical Images & Attachments</label>
+              <p className="text-xs text-gray-500 mt-0.5">Upload clinical images, X-rays, or other documents related to this visit</p>
             </div>
           </div>
           <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -1489,16 +1487,16 @@ export default function VisitForm({
         </div>
 
         {/* Additional Notes */}
-        <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-gray-500 rounded-lg">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-1.5 bg-gray-500 rounded-lg">
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
             </div>
             <div>
-              <label className="block text-sm font-bold text-gray-900">Additional Notes</label>
-              <p className="text-xs text-gray-600 mt-1">Any additional information, observations, or comments about this visit</p>
+              <label className="block text-sm font-semibold text-gray-900">Additional Notes</label>
+              <p className="text-xs text-gray-500 mt-0.5">Any additional information, observations, or comments about this visit</p>
             </div>
           </div>
           <textarea
@@ -1511,7 +1509,7 @@ export default function VisitForm({
         </div>
 
         {/* Form Actions */}
-        <div className="flex flex-wrap justify-between items-center gap-3 pt-6 border-t border-gray-200 mt-6">
+        <div className="flex flex-wrap justify-between items-center gap-3 pt-4 border-t border-gray-200">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -1539,7 +1537,7 @@ export default function VisitForm({
                 Cancel
               </button>
             )}
-            <button type="submit" className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold shadow-md">
+            <button type="submit" className="px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-semibold">
               Save Visit
             </button>
           </div>
