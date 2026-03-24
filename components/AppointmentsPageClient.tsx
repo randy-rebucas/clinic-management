@@ -96,6 +96,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
     isWalkIn: false,
   });
   const [patientSearch, setPatientSearch] = useState('');
+  const [debouncedPatientSearch, setDebouncedPatientSearch] = useState('');
   const [showPatientSearch, setShowPatientSearch] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -123,6 +124,20 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
       router.push('/login');
     }
   }, [appointmentsError, router]);
+
+  // Debounce patient search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedPatientSearch(patientSearch);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [patientSearch]);
+
+  // Fetch patients from server when debounced search changes
+  useEffect(() => {
+    if (selectedPatient) return;
+    fetchPatients(debouncedPatientSearch);
+  }, [debouncedPatientSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle patientId prop - open form and pre-select patient
   useEffect(() => {
@@ -229,10 +244,24 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
     }
   };
 
+  const fetchPatients = async (search?: string) => {
+    try {
+      const params = new URLSearchParams({ limit: '500' });
+      if (search?.trim()) params.set('search', search.trim());
+      const res = await fetch(`/api/patients?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) setPatients(data.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch patients:', error);
+    }
+  };
+
   const fetchData = async () => {
     try {
       const [patientsRes, doctorsRes] = await Promise.all([
-        fetch('/api/patients'),
+        fetch('/api/patients?limit=500'),
         fetch('/api/doctors'),
       ]);
 

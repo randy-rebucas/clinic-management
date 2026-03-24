@@ -80,6 +80,7 @@ export default function QueuePageClient() {
     priority: 0,
   });
   const [patientSearch, setPatientSearch] = useState('');
+  const [debouncedPatientSearch, setDebouncedPatientSearch] = useState('');
   const [showPatientSearch, setShowPatientSearch] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -104,6 +105,20 @@ export default function QueuePageClient() {
       }
     }
   }, [formData.patientId, patients]);
+
+  // Debounce patient search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedPatientSearch(patientSearch);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [patientSearch]);
+
+  // Fetch patients from server when debounced search changes
+  useEffect(() => {
+    if (selectedPatient) return; // don't re-fetch after a patient is selected
+    fetchPatients(debouncedPatientSearch);
+  }, [debouncedPatientSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -134,9 +149,11 @@ export default function QueuePageClient() {
     }
   };
 
-  const fetchPatients = async () => {
+  const fetchPatients = async (search?: string) => {
     try {
-      const res = await fetch('/api/patients');
+      const params = new URLSearchParams({ limit: '500' });
+      if (search?.trim()) params.set('search', search.trim());
+      const res = await fetch(`/api/patients?${params}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
