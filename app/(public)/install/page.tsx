@@ -4,6 +4,8 @@ import InstallClient from '@/components/InstallClient';
 import connectDB from '@/lib/mongodb';
 import { validateEnv } from '@/lib/env-validation';
 
+export const dynamic = 'force-dynamic';
+
 interface InstallCheck {
   nodeVersion?: string;
   nodeVersionValid: boolean;
@@ -49,7 +51,16 @@ async function performInstallChecks(): Promise<InstallCheck> {
   }
 
   // Check environment variables
-  const envValidation = validateEnv();
+  let envValidation: { valid: boolean; errors: string[] };
+  try {
+    envValidation = validateEnv();
+  } catch (err: any) {
+    // validateEnv() throws in production — convert to errors array so the
+    // install wizard can display them instead of crashing the page.
+    const message: string = err?.message ?? String(err);
+    const lines = message.replace('Environment validation failed:\n', '').split('\n').filter(Boolean);
+    envValidation = { valid: false, errors: lines };
+  }
   if (process.env.MONGODB_URI && process.env.SESSION_SECRET) {
     const mongodbValid = process.env.MONGODB_URI.startsWith('mongodb://') || 
                         process.env.MONGODB_URI.startsWith('mongodb+srv://');
