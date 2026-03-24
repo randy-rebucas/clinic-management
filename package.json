@@ -27,7 +27,19 @@
     "db:reset": "tsx scripts/reset-db.ts",
     "db:reset:all": "tsx scripts/reset-db.ts --all",
     "db:reset:selective": "tsx scripts/reset-db.ts --selective",
-    "db:stats": "tsx scripts/reset-db.ts --stats"
+    "db:stats": "tsx scripts/reset-db.ts --stats",
+    "migrate": "tsx scripts/migrate/run-all.ts",
+    "migrate:validate": "tsx scripts/migrate/validate.ts",
+    "migrate:01-specializations": "tsx scripts/migrate/01-specializations.ts",
+    "migrate:02-doctors": "tsx scripts/migrate/02-doctors.ts",
+    "migrate:03-patients": "tsx scripts/migrate/03-patients.ts",
+    "migrate:04-appointments": "tsx scripts/migrate/04-appointments.ts",
+    "migrate:05-invoices": "tsx scripts/migrate/05-invoices.ts",
+    "migrate:06-medicines": "tsx scripts/migrate/06-medicines.ts",
+    "migrate:07-inventory": "tsx scripts/migrate/07-inventory.ts",
+    "migrate:08-staff": "tsx scripts/migrate/08-staff.ts",
+    "migrate:09-prescriptions": "tsx scripts/migrate/09-prescriptions.ts",
+    "migrate:10-lab-results": "tsx scripts/migrate/10-lab-results.ts"
   },
   "dependencies": {
     "@paypal/paypal-server-sdk": "^2.1.0",
@@ -70,6 +82,7 @@
     "@vitest/coverage-v8": "^1.1.3",
     "@vitest/ui": "^1.1.3",
     "baseline-browser-mapping": "^2.10.0",
+    "csv-parse": "^6.1.0",
     "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.0.3",
