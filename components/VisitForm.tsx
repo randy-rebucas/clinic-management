@@ -398,15 +398,18 @@ export default function VisitForm({
     ? 'Draft'
     : null;
 
-  const filteredPatients = patients.filter((patient) => {
-    if (!patientSearch.trim()) return true;
-    const searchLower = patientSearch.toLowerCase();
-    const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
-    const email = (patient.email || '').toLowerCase();
-    const phone = (patient.phone || '').toLowerCase();
-    const patientCode = (patient.patientCode || '').toLowerCase();
-    return fullName.includes(searchLower) || email.includes(searchLower) || phone.includes(searchLower) || patientCode.includes(searchLower);
-  });
+  const filteredPatients = patientSearch.trim()
+    ? patients
+        .filter((patient) => {
+          const searchLower = patientSearch.toLowerCase();
+          const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
+          const email = (patient.email || '').toLowerCase();
+          const phone = (patient.phone || '').toLowerCase();
+          const patientCode = (patient.patientCode || '').toLowerCase();
+          return fullName.includes(searchLower) || email.includes(searchLower) || phone.includes(searchLower) || patientCode.includes(searchLower);
+        })
+        .slice(0, 20)
+    : [];
 
   const selectPatient = (patient: { _id: string; firstName: string; lastName: string; email?: string; phone?: string; patientCode?: string }) => {
     setFormData({ ...formData, patient: patient._id });
@@ -571,7 +574,7 @@ export default function VisitForm({
                     placeholder="Type to search patients..."
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                   />
-                  {showPatientSearch && (
+                  {showPatientSearch && patientSearch.trim() && (
                     <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
                       {filteredPatients.length > 0 ? (
                         <div className="flex flex-col gap-1 p-1">
@@ -603,13 +606,9 @@ export default function VisitForm({
                             </button>
                           ))}
                         </div>
-                      ) : patientSearch.trim() ? (
-                        <div className="p-4 text-center">
-                          <p className="text-sm text-gray-600">No patients found</p>
-                        </div>
                       ) : (
                         <div className="p-4 text-center">
-                          <p className="text-sm text-gray-600">All patients ({patients.length})</p>
+                          <p className="text-sm text-gray-600">No patients found</p>
                         </div>
                       )}
                     </div>
