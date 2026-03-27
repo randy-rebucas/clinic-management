@@ -78,12 +78,22 @@ const nextConfig: NextConfig = {
               "font-src 'self'",
               "connect-src 'self' https://api.paypal.com https://www.paypal.com",
               "frame-src 'self' https://www.paypal.com",
+              "worker-src 'self'",
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",
               "upgrade-insecure-requests",
             ].join('; '),
           },
+        ],
+      },
+      // Service worker — must never be cached by the browser
+      {
+        source: '/sw.js',
+        headers: [
+          { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Service-Worker-Allowed', value: '/' },
         ],
       },
     ];

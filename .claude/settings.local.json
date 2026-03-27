@@ -5,7 +5,10 @@
       "Bash(npm run build:*)",
       "Bash(npm run lint)",
       "mcp__ide__getDiagnostics",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(npm install:*)",
+      "Bash(npx web-push:*)",
+      "Bash(node -e \":*)"
     ]
   }
 }

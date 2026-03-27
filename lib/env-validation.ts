@@ -26,6 +26,8 @@ const envConfig: EnvConfig = {
     'CLOUDINARY_API_KEY',
     'CLOUDINARY_API_SECRET',
     'SENTRY_DSN', // Sentry DSN for error tracking and monitoring
+    'NEXT_PUBLIC_VAPID_PUBLIC_KEY', // PWA push notifications
+    'VAPID_PRIVATE_KEY', // PWA push notifications
   ],
 };
 
