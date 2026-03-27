@@ -17,8 +17,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MyClinicSoft",
-  description: "Manage patients, appointments, and doctors",
+  title: "My Clinic Software",
+  description: "Manage patients, appointments, queues, and billing — all in one place.",
+  applicationName: "My Clinic Software",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "My Clinic Software",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    apple: '/apple-touch-icon.png',
+    icon: [
+      { url: '/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512x512.png', sizes: '512x512', type: 'image/png' },
+    ],
+  },
 };
 
 /**
@@ -40,6 +56,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" data-scroll-behavior="smooth">
+      <head>
+        <meta name="theme-color" content="#2563eb" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
