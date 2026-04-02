@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-import { verifySession } from '@/app/lib/dal';
+import { requirePagePermission } from '@/app/lib/auth-helpers';
 import LabResultDetailClient from '@/components/LabResultDetailClient';
 
 export default async function LabResultDetailPage({
@@ -7,13 +6,8 @@ export default async function LabResultDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await verifySession();
-  
-  if (!session) {
-    redirect('/login');
-  }
+  await requirePagePermission('lab-results', 'read');
 
   const { id } = await params;
   return <LabResultDetailClient labResultId={id} />;
 }
-

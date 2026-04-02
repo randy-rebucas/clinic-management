@@ -3,17 +3,7 @@ import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
 import Product from '@/models/Product';
 
-interface ProductData {
-  name: string;
-  category: string;
-  manufacturer: string;
-  description: string;
-  dosage?: string;
-  strength?: string;
-  packaging: string;
-  expiryDate: string;
-  status: 'active' | 'discontinued' | 'inactive';
-}
+const VALID_PRODUCT_STATUSES = ['active', 'discontinued', 'inactive'] as const;
 
 /**
  * GET /api/medical-representatives/products
@@ -39,6 +29,7 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     const products = await Product.find({
+      tenantId: session.tenantId,
       userId: session.userId,
     })
       .sort({ createdAt: -1 })
@@ -78,7 +69,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let body: ProductData;
+    let body: Record<string, unknown>;
     try {
       body = await request.json();
     } catch {
@@ -88,27 +79,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate required fields
-    if (!body.name || !body.category || !body.manufacturer || !body.description || !body.packaging || !body.expiryDate) {
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const category = typeof body.category === 'string' ? body.category.trim() : '';
+    const manufacturer = typeof body.manufacturer === 'string' ? body.manufacturer.trim() : '';
+    const description = typeof body.description === 'string' ? body.description.trim() : '';
+    const packaging = typeof body.packaging === 'string' ? body.packaging.trim() : '';
+    const expiryDate = typeof body.expiryDate === 'string' ? body.expiryDate.trim() : '';
+    const dosage = typeof body.dosage === 'string' ? body.dosage.trim() : undefined;
+    const strength = typeof body.strength === 'string' ? body.strength.trim() : undefined;
+    const status = typeof body.status === 'string' ? body.status.trim() : 'active';
+
+    if (!name || !category || !manufacturer || !description || !packaging || !expiryDate) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
+    if (name.length > 200 || category.length > 100 || manufacturer.length > 200 ||
+        description.length > 2000 || packaging.length > 200) {
+      return NextResponse.json({ success: false, error: 'One or more fields exceed maximum length.' }, { status: 400 });
+    }
+
+    if (!VALID_PRODUCT_STATUSES.includes(status as typeof VALID_PRODUCT_STATUSES[number])) {
+      return NextResponse.json({ success: false, error: 'Invalid status value.' }, { status: 400 });
+    }
+
+    const parsedExpiry = new Date(expiryDate);
+    if (isNaN(parsedExpiry.getTime())) {
+      return NextResponse.json({ success: false, error: 'Invalid expiry date.' }, { status: 400 });
+    }
+
     await connectDB();
 
     const product = await Product.create({
+      tenantId: session.tenantId,
       userId: session.userId,
-      name: body.name,
-      category: body.category,
-      manufacturer: body.manufacturer,
-      description: body.description,
-      dosage: body.dosage || undefined,
-      strength: body.strength || undefined,
-      packaging: body.packaging,
-      expiryDate: new Date(body.expiryDate),
-      status: body.status || 'active',
+      name,
+      category,
+      manufacturer,
+      description,
+      dosage: dosage || undefined,
+      strength: strength || undefined,
+      packaging,
+      expiryDate: parsedExpiry,
+      status,
       specifications: [],
     });
 

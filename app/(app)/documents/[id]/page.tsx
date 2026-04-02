@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-import { verifySession } from '@/app/lib/dal';
+import { requirePagePermission } from '@/app/lib/auth-helpers';
 import DocumentDetailClient from '@/components/DocumentDetailClient';
 
 export default async function DocumentDetailPage({
@@ -7,13 +6,8 @@ export default async function DocumentDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await verifySession();
-  
-  if (!session) {
-    redirect('/login');
-  }
+  await requirePagePermission('patients', 'read');
 
   const { id } = await params;
   return <DocumentDetailClient documentId={id} />;
 }
-

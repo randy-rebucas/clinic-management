@@ -1,6 +1,7 @@
 /**
  * Tenant context utilities for multi-tenant support
  */
+import 'server-only';
 
 import { headers } from 'next/headers';
 import connectDB from '@/lib/mongodb';

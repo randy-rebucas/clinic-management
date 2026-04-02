@@ -103,7 +103,7 @@ export async function DELETE(
   } catch (error: any) {
     logger.error('Error cancelling appointment', error as Error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to cancel appointment' },
+      { success: false, error: 'Failed to cancel appointment' },
       { status: 500 }
     );
   }

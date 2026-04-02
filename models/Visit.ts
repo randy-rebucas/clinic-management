@@ -14,12 +14,21 @@ export interface IVital {
 
 export interface IPhysicalExam {
   general?: string;
+  headEent?: string;
   heent?: string;
   chest?: string;
+  lungs?: string;
   cardiovascular?: string;
   abdomen?: string;
+  extremities?: string;
   neuro?: string;
+  neurological?: string;
   skin?: string;
+  lymphNotes?: string;
+  breast?: string;
+  rectum?: string;
+  genitalia?: string;
+  musculoskeletal?: string;
   other?: string;
 }
 
@@ -81,6 +90,7 @@ export interface IVisit extends Document {
   visitType: 'consultation' | 'follow-up' | 'checkup' | 'emergency' | 'teleconsult';
   chiefComplaint?: string;
   historyOfPresentIllness?: string;
+  admittingImpression?: string;
   vitals?: IVital;
   physicalExam?: IPhysicalExam;
   diagnoses: Array<{
@@ -130,12 +140,21 @@ const VitalSchema: Schema = new Schema(
 const PhysicalExamSchema: Schema = new Schema(
   {
     general: String,
+    headEent: String,
     heent: String,
     chest: String,
+    lungs: String,
     cardiovascular: String,
     abdomen: String,
+    extremities: String,
     neuro: String,
+    neurological: String,
     skin: String,
+    lymphNotes: String,
+    breast: String,
+    rectum: String,
+    genitalia: String,
+    musculoskeletal: String,
     other: String,
   },
   { _id: false }
@@ -157,6 +176,7 @@ const VisitSchema: Schema = new Schema(
     visitType: { type: String, enum: ['consultation', 'follow-up', 'checkup', 'emergency', 'teleconsult'], default: 'consultation' },
     chiefComplaint: { type: String },
     historyOfPresentIllness: { type: String },
+    admittingImpression: { type: String },
     vitals: VitalSchema,
     physicalExam: PhysicalExamSchema,
     diagnoses: [

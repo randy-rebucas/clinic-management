@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { SignupFormSchema, LoginFormSchema, SignupFormState, LoginFormState } from '@/app/lib/definitions';
-import { createSession, deleteSession } from '@/app/lib/dal';
+import { createSession, deleteSession, verifySession } from '@/app/lib/dal';
 import { sanitizeEmail, checkRateLimit, resetRateLimit } from '@/app/lib/security';
 import { getTenantContext } from '@/lib/tenant';
 import connectDB from '@/lib/mongodb';
@@ -15,12 +15,26 @@ export async function signup(
   state: SignupFormState,
   formData: FormData
 ): Promise<SignupFormState> {
+  // Require an authenticated admin or owner session
+  const callerSession = await verifySession();
+  if (!callerSession || !['admin', 'owner'].includes(callerSession.role)) {
+    return { message: 'Unauthorized. Only admins can create staff accounts.' };
+  }
+
+  // Rate limit by caller userId to prevent spam
+  const rateLimitCheck = checkRateLimit(`signup:${callerSession.userId}`);
+  if (!rateLimitCheck.allowed) {
+    return {
+      message: `Too many signup attempts. Please try again in ${rateLimitCheck.remainingTime} minute(s).`,
+    };
+  }
+
   // Validate form fields
   const validatedFields = SignupFormSchema.safeParse({
     name: formData.get('name'),
     email: formData.get('email'),
     password: formData.get('password'),
-    role: formData.get('role') || 'user',
+    role: formData.get('role') || 'receptionist',
   });
 
   // If any form fields are invalid, return early
@@ -59,12 +73,12 @@ export async function signup(
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     // Get or create default role if role is provided as string
     let roleDoc;
     
-    if (role && typeof role === 'string' && role !== 'user') {
+    if (role) {
       roleDoc = await Role.findOne({ name: role });
       if (!roleDoc) {
         // Create default role if it doesn't exist
@@ -106,7 +120,7 @@ export async function signup(
     await createSession(
       user._id.toString(), 
       user.email, 
-      roleDoc.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative',
+      roleDoc.name as 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative',
       roleDoc._id.toString(),
       tenantId || undefined
     );
@@ -241,12 +255,12 @@ export async function login(
     };
 
     // Get role name from populated role or fallback
-    let roleName: 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative' = 'receptionist';
+    let roleName: 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative' = 'receptionist';
     let roleId: string | undefined;
     
     if (user.role) {
       if (typeof user.role === 'object' && 'name' in user.role) {
-        roleName = (user.role as any).name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
+        roleName = (user.role as any).name as 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
         roleId = (user.role as any)._id?.toString();
       } else {
         // Role is ObjectId, fetch it (consider tenant context if applicable)
@@ -267,7 +281,7 @@ export async function login(
         }
         
         if (roleDoc) {
-          roleName = roleDoc.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
+          roleName = roleDoc.name as 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
           roleId = roleDoc._id.toString();
         } else {
           console.error('Login error: Role not found by ID', { 
@@ -281,7 +295,7 @@ export async function login(
           if (profileRole) {
             const fallbackRole = await findRoleByName(profileRole);
             if (fallbackRole) {
-              roleName = fallbackRole.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
+              roleName = fallbackRole.name as 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
               roleId = fallbackRole._id.toString();
             }
           }
@@ -305,7 +319,7 @@ export async function login(
       if (profileRole) {
         const fallbackRole = await findRoleByName(profileRole);
         if (fallbackRole) {
-          roleName = fallbackRole.name as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
+          roleName = fallbackRole.name as 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
           roleId = fallbackRole._id.toString();
         }
       }
@@ -346,28 +360,12 @@ export async function login(
     revalidatePath('/dashboard');
     redirect('/dashboard');
   } catch (error: any) {
-    console.error('Login error:', error);
-    console.error('Error details:', {
+    // Log full details server-side only — never expose error internals to the client
+    console.error('Login error:', {
       message: error?.message,
       stack: error?.stack,
       name: error?.name,
     });
-    
-    // Return more specific error if it's a known issue
-    if (error?.message?.includes('password')) {
-      return {
-        errors: {
-          email: ['An error occurred during password verification. Please try again.'],
-        },
-      };
-    }
-    
-    if (error?.message?.includes('role') || error?.message?.includes('Role')) {
-      return {
-        message: 'An error occurred while verifying your role. Please contact your administrator.',
-      };
-    }
-    
     return {
       message: 'An error occurred during login. Please try again.',
     };

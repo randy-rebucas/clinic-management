@@ -1,3 +1,5 @@
+import { redirect } from 'next/navigation';
+import { verifySession } from '@/app/lib/dal';
 import MedicalRepresentativeProductsClient from '@/components/MedicalRepresentativeProductsClient';
 
 export const metadata = {
@@ -5,6 +7,10 @@ export const metadata = {
   description: 'Manage your pharmaceutical products portfolio',
 };
 
-export default function MedicalRepresentativeProductsPage() {
+export default async function MedicalRepresentativeProductsPage() {
+  const session = await verifySession();
+  if (!session || session.role !== 'medical-representative') {
+    redirect('/medical-representatives/login');
+  }
   return <MedicalRepresentativeProductsClient />;
 }

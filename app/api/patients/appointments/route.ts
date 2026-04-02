@@ -127,7 +127,10 @@ export async function POST(request: NextRequest) {
     await connectDB();
     
     const body = await request.json();
-    const { doctorId, appointmentDate, appointmentTime, reason } = body;
+    const doctorId = typeof body.doctorId === 'string' ? body.doctorId.trim() : '';
+    const appointmentDate = typeof body.appointmentDate === 'string' ? body.appointmentDate.trim() : '';
+    const appointmentTime = typeof body.appointmentTime === 'string' ? body.appointmentTime.trim() : '';
+    const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 500) : '';
 
     // Validate required fields
     if (!doctorId || !appointmentDate || !appointmentTime) {
@@ -135,6 +138,15 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Doctor, date, and time are required' },
         { status: 400 }
       );
+    }
+
+    const appointmentDateObj = new Date(appointmentDate);
+    if (isNaN(appointmentDateObj.getTime())) {
+      return NextResponse.json({ success: false, error: 'Invalid appointment date.' }, { status: 400 });
+    }
+
+    if (!/^\d{2}:\d{2}$/.test(appointmentTime)) {
+      return NextResponse.json({ success: false, error: 'Appointment time must be in HH:mm format.' }, { status: 400 });
     }
 
     // Get patient info
@@ -152,7 +164,6 @@ export async function POST(request: NextRequest) {
     const patientTenantId = patient.tenantId;
 
     // Check for conflicts (tenant-scoped)
-    const appointmentDateObj = new Date(appointmentDate);
     const startOfDay = new Date(appointmentDateObj);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(appointmentDateObj);
@@ -308,7 +319,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     logger.error('Error creating patient appointment', error as Error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to create appointment' },
+      { success: false, error: 'Failed to create appointment' },
       { status: 500 }
     );
   }

@@ -14,6 +14,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Only admin/owner may view billing status
+    if (!['admin', 'owner'].includes(session.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Get tenant ID
     const tenantId = await getTenantId();
     if (!tenantId) {

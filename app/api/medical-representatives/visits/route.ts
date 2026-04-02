@@ -3,17 +3,7 @@ import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 
-// Define Visit interface for requests
-interface VisitData {
-  clinicName: string;
-  clinicLocation: string;
-  purpose: string;
-  date: string;
-  time: string;
-  duration: number;
-  status: 'scheduled' | 'completed' | 'cancelled';
-  notes?: string;
-}
+const VALID_VISIT_STATUSES = ['scheduled', 'completed', 'cancelled'] as const;
 
 /**
  * GET /api/medical-representatives/visits
@@ -39,6 +29,7 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     const visits = await MedicalRepresentativeVisit.find({
+      tenantId: session.tenantId,
       userId: session.userId,
     })
       .sort({ date: -1, createdAt: -1 })
@@ -78,7 +69,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let body: VisitData;
+    let body: Record<string, unknown>;
     try {
       body = await request.json();
     } catch {
@@ -88,26 +79,53 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate required fields
-    if (!body.clinicName || !body.clinicLocation || !body.purpose || !body.date || !body.time) {
+    const clinicName = typeof body.clinicName === 'string' ? body.clinicName.trim() : '';
+    const clinicLocation = typeof body.clinicLocation === 'string' ? body.clinicLocation.trim() : '';
+    const purpose = typeof body.purpose === 'string' ? body.purpose.trim() : '';
+    const date = typeof body.date === 'string' ? body.date.trim() : '';
+    const time = typeof body.time === 'string' ? body.time.trim() : '';
+    const notes = typeof body.notes === 'string' ? body.notes.trim() : '';
+    const status = typeof body.status === 'string' ? body.status.trim() : 'scheduled';
+    const durationRaw = typeof body.duration === 'number' ? body.duration : Number(body.duration);
+    const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? Math.floor(durationRaw) : 60;
+
+    if (!clinicName || !clinicLocation || !purpose || !date || !time) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
+    if (clinicName.length > 200 || clinicLocation.length > 300 || purpose.length > 500 || notes.length > 2000) {
+      return NextResponse.json({ success: false, error: 'One or more fields exceed maximum length.' }, { status: 400 });
+    }
+
+    if (!VALID_VISIT_STATUSES.includes(status as typeof VALID_VISIT_STATUSES[number])) {
+      return NextResponse.json({ success: false, error: 'Invalid status value.' }, { status: 400 });
+    }
+
+    const parsedDate = new Date(date);
+    if (isNaN(parsedDate.getTime())) {
+      return NextResponse.json({ success: false, error: 'Invalid date.' }, { status: 400 });
+    }
+
+    if (!/^\d{2}:\d{2}$/.test(time)) {
+      return NextResponse.json({ success: false, error: 'Time must be in HH:mm format.' }, { status: 400 });
+    }
+
     await connectDB();
 
     const visit = await MedicalRepresentativeVisit.create({
+      tenantId: session.tenantId,
       userId: session.userId,
-      clinicName: body.clinicName,
-      clinicLocation: body.clinicLocation,
-      purpose: body.purpose,
-      date: new Date(body.date),
-      time: body.time,
-      duration: body.duration || 60,
-      status: body.status || 'scheduled',
-      notes: body.notes || '',
+      clinicName,
+      clinicLocation,
+      purpose,
+      date: parsedDate,
+      time,
+      duration,
+      status,
+      notes,
     });
 
     return NextResponse.json({
