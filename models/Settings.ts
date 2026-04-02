@@ -19,6 +19,7 @@ export interface ISettings extends Document {
   clinicWebsite?: string;
   taxId?: string;
   licenseNumber?: string;
+  ptr?: string;
 
   // Business Hours
   businessHours: IBusinessHours[];
@@ -146,6 +147,7 @@ const SettingsSchema = new Schema<ISettings>(
     clinicWebsite: { type: String, default: '' },
     taxId: { type: String, default: '' },
     licenseNumber: { type: String, default: '' },
+    ptr: { type: String, default: '' },
 
     businessHours: {
       type: [BusinessHoursSchema],

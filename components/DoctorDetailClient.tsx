@@ -14,6 +14,7 @@ interface Doctor {
   specialization?: string;
   specializationId?: { _id: string; name: string };
   licenseNumber: string;
+  ptr?: string;
   title?: string;
   department?: string;
   status?: 'active' | 'inactive' | 'on-leave';
@@ -399,6 +400,12 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                           <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">License Number</p>
                           <p className="text-sm font-medium text-gray-900">{doctor.licenseNumber}</p>
                         </div>
+                        {doctor.ptr && (
+                          <div>
+                            <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">PTR</p>
+                            <p className="text-sm font-medium text-gray-900">{doctor.ptr}</p>
+                          </div>
+                        )}
                         <div>
                           <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Status</p>
                           <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold mt-1 ${

@@ -21,6 +21,7 @@ interface DoctorData {
   specialization?: string;
   specializationId?: { _id: string; name: string } | string;
   licenseNumber: string;
+  ptr?: string;
   title?: string;
   department?: string;
   status?: 'active' | 'inactive' | 'on-leave';
@@ -48,6 +49,7 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
     phone: '',
     specialization: '',
     licenseNumber: '',
+    ptr: '',
     title: '',
     department: '',
     status: 'active' as 'active' | 'inactive' | 'on-leave',
@@ -108,9 +110,9 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
       const data = await res.json();
       if (data.success && data.data) {
         const doctor: DoctorData = data.data;
-        // Get specialization name from populated specializationId object, or fallback to specialization string
-        const spec = (typeof doctor.specializationId === 'object' && doctor.specializationId?._id)
-          ? doctor.specializationId._id
+        // Use the specialization name in the form so the UI and API stay consistent.
+        const spec = (typeof doctor.specializationId === 'object' && doctor.specializationId?.name)
+          ? doctor.specializationId.name
           : doctor.specialization || '';
         
         // Wait for specializations to load before checking if custom
@@ -122,6 +124,7 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
           phone: doctor.phone || '',
           specialization: spec,
           licenseNumber: doctor.licenseNumber || '',
+          ptr: doctor.ptr || '',
           title: doctor.title || '',
           department: doctor.department || '',
           status: doctor.status || 'active',
@@ -152,6 +155,7 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
         phone: formData.phone.trim(),
         specialization: formData.specialization.trim(),
         licenseNumber: formData.licenseNumber.trim(),
+        ptr: formData.ptr.trim(),
         status: formData.status,
       };
 
@@ -379,14 +383,19 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                         value={showCustomSpecialization ? '' : formData.specialization}
                         onChange={(e) => {
                           const value = e.target.value;
+                          if (value === 'Other') {
+                            setShowCustomSpecialization(true);
+                            setFormData({ ...formData, specialization: '' });
+                          } else {
                             setShowCustomSpecialization(false);
                             setFormData({ ...formData, specialization: value });
+                          }
                         }}
                         className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white transition-all"
                       >
                         <option value="">Select Specialization</option>
                         {specializations.map((spec) => (
-                          <option key={spec._id} value={spec._id}>
+                          <option key={spec._id} value={spec.name}>
                             {spec.name}
                           </option>
                         ))}
@@ -410,6 +419,15 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                         required
                         value={formData.licenseNumber}
                         onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">PTR</label>
+                      <input
+                        type="text"
+                        value={formData.ptr}
+                        onChange={(e) => setFormData({ ...formData, ptr: e.target.value })}
                         className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
                       />
                     </div>

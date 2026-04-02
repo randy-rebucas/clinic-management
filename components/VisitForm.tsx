@@ -8,7 +8,7 @@ const SignaturePad = dynamic(() => import('./SignaturePad'), { ssr: false });
 
 interface VisitFormData {
   patient: string;
-  visitType: 'consultation' | 'follow-up' | 'checkup' | 'emergency' | 'teleconsult';
+  visitType: 'consultation' | 'follow-up' | 'checkup' | 'emergency' | 'teleconsult' | 'vaccination';
   chiefComplaint?: string;
   historyOfPresentIllness?: string;
   vitals?: {
@@ -855,6 +855,7 @@ export default function VisitForm({
                   <option value="checkup">Checkup</option>
                   <option value="emergency">Emergency</option>
                   <option value="teleconsult">Teleconsult</option>
+                  <option value="vaccination">Vaccination</option>
                 </select>
               </div>
             </div>

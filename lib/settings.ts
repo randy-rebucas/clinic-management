@@ -83,6 +83,7 @@ export function getDefaultSettings() {
     clinicWebsite: '',
     taxId: '',
     licenseNumber: '',
+    ptr: '',
     businessHours: [
       { day: 'monday', open: '09:00', close: '17:00', closed: false },
       { day: 'tuesday', open: '09:00', close: '17:00', closed: false },

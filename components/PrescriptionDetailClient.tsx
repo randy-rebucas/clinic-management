@@ -82,6 +82,7 @@ interface Prescription {
 
 export default function PrescriptionDetailClient({ prescriptionId }: { prescriptionId: string }) {
   const [prescription, setPrescription] = useState<Prescription | null>(null);
+  const [clinicSettings, setClinicSettings] = useState<{ licenseNumber?: string; ptr?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDispenseForm, setShowDispenseForm] = useState(false);
   const [dispenseForm, setDispenseForm] = useState({
@@ -97,7 +98,28 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
 
   useEffect(() => {
     fetchPrescription();
+    fetchClinicSettings();
   }, [prescriptionId]);
+
+  const fetchClinicSettings = async () => {
+    try {
+      const res = await fetch('/api/settings');
+      if (res.status === 401) {
+        router.push('/login');
+        return;
+      }
+      if (!res.ok) {
+        return;
+      }
+      const data = await res.json();
+      setClinicSettings({
+        licenseNumber: data.licenseNumber,
+        ptr: data.ptr,
+      });
+    } catch (error) {
+      console.error('Failed to fetch clinic settings:', error);
+    }
+  };
 
   const fetchPrescription = async () => {
     try {
@@ -391,6 +413,17 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                   <div>
                     <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Prescribed By</p>
                     <p className="text-sm font-medium text-gray-900">{prescription.prescribedBy.name}</p>
+                  </div>
+                )}
+                {(clinicSettings?.licenseNumber || clinicSettings?.ptr) && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">License / PTR</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {clinicSettings?.licenseNumber ? `License No: ${clinicSettings.licenseNumber}` : 'License No: -'}
+                    </p>
+                    {clinicSettings?.ptr && (
+                      <p className="text-sm font-medium text-gray-900">PTR No: {clinicSettings.ptr}</p>
+                    )}
                   </div>
                 )}
                 {prescription.visit && (
