@@ -232,16 +232,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
           ${patient.dateOfBirth ? `
           <div class="info-row">
             <div class="info-label">Age:</div>
-            <div>${(() => {
-        const dob = new Date(patient.dateOfBirth);
-        const now = new Date();
-        let age = now.getFullYear() - dob.getFullYear();
-        const m = now.getMonth() - dob.getMonth();
-        if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) {
-          age--;
-        }
-        return age;
-      })()}</div>
+            <div>${formatAgeWithMonths(patient.dateOfBirth)}</div>
           </div>
           ` : ''}
         </div>
@@ -314,7 +305,14 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
           <div>${provider ? provider.name : 'Provider'}</div>
           <div style="font-size: 12px; margin-top: 5px;">
             ${(() => {
-      return settingInfo.licenseNumber ? `License No: ${settingInfo.licenseNumber}` : 'License No: ____________';
+      const licenseLine = settingInfo?.licenseNumber
+        ? `License No: ${settingInfo.licenseNumber}`
+        : 'License No: ____________';
+      const ptrValue = settingInfo?.ptr || settingInfo?.PTR;
+      const ptrLine = ptrValue
+        ? `<br>PTR No: ${ptrValue}`
+        : '<br>PTR No: ____________';
+      return `${licenseLine}${ptrLine}`;
     })()}
           </div>
         </div>
@@ -332,5 +330,42 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
 </body>
 </html>
   `;
+}
+
+function formatAgeWithMonths(dateOfBirth?: string | Date): string {
+  if (!dateOfBirth) {
+    return 'N/A';
+  }
+
+  const dob = new Date(dateOfBirth);
+  if (Number.isNaN(dob.getTime())) {
+    return 'N/A';
+  }
+
+  const now = new Date();
+  let years = now.getFullYear() - dob.getFullYear();
+  let months = now.getMonth() - dob.getMonth();
+
+  if (now.getDate() < dob.getDate()) {
+    months -= 1;
+  }
+
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+
+  if (years <= 0) {
+    return months === 1 ? '1 month' : `${Math.max(months, 0)} months`;
+  }
+
+  if (months === 0) {
+    return years === 1 ? '1 year' : `${years} years`;
+  }
+
+  const yearLabel = years === 1 ? 'year' : 'years';
+  const monthLabel = months === 1 ? 'month' : 'months';
+
+  return `${years} ${yearLabel}, ${months} ${monthLabel}`;
 }
 

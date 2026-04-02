@@ -11,6 +11,7 @@ interface Settings {
   clinicWebsite?: string;
   taxId?: string;
   licenseNumber?: string;
+  ptr?: string;
   businessHours: Array<{
     day: string;
     open: string;
@@ -98,6 +99,7 @@ const defaultSettingsFallback: Settings = {
   clinicWebsite: '',
   taxId: '',
   licenseNumber: '',
+  ptr: '',
   businessHours: [
     { day: 'monday', open: '09:00', close: '17:00', closed: false },
     { day: 'tuesday', open: '09:00', close: '17:00', closed: false },
@@ -476,6 +478,13 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     onChange={(e) => updateSettings('licenseNumber', e.target.value)}
                     disabled={!isAdmin}
                     placeholder="Enter license number"
+                  />
+                  <LabeledTextField
+                    label="PTR"
+                    value={settings.ptr || ''}
+                    onChange={(e) => updateSettings('ptr', e.target.value)}
+                    disabled={!isAdmin}
+                    placeholder="Enter PTR number"
                   />
                 </div>
               </div>

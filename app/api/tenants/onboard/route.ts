@@ -518,6 +518,7 @@ export async function POST(request: NextRequest) {
       clinicWebsite: '',
       taxId: '',
       licenseNumber: '',
+      ptr: '',
       generalSettings: {
         timezone: tenant.settings?.timezone || 'UTC',
         dateFormat: tenant.settings?.dateFormat || 'MM/DD/YYYY',

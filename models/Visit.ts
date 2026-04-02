@@ -87,7 +87,7 @@ export interface IVisit extends Document {
   visitCode: string;
   date: Date;
   provider?: Types.ObjectId;
-  visitType: 'consultation' | 'follow-up' | 'checkup' | 'emergency' | 'teleconsult';
+  visitType: 'consultation' | 'follow-up' | 'checkup' | 'emergency' | 'teleconsult' | 'vaccination';
   chiefComplaint?: string;
   historyOfPresentIllness?: string;
   admittingImpression?: string;
@@ -173,7 +173,7 @@ const VisitSchema: Schema = new Schema(
     visitCode: { type: String, required: true }, // clinic-specific code
     date: { type: Date, default: Date.now, index: true },
     provider: { type: Schema.Types.ObjectId, ref: 'User' },
-    visitType: { type: String, enum: ['consultation', 'follow-up', 'checkup', 'emergency', 'teleconsult'], default: 'consultation' },
+    visitType: { type: String, enum: ['consultation', 'follow-up', 'checkup', 'emergency', 'teleconsult', 'vaccination'], default: 'consultation' },
     chiefComplaint: { type: String },
     historyOfPresentIllness: { type: String },
     admittingImpression: { type: String },
