@@ -13,10 +13,23 @@ interface ContentHeaderProps {
   } | null;
 }
 
+const adminSubmenuItems = [
+  { href: '/roles', label: 'Roles & Permissions' },
+  { href: '/users', label: 'User Management' },
+  { href: '/staff', label: 'Staff Management' },
+  { href: '/services', label: 'Services Catalog' },
+  { href: '/medicines', label: 'Medicines Catalog' },
+  { href: '/rooms', label: 'Rooms Management' },
+  { href: '/audit-logs', label: 'Audit Logs' },
+  { href: '/medical-reps', label: 'Medical Reps' },
+  { href: '/subscription', label: 'Subscription' },
+];
+
 export default function ContentHeader({ user }: ContentHeaderProps) {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const isAdmin = (user?.role || '').toLowerCase() === 'admin';
   
   const isKnowledgeBaseActive = pathname?.startsWith('/knowledge-base');
   const isNotificationsActive = pathname === '/notifications';
@@ -156,6 +169,29 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
           </form>
         </div>
       </div>
+
+      {isAdmin && (
+        <div className="h-11 px-6 border-t border-gray-100 bg-gray-50/80 overflow-x-auto">
+          <div className="h-full flex items-center gap-2 min-w-max">
+            {adminSubmenuItems.map((item) => {
+              const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
+                    isActive
+                      ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                      : 'text-gray-700 hover:bg-white hover:text-gray-900 border border-transparent'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </header>
   );
 }

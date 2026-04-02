@@ -61,6 +61,11 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
 
   // Group items by category
   const groupedItems = filteredItems.reduce((acc, item) => {
+    // Administration links are surfaced in the top sub-header for admins.
+    if (item.category === 'Administration') {
+      return acc;
+    }
+
     const category = item.category || 'Other';
     if (!acc[category]) {
       acc[category] = [];
