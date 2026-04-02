@@ -25,6 +25,7 @@ export interface Visit {
   visitType: string;
   chiefComplaint?: string;
   historyOfPresentIllness?: string;
+  admittingImpression?: string;
   vitals?: {
     bp?: string;
     hr?: number;
@@ -37,12 +38,21 @@ export interface Visit {
   };
   physicalExam?: {
     general?: string;
+    headEent?: string;
     heent?: string;
     chest?: string;
+    lungs?: string;
     cardiovascular?: string;
     abdomen?: string;
+    extremities?: string;
     neuro?: string;
+    neurological?: string;
     skin?: string;
+    lymphNotes?: string;
+    breast?: string;
+    rectum?: string;
+    genitalia?: string;
+    musculoskeletal?: string;
     other?: string;
   };
   diagnoses: Array<{
@@ -357,6 +367,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                     visitType: visit.visitType as any,
                     chiefComplaint: visit.chiefComplaint,
                     historyOfPresentIllness: visit.historyOfPresentIllness,
+                    admittingImpression: visit.admittingImpression,
                     vitals: visit.vitals,
                     physicalExam: visit.physicalExam,
                     diagnoses: visit.diagnoses,
@@ -417,6 +428,114 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                 )}
               </div>
 
+              {/* Visit Information */}
+              {(visit.visitType || visit.chiefComplaint || visit.historyOfPresentIllness) && (
+                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-teal-500 rounded-lg">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900">Visit Information</h3>
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    {visit.visitType && (
+                      <div className="flex items-center gap-3">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide w-36 shrink-0">Visit Type</p>
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-800 border border-teal-200 capitalize">
+                          {visit.visitType.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    )}
+                    {visit.chiefComplaint && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Chief Complaint</p>
+                        <p className="text-sm text-gray-800 bg-gray-50 p-3 rounded-lg border border-gray-200 whitespace-pre-wrap">{visit.chiefComplaint}</p>
+                      </div>
+                    )}
+                    {visit.historyOfPresentIllness && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">History of Present Illness</p>
+                        <p className="text-sm text-gray-800 bg-gray-50 p-3 rounded-lg border border-gray-200 whitespace-pre-wrap">{visit.historyOfPresentIllness}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Vitals */}
+              {visit.vitals && Object.values(visit.vitals).some((v) => v !== undefined && v !== null && v !== '') && (
+                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-rose-500 rounded-lg">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900">Vital Signs</h3>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {visit.vitals.bp && (
+                      <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-center">
+                        <p className="text-xs font-semibold text-rose-700 uppercase tracking-wide mb-1">Blood Pressure</p>
+                        <p className="text-lg font-bold text-gray-900">{visit.vitals.bp}</p>
+                        <p className="text-xs text-gray-500">mmHg</p>
+                      </div>
+                    )}
+                    {visit.vitals.hr !== undefined && (
+                      <div className="bg-pink-50 border border-pink-200 rounded-lg p-3 text-center">
+                        <p className="text-xs font-semibold text-pink-700 uppercase tracking-wide mb-1">Heart Rate</p>
+                        <p className="text-lg font-bold text-gray-900">{visit.vitals.hr}</p>
+                        <p className="text-xs text-gray-500">bpm</p>
+                      </div>
+                    )}
+                    {visit.vitals.rr !== undefined && (
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-center">
+                        <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-1">Resp. Rate</p>
+                        <p className="text-lg font-bold text-gray-900">{visit.vitals.rr}</p>
+                        <p className="text-xs text-gray-500">breaths/min</p>
+                      </div>
+                    )}
+                    {visit.vitals.tempC !== undefined && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
+                        <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Temperature</p>
+                        <p className="text-lg font-bold text-gray-900">{visit.vitals.tempC}</p>
+                        <p className="text-xs text-gray-500">°C</p>
+                      </div>
+                    )}
+                    {visit.vitals.spo2 !== undefined && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">SpO₂</p>
+                        <p className="text-lg font-bold text-gray-900">{visit.vitals.spo2}</p>
+                        <p className="text-xs text-gray-500">%</p>
+                      </div>
+                    )}
+                    {visit.vitals.heightCm !== undefined && (
+                      <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-center">
+                        <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-1">Height</p>
+                        <p className="text-lg font-bold text-gray-900">{visit.vitals.heightCm}</p>
+                        <p className="text-xs text-gray-500">cm</p>
+                      </div>
+                    )}
+                    {visit.vitals.weightKg !== undefined && (
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
+                        <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1">Weight</p>
+                        <p className="text-lg font-bold text-gray-900">{visit.vitals.weightKg}</p>
+                        <p className="text-xs text-gray-500">kg</p>
+                      </div>
+                    )}
+                    {visit.vitals.bmi !== undefined && (
+                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-center">
+                        <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-1">BMI</p>
+                        <p className="text-lg font-bold text-gray-900">{visit.vitals.bmi}</p>
+                        <p className="text-xs text-gray-500">kg/m²</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* SOAP Notes */}
               {visit.soapNotes && (
                 <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
@@ -456,6 +575,51 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                   </div>
                 </div>
               )}
+
+              {/* Physical Examination */}
+              {(visit.physicalExam && Object.values(visit.physicalExam).some(Boolean)) || visit.admittingImpression ? (
+                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-indigo-500 rounded-lg">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900">Physical Examination</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {[
+                      { label: 'General', value: visit.physicalExam?.general },
+                      { label: 'Head/HEENT', value: visit.physicalExam?.headEent || visit.physicalExam?.heent },
+                      { label: 'Chest', value: visit.physicalExam?.chest },
+                      { label: 'Lungs', value: visit.physicalExam?.lungs },
+                      { label: 'Cardiovascular', value: visit.physicalExam?.cardiovascular },
+                      { label: 'Abdomen', value: visit.physicalExam?.abdomen },
+                      { label: 'Extremities', value: visit.physicalExam?.extremities },
+                      { label: 'Skin', value: visit.physicalExam?.skin },
+                      { label: 'Lymph Notes', value: visit.physicalExam?.lymphNotes },
+                      { label: 'Breast', value: visit.physicalExam?.breast },
+                      { label: 'Rectum', value: visit.physicalExam?.rectum },
+                      { label: 'Gentalia/Genitalia', value: visit.physicalExam?.genitalia },
+                      { label: 'Musculoskeletal', value: visit.physicalExam?.musculoskeletal },
+                      { label: 'Neurological', value: visit.physicalExam?.neurological || visit.physicalExam?.neuro },
+                    ]
+                      .filter((item) => item.value)
+                      .map((item) => (
+                        <div key={item.label} className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                          <p className="text-xs font-semibold text-indigo-800 uppercase tracking-wide mb-1">{item.label}</p>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.value}</p>
+                        </div>
+                      ))}
+                  </div>
+                  {visit.admittingImpression && (
+                    <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <p className="text-sm font-bold text-amber-900 mb-2">Admitting Impression</p>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{visit.admittingImpression}</p>
+                    </div>
+                  )}
+                </div>
+              ) : null}
 
               {/* Diagnoses */}
               {visit.diagnoses && visit.diagnoses.length > 0 && (
@@ -518,6 +682,39 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                             {med.instructions && (
                               <p className="text-xs text-gray-600 mt-2 bg-white/50 p-2 rounded border border-gray-200">{med.instructions}</p>
                             )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {visit.treatmentPlan.procedures && visit.treatmentPlan.procedures.length > 0 && (
+                    <div className="mb-5">
+                      <p className="text-sm font-bold text-gray-900 mb-3">Procedures</p>
+                      <div className="flex flex-col gap-3">
+                        {visit.treatmentPlan.procedures.map((proc, idx) => (
+                          <div key={idx} className="bg-gradient-to-r from-white to-blue-50/50 border border-blue-200 rounded-lg p-4 hover:shadow-md transition-all">
+                            <p className="text-sm font-bold text-gray-900 mb-1">{proc.name}</p>
+                            {proc.description && (
+                              <p className="text-xs text-gray-600 mt-1">{proc.description}</p>
+                            )}
+                            {proc.scheduledDate && (
+                              <p className="text-xs text-blue-600 font-medium mt-1.5">
+                                Scheduled: {new Date(proc.scheduledDate).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {visit.treatmentPlan.lifestyle && visit.treatmentPlan.lifestyle.length > 0 && (
+                    <div className="mb-5">
+                      <p className="text-sm font-bold text-gray-900 mb-3">Lifestyle Recommendations</p>
+                      <div className="flex flex-col gap-3">
+                        {visit.treatmentPlan.lifestyle.map((item, idx) => (
+                          <div key={idx} className="bg-gradient-to-r from-white to-lime-50/50 border border-lime-200 rounded-lg p-4 hover:shadow-md transition-all">
+                            <p className="text-xs font-semibold text-lime-700 uppercase tracking-wide mb-1">{item.category}</p>
+                            <p className="text-sm text-gray-700">{item.instructions}</p>
                           </div>
                         ))}
                       </div>

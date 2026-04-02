@@ -105,6 +105,7 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
       visitType: serverDraft.visitType,
       chiefComplaint: serverDraft.chiefComplaint,
       historyOfPresentIllness: serverDraft.historyOfPresentIllness,
+      admittingImpression: serverDraft.admittingImpression,
       vitals: serverDraft.vitals,
       physicalExam: serverDraft.physicalExam,
       diagnoses: serverDraft.diagnoses,

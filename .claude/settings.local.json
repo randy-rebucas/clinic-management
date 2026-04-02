@@ -8,7 +8,21 @@
       "Bash(ls:*)",
       "Bash(npm install:*)",
       "Bash(npx web-push:*)",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(find \"c:/Users/corew/clinic-management/app/\\(app\\)/subscription\" -type f -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.js\" -o -name \"*.jsx\")",
+      "Bash(find \"c:/Users/corew/clinic-management/app/\\(medical-representative-portal\\)\" -type f)",
+      "Bash(cat \"c:/Users/corew/clinic-management/app/\\(medical-representative-portal\\)/layout.tsx\")",
+      "Bash(cat \"c:/Users/corew/clinic-management/app/\\(medical-representative-portal\\)/medical-representative/portal/page.tsx\")",
+      "Bash(cat \"c:/Users/corew/clinic-management/app/\\(medical-representative-portal\\)/medical-representative/products/page.tsx\")",
+      "Bash(cat \"c:/Users/corew/clinic-management/app/\\(medical-representative-portal\\)/medical-representative/profile/edit/page.tsx\")",
+      "Bash(cat \"c:/Users/corew/clinic-management/app/\\(medical-representative-portal\\)/medical-representative/settings/page.tsx\")",
+      "Bash(grep -r server-only c:/Users/corew/clinic-management --include=*.ts --include=*.tsx -l)",
+      "Bash(grep -r \"skeleton\\\\|animate-pulse\" c:/Users/corew/clinic-management/components --include=*.tsx -l)",
+      "Bash(npm i:*)",
+      "Bash(ls -la \"c:\\\\Users\\\\corew\\\\clinic-management/app/\\(knowledge-base\\)/knowledge-base\")",
+      "Bash(ls -la \"c:\\\\Users\\\\corew\\\\clinic-management/app/\\(knowledge-base\\)/knowledge-base/[slug]\")",
+      "Bash(ls -la \"c:\\\\Users\\\\corew\\\\clinic-management/app/\\(knowledge-base\\)\")",
+      "Bash(find \"c:\\\\Users\\\\corew\\\\clinic-management/app/\\(knowledge-base\\)\" -name \"layout.tsx\" -o -name \"page.tsx\")"
     ]
   }
 }

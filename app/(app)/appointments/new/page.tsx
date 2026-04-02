@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-import { verifySession } from '@/app/lib/dal';
+import { requirePagePermission } from '@/app/lib/auth-helpers';
 import AppointmentsPageClient from '@/components/AppointmentsPageClient';
 
 export default async function NewAppointmentPage({
@@ -7,13 +6,8 @@ export default async function NewAppointmentPage({
 }: {
   searchParams: Promise<{ patientId?: string }>;
 }) {
-  const session = await verifySession();
-  
-  if (!session) {
-    redirect('/login');
-  }
+  await requirePagePermission('appointments', 'create');
 
   const params = await searchParams;
   return <AppointmentsPageClient patientId={params.patientId} />;
 }
-

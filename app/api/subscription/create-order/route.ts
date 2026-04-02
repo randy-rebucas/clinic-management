@@ -3,6 +3,9 @@ import { verifySession } from '@/app/lib/dal';
 import { getTenantId } from '@/lib/tenant';
 import { createPayPalOrder } from '@/lib/paypal';
 import { SUBSCRIPTION_PACKAGES, SubscriptionPlan } from '@/lib/subscription-packages';
+import connectDB from '@/lib/mongodb';
+import PaypalOrder from '@/models/PaypalOrder';
+import { Types } from 'mongoose';
 
 const VALID_PLANS: SubscriptionPlan[] = ['basic', 'professional', 'enterprise'];
 
@@ -14,10 +17,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Only admin/owner may manage billing
+    if (!['admin', 'owner'].includes(session.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Get tenant ID
     const tenantId = await getTenantId();
     if (!tenantId) {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+    }
+
+    // Cross-validate: header-derived tenantId must match session tenantId
+    if (session.tenantId && tenantId !== session.tenantId) {
+      return NextResponse.json({ error: 'Tenant mismatch' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -54,6 +67,18 @@ export async function POST(request: NextRequest) {
       appUrl,
       billingCycle,
     );
+
+    // Persist the order → tenant binding so capture-order can verify ownership
+    // and read plan/billingCycle from DB (not from client body)
+    await connectDB();
+    await PaypalOrder.create({
+      orderId,
+      tenantId: new Types.ObjectId(tenantId),
+      plan: planName,
+      billingCycle,
+      amount,
+      currency,
+    });
 
     return NextResponse.json({
       success: true,

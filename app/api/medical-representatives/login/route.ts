@@ -6,6 +6,7 @@ import Role from '@/models/Role';
 import bcrypt from 'bcryptjs';
 import { createSession } from '@/app/lib/dal';
 import { sanitizeEmail, checkRateLimit, resetRateLimit } from '@/app/lib/security';
+import { getTenantContext } from '@/lib/tenant';
 
 export async function POST(request: NextRequest) {
 	try {
@@ -45,7 +46,15 @@ export async function POST(request: NextRequest) {
 
 		await connectDB();
 
-		const user = await User.findOne({ email: sanitizedEmail }).populate('role');
+		// Scope the user lookup to the current tenant to prevent cross-tenant auth
+		const tenantContext = await getTenantContext();
+		const tenantId = tenantContext.tenantId;
+		const userQuery: Record<string, unknown> = { email: sanitizedEmail };
+		if (tenantId) {
+			userQuery.tenantId = tenantId;
+		}
+
+		const user = await User.findOne(userQuery).populate('role');
 		if (!user) {
 			return NextResponse.json(
 				{ success: false, error: 'Invalid email or password.' },
@@ -152,7 +161,7 @@ export async function POST(request: NextRequest) {
 	} catch (error: any) {
 		console.error('Medical representative login error:', error);
 		return NextResponse.json(
-			{ success: false, error: error.message || 'Failed to login' },
+			{ success: false, error: 'Failed to login' },
 			{ status: 500 }
 		);
 	}

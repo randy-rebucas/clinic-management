@@ -2,7 +2,9 @@
 
 import { useState, useEffect, FormEvent, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import SignaturePad from './SignaturePad';
+import dynamic from 'next/dynamic';
+
+const SignaturePad = dynamic(() => import('./SignaturePad'), { ssr: false });
 
 interface VisitFormData {
   patient: string;
@@ -21,14 +23,24 @@ interface VisitFormData {
   };
   physicalExam?: {
     general?: string;
+    headEent?: string;
     heent?: string;
     chest?: string;
+    lungs?: string;
     cardiovascular?: string;
     abdomen?: string;
+    extremities?: string;
     neuro?: string;
+    neurological?: string;
     skin?: string;
+    lymphNotes?: string;
+    breast?: string;
+    rectum?: string;
+    genitalia?: string;
+    musculoskeletal?: string;
     other?: string;
   };
+  admittingImpression?: string;
   diagnoses: Array<{
     code?: string;
     description?: string;
@@ -83,6 +95,22 @@ interface VisitFormProps {
   providerName: string;
 }
 
+interface QuickHistoryData {
+  visits: Array<{ _id: string; visitCode?: string; date: string; status?: string; chiefComplaint?: string }>;
+  appointments: Array<{ _id: string; appointmentCode?: string; appointmentDate: string; appointmentTime?: string; status?: string }>;
+  prescriptions: Array<{ _id: string; prescriptionCode?: string; issuedAt: string; status?: string }>;
+  invoices: Array<{ _id: string; invoiceNumber?: string; createdAt: string; status?: string; outstandingBalance?: number }>;
+  labResults: Array<{ _id: string; requestCode?: string; orderDate: string; status?: string; testName?: string }>;
+}
+
+type HistoryEntityType = 'visit' | 'appointment' | 'prescription' | 'invoice' | 'lab-result';
+
+interface SelectedHistoryItem {
+  type: HistoryEntityType;
+  id: string;
+  title: string;
+}
+
 
 
 const LOCAL_DRAFT_KEY = 'visit_form_draft';
@@ -102,6 +130,7 @@ export default function VisitForm({
     visitType: initialData?.visitType || 'consultation',
     chiefComplaint: initialData?.chiefComplaint || '',
     historyOfPresentIllness: initialData?.historyOfPresentIllness || '',
+    admittingImpression: initialData?.admittingImpression || '',
     vitals: initialData?.vitals || {},
     physicalExam: initialData?.physicalExam || {},
     diagnoses: initialData?.diagnoses || [],
@@ -131,6 +160,20 @@ export default function VisitForm({
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [localDraftBanner, setLocalDraftBanner] = useState(false);
   const [localDraftTimestamp, setLocalDraftTimestamp] = useState<string>('');
+  const [showHistoryPreview, setShowHistoryPreview] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [quickHistory, setQuickHistory] = useState<QuickHistoryData>({
+    visits: [],
+    appointments: [],
+    prescriptions: [],
+    invoices: [],
+    labResults: [],
+  });
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState<SelectedHistoryItem | null>(null);
+  const [historyDetail, setHistoryDetail] = useState<any | null>(null);
+  const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
+  const [historyDetailError, setHistoryDetailError] = useState<string | null>(null);
 
   const chiefComplaintInputRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
@@ -223,6 +266,104 @@ export default function VisitForm({
     localStorage.removeItem(LOCAL_DRAFT_KEY);
     setLocalDraftBanner(false);
   }, []);
+
+  const fetchQuickHistory = useCallback(async (pid: string) => {
+    if (!pid) {
+      setQuickHistory({ visits: [], appointments: [], prescriptions: [], invoices: [], labResults: [] });
+      return;
+    }
+
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const [visitsRes, appointmentsRes, prescriptionsRes, invoicesRes, labsRes] = await Promise.all([
+        fetch(`/api/visits?patientId=${pid}`),
+        fetch(`/api/appointments?patientId=${pid}`),
+        fetch(`/api/prescriptions?patientId=${pid}`),
+        fetch(`/api/invoices?patientId=${pid}`),
+        fetch(`/api/lab-results?patientId=${pid}`),
+      ]);
+
+      if ([visitsRes, appointmentsRes, prescriptionsRes, invoicesRes, labsRes].some((res) => res.status === 401)) {
+        router.push('/login');
+        return;
+      }
+
+      const parseResponse = async (res: Response) => {
+        if (!res.ok) return [];
+        const json = await res.json();
+        return Array.isArray(json?.data) ? json.data : [];
+      };
+
+      const [visits, appointments, prescriptions, invoices, labResults] = await Promise.all([
+        parseResponse(visitsRes),
+        parseResponse(appointmentsRes),
+        parseResponse(prescriptionsRes),
+        parseResponse(invoicesRes),
+        parseResponse(labsRes),
+      ]);
+
+      setQuickHistory({
+        visits: visits
+          .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .slice(0, 5),
+        appointments: appointments
+          .sort((a: any, b: any) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime())
+          .slice(0, 5),
+        prescriptions: prescriptions
+          .sort((a: any, b: any) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())
+          .slice(0, 5),
+        invoices: invoices
+          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 5),
+        labResults: labResults
+          .sort((a: any, b: any) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+          .slice(0, 5),
+      });
+      setSelectedHistoryItem(null);
+      setHistoryDetail(null);
+      setHistoryDetailError(null);
+    } catch (error) {
+      console.error('Failed to fetch quick history:', error);
+      setHistoryError('Unable to load patient history preview.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [router]);
+
+  const fetchHistoryDetail = useCallback(async (item: SelectedHistoryItem) => {
+    const endpointMap: Record<HistoryEntityType, string> = {
+      visit: `/api/visits/${item.id}`,
+      appointment: `/api/appointments/${item.id}`,
+      prescription: `/api/prescriptions/${item.id}`,
+      invoice: `/api/invoices/${item.id}`,
+      'lab-result': `/api/lab-results/${item.id}`,
+    };
+
+    setHistoryDetailLoading(true);
+    setHistoryDetailError(null);
+    setHistoryDetail(null);
+    try {
+      const res = await fetch(endpointMap[item.type]);
+      if (res.status === 401) {
+        router.push('/login');
+        return;
+      }
+      if (!res.ok) {
+        throw new Error('Failed to load details');
+      }
+      const data = await res.json();
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to load details');
+      }
+      setHistoryDetail(data.data);
+    } catch (error) {
+      console.error('Failed to fetch history detail:', error);
+      setHistoryDetailError('Unable to load item details.');
+    } finally {
+      setHistoryDetailLoading(false);
+    }
+  }, [router]);
 
   // Track dirty state — fires after initial mount whenever formData or vitals change
   useEffect(() => {
@@ -322,10 +463,16 @@ export default function VisitForm({
       setTimeout(() => {
         setSelectedPatient(null);
         setPatientSearch('');
+        setQuickHistory({ visits: [], appointments: [], prescriptions: [], invoices: [], labResults: [] });
       }, 0);
     }
 
   }, [formData.patient, patients]);
+
+  useEffect(() => {
+    if (!formData.patient) return;
+    fetchQuickHistory(formData.patient);
+  }, [formData.patient, fetchQuickHistory]);
 
 
   useEffect(() => {
@@ -349,6 +496,7 @@ export default function VisitForm({
     initialData?.visitType,
     initialData?.chiefComplaint,
     initialData?.historyOfPresentIllness,
+    initialData?.admittingImpression,
     initialData?.vitals,
     initialData?.physicalExam,
     initialData?.diagnoses,
@@ -418,6 +566,49 @@ export default function VisitForm({
     setShowPatientSearch(false);
     setHighlightedIndex(-1);
   };
+
+  const formatDate = (value?: string) => {
+    if (!value) return 'N/A';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'N/A';
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
+  const formatDateTime = (value?: string) => {
+    if (!value) return 'N/A';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'N/A';
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  };
+
+  const handleHistoryItemClick = (item: SelectedHistoryItem) => {
+    setSelectedHistoryItem(item);
+    fetchHistoryDetail(item);
+  };
+
+  const closeHistoryDrawer = () => {
+    setShowHistoryPreview(false);
+    setSelectedHistoryItem(null);
+    setHistoryDetail(null);
+    setHistoryDetailError(null);
+  };
+
+  const historyTotalCount =
+    quickHistory.visits.length +
+    quickHistory.appointments.length +
+    quickHistory.prescriptions.length +
+    quickHistory.invoices.length +
+    quickHistory.labResults.length;
 
   const addDiagnosis = () => {
     setFormData({
@@ -519,13 +710,27 @@ export default function VisitForm({
       <div className="flex flex-col gap-6">
         {/* Basic Information */}
         <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-blue-500 rounded-lg">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-500 rounded-lg">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-bold text-gray-900">Basic Information</h2>
             </div>
-            <h2 className="text-lg font-bold text-gray-900">Basic Information</h2>
+            {selectedPatient && (
+              <button
+                type="button"
+                onClick={() => setShowHistoryPreview(true)}
+                className="px-3 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors text-xs font-semibold inline-flex items-center gap-2 whitespace-nowrap"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Quick History Preview
+              </button>
+            )}
           </div>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col md:flex-row gap-4">
@@ -925,18 +1130,50 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">HEENT</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Head, Eyes, Ears, Nose, Throat</p>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Head/HEENT</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Head, eyes, ears, nose, throat findings</p>
                         <textarea
-                          value={formData.physicalExam?.heent || ''}
+                          value={formData.physicalExam?.headEent || formData.physicalExam?.heent || ''}
                           onChange={(e) =>
                             setFormData({
                               ...formData,
-                              physicalExam: { ...formData.physicalExam, heent: e.target.value },
+                              physicalExam: { ...formData.physicalExam, headEent: e.target.value, heent: e.target.value },
                             })
                           }
                           rows={2}
-                          placeholder="HEENT findings..."
+                          placeholder="Head/HEENT findings..."
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Chest</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Chest wall and thoracic findings</p>
+                        <textarea
+                          value={formData.physicalExam?.chest || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              physicalExam: { ...formData.physicalExam, chest: e.target.value },
+                            })
+                          }
+                          rows={2}
+                          placeholder="Chest findings..."
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Lungs</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Breath sounds, air entry, wheeze/crackles</p>
+                        <textarea
+                          value={formData.physicalExam?.lungs || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              physicalExam: { ...formData.physicalExam, lungs: e.target.value },
+                            })
+                          }
+                          rows={2}
+                          placeholder="Lung findings..."
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
                         />
                       </div>
@@ -972,6 +1209,145 @@ export default function VisitForm({
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
                         />
                       </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Extremities</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Edema, deformities, pulses, range of motion</p>
+                        <textarea
+                          value={formData.physicalExam?.extremities || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              physicalExam: { ...formData.physicalExam, extremities: e.target.value },
+                            })
+                          }
+                          rows={2}
+                          placeholder="Extremity findings..."
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Skin</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Rashes, lesions, hydration, turgor</p>
+                        <textarea
+                          value={formData.physicalExam?.skin || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              physicalExam: { ...formData.physicalExam, skin: e.target.value },
+                            })
+                          }
+                          rows={2}
+                          placeholder="Skin findings..."
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Lymph Notes</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Lymph node findings and remarks</p>
+                        <textarea
+                          value={formData.physicalExam?.lymphNotes || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              physicalExam: { ...formData.physicalExam, lymphNotes: e.target.value },
+                            })
+                          }
+                          rows={2}
+                          placeholder="Lymph findings..."
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Breast</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Inspection/palpation findings</p>
+                        <textarea
+                          value={formData.physicalExam?.breast || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              physicalExam: { ...formData.physicalExam, breast: e.target.value },
+                            })
+                          }
+                          rows={2}
+                          placeholder="Breast findings..."
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Rectum</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Rectal examination findings</p>
+                        <textarea
+                          value={formData.physicalExam?.rectum || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              physicalExam: { ...formData.physicalExam, rectum: e.target.value },
+                            })
+                          }
+                          rows={2}
+                          placeholder="Rectal findings..."
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Gentalia/Genitalia</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Genital examination findings</p>
+                        <textarea
+                          value={formData.physicalExam?.genitalia || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              physicalExam: { ...formData.physicalExam, genitalia: e.target.value },
+                            })
+                          }
+                          rows={2}
+                          placeholder="Genital findings..."
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Musculoskeletal</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Joints, gait, deformities, strength</p>
+                        <textarea
+                          value={formData.physicalExam?.musculoskeletal || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              physicalExam: { ...formData.physicalExam, musculoskeletal: e.target.value },
+                            })
+                          }
+                          rows={2}
+                          placeholder="Musculoskeletal findings..."
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-2">Neurological</label>
+                        <p className="text-xs text-gray-500 mb-1.5">Mental status, cranial nerves, reflexes</p>
+                        <textarea
+                          value={formData.physicalExam?.neurological || formData.physicalExam?.neuro || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              physicalExam: { ...formData.physicalExam, neurological: e.target.value, neuro: e.target.value },
+                            })
+                          }
+                          rows={2}
+                          placeholder="Neurological findings..."
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Admitting Impression</label>
+                      <p className="text-xs text-gray-600 mb-2">Primary clinical impression on admission/encounter</p>
+                      <textarea
+                        value={formData.admittingImpression || ''}
+                        onChange={(e) => setFormData({ ...formData, admittingImpression: e.target.value })}
+                        rows={3}
+                        placeholder="Enter admitting impression..."
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1450,6 +1826,290 @@ export default function VisitForm({
                     />
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Quick History Drawer */}
+        {showHistoryPreview && (
+          <div className="fixed inset-0 z-50">
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={closeHistoryDrawer}
+            />
+            <div className={`absolute left-0 top-0 h-full w-full ${selectedHistoryItem ? 'max-w-[92rem]' : 'max-w-[430px]'} bg-white shadow-2xl border-r border-gray-200 overflow-hidden transition-all duration-300`}>
+              <div className="h-full flex flex-col lg:flex-row">
+                <div className="w-full lg:w-[390px] border-r border-gray-200 overflow-y-auto bg-white">
+                  <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-bold text-gray-900">Quick History Preview</h3>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : 'No patient selected'}
+                      </p>
+                      <div className="mt-2 inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1">
+                        <span className="text-[11px] font-semibold text-gray-700">{historyTotalCount} recent records</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeHistoryDrawer}
+                      className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="p-4 flex flex-col gap-3 pb-6">
+                    {historyLoading && (
+                      <div className="text-sm text-gray-600">Loading history...</div>
+                    )}
+                    {historyError && (
+                      <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{historyError}</div>
+                    )}
+
+                    {!historyLoading && !historyError && (
+                      <>
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Recent Visits</p>
+                            <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full">{quickHistory.visits.length}</span>
+                          </div>
+                          {quickHistory.visits.length === 0 ? (
+                            <p className="text-xs text-gray-600">No recent visits.</p>
+                          ) : (
+                            <div className="flex flex-col gap-2">
+                              {quickHistory.visits.map((item) => {
+                                const isActive = selectedHistoryItem?.type === 'visit' && selectedHistoryItem?.id === item._id;
+                                return (
+                                  <button
+                                    key={item._id}
+                                    type="button"
+                                    onClick={() => handleHistoryItemClick({ type: 'visit', id: item._id, title: item.visitCode || 'Visit' })}
+                                    className={`text-left bg-white border rounded-md px-3 py-2 transition-all ${isActive ? 'border-blue-500 bg-blue-100 ring-2 ring-blue-200' : 'border-blue-200 hover:bg-blue-100 hover:shadow-sm'}`}
+                                  >
+                                    <p className="text-sm font-semibold text-gray-900">{item.visitCode || 'Visit'}</p>
+                                    <p className="text-xs text-gray-600 mt-0.5">{formatDate(item.date)}{item.status ? ` • ${item.status}` : ''}</p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Recent Appointments</p>
+                            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">{quickHistory.appointments.length}</span>
+                          </div>
+                          {quickHistory.appointments.length === 0 ? (
+                            <p className="text-xs text-gray-600">No recent appointments.</p>
+                          ) : (
+                            <div className="flex flex-col gap-2">
+                              {quickHistory.appointments.map((item) => {
+                                const isActive = selectedHistoryItem?.type === 'appointment' && selectedHistoryItem?.id === item._id;
+                                return (
+                                  <button
+                                    key={item._id}
+                                    type="button"
+                                    onClick={() => handleHistoryItemClick({ type: 'appointment', id: item._id, title: item.appointmentCode || 'Appointment' })}
+                                    className={`text-left bg-white border rounded-md px-3 py-2 transition-all ${isActive ? 'border-emerald-500 bg-emerald-100 ring-2 ring-emerald-200' : 'border-emerald-200 hover:bg-emerald-100 hover:shadow-sm'}`}
+                                  >
+                                    <p className="text-sm font-semibold text-gray-900">{item.appointmentCode || 'Appointment'}</p>
+                                    <p className="text-xs text-gray-600 mt-0.5">{formatDate(item.appointmentDate)}{item.status ? ` • ${item.status}` : ''}</p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">Recent Prescriptions</p>
+                            <span className="text-[10px] font-semibold text-purple-700 bg-purple-100 border border-purple-200 px-2 py-0.5 rounded-full">{quickHistory.prescriptions.length}</span>
+                          </div>
+                          {quickHistory.prescriptions.length === 0 ? (
+                            <p className="text-xs text-gray-600">No recent prescriptions.</p>
+                          ) : (
+                            <div className="flex flex-col gap-2">
+                              {quickHistory.prescriptions.map((item) => {
+                                const isActive = selectedHistoryItem?.type === 'prescription' && selectedHistoryItem?.id === item._id;
+                                return (
+                                  <button
+                                    key={item._id}
+                                    type="button"
+                                    onClick={() => handleHistoryItemClick({ type: 'prescription', id: item._id, title: item.prescriptionCode || 'Prescription' })}
+                                    className={`text-left bg-white border rounded-md px-3 py-2 transition-all ${isActive ? 'border-purple-500 bg-purple-100 ring-2 ring-purple-200' : 'border-purple-200 hover:bg-purple-100 hover:shadow-sm'}`}
+                                  >
+                                    <p className="text-sm font-semibold text-gray-900">{item.prescriptionCode || 'Prescription'}</p>
+                                    <p className="text-xs text-gray-600 mt-0.5">{formatDate(item.issuedAt)}{item.status ? ` • ${item.status}` : ''}</p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Recent Invoices</p>
+                            <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">{quickHistory.invoices.length}</span>
+                          </div>
+                          {quickHistory.invoices.length === 0 ? (
+                            <p className="text-xs text-gray-600">No recent invoices.</p>
+                          ) : (
+                            <div className="flex flex-col gap-2">
+                              {quickHistory.invoices.map((item) => {
+                                const isActive = selectedHistoryItem?.type === 'invoice' && selectedHistoryItem?.id === item._id;
+                                return (
+                                  <button
+                                    key={item._id}
+                                    type="button"
+                                    onClick={() => handleHistoryItemClick({ type: 'invoice', id: item._id, title: item.invoiceNumber || 'Invoice' })}
+                                    className={`text-left bg-white border rounded-md px-3 py-2 transition-all ${isActive ? 'border-amber-500 bg-amber-100 ring-2 ring-amber-200' : 'border-amber-200 hover:bg-amber-100 hover:shadow-sm'}`}
+                                  >
+                                    <p className="text-sm font-semibold text-gray-900">{item.invoiceNumber || 'Invoice'}</p>
+                                    <p className="text-xs text-gray-600 mt-0.5">
+                                      {formatDate(item.createdAt)}{item.status ? ` • ${item.status}` : ''}
+                                      {typeof item.outstandingBalance === 'number' && item.outstandingBalance > 0 ? ` • Outstanding ${item.outstandingBalance.toFixed(2)}` : ''}
+                                    </p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-semibold text-teal-700 uppercase tracking-wide">Recent Lab Results</p>
+                            <span className="text-[10px] font-semibold text-teal-700 bg-teal-100 border border-teal-200 px-2 py-0.5 rounded-full">{quickHistory.labResults.length}</span>
+                          </div>
+                          {quickHistory.labResults.length === 0 ? (
+                            <p className="text-xs text-gray-600">No recent lab results.</p>
+                          ) : (
+                            <div className="flex flex-col gap-2">
+                              {quickHistory.labResults.map((item) => {
+                                const isActive = selectedHistoryItem?.type === 'lab-result' && selectedHistoryItem?.id === item._id;
+                                return (
+                                  <button
+                                    key={item._id}
+                                    type="button"
+                                    onClick={() => handleHistoryItemClick({ type: 'lab-result', id: item._id, title: item.requestCode || 'Lab Result' })}
+                                    className={`text-left bg-white border rounded-md px-3 py-2 transition-all ${isActive ? 'border-teal-500 bg-teal-100 ring-2 ring-teal-200' : 'border-teal-200 hover:bg-teal-100 hover:shadow-sm'}`}
+                                  >
+                                    <p className="text-sm font-semibold text-gray-900">{item.requestCode || 'Lab Result'}</p>
+                                    <p className="text-xs text-gray-600 mt-0.5">{formatDate(item.orderDate)}{item.status ? ` • ${item.status}` : ''}</p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {selectedHistoryItem && (
+                  <div className="flex-1 min-w-0 overflow-y-auto bg-gradient-to-br from-gray-50 to-gray-100/70">
+                    <div className="sticky top-0 bg-white border-b border-gray-200 px-5 py-4 flex items-center justify-between">
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedHistoryItem(null);
+                            setHistoryDetail(null);
+                            setHistoryDetailError(null);
+                          }}
+                          className="mb-2 inline-flex items-center gap-1 text-xs font-semibold text-gray-600 hover:text-gray-900"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                          Back to list
+                        </button>
+                        <h4 className="text-sm font-bold text-gray-900">Details</h4>
+                        <p className="text-xs text-gray-600 mt-1">{selectedHistoryItem.title}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const pathMap: Record<HistoryEntityType, string> = {
+                            visit: '/visits',
+                            appointment: '/appointments',
+                            prescription: '/prescriptions',
+                            invoice: '/invoices',
+                            'lab-result': '/lab-results',
+                          };
+                          router.push(`${pathMap[selectedHistoryItem.type]}/${selectedHistoryItem.id}`);
+                        }}
+                        className="px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+                      >
+                        Open Full Record
+                      </button>
+                    </div>
+
+                    <div className="p-5">
+                      {historyDetailLoading && <p className="text-sm text-gray-600">Loading details...</p>}
+                      {historyDetailError && (
+                        <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{historyDetailError}</div>
+                      )}
+
+                      {!historyDetailLoading && !historyDetailError && historyDetail && (
+                        <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3 shadow-sm">
+                          {selectedHistoryItem.type === 'visit' && (
+                            <>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Code:</span> {historyDetail.visitCode || 'N/A'}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Date:</span> {formatDateTime(historyDetail.date)}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Status:</span> {historyDetail.status || 'N/A'}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Chief Complaint:</span> {historyDetail.chiefComplaint || 'N/A'}</p>
+                            </>
+                          )}
+
+                          {selectedHistoryItem.type === 'appointment' && (
+                            <>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Code:</span> {historyDetail.appointmentCode || 'N/A'}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Date:</span> {formatDateTime(historyDetail.appointmentDate)}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Time:</span> {historyDetail.appointmentTime || 'N/A'}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Status:</span> {historyDetail.status || 'N/A'}</p>
+                            </>
+                          )}
+
+                          {selectedHistoryItem.type === 'prescription' && (
+                            <>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Code:</span> {historyDetail.prescriptionCode || 'N/A'}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Issued:</span> {formatDateTime(historyDetail.issuedAt)}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Status:</span> {historyDetail.status || 'N/A'}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Medications:</span> {Array.isArray(historyDetail.medications) ? historyDetail.medications.length : 0}</p>
+                            </>
+                          )}
+
+                          {selectedHistoryItem.type === 'invoice' && (
+                            <>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Number:</span> {historyDetail.invoiceNumber || 'N/A'}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Created:</span> {formatDateTime(historyDetail.createdAt)}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Status:</span> {historyDetail.status || 'N/A'}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Outstanding:</span> {typeof historyDetail.outstandingBalance === 'number' ? historyDetail.outstandingBalance.toFixed(2) : '0.00'}</p>
+                            </>
+                          )}
+
+                          {selectedHistoryItem.type === 'lab-result' && (
+                            <>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Request:</span> {historyDetail.requestCode || 'N/A'}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Ordered:</span> {formatDateTime(historyDetail.orderDate)}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Status:</span> {historyDetail.status || 'N/A'}</p>
+                              <p className="text-sm"><span className="font-semibold text-gray-800">Test:</span> {historyDetail.testName || 'N/A'}</p>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

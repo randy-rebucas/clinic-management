@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-import { verifySession } from '@/app/lib/dal';
+import { requirePagePermission } from '@/app/lib/auth-helpers';
 import InvoiceDetailClient from '@/components/InvoiceDetailClient';
 
 export default async function InvoiceDetailPage({
@@ -7,13 +6,8 @@ export default async function InvoiceDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await verifySession();
-  
-  if (!session) {
-    redirect('/login');
-  }
+  await requirePagePermission('invoices', 'read');
 
   const { id } = await params;
   return <InvoiceDetailClient invoiceId={id} />;
 }
-

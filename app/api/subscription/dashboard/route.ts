@@ -21,10 +21,16 @@ export async function GET(request: NextRequest) {
     return unauthorizedResponse();
   }
 
+  // Only admin/owner may view billing dashboard
+  if (!['admin', 'owner'].includes(session.role)) {
+    return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+  }
+
   try {
     await connectDB();
 
     const tenantContext = await getTenantContext();
+    // Prefer session tenantId (trusted); fall back to header-derived only when session lacks it
     const tenantId = session.tenantId || tenantContext.tenantId;
 
     if (!tenantId) {

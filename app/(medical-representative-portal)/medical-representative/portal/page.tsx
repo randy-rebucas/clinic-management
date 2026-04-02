@@ -1,3 +1,5 @@
+import { redirect } from 'next/navigation';
+import { verifySession } from '@/app/lib/dal';
 import MedicalRepresentativeDashboardClient from '@/components/MedicalRepresentativeDashboardClient';
 
 export const metadata = {
@@ -5,6 +7,10 @@ export const metadata = {
   description: 'Medical representative dashboard and profile management',
 };
 
-export default function MedicalRepresentativePortalPage() {
+export default async function MedicalRepresentativePortalPage() {
+  const session = await verifySession();
+  if (!session || session.role !== 'medical-representative') {
+    redirect('/medical-representatives/login');
+  }
   return <MedicalRepresentativeDashboardClient />;
 }
