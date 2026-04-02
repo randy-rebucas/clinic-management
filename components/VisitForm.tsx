@@ -93,6 +93,7 @@ interface VisitFormProps {
   onCancel?: () => void;
   onDraftSaved?: (draftId: string) => void;
   providerName: string;
+  lockPatientSelection?: boolean;
 }
 
 interface QuickHistoryData {
@@ -122,6 +123,7 @@ export default function VisitForm({
   onCancel,
   onDraftSaved,
   providerName,
+  lockPatientSelection = false,
 }: VisitFormProps) {
   const [formData, setFormData] = useState<VisitFormData>(() => ({
     _id: initialData?._id,
@@ -212,7 +214,7 @@ export default function VisitForm({
 
   // Save draft to server
   const handleSaveDraft = useCallback(async () => {
-    if (!formData.patient || !selectedPatient) {
+    if (!formData.patient || (!lockPatientSelection && !selectedPatient)) {
       alert('Please select a patient before saving a draft.');
       return;
     }
@@ -248,7 +250,7 @@ export default function VisitForm({
       setDraftSaveStatus('error');
       setTimeout(() => setDraftSaveStatus('idle'), 4000);
     }
-  }, [formData, vitals, draftId, selectedPatient, onDraftSaved]);
+  }, [formData, vitals, draftId, selectedPatient, onDraftSaved, lockPatientSelection]);
 
   // Restore local draft
   const restoreLocalDraft = useCallback(() => {
@@ -523,7 +525,7 @@ export default function VisitForm({
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!formData.patient || !selectedPatient) {
+    if (!formData.patient || (!lockPatientSelection && !selectedPatient)) {
       alert('Please select a valid patient');
       setShowPatientSearch(true);
       return;
@@ -738,88 +740,103 @@ export default function VisitForm({
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Patient <span className="text-red-500">*</span>
                 </label>
-                <p className="text-xs text-gray-600 mb-2">Search by name, email, phone, or patient code</p>
-                <div className="relative patient-search-container">
-                  <input
-                    type="text"
-                    required
-                    value={patientSearch}
-                    onChange={(e) => {
-                      setPatientSearch(e.target.value);
-                      setShowPatientSearch(true);
-                      setHighlightedIndex(-1);
-                      if (!e.target.value) {
-                        setFormData({ ...formData, patient: '' });
-                        setSelectedPatient(null);
-                      }
-                    }}
-                    onFocus={() => {
-                      setShowPatientSearch(true);
-                      setHighlightedIndex(-1);
-                    }}
-                    onKeyDown={(e) => {
-                      if (!showPatientSearch || filteredPatients.length === 0) return;
-
-                      if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        setHighlightedIndex(prev =>
-                          prev < filteredPatients.length - 1 ? prev + 1 : prev
-                        );
-                      } else if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        setHighlightedIndex(prev => prev > 0 ? prev - 1 : -1);
-                      } else if (e.key === 'Enter' && highlightedIndex >= 0) {
-                        e.preventDefault();
-                        selectPatient(filteredPatients[highlightedIndex]);
-                      } else if (e.key === 'Escape') {
-                        setShowPatientSearch(false);
+                {lockPatientSelection ? (
+                  <p className="text-xs text-gray-600 mb-2">Patient linked from the current queue record</p>
+                ) : (
+                  <p className="text-xs text-gray-600 mb-2">Search by name, email, phone, or patient code</p>
+                )}
+                {lockPatientSelection ? (
+                  <div className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : 'Loading patient...'}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {selectedPatient?.patientCode ? `Patient Code: ${selectedPatient.patientCode}` : `Patient ID: ${formData.patient}`}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="relative patient-search-container">
+                    <input
+                      type="text"
+                      required
+                      value={patientSearch}
+                      onChange={(e) => {
+                        setPatientSearch(e.target.value);
+                        setShowPatientSearch(true);
                         setHighlightedIndex(-1);
-                      }
-                    }}
-                    placeholder="Type to search patients..."
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                  />
-                  {showPatientSearch && patientSearch.trim() && (
-                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                      {filteredPatients.length > 0 ? (
-                        <div className="flex flex-col gap-1 p-1">
-                          {filteredPatients.map((patient, index) => (
-                            <button
-                              key={patient._id}
-                              type="button"
-                              onClick={() => {
-                                selectPatient(patient);
-                                setShowPatientSearch(false);
-                              }}
-                              onMouseEnter={() => setHighlightedIndex(index)}
-                              className={`w-full text-left px-4 py-2.5 rounded-lg transition-colors ${highlightedIndex === index
-                                ? 'bg-blue-50 hover:bg-blue-100 border border-blue-200'
-                                : 'hover:bg-gray-50 border border-transparent'
-                                }`}
-                            >
-                              <div className="flex flex-col">
-                                <span className="font-semibold text-sm text-gray-900">{patient.firstName} {patient.lastName}</span>
-                                {(patient.email || patient.phone) && (
-                                  <span className="text-xs text-gray-600 mt-0.5">
-                                    {patient.email && patient.phone
-                                      ? `${patient.email} • ${patient.phone}`
-                                      : patient.email || patient.phone}
-                                    {patient.patientCode && ` • ${patient.patientCode}`}
-                                  </span>
-                                )}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="p-4 text-center">
-                          <p className="text-sm text-gray-600">No patients found</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                {formData.patient && !selectedPatient && (
+                        if (!e.target.value) {
+                          setFormData({ ...formData, patient: '' });
+                          setSelectedPatient(null);
+                        }
+                      }}
+                      onFocus={() => {
+                        setShowPatientSearch(true);
+                        setHighlightedIndex(-1);
+                      }}
+                      onKeyDown={(e) => {
+                        if (!showPatientSearch || filteredPatients.length === 0) return;
+
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setHighlightedIndex(prev =>
+                            prev < filteredPatients.length - 1 ? prev + 1 : prev
+                          );
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setHighlightedIndex(prev => prev > 0 ? prev - 1 : -1);
+                        } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+                          e.preventDefault();
+                          selectPatient(filteredPatients[highlightedIndex]);
+                        } else if (e.key === 'Escape') {
+                          setShowPatientSearch(false);
+                          setHighlightedIndex(-1);
+                        }
+                      }}
+                      placeholder="Type to search patients..."
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                    />
+                    {showPatientSearch && patientSearch.trim() && (
+                      <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                        {filteredPatients.length > 0 ? (
+                          <div className="flex flex-col gap-1 p-1">
+                            {filteredPatients.map((patient, index) => (
+                              <button
+                                key={patient._id}
+                                type="button"
+                                onClick={() => {
+                                  selectPatient(patient);
+                                  setShowPatientSearch(false);
+                                }}
+                                onMouseEnter={() => setHighlightedIndex(index)}
+                                className={`w-full text-left px-4 py-2.5 rounded-lg transition-colors ${highlightedIndex === index
+                                  ? 'bg-blue-50 hover:bg-blue-100 border border-blue-200'
+                                  : 'hover:bg-gray-50 border border-transparent'
+                                  }`}
+                              >
+                                <div className="flex flex-col">
+                                  <span className="font-semibold text-sm text-gray-900">{patient.firstName} {patient.lastName}</span>
+                                  {(patient.email || patient.phone) && (
+                                    <span className="text-xs text-gray-600 mt-0.5">
+                                      {patient.email && patient.phone
+                                        ? `${patient.email} • ${patient.phone}`
+                                        : patient.email || patient.phone}
+                                      {patient.patientCode && ` • ${patient.patientCode}`}
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-4 text-center">
+                            <p className="text-sm text-gray-600">No patients found</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {formData.patient && !selectedPatient && !lockPatientSelection && (
                   <p className="text-xs text-red-600 mt-1.5 font-medium">Please select a valid patient from the list</p>
                 )}
               </div>

@@ -44,7 +44,7 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
     if (!patientId) {
       fetchLatestDraft();
     }
-  }, [queueId]);
+  }, [queueId, patientId]);
 
   const fetchData = async () => {
     try {
@@ -69,7 +69,28 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
       const patientsData = await parseResponse(patientsRes);
       const userData = await parseResponse(userRes);
 
-      if (patientsData.success) setPatients(patientsData.data);
+      if (patientsData.success) {
+        let loadedPatients: Patient[] = Array.isArray(patientsData.data) ? patientsData.data : [];
+
+        // /api/patients is paginated; ensure URL-provided patient is present for autosuggest validation.
+        if (patientId && !loadedPatients.some((patient) => String(patient._id) === String(patientId))) {
+          try {
+            const patientRes = await fetch(`/api/patients/${patientId}`);
+            if (patientRes.status === 401) {
+              router.push('/login');
+              return;
+            }
+            const patientData = await parseResponse(patientRes);
+            if (patientData.success && patientData.data?._id) {
+              loadedPatients = [...loadedPatients, patientData.data as Patient];
+            }
+          } catch (error) {
+            console.error('Failed to fetch URL patient:', error);
+          }
+        }
+
+        setPatients(loadedPatients);
+      }
       if (userData.success && userData.data) {
         setProviderName(userData.data.name || 'Dr. Provider');
       }
@@ -329,6 +350,7 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
                     ...(patientId ? { patient: patientId } : {}),
                     ...(queueVitals ? { vitals: queueVitals } : {}),
                   }}
+                  lockPatientSelection={Boolean(patientId)}
                   patients={patients}
                   onSubmit={handleSubmit}
                   onCancel={handleCancel}
