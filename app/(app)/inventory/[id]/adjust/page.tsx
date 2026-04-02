@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-import { verifySession } from '@/app/lib/dal';
+import { requireAdmin } from '@/app/lib/auth-helpers';
 import InventoryAdjustClient from '@/components/InventoryAdjustClient';
 
 export default async function InventoryAdjustPage({
@@ -7,13 +6,8 @@ export default async function InventoryAdjustPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await verifySession();
-  
-  if (!session) {
-    redirect('/login');
-  }
+  await requireAdmin();
 
   const { id } = await params;
   return <InventoryAdjustClient itemId={id} />;
 }
-

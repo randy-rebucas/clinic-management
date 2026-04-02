@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-import { verifySession } from '@/app/lib/dal';
+import { requirePagePermission } from '@/app/lib/auth-helpers';
 import ReferralDetailClient from '@/components/ReferralDetailClient';
 
 export default async function ReferralDetailPage({
@@ -7,13 +6,8 @@ export default async function ReferralDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await verifySession();
-
-  if (!session) {
-    redirect('/login');
-  }
+  await requirePagePermission('referrals', 'read');
 
   const { id } = await params;
   return <ReferralDetailClient referralId={id} />;
 }
-

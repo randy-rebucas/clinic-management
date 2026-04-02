@@ -1,7 +1,14 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
 import { verifySession } from '@/app/lib/dal';
 import { redirect } from 'next/navigation';
+
+export const metadata: Metadata = {
+  title: 'My Clinic Software — Clinic Management Made Simple',
+  description:
+    'Manage patients, appointments, queues, and billing — all in one place. The complete clinic management solution for modern healthcare providers.',
+};
 
 export default async function HomePage() {
   // Check if user is already logged in, redirect to dashboard

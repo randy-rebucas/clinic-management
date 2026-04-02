@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import User from '@/models/User';
 import { sendEmail } from '@/lib/email';
+import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 
 interface OnboardingRequest {
     firstName: string;
@@ -14,17 +15,19 @@ interface OnboardingRequest {
     products?: string[];
     title?: string;
     bio?: string;
-    paymentAmount?: number;
-    paymentMethod?: string;
-    paymentReference?: string;
     tenantId?: string;
 }
 
 export async function POST(request: NextRequest) {
+    const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
+    if (rateLimitResponse) return rateLimitResponse;
+
     try {
         await connectDB();
 
-        const body = (await request.json()) as OnboardingRequest;
+        const rawBody = await request.json();
+        // Strip any client-supplied payment/activation fields — activation is admin-only
+        const { paymentAmount: _pa, paymentMethod: _pm, paymentReference: _pr, isActivated: _ia, status: _st, ...body } = rawBody as any;
 
         // Validate required fields
         const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'company'];
@@ -52,6 +55,33 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Length caps on string fields
+        if (
+            (body.firstName?.length ?? 0) > 100 ||
+            (body.lastName?.length ?? 0) > 100 ||
+            (body.phone?.length ?? 0) > 30 ||
+            (body.company?.length ?? 0) > 200 ||
+            (body.territory?.length ?? 0) > 200 ||
+            (body.bio?.length ?? 0) > 2000 ||
+            (body.title?.length ?? 0) > 20
+        ) {
+            return NextResponse.json(
+                { success: false, error: 'One or more fields exceed the maximum allowed length.' },
+                { status: 400 }
+            );
+        }
+
+        // Validate products array
+        if (body.products !== undefined) {
+            if (!Array.isArray(body.products) || body.products.length > 50 ||
+                body.products.some((p: unknown) => typeof p !== 'string' || p.length > 200)) {
+                return NextResponse.json(
+                    { success: false, error: 'Products must be an array of up to 50 strings (max 200 chars each).' },
+                    { status: 400 }
+                );
+            }
+        }
+
         // Check if medical rep already exists
         const existingMedRep = await MedicalRepresentative.findOne({ email: body.email.toLowerCase().trim() });
         if (existingMedRep) {
@@ -76,12 +106,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const hasPayment = typeof body.paymentAmount === 'number'
-            && body.paymentAmount > 0
-            && Boolean(body.paymentMethod?.trim())
-            && Boolean(body.paymentReference?.trim());
-
-        // Create medical representative
+        // All self-registrations are inactive until an admin or payment webhook activates them
         const medicalRep = new MedicalRepresentative({
             firstName: body.firstName.trim(),
             lastName: body.lastName.trim(),
@@ -92,61 +117,44 @@ export async function POST(request: NextRequest) {
             products: body.products || [],
             title: body.title?.trim(),
             bio: body.bio?.trim(),
-            status: hasPayment ? 'active' : 'inactive',
-            isActivated: hasPayment,
-            activationDate: hasPayment ? new Date() : undefined,
-            paymentStatus: hasPayment ? 'completed' : 'pending',
-            paymentAmount: body.paymentAmount,
-            paymentMethod: body.paymentMethod?.trim(),
-            paymentReference: body.paymentReference?.trim(),
-            paymentDate: hasPayment ? new Date() : undefined
+            status: 'inactive',
+            isActivated: false,
+            paymentStatus: 'pending',
         });
 
         await medicalRep.save();
 
-        // Send confirmation email
+        // Send confirmation email (escape all user-supplied values)
         if (medicalRep.email) {
             try {
-                const activationStatus = medicalRep.isActivated ? 'activated' : 'pending activation';
+                const esc = (s: string) => s
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                 await sendEmail({
                     to: medicalRep.email,
-                    subject: `Medical Representative Registration ${medicalRep.isActivated ? 'Confirmed' : 'Received'}`,
+                    subject: 'Medical Representative Registration Received',
                     html: `
-          <h1>Welcome, ${medicalRep.firstName}!</h1>
-          <p>Your registration as a Medical Representative has been received.</p>
-          <p><strong>Status:</strong> ${activationStatus}</p>
-          ${medicalRep.isActivated
-                            ? `<p>Your account is now active. You can log in with your credentials.</p>`
-                            : `<p>Your account is pending activation. Payment verification is required.</p>`
-                        }
-
-          <p><strong>Details:</strong></p>
-          <ul>
-            <li>Company: ${medicalRep.company}</li>
-            <li>Territory: ${medicalRep.territory || 'N/A'}</li>
-            <li>Products: ${medicalRep.products?.join(', ') || 'N/A'}</li>
-          </ul>
+          <h1>Welcome, ${esc(medicalRep.firstName)}!</h1>
+          <p>Your registration as a Medical Representative has been received and is pending admin review.</p>
+          <p><strong>Status:</strong> Pending activation</p>
+          <p>Your account requires payment verification before you can log in. Our team will contact you shortly.</p>
           <p>If you have any questions, please contact support.</p>
         `,
                 });
             } catch (emailError: any) {
-                console.warn(`Failed to send confirmation email to ${medicalRep.email}:`, emailError.message);
+                console.warn('Failed to send confirmation email:', emailError.message);
                 // Don't fail the registration if email fails
             }
         }
         return NextResponse.json(
             {
                 success: true,
-                message: medicalRep.isActivated
-                    ? 'Medical representative registered and activated successfully'
-                    : 'Medical representative registered. Awaiting payment verification.',
+                message: 'Medical representative registered. Awaiting payment verification and admin activation.',
                 medicalRepresentative: {
                     id: medicalRep._id,
                     name: `${medicalRep.firstName} ${medicalRep.lastName}`,
                     email: medicalRep.email,
                     company: medicalRep.company,
-                    isActivated: medicalRep.isActivated,
-                    paymentStatus: medicalRep.paymentStatus,
                 },
             },
             { status: 201 }
@@ -155,10 +163,7 @@ export async function POST(request: NextRequest) {
         console.error('Medical representative onboarding error:', error);
 
         return NextResponse.json(
-            {
-                success: false,
-                error: error.message || 'Failed to register medical representative',
-            },
+            { success: false, error: 'Failed to register medical representative' },
             { status: 500 }
         );
     }

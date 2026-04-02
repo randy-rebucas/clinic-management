@@ -1,240 +1,122 @@
-# Getting Started with MyClinicSoft
+# Getting Started with My Clinic Software
 
-A comprehensive guide to get you up and running with MyClinicSoft - your all-in-one clinic management solution.
+My Clinic Software is a complete clinic management platform for healthcare providers. It covers patient records, appointment scheduling, queue management, clinical visits, prescriptions, lab results, billing, inventory, and more — all accessible from a single dashboard.
 
-## What is MyClinicSoft?
+---
 
-MyClinicSoft is a modern, comprehensive clinic management application built with Next.js 16 and MongoDB. It provides everything you need to manage a medical clinic efficiently, from patient records and appointments to billing and inventory management.
+## Logging In
 
-## Key Features Overview
+1. Open your clinic's URL in a browser (e.g., `https://yourclinic.myclinicsoft.com`).
+2. Enter your **Email** and **Password**.
+3. Click **Sign In**.
 
-### Patient Management
-- Complete patient records with demographics and medical history
-- Patient portal for self-service booking
-- File and document management
-- Membership and loyalty programs
+If you have forgotten your password, contact your clinic administrator to reset it.
 
-### Clinical Workflows
-- Appointment scheduling with calendar view
-- Clinical notes and visit management
-- E-prescriptions with drug interaction checking
-- Laboratory test results tracking
-- Patient referrals management
+> **Note:** Each staff member has a role assigned by the administrator. The screens you see and the actions you can take depend on your role.
 
-### Administrative Tools
-- Billing and invoicing system
-- Inventory management for medicines and supplies
-- Document management with secure storage
-- Queue management system
-- Comprehensive reports and analytics
-- Audit logs for compliance
+---
 
-### Communication
-- SMS notifications (Twilio integration)
-- Email notifications
-- In-app notifications
-- Appointment reminders
+## Understanding Roles
 
-## Quick Start Guide
+When you log in, your experience is tailored to your assigned role:
 
-### 1. First Time Login
+| Role | Primary Focus |
+|---|---|
+| **Admin / Owner** | Full access — manage all clinic operations, users, settings, and reports |
+| **Doctor** | Patient care — visits, prescriptions, lab orders, queue, appointments |
+| **Nurse** | Patient support — queue, vitals, visits, lab results |
+| **Receptionist** | Front desk — patient registration, appointments, queue, invoicing |
+| **Accountant** | Billing — invoices, payments, financial reports |
+| **Medical Representative** | External — view doctors and appointment availability |
 
-After installation, you'll need to create your admin account:
+---
 
-```bash
-npm run setup:admin
-```
+## Navigating the Application
 
-This will prompt you to enter:
-- Your name
-- Email address
-- Secure password
+After logging in, you land on the **Dashboard**. The left sidebar contains all the main sections you have access to. Sections not permitted for your role will not appear.
 
-### 2. Access the Dashboard
+### Main Sections
 
-Navigate to `http://localhost:3000` and log in with your admin credentials.
+| Section | Description |
+|---|---|
+| **Dashboard** | Role-specific overview of clinic activity |
+| **Patients** | Patient registry — search, register, and manage patients |
+| **Appointments** | Schedule, view, and manage appointments |
+| **Queue** | Real-time patient queue and vitals |
+| **Visits** | Clinical visit records and documentation |
+| **Prescriptions** | Electronic prescriptions |
+| **Lab Results** | Lab orders and test results |
+| **Invoices** | Billing and payment management |
+| **Referrals** | Patient referrals to specialists |
+| **Documents** | Medical file uploads and storage |
+| **Inventory** | Clinic supplies and stock management |
+| **Doctors** | Doctor profiles and schedules |
+| **Reports** | Analytics and performance reports |
+| **Settings** | Clinic-wide configuration (admin only) |
 
-The **Dashboard** provides:
-- Today's appointment summary
-- Patient statistics
-- Quick action buttons
-- Recent activities
+---
 
-### 3. Configure Your Clinic
+## Your First Day — Recommended Setup Order
 
-Go to **Settings** to configure:
-- Clinic information (name, address, contact)
-- Operating hours
-- Appointment durations
-- SMS and email settings
-- Notification preferences
+If you are setting up the clinic for the first time, complete these steps in order:
 
-### 4. Set Up Your Team
+### Step 1 — Configure Clinic Settings
+Go to **Settings** and fill in:
+- Clinic name and contact details
+- Default currency
+- Default appointment duration
+- Invoice prefix and numbering
 
-Navigate to **Administration**:
-1. **Staff Management** - Add your staff members
-2. **Doctors** - Add doctors with their specializations and schedules
-3. **Roles & Permissions** - Configure access levels for different user types
+### Step 2 — Add Doctors
+Go to **Doctors → New Doctor** and register each doctor with their:
+- Name, email, phone
+- Specialization
+- Weekly schedule (days and hours available)
 
-### 5. Configure Services
+### Step 3 — Add Rooms
+Go to **Rooms** and create rooms or examination areas used for appointments.
 
-Go to **Services Catalog** to:
-- Add the medical services you offer
-- Set service prices
-- Define service durations
+### Step 4 — Add Services
+Go to **Services** and define the billable services your clinic provides (e.g., consultation, lab extraction, X-ray). Set the price for each.
 
-### 6. Add Initial Inventory
+### Step 5 — Add Staff Users
+Go to **Users** and create login accounts for receptionists, nurses, accountants, and other staff. Assign each user a role.
 
-Visit **Inventory** to:
-- Add medicines and supplies
-- Set reorder levels
-- Track expiry dates
+### Step 6 — Register Patients
+Patients can be registered by receptionists at **Patients → New Patient**.
 
-### 7. Set Up Rooms
+### Step 7 — Start Booking Appointments
+Use **Appointments → New Appointment** to schedule the first appointments, or accept walk-in patients through the **Queue**.
 
-Configure your **Rooms Management**:
-- Add consultation rooms
-- Set room availability
-- Assign rooms to doctors
+---
 
-## Navigation Overview
+## Common Daily Workflow
 
-The sidebar navigation is organized into categories:
+### Receptionist
+1. **Check today's appointments** on the Dashboard or Appointments page.
+2. **Register walk-in patients** via the Queue page.
+3. **Create invoices** after consultations are complete.
 
-### Main
-- **Dashboard** - Overview and statistics
+### Nurse
+1. **Open the Queue** and monitor patient arrivals.
+2. **Record vitals** (BP, temperature, weight, etc.) when patients are called.
+3. **Update queue status** as patients move through the clinic.
 
-### Patient Management
-- **Patients** - Patient list and management
+### Doctor
+1. **Check your Dashboard** for today's scheduled patients.
+2. **Open a Visit** from the queue or appointment detail.
+3. **Document the consultation** — chief complaint, diagnosis, notes.
+4. **Issue a prescription** or **order lab tests** as needed.
 
-### Scheduling
-- **Appointments** - Calendar and scheduling
-- **Queue** - Patient queue management
+### Accountant
+1. **Review outstanding invoices** on the Invoices page.
+2. **Record payments** and update invoice status.
+3. **Generate income reports** from the Reports section.
 
-### Clinical
-- **Clinical Notes** - Visit notes and diagnoses
-- **Prescriptions** - E-prescription management
-- **Lab Results** - Laboratory test results
-
-### Billing & Operations
-- **Billing** - Invoices and payments
-- **Documents** - Document management
-- **Referrals** - Patient referral tracking
-- **Inventory** - Medicine and supply inventory
-
-### Staff Management
-- **Doctors** - Doctor profiles and schedules
-
-### Reports
-- **Reports** - Analytics and reporting dashboard
-
-### System
-- **Notifications** - In-app notifications
-- **Knowledge Base** - Help documentation (you're here!)
-- **Settings** - System configuration
-
-### Administration (Admin Only)
-- **Roles & Permissions** - Access control
-- **User Management** - User accounts
-- **Staff Management** - Staff information
-- **Services Catalog** - Services and pricing
-- **Medicines Catalog** - Medicine database
-- **Rooms Management** - Room configuration
-- **Audit Logs** - System audit trail
-- **Medical Reps** - Medical representative management
-- **Subscription** - Subscription management
-
-## Common Workflows
-
-### Adding a New Patient
-
-1. Go to **Patients** → **New Patient**
-2. Fill in patient information:
-   - Personal details (name, date of birth, gender)
-   - Contact information (phone, email, address)
-   - Emergency contact
-   - Insurance information (if applicable)
-3. Click **Save**
-
-### Scheduling an Appointment
-
-1. Go to **Appointments**
-2. Click on a time slot or **New Appointment**
-3. Select:
-   - Patient (search by name or create new)
-   - Doctor
-   - Date and time
-   - Appointment type/service
-   - Duration
-4. Click **Save**
-
-### Creating a Clinical Visit
-
-1. Go to **Clinical Notes** → **New Visit**
-2. Select patient and doctor
-3. Record:
-   - Chief complaint
-   - Vitals (blood pressure, temperature, etc.)
-   - Clinical notes
-   - Diagnoses (ICD-10 codes)
-   - Treatment plan
-4. Create prescription if needed
-5. Order lab tests if required
-6. Click **Save**
-
-### Writing a Prescription
-
-1. From a visit or go to **Prescriptions** → **New Prescription**
-2. Select patient
-3. Add medications:
-   - Search for medicine
-   - Specify dosage
-   - Set frequency and duration
-   - Add instructions
-4. System checks for drug interactions
-5. Click **Save** and **Print**
-
-### Generating an Invoice
-
-1. Go to **Billing** → **New Invoice**
-2. Select patient
-3. Add line items:
-   - Services provided
-   - Medications
-   - Lab tests
-   - Other charges
-4. Review total
-5. Select payment method
-6. Click **Save** and **Print Receipt**
+---
 
 ## Getting Help
 
-### Knowledge Base
-Browse this Knowledge Base for detailed guides on specific features and workflows.
-
-### Support
-Contact your system administrator or the MyClinicSoft support team for assistance.
-
-### Updates
-Keep your system updated to access new features and security improvements.
-
-## Next Steps
-
-Now that you're familiar with the basics, explore specific feature documentation:
-
-- **Patient Management Journey** - Complete patient workflow
-- **Clinical Workflows** - In-depth clinical feature guides
-- **Billing & Payments** - Detailed billing documentation
-- **Setup Guides** - Configuration and integration guides
-
-## Tips for Success
-
-1. **Start Small** - Begin with essential features and gradually adopt more
-2. **Train Your Team** - Ensure all staff are familiar with the system
-3. **Regular Backups** - Enable automatic backups in settings
-4. **Monitor Usage** - Check audit logs and reports regularly
-5. **Update Patient Records** - Keep patient information current
-6. **Use Templates** - Create templates for common notes and prescriptions
-7. **Set Reminders** - Enable SMS/email reminders to reduce no-shows
-
-Welcome to MyClinicSoft! We're excited to help you streamline your clinic operations.
+- Browse the full documentation using the sidebar on this page.
+- Contact your clinic administrator for account or permission issues.
+- For technical support, contact the system provider.

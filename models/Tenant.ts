@@ -130,6 +130,7 @@ const TenantSchema = new Schema<ITenant>(
       renewalAt: { type: Date },
       paypalOrderId: { type: String },
       paypalSubscriptionId: { type: String },
+      processedWebhookIds: [{ type: String }],
       paymentHistory: [
         {
           transactionId: { type: String, required: true },
@@ -154,6 +155,7 @@ const TenantSchema = new Schema<ITenant>(
 // Note: subdomain index is automatically created by unique: true
 TenantSchema.index({ status: 1 });
 TenantSchema.index({ 'subscription.status': 1 });
+TenantSchema.index({ 'subscription.paypalOrderId': 1 });
 TenantSchema.index({ createdAt: -1 });
 
 // Validation: Ensure subdomain doesn't conflict with reserved words

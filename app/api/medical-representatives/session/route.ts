@@ -30,10 +30,13 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
-    // Find medical representative by user ID
-    const medicalRep = await MedicalRepresentative.findOne({ 
-      userId: session.userId 
-    }).lean();
+    // Find medical representative by user ID, scoped to tenant
+    const medicalRep = await MedicalRepresentative.findOne({
+      userId: session.userId,
+      tenantIds: session.tenantId,
+    })
+      .select('-internalNotes -paymentStatus -paymentDate -paymentAmount -paymentMethod -paymentReference -password')
+      .lean();
 
     if (!medicalRep) {
       return NextResponse.json(
@@ -42,7 +45,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Return medical representative data (TypeScript safe)
     return NextResponse.json({
       success: true,
       data: medicalRep,

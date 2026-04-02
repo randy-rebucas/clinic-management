@@ -19,8 +19,8 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-explicit-any": "off", // Disable no-explicit-any rule globally
       "@typescript-eslint/no-unused-vars": "off",
       "react-hooks/exhaustive-deps": "off",
-      "@next/next/no-img-element": "off",
-      "jsx-a11y/alt-text": "off",
+      "@next/next/no-img-element": "warn",
+      "jsx-a11y/alt-text": "warn",
     },
   },
   // More lenient rules for test files

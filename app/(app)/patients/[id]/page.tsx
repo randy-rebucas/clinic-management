@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-import { verifySession } from '@/app/lib/dal';
+import { requirePagePermission } from '@/app/lib/auth-helpers';
 import PatientDetailClient from '@/components/PatientDetailClient';
 
 export default async function PatientDetailPage({
@@ -7,13 +6,8 @@ export default async function PatientDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await verifySession();
-  
-  if (!session) {
-    redirect('/login');
-  }
+  await requirePagePermission('patients', 'read');
 
   const { id } = await params;
   return <PatientDetailClient patientId={id} />;
 }
-

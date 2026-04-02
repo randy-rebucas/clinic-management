@@ -34,8 +34,21 @@ export async function POST(request: NextRequest) {
 
     const eventType = body.event_type;
     const resource = body.resource;
+    // PayPal's unique transmission ID — use as idempotency key
+    const transmissionId = headers['paypal-transmission-id'] as string | undefined;
 
     await connectDB();
+
+    // ── Idempotency: skip events already processed ───────────────────────────
+    if (transmissionId) {
+      const alreadyProcessed = await Tenant.exists({
+        'subscription.processedWebhookIds': transmissionId,
+      });
+      if (alreadyProcessed) {
+        console.log(`Webhook ${transmissionId} already processed — skipping`);
+        return NextResponse.json({ received: true });
+      }
+    }
 
     switch (eventType) {
       case 'PAYMENT.CAPTURE.COMPLETED': {
@@ -109,6 +122,13 @@ export async function POST(request: NextRequest) {
           histEntry.status = 'completed';
         }
 
+        // Stamp the transmissionId so this event is never processed twice
+        if (transmissionId) {
+          tenant.subscription.processedWebhookIds = [
+            ...(tenant.subscription.processedWebhookIds || []),
+            transmissionId,
+          ].slice(-50); // keep last 50 to bound array size
+        }
         await tenant.save();
         console.log(`PAYMENT.CAPTURE.COMPLETED: subscription activated for tenant ${tenant._id}`);
         break;

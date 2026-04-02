@@ -253,7 +253,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     logger.error('Error fetching patient session', error as Error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to fetch patient data' },
+      { success: false, error: 'Failed to fetch patient data' },
       { status: 500 }
     );
   }
