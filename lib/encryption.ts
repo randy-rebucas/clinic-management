@@ -1,5 +1,6 @@
 // Data encryption utilities for sensitive information
 // Uses Node.js crypto module for encryption
+import 'server-only';
 
 import crypto from 'crypto';
 

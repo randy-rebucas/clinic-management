@@ -179,6 +179,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate admin email format
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(admin.email)) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid admin email address.', errors: { adminEmail: ['Invalid email address'] } },
+        { status: 400 }
+      );
+    }
+
+    // Validate admin password length
+    if (!admin.password || admin.password.length < 8) {
+      return NextResponse.json(
+        { success: false, message: 'Admin password must be at least 8 characters.', errors: { adminPassword: ['Password must be at least 8 characters'] } },
+        { status: 400 }
+      );
+    }
+
+    // Validate optional settings fields against allowed values
+    const VALID_TIMEZONES = new Set(['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Kolkata', 'Asia/Manila', 'Australia/Sydney']);
+    const VALID_CURRENCIES = new Set(['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'PHP', 'INR', 'SGD', 'MYR']);
+    const VALID_DATE_FORMATS = new Set(['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD']);
+
+    if (settings?.timezone && !VALID_TIMEZONES.has(settings.timezone)) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid timezone.', errors: { timezone: ['Unsupported timezone'] } },
+        { status: 400 }
+      );
+    }
+    if (settings?.currency && !VALID_CURRENCIES.has(settings.currency)) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid currency.', errors: { currency: ['Unsupported currency'] } },
+        { status: 400 }
+      );
+    }
+    if (settings?.dateFormat && !VALID_DATE_FORMATS.has(settings.dateFormat)) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid date format.', errors: { dateFormat: ['Unsupported date format'] } },
+        { status: 400 }
+      );
+    }
+
     // Create tenant with 7-day trial subscription
     const trialExpiresAt = new Date();
     trialExpiresAt.setDate(trialExpiresAt.getDate() + 7); // 7 days from now
@@ -373,11 +413,6 @@ export async function POST(request: NextRequest) {
       throw new Error('Admin role not found after creation');
     }
 
-    // Validate admin password
-    if (!admin.password || admin.password.length < 8) {
-      throw new Error('Admin password must be at least 8 characters long');
-    }
-
     // Split admin name into first and last name
     const nameParts = admin.name.trim().split(/\s+/);
     const firstName = nameParts[0] || 'Admin';
@@ -416,7 +451,7 @@ export async function POST(request: NextRequest) {
     if (!adminUser) {
       // Create User manually with the provided password
       try {
-        const hashedPassword = await bcrypt.hash(admin.password, 10);
+        const hashedPassword = await bcrypt.hash(admin.password, 12);
 
         adminUser = await User.create({
           name: admin.name.trim(),
@@ -447,7 +482,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // User exists, update password and link to admin profile if needed
-      const hashedPassword = await bcrypt.hash(admin.password, 10);
+      const hashedPassword = await bcrypt.hash(admin.password, 12);
       adminUser.password = hashedPassword;
       adminUser.role = adminRole._id;
       adminUser.tenantId = tenant._id;
@@ -571,9 +606,7 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         message: 'Failed to create tenant',
-        errors: {
-          general: [error.message || 'An error occurred. Please try again.'],
-        },
+        errors: { general: ['An error occurred. Please try again.'] },
       },
       { status: 500 }
     );

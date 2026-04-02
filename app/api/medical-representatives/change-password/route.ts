@@ -3,6 +3,7 @@ import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import bcrypt from 'bcryptjs';
+import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 
 /**
  * POST /api/medical-representatives/change-password
@@ -10,6 +11,9 @@ import bcrypt from 'bcryptjs';
  */
 export async function POST(request: NextRequest) {
   try {
+    const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
+    if (rateLimitResponse) return rateLimitResponse;
+
     // Verify session
     const session = await verifySession();
     if (!session) {
@@ -72,7 +76,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
     user.password = hashedPassword;
     await user.save();
 
@@ -83,7 +87,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Change password error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }

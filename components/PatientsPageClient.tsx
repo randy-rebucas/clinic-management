@@ -3,6 +3,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import SubPageHeader from './SubPageHeader';
+import AlertBanner from './sharable/AlertBanner';
 import { AlertDialog } from './ui/Modal';
 
 interface Patient {
@@ -26,6 +28,7 @@ export default function PatientsPageClient() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -220,60 +223,17 @@ export default function PatientsPageClient() {
     }
   };
 
-  // if (loading) {
-  //   return (
-  //     <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen" aria-busy="true" aria-live="polite">
-  //       <div className="max-w-7xl mx-auto">
-  //         <div className="flex flex-col items-center gap-4" style={{ minHeight: '50vh', justifyContent: 'center' }}>
-  //           <div className="relative">
-  //             <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600" aria-label="Loading spinner"></div>
-  //           </div>
-  //           <p className="text-gray-600 font-medium">Loading patients...</p>
-  //         </div>
-  //       </div>
-  //     </section>
-  //   );
-  // }
-
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
+    <section className="bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-col gap-6">
-          {/* Error/Success Messages */}
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm font-medium text-red-800">{error}</p>
-              </div>
-            </div>
-          )}
-          {success && (
-            <div className="bg-green-50 border-l-4 border-green-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm font-medium text-green-800">{success}</p>
-              </div>
-            </div>
-          )}
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Patients</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage patient records and information</p>
-                </div>
-              </div>
+          <SubPageHeader
+            backHref="/dashboard"
+            iconPath="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+            title="Patients"
+            subtitle="Manage patient records and information"
+            actions={
               <Link
                 href="/patients/new"
                 className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg font-semibold text-sm inline-flex items-center gap-2"
@@ -283,66 +243,35 @@ export default function PatientsPageClient() {
                 </svg>
                 Add New Patient
               </Link>
-            </div>
-          </div>
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total Patients</p>
-                <div className="p-2 bg-blue-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl sm:text-4xl font-bold text-blue-700">{patients.length}</p>
-            </div>
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Showing</p>
-                <div className="p-2 bg-purple-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl sm:text-4xl font-bold text-purple-700">{filteredPatients.length}</p>
-            </div>
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">This Month</p>
-                <div className="p-2 bg-emerald-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl sm:text-4xl font-bold text-emerald-700">
-                {patients.filter((p) => {
-                  const created = new Date((p as any).createdAt || 0);
-                  const now = new Date();
-                  return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
-                }).length}
-              </p>
-            </div>
-            <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Active</p>
-                <div className="p-2 bg-amber-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl sm:text-4xl font-bold text-amber-700">
-                {patients.filter((p) => (p as any).active !== false).length}
-              </p>
-            </div>
-          </div>
-          {/* Search and Filter Bar */}
+            }
+          />
+          {/* Alerts */}
+          {error && <AlertBanner type="error" message={error} />}
+          {success && <AlertBanner type="success" message={success} />}
+
+          {/* Search, Stats and Filters */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
-            <form onSubmit={handleSearchForm} className={`flex flex-col sm:flex-row gap-4 ${debouncedSearchQuery || activeFilterCount > 0 ? "mb-4" : "mb-0"}`}>
+            {/* Top row: stats toggle + search + sort + filter */}
+            <form onSubmit={handleSearchForm} className={`flex flex-col sm:flex-row gap-3 ${showStats || showFilters || debouncedSearchQuery || activeFilterCount > 0 ? 'mb-4' : 'mb-0'}`}>
+              {/* Stats Toggle */}
+              <button
+                type="button"
+                onClick={() => setShowStats((v) => !v)}
+                className={`group inline-flex items-center gap-2 px-3 py-3 rounded-lg border transition-all flex-shrink-0 ${showStats ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600'}`}
+                title="Toggle Quick Stats"
+              >
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span className="text-xs font-semibold uppercase tracking-wide hidden sm:inline">Stats</span>
+                <svg
+                  className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 ${showStats ? 'rotate-0' : '-rotate-90'}`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
               {/* Search Input */}
               <div className="flex-1" style={{ minWidth: 0 }}>
                 <div className="relative w-full">
@@ -389,9 +318,9 @@ export default function PatientsPageClient() {
                       </button>
                     </div>
                   )}
-
                 </div>
               </div>
+
               {/* Sort Dropdown */}
               <div style={{ minWidth: '180px' }}>
                 <select
@@ -407,11 +336,13 @@ export default function PatientsPageClient() {
                   <option value="code-desc">Patient Code (Z-A)</option>
                 </select>
               </div>
+
               {/* Filter Toggle Button */}
               <button
-                className={`px-4 py-3 rounded-lg transition-all flex items-center font-semibold text-sm ${showFilters || activeFilterCount > 0
-                  ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-md"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                type="button"
+                className={`px-4 py-3 rounded-lg transition-all flex items-center font-semibold text-sm flex-shrink-0 ${showFilters || activeFilterCount > 0
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 onClick={() => setShowFilters(!showFilters)}
               >
@@ -427,141 +358,200 @@ export default function PatientsPageClient() {
               </button>
             </form>
 
-          </div>
-
-          {/* Global Search Toggle */}
-          <div className="flex items-center gap-2">
-            <input
-              id="global-search-toggle"
-              type="checkbox"
-              checked={filters.global}
-              onChange={e => {
-                setFilters(f => ({ ...f, global: e.target.checked }));
-                // When toggling global, also clear search to avoid confusion
-                setSearchQuery('');
-                setDebouncedSearchQuery('');
-              }}
-              className="form-checkbox h-4 w-4 text-blue-600 transition-all"
-            />
-            <label htmlFor="global-search-toggle" className="text-xs text-gray-700 select-none cursor-pointer">
-              Search all patients (not just my clinic)
-            </label>
-          </div>
-
-          {/* Filter Panel */}
-          {showFilters && (
-            <div className="pt-4 pb-4 border-t border-gray-200">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                {/* Sex Filter */}
-                <div>
-                  <label htmlFor="filter-sex" className="block text-xs font-semibold text-gray-700 mb-2">Sex</label>
-                  <select
-                    id="filter-sex"
-                    name="sex"
-                    value={filters.sex}
-                    onChange={(e) => setFilters({ ...filters, sex: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                  >
-                    <option value="all">All</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-
-                {/* Active Status Filter */}
-                <div>
-                  <label htmlFor="filter-active" className="block text-xs font-semibold text-gray-700 mb-2">Status</label>
-                  <select
-                    id="filter-active"
-                    name="active"
-                    value={filters.active}
-                    onChange={(e) => setFilters({ ...filters, active: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                  >
-                    <option value="all">All</option>
-                    <option value="true">Active</option>
-                    <option value="false">Inactive</option>
-                  </select>
-                </div>
-
-                {/* Age Range Filters */}
-                <div>
-                  <label htmlFor="filter-min-age" className="block text-xs font-semibold text-gray-700 mb-2">Min Age</label>
-                  <input
-                    id="filter-min-age"
-                    name="minAge"
-                    type="number"
-                    placeholder="Min"
-                    value={filters.minAge}
-                    onChange={(e) => setFilters({ ...filters, minAge: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="filter-max-age" className="block text-xs font-semibold text-gray-700 mb-2">Max Age</label>
-                  <input
-                    id="filter-max-age"
-                    name="maxAge"
-                    type="number"
-                    placeholder="Max"
-                    value={filters.maxAge}
-                    onChange={(e) => setFilters({ ...filters, maxAge: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-
-                {/* City Filter */}
-                <div>
-                  <label htmlFor="filter-city" className="block text-xs font-semibold text-gray-700 mb-2">City</label>
-                  <input
-                    id="filter-city"
-                    name="city"
-                    type="text"
-                    placeholder="City"
-                    value={filters.city}
-                    onChange={(e) => setFilters({ ...filters, city: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-
-                {/* State Filter */}
-                <div>
-                  <label htmlFor="filter-state" className="block text-xs font-semibold text-gray-700 mb-2">State</label>
-                  <input
-                    id="filter-state"
-                    name="state"
-                    type="text"
-                    placeholder="State"
-                    value={filters.state}
-                    onChange={(e) => setFilters({ ...filters, state: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
+            {/* Slide-down stats grid */}
+            <div className={`grid transition-all duration-300 ease-in-out ${showStats ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+              <div className="overflow-hidden">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-4 border-b border-gray-100">
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-4 sm:p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total Patients</p>
+                      <div className="p-2 bg-blue-500 rounded-lg">
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                      </div>
+                    </div>
+                    <p className="text-3xl sm:text-4xl font-bold text-blue-700">{patients.length}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-4 sm:p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Showing</p>
+                      <div className="p-2 bg-purple-500 rounded-lg">
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                    </div>
+                    <p className="text-3xl sm:text-4xl font-bold text-purple-700">{filteredPatients.length}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-4 sm:p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">This Month</p>
+                      <div className="p-2 bg-emerald-500 rounded-lg">
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                    </div>
+                    <p className="text-3xl sm:text-4xl font-bold text-emerald-700">
+                      {patients.filter((p) => {
+                        const created = new Date((p as any).createdAt || 0);
+                        const now = new Date();
+                        return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
+                      }).length}
+                    </p>
+                  </div>
+                  <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-4 sm:p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Active</p>
+                      <div className="p-2 bg-amber-500 rounded-lg">
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                    </div>
+                    <p className="text-3xl sm:text-4xl font-bold text-amber-700">
+                      {patients.filter((p) => (p as any).active !== false).length}
+                    </p>
+                  </div>
                 </div>
               </div>
+            </div>
 
-              {/* Clear Filters Button */}
-              {activeFilterCount > 0 && (
-                <div className="flex justify-end mt-4">
-                  <button
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
-                    onClick={clearFilters}
-                  >
-                    Clear Filters
-                  </button>
+            {/* Global Search Toggle */}
+            <div className="flex items-center gap-2 mt-3">
+              <input
+                id="global-search-toggle"
+                type="checkbox"
+                checked={filters.global}
+                onChange={e => {
+                  setFilters(f => ({ ...f, global: e.target.checked }));
+                  // When toggling global, also clear search to avoid confusion
+                  setSearchQuery('');
+                  setDebouncedSearchQuery('');
+                }}
+                className="form-checkbox h-4 w-4 text-blue-600 transition-all"
+              />
+              <label htmlFor="global-search-toggle" className="text-xs text-gray-700 select-none cursor-pointer">
+                Search all patients (not just my clinic)
+              </label>
+            </div>
+
+            {/* Filter Panel */}
+            {showFilters && (
+              <div className="pt-4 pb-4 border-t border-gray-200 mt-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                  {/* Sex Filter */}
+                  <div>
+                    <label htmlFor="filter-sex" className="block text-xs font-semibold text-gray-700 mb-2">Sex</label>
+                    <select
+                      id="filter-sex"
+                      name="sex"
+                      value={filters.sex}
+                      onChange={(e) => setFilters({ ...filters, sex: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                    >
+                      <option value="all">All</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+
+                  {/* Active Status Filter */}
+                  <div>
+                    <label htmlFor="filter-active" className="block text-xs font-semibold text-gray-700 mb-2">Status</label>
+                    <select
+                      id="filter-active"
+                      name="active"
+                      value={filters.active}
+                      onChange={(e) => setFilters({ ...filters, active: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                    >
+                      <option value="all">All</option>
+                      <option value="true">Active</option>
+                      <option value="false">Inactive</option>
+                    </select>
+                  </div>
+
+                  {/* Age Range Filters */}
+                  <div>
+                    <label htmlFor="filter-min-age" className="block text-xs font-semibold text-gray-700 mb-2">Min Age</label>
+                    <input
+                      id="filter-min-age"
+                      name="minAge"
+                      type="number"
+                      placeholder="Min"
+                      value={filters.minAge}
+                      onChange={(e) => setFilters({ ...filters, minAge: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="filter-max-age" className="block text-xs font-semibold text-gray-700 mb-2">Max Age</label>
+                    <input
+                      id="filter-max-age"
+                      name="maxAge"
+                      type="number"
+                      placeholder="Max"
+                      value={filters.maxAge}
+                      onChange={(e) => setFilters({ ...filters, maxAge: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+                    />
+                  </div>
+
+                  {/* City Filter */}
+                  <div>
+                    <label htmlFor="filter-city" className="block text-xs font-semibold text-gray-700 mb-2">City</label>
+                    <input
+                      id="filter-city"
+                      name="city"
+                      type="text"
+                      placeholder="City"
+                      value={filters.city}
+                      onChange={(e) => setFilters({ ...filters, city: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+                    />
+                  </div>
+
+                  {/* State Filter */}
+                  <div>
+                    <label htmlFor="filter-state" className="block text-xs font-semibold text-gray-700 mb-2">State</label>
+                    <input
+                      id="filter-state"
+                      name="state"
+                      type="text"
+                      placeholder="State"
+                      value={filters.state}
+                      onChange={(e) => setFilters({ ...filters, state: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+                    />
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
 
-          {/* Results Count */}
-          {(debouncedSearchQuery || activeFilterCount > 0) && (
-            <div className="pt-4 border-t border-gray-200">
-              <p className="text-sm font-medium text-gray-700">
-                Found <span className="font-bold text-gray-900">{filteredPatients.length}</span> {filteredPatients.length === 1 ? 'patient' : 'patients'}
-              </p>
-            </div>
-          )}
+                {/* Clear Filters Button */}
+                {activeFilterCount > 0 && (
+                  <div className="flex justify-end mt-4">
+                    <button
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
+                      onClick={clearFilters}
+                    >
+                      Clear Filters
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Results Count */}
+            {(debouncedSearchQuery || activeFilterCount > 0) && (
+              <div className="pt-3 border-t border-gray-200 mt-3">
+                <p className="text-sm font-medium text-gray-700">
+                  Found <span className="font-bold text-gray-900">{filteredPatients.length}</span> {filteredPatients.length === 1 ? 'patient' : 'patients'}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -598,7 +588,7 @@ export default function PatientsPageClient() {
             ))}
           </div>
         ) : null}
-        
+
         {/* Patients List */}
         {filteredPatients.length === 0 && patients.length > 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200">

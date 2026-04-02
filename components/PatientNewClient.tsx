@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import PatientForm from './PatientForm';
+import SubPageHeader from './SubPageHeader';
+import AlertBanner from './sharable/AlertBanner';
 
 export default function PatientNewClient() {
   const [submitting, setSubmitting] = useState(false);
@@ -13,7 +14,7 @@ export default function PatientNewClient() {
   const handleSubmit = async (formData: any) => {
     setSubmitting(true);
     setError(null);
-    
+
     try {
       // Handle allergies - already in structured format from form
       const allergiesArray = Array.isArray(formData.allergies)
@@ -109,7 +110,7 @@ export default function PatientNewClient() {
         setError(`Failed to create patient: API error (Status: ${res.status})`);
         return;
       }
-      
+
       if (data && data.success && data.data && data.data._id) {
         // Redirect to the new patient's detail page
         router.push(`/patients/${data.data._id}`);
@@ -141,47 +142,14 @@ export default function PatientNewClient() {
     <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6">
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex items-start gap-4">
-              <Link
-                href="/patients"
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </Link>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">New Patient</h1>
-                    <p className="text-sm sm:text-base text-gray-600 mt-1">Add a new patient to the system</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <SubPageHeader
+            backHref="/patients"
+            iconPath="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+            title="New Patient"
+            subtitle="Add a new patient to the system"
+          />
 
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-red-800 mb-1">Error</h3>
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
-              </div>
-            </div>
-          )}
+          {error && <AlertBanner type="error" message={error} title="Error" />}
 
           {/* Form Card */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -206,4 +174,3 @@ export default function PatientNewClient() {
     </section>
   );
 }
-

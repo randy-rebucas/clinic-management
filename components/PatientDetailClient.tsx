@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import QRCode from 'react-qr-code';
+import dynamic from 'next/dynamic';
+
+const QRCode = dynamic(() => import('react-qr-code'), { ssr: false });
 import { Modal, AlertDialog } from './ui/Modal';
 import { useSetting } from './SettingsContext';
 
@@ -121,6 +123,16 @@ interface LabResult {
   testName?: string;
 }
 
+interface PatientHistoryItem {
+  id: string;
+  type: 'registration' | 'visit' | 'appointment' | 'prescription' | 'invoice' | 'lab-result';
+  date: string;
+  title: string;
+  subtitle?: string;
+  status?: string;
+  href?: string;
+}
+
 export default function PatientDetailClient({ patientId }: { patientId: string }) {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
@@ -130,7 +142,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
   const [labResults, setLabResults] = useState<LabResult[]>([]);
   const [alerts, setAlerts] = useState<PatientAlert[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'visits' | 'appointments' | 'prescriptions' | 'invoices' | 'lab-results' | 'files'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'visits' | 'appointments' | 'prescriptions' | 'invoices' | 'lab-results' | 'files'>('overview');
   const [showQR, setShowQR] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<string | null>(null);
   const [deleteFileDialogOpen, setDeleteFileDialogOpen] = useState(false);
@@ -382,6 +394,111 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     return sum + (inv.outstandingBalance || 0);
   }, 0);
   const totalPaid = invoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
+
+  const patientHistory: PatientHistoryItem[] = [
+    {
+      id: `registration-${patient._id}`,
+      type: 'registration' as const,
+      date: patient.createdAt,
+      title: 'Patient record created',
+      subtitle: patient.patientCode ? `ID: ${patient.patientCode}` : undefined,
+      status: 'completed',
+    },
+    ...visits.map((visit) => ({
+      id: `visit-${visit._id}`,
+      type: 'visit' as const,
+      date: visit.date,
+      title: visit.visitCode || 'Visit',
+      subtitle: visit.chiefComplaint ? `Chief complaint: ${visit.chiefComplaint}` : visit.visitType,
+      status: visit.status,
+      href: `/visits/${visit._id}`,
+    })),
+    ...appointments.map((appointment) => ({
+      id: `appointment-${appointment._id}`,
+      type: 'appointment' as const,
+      date: appointment.appointmentDate,
+      title: appointment.appointmentCode || 'Appointment',
+      subtitle: appointment.doctor
+        ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`
+        : appointment.appointmentTime
+        ? `Scheduled at ${new Date(`2000-01-01T${appointment.appointmentTime}`).toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+          })}`
+        : undefined,
+      status: appointment.status,
+      href: `/appointments/${appointment._id}`,
+    })),
+    ...prescriptions.map((prescription) => ({
+      id: `prescription-${prescription._id}`,
+      type: 'prescription' as const,
+      date: prescription.issuedAt,
+      title: prescription.prescriptionCode || 'Prescription',
+      subtitle: prescription.medications?.length
+        ? `${prescription.medications.length} medication(s)`
+        : undefined,
+      status: prescription.status,
+      href: `/prescriptions/${prescription._id}`,
+    })),
+    ...invoices.map((invoice) => ({
+      id: `invoice-${invoice._id}`,
+      type: 'invoice' as const,
+      date: invoice.createdAt,
+      title: invoice.invoiceNumber || 'Invoice',
+      subtitle: `Total ${formatCurrency(invoice.total)}`,
+      status: invoice.status,
+      href: `/invoices/${invoice._id}`,
+    })),
+    ...labResults.map((labResult) => ({
+      id: `lab-result-${labResult._id}`,
+      type: 'lab-result' as const,
+      date: labResult.orderDate,
+      title: labResult.requestCode || 'Lab Result',
+      subtitle: labResult.testName,
+      status: labResult.status,
+      href: `/lab-results/${labResult._id}`,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const historyTypeStyles: Record<PatientHistoryItem['type'], { badge: string; dot: string; icon: string; label: string }> = {
+    registration: {
+      badge: 'bg-gray-100 text-gray-700 border border-gray-200',
+      dot: 'from-gray-500 to-gray-600',
+      icon: 'M5 13l4 4L19 7',
+      label: 'Registration',
+    },
+    visit: {
+      badge: 'bg-blue-100 text-blue-700 border border-blue-200',
+      dot: 'from-blue-500 to-blue-600',
+      icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+      label: 'Visit',
+    },
+    appointment: {
+      badge: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+      dot: 'from-emerald-500 to-emerald-600',
+      icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
+      label: 'Appointment',
+    },
+    prescription: {
+      badge: 'bg-purple-100 text-purple-700 border border-purple-200',
+      dot: 'from-purple-500 to-purple-600',
+      icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z',
+      label: 'Prescription',
+    },
+    invoice: {
+      badge: 'bg-amber-100 text-amber-700 border border-amber-200',
+      dot: 'from-amber-500 to-amber-600',
+      icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+      label: 'Invoice',
+    },
+    'lab-result': {
+      badge: 'bg-teal-100 text-teal-700 border border-teal-200',
+      dot: 'from-teal-500 to-teal-600',
+      icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+      label: 'Lab Result',
+    },
+  };
 
   return (
     <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
@@ -648,6 +765,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
             <nav className="flex -mb-px min-w-max">
               {[
                 { value: 'overview', label: 'Overview', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+                { value: 'history', label: `History (${patientHistory.length})`, icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
                 { value: 'visits', label: `Visits (${visits.length})`, icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
                 { value: 'appointments', label: `Appointments (${appointments.length})`, icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
                 { value: 'prescriptions', label: `Prescriptions (${prescriptions.length})`, icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z' },
@@ -979,6 +1097,75 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                           </div>
                         ))}
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* History Tab */}
+            {activeTab === 'history' && (
+              <div>
+                {patientHistory.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-2">No history found</h3>
+                    <p className="text-sm text-gray-600">Patient activity history will appear here once records are added.</p>
+                  </div>
+                ) : (
+                  <div className="relative pl-8 border-l-2 border-blue-200">
+                    {patientHistory.map((historyItem) => {
+                      const style = historyTypeStyles[historyItem.type];
+
+                      return (
+                        <div key={historyItem.id} className="relative mb-6">
+                          <div className={`absolute -left-[21px] top-0 w-5 h-5 bg-gradient-to-br ${style.dot} rounded-full border-4 border-white shadow-md`}></div>
+
+                          <div className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-5 hover:shadow-lg hover:border-blue-300 transition-all">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${style.badge}`}>
+                                    {style.label}
+                                  </span>
+                                  {historyItem.status && (
+                                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-200 capitalize">
+                                      {historyItem.status}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm font-bold text-gray-900 mb-1">{historyItem.title}</p>
+                                {historyItem.subtitle && (
+                                  <p className="text-sm text-gray-700 mb-2">{historyItem.subtitle}</p>
+                                )}
+                                <p className="text-xs text-gray-600">
+                                  {new Date(historyItem.date).toLocaleDateString('en-US', {
+                                    weekday: 'long',
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric',
+                                  })}
+                                </p>
+                              </div>
+                              {historyItem.href && (
+                                <Link
+                                  href={historyItem.href}
+                                  className="text-blue-600 hover:text-blue-700 text-sm font-semibold whitespace-nowrap inline-flex items-center gap-1"
+                                >
+                                  View
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                  </svg>
+                                </Link>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import AppointmentCalendar from './AppointmentCalendar';
+import dynamic from 'next/dynamic';
+
+const AppointmentCalendar = dynamic(() => import('./AppointmentCalendar'));
 import { Modal } from './ui/Modal';
 import { useSetting } from './SettingsContext';
 

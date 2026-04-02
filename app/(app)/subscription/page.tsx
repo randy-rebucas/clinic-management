@@ -10,6 +10,10 @@ export default async function SubscriptionPage() {
     redirect('/login');
   }
 
+  if (!['admin', 'owner'].includes(user.role as string)) {
+    redirect('/dashboard');
+  }
+
   // Get tenant context to check subscription
   const tenantContext = await getTenantContext();
   

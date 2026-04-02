@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-import SignaturePad from './SignaturePad';
+import dynamic from 'next/dynamic';
+
+const SignaturePad = dynamic(() => import('./SignaturePad'), { ssr: false });
 import { calculateDosage, calculateQuantity, formatDosageInstructions } from '@/lib/dosage-calculator';
 import { AlertDialog } from './ui/Modal';
 

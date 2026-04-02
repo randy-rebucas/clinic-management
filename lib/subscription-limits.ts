@@ -199,7 +199,10 @@ export async function checkSubscriptionLimit(
     return { allowed: true };
   } catch (error: any) {
     console.error('Error checking subscription limit:', error);
-    // On error, allow the action (fail open) but log the error
+    // Fail closed in production — an outage must not silently grant unlimited access
+    if (process.env.NODE_ENV === 'production') {
+      return { allowed: false, reason: 'Unable to verify subscription limits. Please try again.' };
+    }
     return { allowed: true };
   }
 }

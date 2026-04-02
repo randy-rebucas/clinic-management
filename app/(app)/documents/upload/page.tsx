@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-import { verifySession } from '@/app/lib/dal';
+import { requirePagePermission } from '@/app/lib/auth-helpers';
 import DocumentUploadClient from '@/components/DocumentUploadClient';
 
 export default async function DocumentUploadPage({
@@ -7,13 +6,8 @@ export default async function DocumentUploadPage({
 }: {
   searchParams: Promise<{ patientId?: string; visitId?: string }>;
 }) {
-  const session = await verifySession();
-  
-  if (!session) {
-    redirect('/login');
-  }
+  await requirePagePermission('patients', 'create');
 
   const params = await searchParams;
   return <DocumentUploadClient patientId={params.patientId} visitId={params.visitId} />;
 }
-
