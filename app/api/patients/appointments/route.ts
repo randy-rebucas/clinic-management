@@ -4,15 +4,14 @@ import Appointment from '@/models/Appointment';
 import Doctor from '@/models/Doctor';
 import { sendSMS } from '@/lib/sms';
 import logger from '@/lib/logger';
-import { verifyPatientSession } from '@/app/lib/dal';
+import { verifyPatientAuth } from '@/app/lib/patient-auth';
 
 /**
  * Get available doctors and time slots for patient booking
  */
 export async function GET(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get('patient_session');
-    const sessionData = await verifyPatientSession(sessionCookie?.value);
+    const sessionData = await verifyPatientAuth(request);
     if (!sessionData) {
       return NextResponse.json(
         { success: false, error: 'Not authenticated. Please login.' },
@@ -22,7 +21,6 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
-    // Get tenantId from patient
     const Patient = (await import('@/models/Patient')).default;
     const patient = await Patient.findById(sessionData.patientId);
     if (!patient) {
@@ -115,8 +113,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get('patient_session');
-    const sessionData = await verifyPatientSession(sessionCookie?.value);
+    const sessionData = await verifyPatientAuth(request);
     if (!sessionData) {
       return NextResponse.json(
         { success: false, error: 'Not authenticated. Please login.' },
@@ -125,7 +122,7 @@ export async function POST(request: NextRequest) {
     }
 
     await connectDB();
-    
+
     const body = await request.json();
     const doctorId = typeof body.doctorId === 'string' ? body.doctorId.trim() : '';
     const appointmentDate = typeof body.appointmentDate === 'string' ? body.appointmentDate.trim() : '';

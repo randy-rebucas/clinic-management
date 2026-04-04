@@ -6,7 +6,7 @@ import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
 import Prescription from '@/models/Prescription';
 import logger from '@/lib/logger';
-import { verifyPatientSession } from '@/app/lib/dal';
+import { verifyPatientAuth } from '@/app/lib/patient-auth';
 
 /**
  * Patient notification types derived from clinical activity
@@ -32,8 +32,7 @@ type PatientNotification = {
  * solution, a dedicated PatientNotification model can be introduced later.
  */
 export async function GET(request: NextRequest) {
-  const sessionCookie = request.cookies.get('patient_session');
-  const session = await verifyPatientSession(sessionCookie?.value);
+  const session = await verifyPatientAuth(request);
 
   if (!session) {
     return NextResponse.json(
@@ -243,8 +242,7 @@ export async function GET(request: NextRequest) {
  *        OR { markAllRead: true } — mark everything as read
  */
 export async function PATCH(request: NextRequest) {
-  const sessionCookie = request.cookies.get('patient_session');
-  const session = await verifyPatientSession(sessionCookie?.value);
+  const session = await verifyPatientAuth(request);
 
   if (!session) {
     return NextResponse.json(

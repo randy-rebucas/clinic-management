@@ -10,7 +10,7 @@ import Invoice from '@/models/Invoice';
 import Document from '@/models/Document';
 import Referral from '@/models/Referral';
 import logger from '@/lib/logger';
-import { verifyPatientSession } from '@/app/lib/dal';
+import { verifyPatientAuth } from '@/app/lib/patient-auth';
 
 // Ensure Doctor model is registered for populate calls
 void Doctor;
@@ -21,9 +21,7 @@ void Doctor;
  */
 export async function GET(request: NextRequest) {
   try {
-    // Verify the signed patient_session JWT
-    const sessionCookie = request.cookies.get('patient_session');
-    const sessionData = await verifyPatientSession(sessionCookie?.value);
+    const sessionData = await verifyPatientAuth(request);
 
     if (!sessionData) {
       return NextResponse.json(
