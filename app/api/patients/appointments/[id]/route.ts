@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
 import logger from '@/lib/logger';
-import { verifyPatientSession } from '@/app/lib/dal';
+import { verifyPatientAuth } from '@/app/lib/patient-auth';
 
 /**
  * Cancel an appointment for logged-in patient
@@ -12,8 +12,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const sessionCookie = request.cookies.get('patient_session');
-    const sessionData = await verifyPatientSession(sessionCookie?.value);
+    const sessionData = await verifyPatientAuth(request);
     if (!sessionData) {
       return NextResponse.json(
         { success: false, error: 'Not authenticated. Please login.' },
@@ -22,8 +21,7 @@ export async function DELETE(
     }
 
     await connectDB();
-    
-    // Get tenantId from patient
+
     const Patient = (await import('@/models/Patient')).default;
     const patient = await Patient.findById(sessionData.patientId);
     if (!patient) {
@@ -32,8 +30,8 @@ export async function DELETE(
         { status: 404 }
       );
     }
-    
-    const patientTenantId = patient.tenantId;
+
+    const patientTenantId = patient.tenantIds?.[0];
     
     const { id } = await params;
 

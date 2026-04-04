@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
-import { verifyPatientSession } from '@/app/lib/dal';
+import { verifyPatientAuth } from '@/app/lib/patient-auth';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -14,8 +14,7 @@ const MIN_PASSWORD_LENGTH = 8;
  *   (allows setting an initial password after QR/OTP login)
  */
 export async function POST(request: NextRequest) {
-  const sessionCookie = request.cookies.get('patient_session');
-  const session = await verifyPatientSession(sessionCookie?.value);
+  const session = await verifyPatientAuth(request);
 
   if (!session) {
     return NextResponse.json(

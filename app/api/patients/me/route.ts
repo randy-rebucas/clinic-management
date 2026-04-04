@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
-import { verifyPatientSession } from '@/app/lib/dal';
+import { verifyPatientAuth } from '@/app/lib/patient-auth';
 
 // Fields patients are NOT allowed to update themselves
 const BLOCKED_FIELDS = new Set([
@@ -25,8 +25,7 @@ const BLOCKED_FIELDS = new Set([
  * Returns the authenticated patient's own profile
  */
 export async function GET(request: NextRequest) {
-  const sessionCookie = request.cookies.get('patient_session');
-  const session = await verifyPatientSession(sessionCookie?.value);
+  const session = await verifyPatientAuth(request);
 
   if (!session) {
     return NextResponse.json(
@@ -70,8 +69,7 @@ export async function GET(request: NextRequest) {
  * Blocked: patientCode, tenantIds, attachments, password, otp*, active
  */
 export async function PATCH(request: NextRequest) {
-  const sessionCookie = request.cookies.get('patient_session');
-  const session = await verifyPatientSession(sessionCookie?.value);
+  const session = await verifyPatientAuth(request);
 
   if (!session) {
     return NextResponse.json(

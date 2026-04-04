@@ -3,7 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Invoice from '@/models/Invoice';
 import logger from '@/lib/logger';
-import { verifyPatientSession } from '@/app/lib/dal';
+import { verifyPatientAuth } from '@/app/lib/patient-auth';
 
 /**
  * GET /api/patients/me/invoices
@@ -12,8 +12,7 @@ import { verifyPatientSession } from '@/app/lib/dal';
  * Query params: page (default 1), limit (default 10, max 50), status?, tenantId?
  */
 export async function GET(request: NextRequest) {
-  const sessionCookie = request.cookies.get('patient_session');
-  const session = await verifyPatientSession(sessionCookie?.value);
+  const session = await verifyPatientAuth(request);
 
   if (!session) {
     return NextResponse.json(
