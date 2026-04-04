@@ -103,6 +103,15 @@ export interface IPatient extends Document {
     };
   };
   
+  // Auth fields (for email/password and OTP login)
+  password?: string;      // bcrypt hash — not returned in queries (select: false)
+  otp?: string;           // bcrypt-hashed OTP — not returned in queries (select: false)
+  otpExpiry?: Date;
+  otpAttempts?: number;
+
+  // Notification read-tracking (stores IDs of notifications the patient has dismissed)
+  readNotificationIds?: string[];
+
   // Status and attachments
   active?: boolean;
   attachments?: IAttachment[];
@@ -295,6 +304,29 @@ const PatientSchema: Schema = new Schema(
         discountPercentage: Number,
       },
     },
+    // Auth fields (for email/password and OTP login)
+    password: {
+      type: String,
+      select: false,
+    },
+    otp: {
+      type: String,
+      select: false,
+    },
+    otpExpiry: {
+      type: Date,
+    },
+    otpAttempts: {
+      type: Number,
+      default: 0,
+    },
+
+    // Notification read-tracking
+    readNotificationIds: {
+      type: [String],
+      default: [],
+    },
+
     // Status and attachments
     active: {
       type: Boolean,
