@@ -1,0 +1,77 @@
+import { NextRequest, NextResponse } from 'next/server';
+import connectDB from '@/lib/mongodb';
+import Patient from '@/models/Patient';
+import Prescription from '@/models/Prescription';
+import logger from '@/lib/logger';
+import { verifyPatientSession } from '@/app/lib/dal';
+
+/**
+ * GET /api/patients/me/prescriptions
+ * Returns a paginated list of the authenticated patient's prescriptions
+ * Query params: page (default 1), limit (default 10, max 50), tenantId?
+ */
+export async function GET(request: NextRequest) {
+  const sessionCookie = request.cookies.get('patient_session');
+  const session = await verifyPatientSession(sessionCookie?.value);
+
+  if (!session) {
+    return NextResponse.json(
+      { success: false, error: 'Not authenticated. Please login.' },
+      { status: 401 }
+    );
+  }
+
+  try {
+    await connectDB();
+
+    const patient = await Patient.findById(session.patientId).lean();
+    if (!patient) {
+      return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
+    }
+    if ((patient as any).active === false) {
+      return NextResponse.json({ success: false, error: 'Account is inactive.' }, { status: 403 });
+    }
+
+    const searchParams = request.nextUrl.searchParams;
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
+    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '10', 10)));
+    const skip = (page - 1) * limit;
+
+    const tenantIdParam = searchParams.get('tenantId');
+    const patientTenantIds = (patient as any).tenantIds ?? [];
+
+    const query: any = { patient: session.patientId };
+    if (tenantIdParam) {
+      query.tenantId = tenantIdParam;
+    } else if (patientTenantIds.length > 0) {
+      query.tenantId = { $in: patientTenantIds };
+    }
+
+    const [prescriptions, total] = await Promise.all([
+      Prescription.find(query)
+        .populate({ path: 'prescribedBy', select: 'firstName lastName email' })
+        .sort({ issuedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Prescription.countDocuments(query),
+    ]);
+
+    return NextResponse.json({
+      success: true,
+      data: prescriptions,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error: any) {
+    logger.error('Error fetching patient prescriptions', error as Error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch prescriptions' },
+      { status: 500 }
+    );
+  }
+}

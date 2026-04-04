@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    const patientTenantId = patient.tenantId;
+    const patientTenantId = patient.tenantIds?.[0];
 
     const searchParams = request.nextUrl.searchParams;
     const date = searchParams.get('date');
@@ -160,8 +160,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get tenantId from patient
-    const patientTenantId = patient.tenantId;
+    // Get tenantId from patient (Patient schema uses tenantIds array)
+    const patientTenantId = patient.tenantIds?.[0];
 
     // Check for conflicts (tenant-scoped)
     const startOfDay = new Date(appointmentDateObj);

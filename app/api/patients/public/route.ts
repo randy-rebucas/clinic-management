@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { Types } from 'mongoose';
 
 /**
  * Public endpoint for patient self-registration
@@ -56,10 +57,9 @@ export async function POST(request: NextRequest) {
       const normalizedEmail = body.email.toLowerCase().trim();
       const emailQuery: any = { email: normalizedEmail };
       if (tenantId) {
-        emailQuery.tenantId = tenantId;
+        emailQuery.tenantIds = new Types.ObjectId(tenantId);
       } else {
-        // If no tenant, check for patients without tenantId (backward compatibility)
-        emailQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+        emailQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
       }
       
       const existingPatient = await Patient.findOne(emailQuery);
@@ -99,9 +99,9 @@ export async function POST(request: NextRequest) {
           patientCode: { $exists: true, $ne: null, $regex: /^CLINIC-\d+$/ }
         };
         if (tenantId) {
-          codeQuery.tenantId = tenantId;
+          codeQuery.tenantIds = new Types.ObjectId(tenantId);
         } else {
-          codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+          codeQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
         }
         
         const lastPatient = await Patient.findOne(codeQuery)
@@ -121,9 +121,9 @@ export async function POST(request: NextRequest) {
         // Check if this code already exists (tenant-scoped)
         const codeExistsQuery: any = { patientCode };
         if (tenantId) {
-          codeExistsQuery.tenantId = tenantId;
+          codeExistsQuery.tenantIds = new Types.ObjectId(tenantId);
         } else {
-          codeExistsQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+          codeExistsQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
         }
         
         const existing = await Patient.findOne(codeExistsQuery);
@@ -168,9 +168,9 @@ export async function POST(request: NextRequest) {
             patientCode: { $exists: true, $ne: null, $regex: /^CLINIC-\d+$/ }
           };
           if (tenantId) {
-            codeQuery.tenantId = tenantId;
+            codeQuery.tenantIds = new Types.ObjectId(tenantId);
           } else {
-            codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+            codeQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
           }
           
           const lastPatient = await Patient.findOne(codeQuery)
@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
     import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
       sendWelcomeMessage({
         patientId: patient._id,
-        tenantId: patient.tenantId,
+        tenantId: patient.tenantIds?.[0],
         sendSMS: true,
         sendEmail: true,
         sendNotification: false,

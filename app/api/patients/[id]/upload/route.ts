@@ -69,12 +69,12 @@ export async function POST(
       uploadedBy: session.userId,
     };
 
-    // Build query with tenant filter
+    // Build query with tenant filter (Patient uses tenantIds array)
     const query: any = { _id: id };
     if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
+      query.tenantIds = new Types.ObjectId(tenantId);
     } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+      query.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
     }
 
     const patient = await Patient.findOneAndUpdate(

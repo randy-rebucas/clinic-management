@@ -76,8 +76,8 @@ export async function GET(request: NextRequest) {
       },
     };
 
-    // Get tenantId from patient
-    const patientTenantId = patient.tenantId;
+    // Get tenantId from patient (Patient schema uses tenantIds array)
+    const patientTenantId = patient.tenantIds?.[0];
 
     // Optionally load related data (tenant-scoped)
     if (include.includes('appointments') || include.includes('all')) {
