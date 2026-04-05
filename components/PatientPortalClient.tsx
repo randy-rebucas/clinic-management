@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import QRCode from 'react-qr-code';
 
-type TabType = 'overview' | 'appointments' | 'visits' | 'prescriptions' | 'lab-results' | 'invoices' | 'documents';
+type TabType = 'overview' | 'appointments' | 'visits' | 'prescriptions' | 'lab-results' | 'invoices' | 'documents' | 'security';
 
 interface PatientData {
   _id: string;
@@ -57,7 +57,17 @@ export default function PatientPortalClient() {
   const [showQRCode, setShowQRCode] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [cancellingAppointment, setCancellingAppointment] = useState<string | null>(null);
-  
+
+  // Credentials (app access) state
+  const [credEmail, setCredEmail] = useState('');
+  const [credPassword, setCredPassword] = useState('');
+  const [credConfirm, setCredConfirm] = useState('');
+  const [credCurrent, setCredCurrent] = useState('');
+  const [credLoading, setCredLoading] = useState(false);
+  const [credError, setCredError] = useState<string | null>(null);
+  const [credSuccess, setCredSuccess] = useState<string | null>(null);
+  const [hasPassword, setHasPassword] = useState<boolean | null>(null);
+
   // Booking state
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -350,6 +360,64 @@ export default function PatientPortalClient() {
     });
   };
 
+  const handleSetupCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCredError(null);
+    setCredSuccess(null);
+
+    if (credPassword.length < 8) {
+      setCredError('Password must be at least 8 characters long.');
+      return;
+    }
+    if (credPassword !== credConfirm) {
+      setCredError('Passwords do not match.');
+      return;
+    }
+
+    setCredLoading(true);
+    try {
+      const body: Record<string, string> = { password: credPassword };
+      if (credEmail.trim()) body.email = credEmail.trim();
+      if (credCurrent.trim()) body.currentPassword = credCurrent.trim();
+
+      const res = await fetch('/api/patients/auth/setup-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setCredSuccess(data.message || 'Credentials saved successfully!');
+        setHasPassword(true);
+        setCredPassword('');
+        setCredConfirm('');
+        setCredCurrent('');
+        if (data.email) setCredEmail(data.email);
+      } else {
+        setCredError(data.error || 'Failed to save credentials. Please try again.');
+      }
+    } catch {
+      setCredError('Network error. Please try again.');
+    } finally {
+      setCredLoading(false);
+    }
+  };
+
+  const checkHasPassword = async () => {
+    if (hasPassword !== null) return;
+    try {
+      const res = await fetch('/api/patients/me');
+      const data = await res.json();
+      if (data.success) {
+        setHasPassword(!!data.data.hasPassword);
+        if (data.data.email) setCredEmail(data.data.email);
+      }
+    } catch {
+      // silently fail — form still works without knowing current state
+    }
+  };
+
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       scheduled: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -485,6 +553,17 @@ export default function PatientPortalClient() {
       icon: (
         <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
+    },
+    {
+      id: 'security',
+      label: 'App Access',
+      description: 'Login credentials',
+      color: 'from-slate-600 to-slate-700',
+      icon: (
+        <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
         </svg>
       ),
     },
@@ -915,6 +994,159 @@ export default function PatientPortalClient() {
           </div>
         );
 
+      case 'security':
+        return (
+          <div className="space-y-6 max-w-xl">
+            {/* Status banner */}
+            <div className={`flex items-center gap-3 p-4 rounded-xl border ${hasPassword ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${hasPassword ? 'bg-green-100' : 'bg-amber-100'}`}>
+                {hasPassword ? (
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                )}
+              </div>
+              <div>
+                <p className={`font-semibold text-sm ${hasPassword ? 'text-green-800' : 'text-amber-800'}`}>
+                  {hasPassword === null ? 'Checking status…' : hasPassword ? 'Password is set' : 'No password set yet'}
+                </p>
+                <p className={`text-xs mt-0.5 ${hasPassword ? 'text-green-700' : 'text-amber-700'}`}>
+                  {hasPassword ? 'You can log in to the clinic app with email and password.' : 'Set a password below to enable login on the clinic mobile app.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Credential form */}
+            <form onSubmit={handleSetupCredentials} className="space-y-5">
+              {credError && (
+                <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
+                  <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-sm text-red-700 font-medium">{credError}</p>
+                </div>
+              )}
+
+              {credSuccess && (
+                <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl p-4">
+                  <svg className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-sm text-green-700 font-medium">{credSuccess}</p>
+                </div>
+              )}
+
+              {/* Email */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Login Email <span className="font-normal text-gray-500">(optional)</span>
+                </label>
+                <input
+                  type="email"
+                  value={credEmail}
+                  onChange={(e) => setCredEmail(e.target.value)}
+                  placeholder={patient?.email || 'your@email.com'}
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition-all bg-white text-sm"
+                  disabled={credLoading}
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Leave blank to keep your current email on file.
+                </p>
+              </div>
+
+              {/* New password */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  {hasPassword ? 'New Password' : 'Set Password'} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={credPassword}
+                  onChange={(e) => setCredPassword(e.target.value)}
+                  placeholder="Minimum 8 characters"
+                  required
+                  minLength={8}
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition-all bg-white text-sm"
+                  disabled={credLoading}
+                />
+              </div>
+
+              {/* Confirm */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Confirm Password <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={credConfirm}
+                  onChange={(e) => setCredConfirm(e.target.value)}
+                  placeholder="Re-enter your new password"
+                  required
+                  minLength={8}
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition-all bg-white text-sm"
+                  disabled={credLoading}
+                />
+              </div>
+
+              {/* Current password — only shown when one is already set */}
+              {hasPassword && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Current Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={credCurrent}
+                    onChange={(e) => setCredCurrent(e.target.value)}
+                    placeholder="Enter your existing password"
+                    required
+                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition-all bg-white text-sm"
+                    disabled={credLoading}
+                  />
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    Required to confirm your identity before changing your password.
+                  </p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={credLoading}
+                className="w-full py-3 bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white rounded-xl font-semibold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {credLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Saving…
+                  </span>
+                ) : (
+                  hasPassword ? 'Update Password' : 'Set Password'
+                )}
+              </button>
+            </form>
+
+            {/* How to use info box */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h4 className="font-semibold text-blue-900 text-sm">Using the Clinic Mobile App</h4>
+              </div>
+              <ol className="space-y-2 text-xs text-blue-800 list-decimal list-inside">
+                <li>Download the clinic&apos;s mobile app on your device.</li>
+                <li>Open the app and select your clinic from the list.</li>
+                <li>Enter the email and password you set here to log in.</li>
+                <li>Access your records, prescriptions, and appointments anytime.</li>
+              </ol>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -1052,7 +1284,7 @@ export default function PatientPortalClient() {
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => { setActiveTab(tab.id); if (tab.id === 'security') checkHasPassword(); }}
                     className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-left hover:shadow-md hover:border-blue-300 transition-all active:scale-[0.98]"
                   >
                     <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tab.color} flex items-center justify-center text-white mb-3 shadow-md`}>
@@ -1124,7 +1356,7 @@ export default function PatientPortalClient() {
                 {tabs.map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => { setActiveTab(tab.id); if (tab.id === 'security') checkHasPassword(); }}
                   className="group bg-white rounded-2xl shadow-sm border border-gray-200 p-5 lg:p-6 text-center hover:shadow-lg hover:border-blue-300 hover:-translate-y-1 transition-all duration-200"
                 >
                   <div className={`w-14 h-14 lg:w-16 lg:h-16 mx-auto rounded-2xl bg-gradient-to-br ${tab.color} flex items-center justify-center text-white mb-4 group-hover:scale-110 transition-transform shadow-md`}>
