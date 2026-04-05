@@ -142,10 +142,19 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
   const [labResults, setLabResults] = useState<LabResult[]>([]);
   const [alerts, setAlerts] = useState<PatientAlert[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'visits' | 'appointments' | 'prescriptions' | 'invoices' | 'lab-results' | 'files'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'visits' | 'appointments' | 'prescriptions' | 'invoices' | 'lab-results' | 'files' | 'app-access'>('overview');
   const [showQR, setShowQR] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<string | null>(null);
   const [deleteFileDialogOpen, setDeleteFileDialogOpen] = useState(false);
+
+  // App-access credential state
+  const [credEmail, setCredEmail] = useState('');
+  const [credPassword, setCredPassword] = useState('');
+  const [credConfirm, setCredConfirm] = useState('');
+  const [credLoading, setCredLoading] = useState(false);
+  const [credError, setCredError] = useState<string | null>(null);
+  const [credSuccess, setCredSuccess] = useState<string | null>(null);
+  const [credStatus, setCredStatus] = useState<{ hasPassword: boolean; email: string | null } | null>(null);
   const router = useRouter();
   
   // Call hooks before any conditional returns
@@ -312,6 +321,61 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     } catch (error) {
       console.error('Failed to delete file:', error);
       alert('Failed to delete file');
+    }
+  };
+
+  const fetchCredStatus = async () => {
+    if (credStatus !== null) return;
+    try {
+      const res = await fetch(`/api/patients/${patientId}/app-credentials`);
+      const data = await res.json();
+      if (data.success) {
+        setCredStatus(data.data);
+        if (data.data.email) setCredEmail(data.data.email);
+      }
+    } catch {
+      // silently fail
+    }
+  };
+
+  const handleSetCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCredError(null);
+    setCredSuccess(null);
+
+    if (credPassword.length < 8) {
+      setCredError('Password must be at least 8 characters long.');
+      return;
+    }
+    if (credPassword !== credConfirm) {
+      setCredError('Passwords do not match.');
+      return;
+    }
+
+    setCredLoading(true);
+    try {
+      const body: Record<string, string> = { password: credPassword };
+      if (credEmail.trim()) body.email = credEmail.trim();
+
+      const res = await fetch(`/api/patients/${patientId}/app-credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setCredSuccess(data.message || 'Credentials saved. Share the password with the patient.');
+        setCredStatus({ hasPassword: true, email: data.email });
+        setCredPassword('');
+        setCredConfirm('');
+      } else {
+        setCredError(data.error || 'Failed to save credentials.');
+      }
+    } catch {
+      setCredError('Network error. Please try again.');
+    } finally {
+      setCredLoading(false);
     }
   };
 
@@ -771,11 +835,12 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                 { value: 'prescriptions', label: `Prescriptions (${prescriptions.length})`, icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z' },
                 { value: 'invoices', label: `Invoices (${invoices.length})`, icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
                 { value: 'lab-results', label: `Lab Results (${labResults.length})`, icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-                { value: 'files', label: `Files (${patient.attachments?.length || 0})`, icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z' }
+                { value: 'files', label: `Files (${patient.attachments?.length || 0})`, icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z' },
+                { value: 'app-access', label: 'App Access', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
               ].map((tab) => (
                 <button
                   key={tab.value}
-                  onClick={() => setActiveTab(tab.value as any)}
+                  onClick={() => { setActiveTab(tab.value as any); if (tab.value === 'app-access') fetchCredStatus(); }}
                   className={`py-3 px-6 text-sm font-semibold border-b-2 transition-all duration-200 whitespace-nowrap relative ${
                     activeTab === tab.value
                       ? 'text-blue-600 bg-white'
@@ -1439,6 +1504,133 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
                       ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* App Access Tab */}
+            {activeTab === 'app-access' && (
+              <div className="max-w-lg space-y-6">
+                {/* Status banner */}
+                <div className={`flex items-center gap-3 p-4 rounded-xl border ${credStatus?.hasPassword ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${credStatus?.hasPassword ? 'bg-green-100' : 'bg-amber-100'}`}>
+                    {credStatus?.hasPassword ? (
+                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    )}
+                  </div>
+                  <div>
+                    <p className={`font-semibold text-sm ${credStatus?.hasPassword ? 'text-green-800' : 'text-amber-800'}`}>
+                      {credStatus === null ? 'Loading…' : credStatus.hasPassword ? 'Password is set' : 'No password set'}
+                    </p>
+                    <p className={`text-xs mt-0.5 ${credStatus?.hasPassword ? 'text-green-700' : 'text-amber-700'}`}>
+                      Login email: <span className="font-medium">{credStatus?.email ?? patient.email ?? '—'}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSetCredentials} className="space-y-5">
+                  {credError && (
+                    <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
+                      <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                      <p className="text-sm text-red-700 font-medium">{credError}</p>
+                    </div>
+                  )}
+
+                  {credSuccess && (
+                    <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl p-4">
+                      <svg className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <p className="text-sm text-green-700 font-medium">{credSuccess}</p>
+                    </div>
+                  )}
+
+                  {/* Login email */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      Login Email <span className="font-normal text-gray-500">(optional)</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={credEmail}
+                      onChange={(e) => setCredEmail(e.target.value)}
+                      placeholder={patient.email || 'patient@email.com'}
+                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition-all bg-white text-sm"
+                      disabled={credLoading}
+                    />
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      Leave blank to keep the existing email on record.
+                    </p>
+                  </div>
+
+                  {/* New password */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      {credStatus?.hasPassword ? 'Reset Password' : 'Set Password'} <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={credPassword}
+                      onChange={(e) => setCredPassword(e.target.value)}
+                      placeholder="Minimum 8 characters"
+                      required
+                      minLength={8}
+                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition-all bg-white text-sm"
+                      disabled={credLoading}
+                    />
+                  </div>
+
+                  {/* Confirm */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      Confirm Password <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={credConfirm}
+                      onChange={(e) => setCredConfirm(e.target.value)}
+                      placeholder="Re-enter the password"
+                      required
+                      minLength={8}
+                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition-all bg-white text-sm"
+                      disabled={credLoading}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={credLoading}
+                    className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {credLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Saving…
+                      </span>
+                    ) : (
+                      credStatus?.hasPassword ? 'Reset Patient Password' : 'Set Patient Password'
+                    )}
+                  </button>
+                </form>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-sm font-semibold text-blue-900">Staff note</span>
+                  </div>
+                  <p className="text-xs text-blue-800 leading-relaxed">
+                    After setting a password, provide the credentials to the patient so they can log in to the clinic mobile app. This action bypasses the current password — use it for initial setup or password resets only.
+                  </p>
+                </div>
               </div>
             )}
 

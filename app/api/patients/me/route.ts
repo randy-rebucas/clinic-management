@@ -37,23 +37,35 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    const patient = await Patient.findById(session.patientId).lean();
+    // Select password existence flag without exposing the hash
+    const patientWithPw = await Patient.findById(session.patientId)
+      .select('+password')
+      .lean();
 
-    if (!patient) {
+    if (!patientWithPw) {
       return NextResponse.json(
         { success: false, error: 'Patient not found.' },
         { status: 404 }
       );
     }
 
-    if ((patient as any).active === false) {
+    if ((patientWithPw as any).active === false) {
       return NextResponse.json(
         { success: false, error: 'Account is inactive. Please contact the clinic.' },
         { status: 403 }
       );
     }
 
-    return NextResponse.json({ success: true, data: patient });
+    // Strip the actual hash before sending — only expose a boolean flag
+    const { password: _pw, otp: _otp, otpExpiry: _otpExpiry, otpAttempts: _otpAttempts, ...safePatient } = patientWithPw as any;
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...safePatient,
+        hasPassword: !!_pw,
+      },
+    });
   } catch (error: any) {
     logger.error('Error fetching patient profile', error as Error);
     return NextResponse.json(
