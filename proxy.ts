@@ -121,6 +121,8 @@ export function proxy(request: NextRequest): NextResponse {
   const csrfExempt =
     pathname.startsWith('/api/subscription/webhook') ||
     pathname.startsWith('/api/lab-results/third-party/webhook') ||
+    pathname.startsWith('/api/webhooks/twilio') ||
+    pathname.startsWith('/api/feedback/') ||
     pathname.startsWith('/api/tenants/onboard') ||
     pathname.startsWith('/api/medical-representatives/login') ||
     pathname.startsWith('/api/patients/qr-login');

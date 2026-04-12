@@ -118,6 +118,8 @@ export interface IVisit extends Document {
   notes?: string;
   followUpDate?: Date;
   followUpReminderSent?: boolean;
+  feedbackRequested?: boolean;
+  feedbackToken?: string;
   status: 'draft' | 'open' | 'closed' | 'cancelled';
   createdAt: Date;
   updatedAt: Date;
@@ -240,6 +242,8 @@ const VisitSchema: Schema = new Schema(
     notes: { type: String },
     followUpDate: { type: Date },
     followUpReminderSent: { type: Boolean, default: false },
+    feedbackRequested: { type: Boolean, default: false },
+    feedbackToken: { type: String, index: true, sparse: true },
     status: { type: String, enum: ['draft', 'open', 'closed', 'cancelled'], default: 'open' },
   },
   { timestamps: true }

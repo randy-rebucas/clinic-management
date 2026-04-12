@@ -219,10 +219,22 @@ export async function PUT(
           tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
         }).catch((error) => {
           console.error('[Queue API] Error in appointment automation:', error);
-          // Don't fail queue update if appointment update fails
         });
       }).catch((error) => {
         console.error('[Queue API] Error loading appointment automation module:', error);
+      });
+
+      // Notify patient of queue status change (SMS + push)
+      import('@/lib/automations/queue-notifications').then(({ notifyQueuePatient }) => {
+        notifyQueuePatient({
+          queueId: currentQueue._id,
+          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          newStatus,
+        }).catch((error) => {
+          console.error('[Queue API] Error sending queue notification:', error);
+        });
+      }).catch((error) => {
+        console.error('[Queue API] Error loading queue-notifications module:', error);
       });
     }
 

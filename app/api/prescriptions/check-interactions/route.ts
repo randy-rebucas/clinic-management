@@ -4,7 +4,7 @@ import Prescription from '@/models/Prescription';
 import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { checkDrugInteractions, checkInteractionsWithPatientMedications } from '@/lib/drug-interactions';
+import { checkDrugInteractionsAdvanced, checkInteractionsWithPatientMedications, getApiStats } from '@/lib/drug-interactions';
 
 export async function POST(request: NextRequest) {
   const session = await verifySession();
@@ -71,8 +71,11 @@ export async function POST(request: NextRequest) {
 
       interactions = await checkInteractionsWithPatientMedications(medications, currentMedications);
     } else {
-      interactions = checkDrugInteractions(medications);
+      // Use advanced RxNav API-powered interaction check for better accuracy
+      interactions = await checkDrugInteractionsAdvanced(medications);
     }
+
+    const apiStats = getApiStats();
 
     return NextResponse.json({
       success: true,
