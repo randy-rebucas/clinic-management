@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 
 interface SidebarContextType {
   isCollapsed: boolean;
@@ -10,6 +11,10 @@ interface SidebarContextType {
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 
 export function SidebarProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  // Determine if we're on an admin page
+  const isAdminPage = pathname?.includes('/admin');
+  
   // Always start with false (expanded) to match server render
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
@@ -24,8 +29,15 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     // First, try to load from localStorage
     const saved = localStorage.getItem('sidebarCollapsed');
     if (saved !== null) {
+      // Use saved preference if it exists
       setTimeout(() => {
         setIsCollapsed(saved === 'true');
+      }, 0);
+    } else {
+      // No saved preference - set default based on current page
+      // Default: false (expanded), except on admin pages
+      setTimeout(() => {
+        setIsCollapsed(isAdminPage);
       }, 0);
     }
 
@@ -46,7 +58,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       }
     };
     syncWithSettings();
-  }, []);
+  }, [isAdminPage]);
 
   // Save to localStorage when changed (only after hydration)
   useEffect(() => {
