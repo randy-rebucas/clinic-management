@@ -115,6 +115,17 @@ export interface IPatient extends Document {
   // Status and attachments
   active?: boolean;
   attachments?: IAttachment[];
+
+  // Segmentation & Tagging
+  tags?: string[]; // e.g., ['VIP', 'follow-up', 'new-patient']
+  segmentFlags?: {
+    isVIP?: boolean; // High-value patient
+    isHighRisk?: boolean; // Medical risk flags
+    isHighUtilizer?: boolean; // Frequent visitor
+    hasRecurringNoShow?: boolean; // Pattern of missed appointments
+    isPendingVerification?: boolean; // Insurance verification pending
+    hasOutstandingBalance?: boolean; // Unpaid invoices
+  };
   
   createdAt: Date;
   updatedAt: Date;
@@ -333,6 +344,38 @@ const PatientSchema: Schema = new Schema(
       default: true,
     },
     attachments: [AttachmentSchema],
+    
+    // Segmentation & Tagging
+    tags: {
+      type: [String],
+      default: [],
+    },
+    segmentFlags: {
+      isVIP: {
+        type: Boolean,
+        default: false,
+      },
+      isHighRisk: {
+        type: Boolean,
+        default: false,
+      },
+      isHighUtilizer: {
+        type: Boolean,
+        default: false,
+      },
+      hasRecurringNoShow: {
+        type: Boolean,
+        default: false,
+      },
+      isPendingVerification: {
+        type: Boolean,
+        default: false,
+      },
+      hasOutstandingBalance: {
+        type: Boolean,
+        default: false,
+      },
+    },
   },
   {
     timestamps: true,
@@ -349,6 +392,13 @@ PatientSchema.index({ tenantIds: 1, 'identifiers.philHealth': 1 }); // Tenant-sc
 PatientSchema.index({ tenantIds: 1, 'identifiers.govId': 1 }); // Tenant-scoped government ID lookups
 PatientSchema.index({ tenantIds: 1, createdAt: -1 }); // Tenant-scoped registration date queries
 PatientSchema.index({ tenantIds: 1, patientCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped patient code
+
+// Segmentation indexes for efficient filtering
+PatientSchema.index({ tenantIds: 1, tags: 1 }); // Filter by tags
+PatientSchema.index({ tenantIds: 1, 'segmentFlags.isVIP': 1 }); // VIP patient queries
+PatientSchema.index({ tenantIds: 1, 'segmentFlags.isHighRisk': 1 }); // High-risk patient queries
+PatientSchema.index({ tenantIds: 1, 'segmentFlags.isHighUtilizer': 1 }); // High-utilizer queries
+PatientSchema.index({ tenantIds: 1, 'segmentFlags.hasOutstandingBalance': 1 }); // Overdue balance queries
 
 // Virtual for full name
 PatientSchema.virtual('fullName').get(function (this: IPatient) {

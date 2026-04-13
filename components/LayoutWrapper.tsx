@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { ReactNode } from 'react';
 import ContentHeader from './ContentHeader';
 import { useEffect, useState } from 'react';
+import { useSidebar } from './SidebarContext';
 
 interface LayoutWrapperProps {
   children: ReactNode;
@@ -12,7 +13,13 @@ interface LayoutWrapperProps {
 export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   const pathname = usePathname();
   const isAuthPage = pathname === '/login' || pathname === '/book' || pathname === '/onboard' || pathname === '/patient/login';
+  const { isCollapsed } = useSidebar();
   const [user, setUser] = useState<{ name: string; role: string; email?: string } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!isAuthPage) {
@@ -44,12 +51,12 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
     return <>{children}</>;
   }
 
-  // Main content area with left margin for sidebar (always expanded at 280px)
+  // Main content area with margin that adjusts based on sidebar state
   return (
     <div
-      className="min-h-screen bg-gray-50"
+      className="min-h-screen bg-gray-50 transition-all duration-300"
       style={{
-        marginLeft: '280px',
+        marginLeft: mounted && isCollapsed ? '80px' : '280px',
       }}
     >
       <ContentHeader user={user} />
