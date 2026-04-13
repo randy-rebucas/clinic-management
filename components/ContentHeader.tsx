@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { logout } from '@/app/actions/auth';
 import Link from 'next/link';
@@ -13,22 +13,12 @@ interface ContentHeaderProps {
   } | null;
 }
 
-const adminSubmenuItems = [
-  { href: '/roles', label: 'Roles & Permissions' },
-  { href: '/users', label: 'User Management' },
-  { href: '/staff', label: 'Staff Management' },
-  { href: '/services', label: 'Services Catalog' },
-  { href: '/medicines', label: 'Medicines Catalog' },
-  { href: '/rooms', label: 'Rooms Management' },
-  { href: '/audit-logs', label: 'Audit Logs' },
-  { href: '/medical-reps', label: 'Medical Reps' },
-  { href: '/subscription', label: 'Subscription' },
-];
-
 export default function ContentHeader({ user }: ContentHeaderProps) {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const isAdmin = (user?.role || '').toLowerCase() === 'admin';
   
   const isKnowledgeBaseActive = pathname?.startsWith('/knowledge-base');
@@ -57,6 +47,20 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
     return () => clearInterval(interval);
   }, [user]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [dropdownOpen]);
+
   if (!user) {
     return null;
   }
@@ -64,8 +68,45 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
       <div className="h-14 px-6 flex items-center justify-between">
-        {/* Left side - can be used for page title or breadcrumbs */}
-        <div className="flex-1"></div>
+        {/* Left side - Breadcrumb */}
+        <div className="flex-1">
+          <nav className="flex items-center gap-2 text-sm">
+            <Link
+              href="/"
+              className="text-gray-600 hover:text-blue-600 transition-colors"
+            >
+              Home
+            </Link>
+            {pathname && pathname !== '/' && (
+              <>
+                {pathname.split('/').filter(Boolean).map((segment, index, segments) => {
+                  const href = '/' + segments.slice(0, index + 1).join('/');
+                  const label = segment
+                    .split('-')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ');
+                  const isLast = index === segments.length - 1;
+                  
+                  return (
+                    <div key={href} className="flex items-center gap-2">
+                      <span className="text-gray-400">/</span>
+                      {isLast ? (
+                        <span className="text-gray-900 font-medium">{label}</span>
+                      ) : (
+                        <Link
+                          href={href}
+                          className="text-gray-600 hover:text-blue-600 transition-colors"
+                        >
+                          {label}
+                        </Link>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </nav>
+        </div>
 
         {/* Right side - Knowledge base, notifications, user info, logout */}
         <div className="flex items-center gap-2">
@@ -133,65 +174,94 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
           {/* Divider */}
           <div className="w-px h-6 bg-gray-300 mx-1" />
 
-          {/* User Info */}
-          <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium text-gray-900">{user.name}</p>
-              <p className="text-xs text-gray-500 capitalize">{user.role}</p>
-            </div>
-            <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
-          </div>
-
-          {/* Logout Button */}
-          <form action={logout}>
+          {/* User Dropdown Menu */}
+          <div className="relative" ref={dropdownRef}>
             <button
-              type="submit"
-              className="px-3 py-1.5 text-sm font-medium text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-2"
-              title="Logout"
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className="flex items-center gap-3 p-1.5 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
             >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                />
-              </svg>
-              <span className="hidden sm:inline">Logout</span>
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-medium text-gray-900">{user.name}</p>
+                <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+              </div>
+              <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
             </button>
-          </form>
+
+            {/* Dropdown Menu */}
+            {dropdownOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg border border-gray-200 shadow-lg z-50">
+                <div className="p-3 border-b border-gray-200">
+                  <p className="text-sm font-semibold text-gray-900">{user.name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{user.email || user.role}</p>
+                </div>
+                
+                {/* Menu Items */}
+                <div className="py-1">
+                  <Link
+                    href="/profile"
+                    onClick={() => setDropdownOpen(false)}
+                    className="w-full px-4 py-2 text-left text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Profile
+                  </Link>
+                  
+                  <Link
+                    href="/settings"
+                    onClick={() => setDropdownOpen(false)}
+                    className="w-full px-4 py-2 text-left text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Settings
+                  </Link>
+
+                  {isAdmin && (
+                    <Link
+                      href="/admin"
+                      onClick={() => setDropdownOpen(false)}
+                      className="w-full px-4 py-2 text-left text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m6 2a8 8 0 11-16 0 8 8 0 0116 0z" />
+                      </svg>
+                      Admin
+                    </Link>
+                  )}
+                </div>
+
+                <form action={logout} className="w-full">
+                  <button
+                    type="submit"
+                    className="w-full px-4 py-2 text-left text-sm font-medium text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors flex items-center gap-2 border-t border-gray-200"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                      />
+                    </svg>
+                    Logout
+                  </button>
+                </form>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      {isAdmin && (
-        <div className="h-11 px-6 border-t border-gray-100 bg-gray-50/80 overflow-x-auto">
-          <div className="h-full flex items-center gap-2 min-w-max">
-            {adminSubmenuItems.map((item) => {
-              const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
-                    isActive
-                      ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                      : 'text-gray-700 hover:bg-white hover:text-gray-900 border border-transparent'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </header>
   );
 }
