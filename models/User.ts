@@ -19,6 +19,9 @@ export interface IUser extends Document {
   medicalRepresentativeProfile?: Types.ObjectId;
   status: 'active' | 'inactive' | 'suspended';
   lastLogin?: Date;
+  // 2FA / TOTP
+  totpSecret?: string;
+  totpEnabled?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -75,6 +78,8 @@ const UserSchema = new Schema<IUser>(
       default: 'active',
     },
     lastLogin: { type: Date },
+    totpSecret: { type: String, select: false },
+    totpEnabled: { type: Boolean, default: false },
   },
   {
     timestamps: true,

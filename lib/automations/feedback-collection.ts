@@ -1,6 +1,7 @@
 // Appointment Feedback Collection Automation
 // Automatically collects patient feedback after visits
 
+import { randomBytes } from 'crypto';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
 import Patient from '@/models/Patient';
@@ -62,7 +63,16 @@ export async function sendFeedbackRequest(options: FeedbackCollectionOptions): P
 
     const clinicName = settings.clinicName || 'Our Clinic';
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
-    const feedbackUrl = `${baseUrl}/feedback?visit=${visit._id}&code=${visit.visitCode}`;
+
+    // Generate a secure token if not already set
+    if (!(visit as any).feedbackToken) {
+      (visit as any).feedbackToken = randomBytes(24).toString('hex');
+      (visit as any).feedbackRequested = true;
+      await (visit as any).save();
+    }
+
+    const token = (visit as any).feedbackToken;
+    const feedbackUrl = `${baseUrl}/feedback/${token}`;
 
     const feedbackMessage = generateFeedbackSMS(visit, clinicName, feedbackUrl);
     const emailContent = generateFeedbackEmail(visit, settings, feedbackUrl);
@@ -171,9 +181,7 @@ export async function processFeedbackCollection(tenantId?: string | Types.Object
         sendEmail: true,
       });
 
-      // Mark feedback as requested (you might want to add this field to Visit model)
-      // visit.feedbackRequested = true;
-      // await visit.save();
+      // feedbackRequested is now set inside sendFeedbackRequest via the token generation step
 
       results.push({
         visitId: visit._id.toString(),
