@@ -7,8 +7,8 @@ import connectDB from '@/lib/mongodb';
 export async function GET() {
   try {
     // Verify session and admin role
-    const session = await verifySession();
-    if (!session || session.user?.role?.name !== 'admin') {
+    const session = await verifySession() as any;
+    if (!session?.user?.role?.name || session.user.role.name !== 'admin') {
       return NextResponse.json(
         { success: false, message: 'Unauthorized' },
         { status: 401 }

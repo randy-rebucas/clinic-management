@@ -6,7 +6,7 @@ import { createAuditLog } from '@/lib/audit';
 export async function POST(request: NextRequest) {
   try {
     // Verify session
-    const session = await verifySession();
+    const session = await verifySession() as any;
     if (!session) {
       return NextResponse.json(
         { success: false, message: 'Unauthorized' },
@@ -37,9 +37,9 @@ export async function POST(request: NextRequest) {
     // Log the audit event
     await createAuditLog({
       userId: session.userId,
-      userEmail: session.user?.email,
+      userEmail: session.user?.email || undefined,
       userRole: typeof session.user?.role === 'object' ? session.user?.role?.name : session.user?.role,
-      tenantId: tenantContext.tenantId,
+      tenantId: tenantContext.tenantId || undefined,
       action: action || 'view',
       resource: resource || 'system',
       resourceId,
