@@ -23,7 +23,7 @@ interface PatientFormData {
   email?: string;
   phone: string;
   dateOfBirth: string;
-  sex: 'male' | 'female' | 'other';
+  sex: 'male' | 'female' | 'other' | '';
   civilStatus?: string;
   nationality?: string;
   occupation?: string;
@@ -103,7 +103,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
     email: initialData?.email || '',
     phone: initialData?.phone || '',
     dateOfBirth: formatDateForInput(initialData?.dateOfBirth),
-    sex: initialData?.sex as 'male' | 'female' | 'other',
+    sex: (initialData?.sex || '') as 'male' | 'female' | 'other' | '',
     civilStatus: initialData?.civilStatus || '',
     nationality: initialData?.nationality || '',
     occupation: initialData?.occupation || '',

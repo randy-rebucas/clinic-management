@@ -206,6 +206,11 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
 
+    // One-time migration: drop the old compound multikey index { tenantIds, tags }
+    // which caused MongoServerError 171 on every patient insert.
+    // dropIndex is a no-op if the index doesn't exist.
+    Patient.collection.dropIndex('tenantIds_1_tags_1').catch(() => { /* already gone */ });
+
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
@@ -414,6 +419,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Patient with this email already exists' },
         { status: 409 }
+      );
+    }
+    if (error.code === 171 || (error.message && error.message.includes('parallel arrays'))) {
+      return NextResponse.json(
+        { success: false, error: 'Database index conflict prevented patient creation. Please try again — the issue is being resolved automatically.' },
+        { status: 500 }
       );
     }
     return NextResponse.json(
