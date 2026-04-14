@@ -27,15 +27,19 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
   useEffect(() => {
     if (!user) return;
 
+    const controller = new AbortController();
+
     const fetchUnreadCount = async () => {
       try {
-        const response = await fetch('/api/notifications/unread-count');
+        const response = await fetch('/api/notifications/unread-count', { signal: controller.signal });
         const data = await response.json();
         if (data.success) {
           setUnreadCount(data.data.unreadCount || 0);
         }
-      } catch (error) {
-        console.error('Error fetching unread count:', error);
+      } catch (error: any) {
+        if (error?.name !== 'AbortError') {
+          console.error('Error fetching unread count:', error);
+        }
       } finally {
         setLoading(false);
       }
@@ -44,7 +48,10 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
     fetchUnreadCount();
     // Refresh every 30 seconds
     const interval = setInterval(fetchUnreadCount, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      controller.abort();
+    };
   }, [user]);
 
   // Close dropdown when clicking outside

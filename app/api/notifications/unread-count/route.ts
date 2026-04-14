@@ -3,7 +3,6 @@ import connectDB from '@/lib/mongodb';
 import Notification from '@/models/Notification';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
 
 export async function GET(request: NextRequest) {
@@ -16,9 +15,8 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
     
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
+    // Use tenantId from session directly; avoid extra DB lookup via getTenantContext()
+    const tenantId = session.tenantId;
     
     const unreadQuery: any = {
       user: session.userId,

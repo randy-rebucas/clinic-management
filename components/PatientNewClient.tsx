@@ -60,7 +60,7 @@ export default function PatientNewClient() {
       // Add optional fields only if they have values
       if (formData.middleName?.trim()) payload.middleName = formData.middleName.trim();
       if (formData.suffix?.trim()) payload.suffix = formData.suffix.trim();
-      if (formData.sex && formData.sex !== 'unknown') payload.sex = formData.sex;
+      if (formData.sex) payload.sex = formData.sex;
       if (formData.civilStatus?.trim()) payload.civilStatus = formData.civilStatus.trim();
       if (formData.nationality?.trim()) payload.nationality = formData.nationality.trim();
       if (formData.occupation?.trim()) payload.occupation = formData.occupation.trim();
