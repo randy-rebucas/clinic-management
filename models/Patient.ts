@@ -394,7 +394,8 @@ PatientSchema.index({ tenantIds: 1, createdAt: -1 }); // Tenant-scoped registrat
 PatientSchema.index({ tenantIds: 1, patientCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped patient code
 
 // Segmentation indexes for efficient filtering
-PatientSchema.index({ tenantIds: 1, tags: 1 }); // Filter by tags
+// NOTE: Removed { tenantIds: 1, tags: 1 } — both are array fields, can't create compound multikey index
+PatientSchema.index({ tags: 1 }); // Filter by tags (separate index)
 PatientSchema.index({ tenantIds: 1, 'segmentFlags.isVIP': 1 }); // VIP patient queries
 PatientSchema.index({ tenantIds: 1, 'segmentFlags.isHighRisk': 1 }); // High-risk patient queries
 PatientSchema.index({ tenantIds: 1, 'segmentFlags.isHighUtilizer': 1 }); // High-utilizer queries
