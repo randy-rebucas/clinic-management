@@ -42,57 +42,24 @@ export async function GET(request: Request) {
 async function getFullHealthCheck() {
   const startTime = Date.now();
   const checks: Record<string, any> = {};
-  
+
   try {
     // Database connection check
     const dbStart = Date.now();
     await connectDB();
     const dbTime = Date.now() - dbStart;
+    const dbConnected = mongoose.connection.readyState === 1;
     checks.database = {
-      status: 'healthy',
-      connected: mongoose.connection.readyState === 1,
+      status: dbConnected ? 'healthy' : 'unhealthy',
+      connected: dbConnected,
       responseTime: `${dbTime}ms`,
-      state: getConnectionState(mongoose.connection.readyState),
     };
-    
-    // Database stats (if available)
-    try {
-      const dbStats = await mongoose.connection.db?.admin().serverStatus();
-      if (dbStats) {
-        checks.database.stats = {
-          version: dbStats.version,
-          uptime: dbStats.uptime,
-          connections: dbStats.connections,
-        };
-      }
-    } catch (err) {
-      // Stats not critical, continue
-    }
-    
-    // Memory usage
-    const memoryUsage = process.memoryUsage();
-    checks.memory = {
-      status: 'healthy',
-      heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`,
-      heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)}MB`,
-      rss: `${Math.round(memoryUsage.rss / 1024 / 1024)}MB`,
-      external: `${Math.round(memoryUsage.external / 1024 / 1024)}MB`,
-    };
-    
-    // Environment variables check
-    checks.environment = {
-      status: 'healthy',
-      nodeEnv: process.env.NODE_ENV || 'development',
-      nodeVersion: process.version,
-      platform: process.platform,
-      arch: process.arch,
-    };
-    
-    // Service availability
+
+    // Service availability — boolean flags only, no internal details
     checks.services = {
       mongodb: {
         configured: !!process.env.MONGODB_URI,
-        status: checks.database.connected ? 'available' : 'unavailable',
+        status: dbConnected ? 'available' : 'unavailable',
       },
       session: {
         configured: !!process.env.SESSION_SECRET,
@@ -119,31 +86,22 @@ async function getFullHealthCheck() {
         status: process.env.SENTRY_DSN ? 'available' : 'unavailable',
       },
     };
-    
-    // System metrics
-    checks.system = {
-      uptime: `${Math.round(process.uptime())}s`,
-      cpuUsage: process.cpuUsage(),
-      pid: process.pid,
-    };
-    
-    // Overall status
-    const allHealthy = 
-      checks.database.connected &&
+
+    const allHealthy =
+      dbConnected &&
       checks.services.mongodb.status === 'available' &&
       checks.services.session.status === 'available';
-    
+
     const responseTime = Date.now() - startTime;
-    
+
     return NextResponse.json(
       {
         status: allHealthy ? 'healthy' : 'degraded',
         timestamp: new Date().toISOString(),
         checks,
         responseTime: `${responseTime}ms`,
-        version: process.env.npm_package_version || '0.1.0',
       },
-      { 
+      {
         status: allHealthy ? 200 : 503,
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -152,22 +110,14 @@ async function getFullHealthCheck() {
     );
   } catch (error: any) {
     const responseTime = Date.now() - startTime;
-    
+
     return NextResponse.json(
       {
         status: 'unhealthy',
         timestamp: new Date().toISOString(),
-        error: error.message || 'Unknown error',
-        checks: {
-          ...checks,
-          error: {
-            message: error.message,
-            name: error.name,
-          },
-        },
         responseTime: `${responseTime}ms`,
       },
-      { 
+      {
         status: 503,
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',

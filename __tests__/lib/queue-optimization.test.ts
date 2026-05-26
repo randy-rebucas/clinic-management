@@ -18,6 +18,7 @@ vi.mock('@/models/Queue', () => ({
 
 vi.mock('@/models/Appointment', () => ({
   default: {
+    find: vi.fn(),
     countDocuments: vi.fn(),
   },
 }));

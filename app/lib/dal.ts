@@ -8,6 +8,12 @@ const secretKey = process.env.SESSION_SECRET;
 // Only enforce SESSION_SECRET at runtime, not during build
 // During build, Next.js sets NODE_ENV=production but we're not actually running
 // We'll validate at runtime when functions are called instead of at module load
+if (!secretKey && process.env.NODE_ENV !== 'production') {
+  console.warn(
+    '[dal] SESSION_SECRET is not set. Using an insecure fallback key — ' +
+    'tokens issued now will be invalid once a real secret is set.'
+  );
+}
 const encodedKey = new TextEncoder().encode(
   secretKey || 'default-secret-key-change-in-production-dev-only'
 );

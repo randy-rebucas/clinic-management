@@ -244,7 +244,7 @@ export default function PatientNotesComponent({ patientId }: PatientNotesCompone
         </div>
       ) : notes.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-gray-500">No notes yet. Click "Add Note" to create one.</p>
+          <p className="text-gray-500">No notes yet. Click &quot;Add Note&quot; to create one.</p>
         </div>
       ) : (
         <div className="space-y-3">

@@ -5,6 +5,7 @@ import Role from '@/models/Role';
 import Permission from '@/models/Permission'; // Import to register model for populate
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { createAuditLog } from '@/lib/audit';
 
 // GET single role - admin only
 export async function GET(
@@ -101,6 +102,18 @@ export async function PUT(
     })
       .populate('permissions', 'resource actions');
 
+    await createAuditLog({
+      userId: session.userId,
+      userEmail: session.email,
+      userRole: session.role,
+      tenantId: session.tenantId,
+      action: 'update',
+      resource: 'user',
+      resourceId: id,
+      description: `Updated role: ${role.name}`,
+      changes: Object.keys(body).map((field) => ({ field, newValue: body[field] })),
+    });
+
     return NextResponse.json({ success: true, data: updatedRole });
   } catch (error: any) {
     console.error('Error updating role:', error);
@@ -164,6 +177,17 @@ export async function DELETE(
     }
 
     await Role.findByIdAndDelete(id);
+
+    await createAuditLog({
+      userId: session.userId,
+      userEmail: session.email,
+      userRole: session.role,
+      tenantId: session.tenantId,
+      action: 'delete',
+      resource: 'user',
+      resourceId: id,
+      description: `Deleted role: ${role.name}`,
+    });
 
     return NextResponse.json({ success: true, data: {} });
   } catch (error: any) {

@@ -71,6 +71,8 @@ describe('Storage Tracking', () => {
         isTrial: false,
         plan: 'basic',
         status: 'active',
+        expiresAt: null,
+        daysRemaining: null,
       });
 
       const Patient = (await import('@/models/Patient')).default;
@@ -98,7 +100,7 @@ describe('Storage Tracking', () => {
       const usage = await calculateStorageUsage(tenantId);
 
       expect(usage.totalBytes).toBeGreaterThan(0);
-      expect(usage.totalGB).toBeGreaterThan(0);
+      expect(usage.totalBytes).toBe(1500000); // 1MB + 500KB from mocked documents
       expect(usage.limitGB).toBe(5); // Basic plan
     });
   });

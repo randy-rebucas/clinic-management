@@ -22,7 +22,18 @@
       "Bash(ls -la \"c:\\\\Users\\\\corew\\\\clinic-management/app/\\(knowledge-base\\)/knowledge-base\")",
       "Bash(ls -la \"c:\\\\Users\\\\corew\\\\clinic-management/app/\\(knowledge-base\\)/knowledge-base/[slug]\")",
       "Bash(ls -la \"c:\\\\Users\\\\corew\\\\clinic-management/app/\\(knowledge-base\\)\")",
-      "Bash(find \"c:\\\\Users\\\\corew\\\\clinic-management/app/\\(knowledge-base\\)\" -name \"layout.tsx\" -o -name \"page.tsx\")"
+      "Bash(find \"c:\\\\Users\\\\corew\\\\clinic-management/app/\\(knowledge-base\\)\" -name \"layout.tsx\" -o -name \"page.tsx\")",
+      "Bash(python -c \"import sys,json; p=json.load\\(sys.stdin\\); print\\('Node:', p.get\\('engines',{}\\)\\); print\\('Scripts:', list\\(p.get\\('scripts',{}\\).keys\\(\\)\\)\\)\")",
+      "Bash(python -c \"import sys,json; p=json.load\\(sys.stdin\\); deps=p.get\\('dependencies',{}\\); print\\('Next:', deps.get\\('next',''\\)\\); print\\('React:', deps.get\\('react',''\\)\\); print\\('Mongoose:', deps.get\\('mongoose',''\\)\\)\")",
+      "Bash(npm run *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('mongoose installed:', require\\('./node_modules/mongoose/package.json'\\).version\\); console.log\\('next installed:', require\\('./node_modules/next/package.json'\\).version\\)\")",
+      "Bash(node -e \"try{const c=require\\('c:/Users/corew/clinic-management/node_modules/eslint-config-next/core-web-vitals.js'\\); console.log\\(JSON.stringify\\(Object.keys\\(c\\)\\)\\)}catch\\(e\\){console.log\\(e.message\\)}\")",
+      "Bash(npx eslint *)",
+      "Bash(npx vitest *)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(node_modules/.bin/npm audit *)",
+      "Bash(ls \"c:\\\\Users\\\\corew\\\\clinic-management\\\\\" | grep -i proxy)",
+      "Read(//c/Users/corew/**)"
     ]
   }
 }

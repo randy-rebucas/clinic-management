@@ -7,6 +7,17 @@ vi.mock('@/lib/mongodb', () => ({
   default: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('mongoose', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('mongoose')>();
+  return {
+    ...actual,
+    default: {
+      ...(actual as any).default,
+      connection: { readyState: 1 },
+    },
+  };
+});
+
 describe('Health Check API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -22,8 +33,8 @@ describe('Health Check API', () => {
     expect(response.status).toBe(200);
     expect(data.status).toBe('healthy');
     expect(data).toHaveProperty('timestamp');
-    expect(data).toHaveProperty('database');
-    expect(data.database.connected).toBe(true);
+    expect(data).toHaveProperty('checks');
+    expect(data.checks.database.connected).toBe(true);
   });
 
   it('should return unhealthy status when database connection fails', async () => {

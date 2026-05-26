@@ -37,12 +37,12 @@ export function PatientSegmentationFilter({
   const [tagInput, setTagInput] = useState('');
 
   const handleTagToggle = useCallback((tag: string) => {
-    setSelectedTags((prev) => 
-      prev.includes(tag)
-        ? prev.filter(t => t !== tag)
-        : [...prev, tag]
+    onTagsChange(
+      selectedTags.includes(tag)
+        ? selectedTags.filter(t => t !== tag)
+        : [...selectedTags, tag]
     );
-  }, []);
+  }, [selectedTags, onTagsChange]);
 
   const handleFlagToggle = useCallback((flagKey: string) => {
     onFlagsChange({

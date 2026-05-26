@@ -4,6 +4,7 @@ import User from '@/models/User';
 import Role from '@/models/Role';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { createAuditLog } from '@/lib/audit';
 
 // Update user's role - admin only
 export async function PUT(
@@ -90,6 +91,18 @@ export async function PUT(
         { status: 404 }
       );
     }
+
+    await createAuditLog({
+      userId: session.userId,
+      userEmail: session.email,
+      userRole: session.role,
+      tenantId: session.tenantId,
+      action: 'permission_change',
+      resource: 'user',
+      resourceId: id,
+      description: `Changed role for user ${id} to ${role.name}`,
+      changes: [{ field: 'role', newValue: role.name }],
+    });
 
     return NextResponse.json({ success: true, data: user });
   } catch (error: any) {

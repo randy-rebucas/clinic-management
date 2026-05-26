@@ -19,12 +19,8 @@ if (!global.mongoose) {
 
 // Validate environment variables on first import (only in production)
 if (process.env.NODE_ENV === 'production' && typeof window === 'undefined') {
-  try {
-    validateEnv();
-  } catch (error) {
-    console.error('Environment validation failed:', error);
-    // Don't throw here to allow graceful degradation
-  }
+  // Throw so the server fails fast rather than serving requests with a broken config.
+  validateEnv();
 }
 
 async function connectDB(): Promise<typeof mongoose> {
@@ -41,6 +37,9 @@ async function connectDB(): Promise<typeof mongoose> {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
+      // Limit pool size for serverless environments where each invocation may open a new connection.
+      // Without a cap, a traffic spike can exhaust MongoDB Atlas's free-tier connection limit (500).
+      maxPoolSize: 10,
     };
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {

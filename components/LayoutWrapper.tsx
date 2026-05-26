@@ -15,11 +15,6 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   const isAuthPage = pathname === '/login' || pathname === '/book' || pathname === '/onboard' || pathname === '/patient/login';
   const { isCollapsed } = useSidebar();
   const [user, setUser] = useState<{ name: string; role: string; email?: string } | null>(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (!isAuthPage) {
@@ -56,7 +51,7 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
     <div
       className="min-h-screen bg-gray-50 transition-all duration-300"
       style={{
-        marginLeft: mounted && isCollapsed ? '80px' : '280px',
+        marginLeft: isCollapsed ? '80px' : '280px',
       }}
     >
       <ContentHeader user={user} />

@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST } from '@/app/api/appointments/route';
 import { NextRequest } from 'next/server';
 
-// Mock dependencies
+const VALID_TENANT_ID = '507f1f77bcf86cd799439011';
+const VALID_PATIENT_ID = '507f1f77bcf86cd799439012';
+const VALID_DOCTOR_ID = '507f1f77bcf86cd799439013';
+const VALID_APPT_ID = '507f1f77bcf86cd799439014';
+
 vi.mock('@/app/lib/dal', () => ({
   verifySession: vi.fn(),
 }));
@@ -16,12 +20,17 @@ vi.mock('@/lib/mongodb', () => ({
   default: vi.fn(),
 }));
 
-vi.mock('@/models/Appointment', () => ({
-  default: {
-    findOne: vi.fn(),
-    create: vi.fn(),
-  },
-}));
+vi.mock('@/models/Appointment', () => {
+  const chain = { sort: vi.fn(), exec: vi.fn().mockResolvedValue(null) };
+  chain.sort.mockReturnValue(chain);
+  return {
+    default: {
+      findOne: vi.fn().mockReturnValue(chain),
+      find: vi.fn().mockReturnValue({ sort: vi.fn().mockResolvedValue([]) }),
+      create: vi.fn(),
+    },
+  };
+});
 
 vi.mock('@/models/Doctor', () => ({
   default: {
@@ -39,11 +48,21 @@ vi.mock('@/lib/subscription-limits', () => ({
   checkSubscriptionLimit: vi.fn().mockResolvedValue({ allowed: true }),
 }));
 
+vi.mock('@/models', () => ({
+  registerAllModels: vi.fn(),
+}));
+
+vi.mock('server-only', () => ({}));
+
+vi.mock('@/lib/tenant', () => ({
+  getTenantContext: vi.fn().mockResolvedValue({ tenantId: null }),
+}));
+
 vi.mock('@/lib/settings', () => ({
   getSettings: vi.fn().mockResolvedValue({
-    automationSettings: {
-      autoInsuranceVerification: true,
-    },
+    generalSettings: { itemsPerPage: 20 },
+    automationSettings: { autoInsuranceVerification: true },
+    appointmentSettings: { defaultDuration: 30 },
   }),
 }));
 
@@ -73,16 +92,21 @@ describe('Appointments API', () => {
     it('should create appointment successfully', async () => {
       const { verifySession } = await import('@/app/lib/dal');
       const Appointment = (await import('@/models/Appointment')).default;
+      const Doctor = (await import('@/models/Doctor')).default;
+      const Patient = (await import('@/models/Patient')).default;
 
       vi.mocked(verifySession).mockResolvedValue({
-        userId: 'user123',
+        userId: VALID_PATIENT_ID,
         email: 'test@example.com',
         role: 'admin',
-        tenantId: 'tenant123',
+        tenantId: VALID_TENANT_ID,
       } as any);
 
+      vi.mocked(Doctor.findOne).mockResolvedValue({ _id: VALID_DOCTOR_ID } as any);
+      vi.mocked(Patient.findOne).mockResolvedValue({ _id: VALID_PATIENT_ID } as any);
+
       const mockAppointment = {
-        _id: 'appointment123',
+        _id: VALID_APPT_ID,
         populate: vi.fn().mockResolvedValue(true),
       };
 
@@ -91,8 +115,8 @@ describe('Appointments API', () => {
       const request = new NextRequest('http://localhost:3000/api/appointments', {
         method: 'POST',
         body: JSON.stringify({
-          patient: 'patient123',
-          doctor: 'doctor123',
+          patient: VALID_PATIENT_ID,
+          doctor: VALID_DOCTOR_ID,
           date: new Date().toISOString(),
           status: 'scheduled',
         }),
@@ -109,18 +133,23 @@ describe('Appointments API', () => {
     it('should trigger insurance verification if enabled', async () => {
       const { verifySession } = await import('@/app/lib/dal');
       const Appointment = (await import('@/models/Appointment')).default;
+      const Doctor = (await import('@/models/Doctor')).default;
+      const Patient = (await import('@/models/Patient')).default;
       const { autoVerifyInsuranceForAppointment } = await import('@/lib/automations/insurance-verification');
 
       vi.mocked(verifySession).mockResolvedValue({
-        userId: 'user123',
+        userId: VALID_PATIENT_ID,
         email: 'test@example.com',
         role: 'admin',
-        tenantId: 'tenant123',
+        tenantId: VALID_TENANT_ID,
       } as any);
 
+      vi.mocked(Doctor.findOne).mockResolvedValue({ _id: VALID_DOCTOR_ID } as any);
+      vi.mocked(Patient.findOne).mockResolvedValue({ _id: VALID_PATIENT_ID } as any);
+
       const mockAppointment = {
-        _id: 'appointment123',
-        patient: 'patient123',
+        _id: VALID_APPT_ID,
+        patient: VALID_PATIENT_ID,
         populate: vi.fn().mockResolvedValue(true),
       };
 
@@ -129,19 +158,18 @@ describe('Appointments API', () => {
       const request = new NextRequest('http://localhost:3000/api/appointments', {
         method: 'POST',
         body: JSON.stringify({
-          patient: 'patient123',
-          doctor: 'doctor123',
+          patient: VALID_PATIENT_ID,
+          doctor: VALID_DOCTOR_ID,
           date: new Date().toISOString(),
           status: 'scheduled',
         }),
       });
 
       await POST(request);
+      // Flush microtasks to allow fire-and-forget async call to execute
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
 
-      // Insurance verification should be called (async, so we check if it was called)
-      // Note: In a real test, we might need to wait for async operations
       expect(autoVerifyInsuranceForAppointment).toHaveBeenCalled();
     });
   });
 });
-

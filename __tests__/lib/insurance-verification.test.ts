@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { verifyInsurance, batchVerifyInsurance } from '@/lib/automations/insurance-verification';
 import { Types } from 'mongoose';
 
-// Mock dependencies
 vi.mock('@/lib/mongodb', () => ({
   default: vi.fn(),
 }));
@@ -13,12 +12,39 @@ vi.mock('@/models/Patient', () => ({
   },
 }));
 
+vi.mock('@/models/Appointment', () => ({
+  default: {
+    findOne: vi.fn(),
+    find: vi.fn(),
+  },
+}));
+
+vi.mock('@/lib/settings', () => ({
+  getSettings: vi.fn().mockResolvedValue({ automationSettings: { autoInsuranceVerification: true } }),
+}));
+
+vi.mock('@/lib/notifications', () => ({
+  createNotification: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock('@/lib/email', () => ({
+  sendEmail: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock('@/lib/sms', () => ({
+  sendSMS: vi.fn().mockResolvedValue({}),
+}));
+
 vi.mock('@/lib/logger', () => ({
   default: {
     error: vi.fn(),
     info: vi.fn(),
   },
 }));
+
+function mockFindOne(resolvedValue: unknown) {
+  return { select: vi.fn().mockResolvedValue(resolvedValue) };
+}
 
 describe('Insurance Verification', () => {
   const tenantId = new Types.ObjectId();
@@ -31,7 +57,7 @@ describe('Insurance Verification', () => {
   describe('verifyInsurance', () => {
     it('should return error if patient not found', async () => {
       const Patient = (await import('@/models/Patient')).default;
-      vi.mocked(Patient.findOne).mockResolvedValue(null);
+      vi.mocked(Patient.findOne).mockReturnValue(mockFindOne(null) as any);
 
       const result = await verifyInsurance(patientId, tenantId);
 
@@ -41,11 +67,11 @@ describe('Insurance Verification', () => {
 
     it('should return error if patient has no insurance', async () => {
       const Patient = (await import('@/models/Patient')).default;
-      vi.mocked(Patient.findOne).mockResolvedValue({
+      vi.mocked(Patient.findOne).mockReturnValue(mockFindOne({
         _id: patientId,
         insurance: null,
         save: vi.fn(),
-      } as any);
+      }) as any);
 
       const result = await verifyInsurance(patientId, tenantId);
 
@@ -63,7 +89,7 @@ describe('Insurance Verification', () => {
         },
         save: vi.fn().mockResolvedValue(true),
       };
-      vi.mocked(Patient.findOne).mockResolvedValue(mockPatient as any);
+      vi.mocked(Patient.findOne).mockReturnValue(mockFindOne(mockPatient) as any);
 
       const result = await verifyInsurance(patientId, tenantId);
 
@@ -75,14 +101,14 @@ describe('Insurance Verification', () => {
 
     it('should fail verification for invalid policy number', async () => {
       const Patient = (await import('@/models/Patient')).default;
-      vi.mocked(Patient.findOne).mockResolvedValue({
+      vi.mocked(Patient.findOne).mockReturnValue(mockFindOne({
         _id: patientId,
         insurance: {
           provider: 'Test Insurance',
           policyNumber: '123', // Too short
         },
         save: vi.fn(),
-      } as any);
+      }) as any);
 
       const result = await verifyInsurance(patientId, tenantId);
 
@@ -102,7 +128,7 @@ describe('Insurance Verification', () => {
         },
         save: vi.fn().mockResolvedValue(true),
       };
-      vi.mocked(Patient.findOne).mockResolvedValue(mockPatient as any);
+      vi.mocked(Patient.findOne).mockReturnValue(mockFindOne(mockPatient) as any);
 
       const result = await batchVerifyInsurance([patientId, patientId], tenantId);
 
@@ -114,7 +140,9 @@ describe('Insurance Verification', () => {
 
     it('should handle errors gracefully', async () => {
       const Patient = (await import('@/models/Patient')).default;
-      vi.mocked(Patient.findOne).mockRejectedValue(new Error('Database error'));
+      vi.mocked(Patient.findOne).mockReturnValue({
+        select: vi.fn().mockRejectedValue(new Error('Database error')),
+      } as any);
 
       const result = await batchVerifyInsurance([patientId], tenantId);
 
@@ -124,4 +152,3 @@ describe('Insurance Verification', () => {
     });
   });
 });
-

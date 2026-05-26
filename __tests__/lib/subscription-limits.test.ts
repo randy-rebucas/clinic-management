@@ -53,6 +53,8 @@ describe('Subscription Limits', () => {
         isTrial: false,
         plan: 'basic',
         status: 'active',
+        expiresAt: null,
+        daysRemaining: null,
       });
 
       vi.mocked(Patient.countDocuments).mockResolvedValue(50); // Under limit of 100
@@ -74,6 +76,8 @@ describe('Subscription Limits', () => {
         isTrial: false,
         plan: 'basic',
         status: 'active',
+        expiresAt: null,
+        daysRemaining: null,
       });
 
       vi.mocked(Patient.countDocuments).mockResolvedValue(101); // Over limit of 100
@@ -81,7 +85,7 @@ describe('Subscription Limits', () => {
       const result = await checkSubscriptionLimit(tenantId, 'createPatient');
 
       expect(result.allowed).toBe(false);
-      expect(result.message).toContain('maximum number of patients');
+      expect(result.reason).toContain('patients limit');
     });
 
     it('should deny action when subscription expired', async () => {
@@ -93,12 +97,14 @@ describe('Subscription Limits', () => {
         isTrial: false,
         plan: 'trial',
         status: 'expired',
+        expiresAt: null,
+        daysRemaining: null,
       });
 
       const result = await checkSubscriptionLimit(tenantId, 'createPatient');
 
       expect(result.allowed).toBe(false);
-      expect(result.message).toContain('expired');
+      expect(result.reason).toContain('expired');
     });
   });
 });

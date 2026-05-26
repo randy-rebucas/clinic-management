@@ -68,6 +68,12 @@ vi.mock('@/models/AuditLog', () => ({
   },
 }));
 
+vi.mock('@/models/Tenant', () => ({
+  default: {
+    find: vi.fn(),
+  },
+}));
+
 vi.mock('@/lib/settings', () => ({
   getSettings: vi.fn(),
 }));
