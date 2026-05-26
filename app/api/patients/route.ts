@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     const filter: any = {};
     const isGlobal = searchParams.get('global') === 'true';
 
-    let tenantFilter: any = {};
+    const tenantFilter: any = {};
     if (!isGlobal) {
    
       if (tenantId) {

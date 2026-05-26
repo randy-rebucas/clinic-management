@@ -16,8 +16,8 @@ const eslintConfig = defineConfig([
   // Global rule overrides
   {
     rules: {
-      "@typescript-eslint/no-explicit-any": "off", // Disable no-explicit-any rule globally
-      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-unused-vars": "warn",
       "react-hooks/exhaustive-deps": "off",
       "@next/next/no-img-element": "warn",
       "jsx-a11y/alt-text": "warn",

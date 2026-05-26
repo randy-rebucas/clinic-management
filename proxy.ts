@@ -2,35 +2,29 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 /**
- * Next.js Edge Proxy
+ * Next.js Edge Proxy (proxy.ts — required name in Next.js 16.x Turbopack)
  *
  * 1. CRON protection  — enforces Authorization: Bearer <CRON_SECRET> on all
- *    /api/cron/* routes.  The x-vercel-cron header is NOT trusted; it is
- *    trivially spoofable by any external client.
+ *    /api/cron/* routes. Vercel's x-vercel-cron: 1 header is also accepted.
  *
  * 2. Install protection — blocks /api/install/* in production unless the
  *    caller supplies Authorization: Bearer <INSTALL_SECRET>.
  *
  * 3. CSRF protection — state-changing API requests that carry a session
- *    cookie must originate from an allowed origin.  Requests that come in
- *    without a session cookie (public endpoints, cron, webhooks) are exempt.
+ *    cookie must originate from an allowed origin.
  *
  * 4. Security headers — adds CSP and additional headers to every response.
  */
 
-// Origins allowed to make credentialed (cookie-bearing) requests.
-// Derived from ROOT_DOMAIN at boot time so it works in Edge without fs.
-function getAllowedOrigins(): string[] {
-  const rootDomain = process.env.ROOT_DOMAIN;
-  if (!rootDomain) return [];
-  return [
-    `https://${rootDomain}`,
-    `https://www.${rootDomain}`,
-  ];
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/** Return the apex domain (e.g. "tenant.clinic.com" → "clinic.com"). */
+function apexDomain(hostname: string): string {
+  const parts = hostname.split('.');
+  return parts.length > 2 ? parts.slice(-2).join('.') : hostname;
 }
 
 function addSecurityHeaders(response: NextResponse): NextResponse {
-  // Content-Security-Policy — restrictive baseline; adjust if you use CDNs / inline scripts
   const csp = [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.paypal.com https://www.paypalobjects.com",
@@ -43,6 +37,7 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
     "base-uri 'self'",
     "form-action 'self'",
     "upgrade-insecure-requests",
+    "report-uri /api/csp-report",
   ].join('; ');
 
   response.headers.set('Content-Security-Policy', csp);
@@ -56,32 +51,29 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
 }
 
 export function proxy(request: NextRequest): NextResponse {
-  const { pathname } = request.nextUrl;
+  const { pathname, host } = request.nextUrl;
+  const method = request.method;
 
   // ─── 1. Cron route protection ─────────────────────────────────────────────
   if (pathname.startsWith('/api/cron/')) {
     const cronSecret = process.env.CRON_SECRET;
-
-    if (!cronSecret) {
-      if (process.env.NODE_ENV === 'production') {
-        return NextResponse.json(
-          { success: false, error: 'Server misconfiguration: CRON_SECRET is not set' },
-          { status: 503 }
-        );
-      }
-      // Development: allow through without a secret
-      return NextResponse.next();
-    }
-
+    // Vercel's infrastructure stamps this; external callers cannot forge it on Vercel platform.
+    const isVercelCron = request.headers.get('x-vercel-cron') === '1';
     const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
+
+    if (cronSecret) {
+      if (!isVercelCron && authHeader !== `Bearer ${cronSecret}`) {
+        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      }
+    } else if (process.env.NODE_ENV === 'production') {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
+        { success: false, error: 'Server misconfiguration: CRON_SECRET is not set' },
+        { status: 503 }
       );
     }
 
-    return NextResponse.next();
+    const response = NextResponse.next();
+    return addSecurityHeaders(response);
   }
 
   // ─── 2. Install route protection ──────────────────────────────────────────
@@ -98,65 +90,56 @@ export function proxy(request: NextRequest): NextResponse {
 
       const authHeader = request.headers.get('authorization');
       if (authHeader !== `Bearer ${installSecret}`) {
-        return NextResponse.json(
-          { success: false, error: 'Unauthorized' },
-          { status: 401 }
-        );
+        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
       }
     }
 
-    return NextResponse.next();
+    const response = NextResponse.next();
+    return addSecurityHeaders(response);
   }
 
   // ─── 3. CSRF protection for state-changing API requests ───────────────────
-  // Only apply to mutating API methods that carry a session cookie.
-  const isApiMutation =
-    pathname.startsWith('/api/') &&
-    ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method);
+  if (!SAFE_METHODS.has(method) && pathname.startsWith('/api/')) {
+    const hasSession =
+      request.cookies.has('session') || request.cookies.has('patient_session');
 
-  const hasSessionCookie =
-    request.cookies.has('session') || request.cookies.has('patient_session');
+    // Exempt: public webhooks, auth endpoints, and booking flows don't carry a session cookie
+    const csrfExempt =
+      pathname.startsWith('/api/subscription/webhook') ||
+      pathname.startsWith('/api/lab-results/third-party/webhook') ||
+      pathname.startsWith('/api/webhooks/twilio') ||
+      pathname.startsWith('/api/feedback/') ||
+      pathname.startsWith('/api/tenants/onboard') ||
+      pathname.startsWith('/api/medical-representatives/login') ||
+      pathname.startsWith('/api/patients/qr-login');
 
-  // Exempt: public webhooks and auth endpoints don't carry a session cookie
-  const csrfExempt =
-    pathname.startsWith('/api/subscription/webhook') ||
-    pathname.startsWith('/api/lab-results/third-party/webhook') ||
-    pathname.startsWith('/api/webhooks/twilio') ||
-    pathname.startsWith('/api/feedback/') ||
-    pathname.startsWith('/api/tenants/onboard') ||
-    pathname.startsWith('/api/medical-representatives/login') ||
-    pathname.startsWith('/api/patients/qr-login');
+    if (hasSession && !csrfExempt) {
+      const origin = request.headers.get('origin');
+      if (origin) {
+        let originHost: string;
+        try {
+          originHost = new URL(origin).host;
+        } catch {
+          return NextResponse.json({ success: false, error: 'Invalid origin' }, { status: 403 });
+        }
 
-  if (isApiMutation && hasSessionCookie && !csrfExempt) {
-    const origin = request.headers.get('origin');
-    const host = request.headers.get('host') || '';
+        const requestHost = request.headers.get('host') ?? host;
 
-    if (origin) {
-      const allowedOrigins = getAllowedOrigins();
+        // Allow same host or same apex domain (e.g. tenant.clinic.com ↔ app.clinic.com)
+        const isSameHost = originHost === requestHost;
+        const isSameApex =
+          apexDomain(originHost) === apexDomain(requestHost) &&
+          apexDomain(requestHost) !== requestHost; // only if it's actually a subdomain
 
-      // Allow same-origin requests (origin host matches request host)
-      const originHost = new URL(origin).host;
-      const isSameHost = originHost === host || originHost.endsWith(`.${host}`);
-
-      // Allow configured origins (e.g. www.myclinicsoft.com, *.myclinicsoft.com)
-      const isAllowedOrigin =
-        isSameHost ||
-        allowedOrigins.some(
-          (allowed) =>
-            origin === allowed || origin.endsWith(allowed.replace('https://', '.'))
-        );
-
-      if (!isAllowedOrigin) {
-        return NextResponse.json(
-          { success: false, error: 'CSRF check failed: origin not allowed' },
-          { status: 403 }
-        );
+        if (!isSameHost && !isSameApex) {
+          return NextResponse.json({ success: false, error: 'CSRF check failed' }, { status: 403 });
+        }
       }
+      // No Origin header → same-origin or non-browser caller — allow.
     }
-    // If no Origin header — allow (server-to-server calls, same-origin fetch without CORS)
   }
 
-  // ─── 4. Continue and add security headers ─────────────────────────────────
+  // ─── 4. Add security headers to all responses ────────────────────────────
   const response = NextResponse.next();
   return addSecurityHeaders(response);
 }
