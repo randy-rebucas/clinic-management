@@ -33,7 +33,10 @@
       "Bash(node_modules/.bin/tsc --noEmit)",
       "Bash(node_modules/.bin/npm audit *)",
       "Bash(ls \"c:\\\\Users\\\\corew\\\\clinic-management\\\\\" | grep -i proxy)",
-      "Read(//c/Users/corew/**)"
+      "Read(//c/Users/corew/**)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\corew\\\\clinic-management\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(xargs -I {} basename {})"
     ]
   }
 }
