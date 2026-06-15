@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     // No tenant in context — run for all active tenants
     await connectDB();
-    const tenants = await Tenant.find({ status: 'active' }).select('_id').lean();
+    const tenants = await Tenant.find({ status: 'active' }).select('_id').lean<{ _id: import('mongoose').Types.ObjectId }[]>();
 
     const results = await Promise.allSettled(
       tenants.map(async (t) => {
