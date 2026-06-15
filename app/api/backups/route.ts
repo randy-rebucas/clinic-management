@@ -5,15 +5,13 @@ import { unauthorizedResponse, isAdmin } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { getTenantContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
+import BackupRecord from '@/models/BackupRecord';
 
+// GET /api/backups — list all backup records for the tenant
 export async function GET(request: NextRequest) {
   const session = await verifySession();
+  if (!session) return unauthorizedResponse();
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Only admin can trigger backups
   if (!isAdmin(session)) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized - Admin access required' },
@@ -23,70 +21,109 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId || undefined;
-    
-    // Get all collections
+
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '20')));
+    const skip = (page - 1) * limit;
+
+    const filter = tenantId ? { tenantId } : {};
+
+    const [backups, total] = await Promise.all([
+      BackupRecord.find(filter, { data: 0 }) // exclude raw data from list
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      BackupRecord.countDocuments(filter),
+    ]);
+
+    return NextResponse.json({
+      success: true,
+      data: backups,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    console.error('Error listing backups:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to list backups' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/backups — create a new backup and store it in the database
+export async function POST(request: NextRequest) {
+  const session = await verifySession();
+  if (!session) return unauthorizedResponse();
+
+  if (!isAdmin(session)) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized - Admin access required' },
+      { status: 403 }
+    );
+  }
+
+  try {
+    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
+
+    const body = await request.json().catch(() => ({}));
+    const label: string | undefined = body?.label?.trim() || undefined;
+
     const db = mongoose.connection.db;
-    if (!db) {
-      throw new Error('Database connection not available');
-    }
+    if (!db) throw new Error('Database connection not available');
 
     const collections = await db.listCollections().toArray();
-    const backupData: { [key: string]: any[] } = {};
-    const timestamp = new Date().toISOString();
+    const backupData: Record<string, unknown[]> = {};
 
-    // Export each collection
-    for (const collection of collections) {
-      const collectionName = collection.name;
-      // Skip system collections
-      if (collectionName.startsWith('system.')) {
-        continue;
-      }
+    for (const col of collections) {
+      if (col.name.startsWith('system.') || col.name === 'backuprecords') continue;
 
-      const Model = mongoose.models[collectionName] || mongoose.model(collectionName, new mongoose.Schema({}, { strict: false }));
-      const documents = await Model.find({}).lean();
-      backupData[collectionName] = documents;
+      const colRef = db.collection(col.name);
+      const docs = await colRef.find({}).toArray();
+      backupData[col.name] = docs;
     }
 
-    // Create backup metadata
-    const backup = {
-      timestamp,
-      version: '1.0',
-      collections: Object.keys(backupData),
-      totalDocuments: Object.values(backupData).reduce((sum, docs) => sum + docs.length, 0),
-      data: backupData,
-    };
+    const collectionNames = Object.keys(backupData);
+    const totalDocuments = Object.values(backupData).reduce((s, d) => s + d.length, 0);
+    const sizeBytes = Buffer.byteLength(JSON.stringify(backupData), 'utf8');
 
-    // Log backup action
+    const record = await BackupRecord.create({
+      tenantId,
+      createdBy: session.userId,
+      createdByEmail: session.email,
+      label,
+      status: 'completed',
+      collections: collectionNames,
+      totalDocuments,
+      sizeBytes,
+      version: '1.0',
+      data: backupData,
+    });
+
     await createAuditLog({
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
-      tenantId: tenantId,
+      tenantId,
       action: 'backup',
       resource: 'system',
-      description: 'Database backup created',
-      metadata: {
-        collections: backup.collections,
-        totalDocuments: backup.totalDocuments,
-      },
+      resourceId: record._id as any,
+      description: `Database backup created${label ? `: ${label}` : ''}`,
+      metadata: { collections: collectionNames, totalDocuments, sizeBytes },
     });
 
-    // Return backup as JSON (in production, save to file or cloud storage)
-    return NextResponse.json({
-      success: true,
-      data: backup,
-      message: 'Backup created successfully',
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Disposition': `attachment; filename="backup-${timestamp}.json"`,
-      },
-    });
-  } catch (error: any) {
+    // Return metadata only (not the raw data blob)
+    const { data: _omit, ...meta } = record.toObject();
+    return NextResponse.json(
+      { success: true, data: meta, message: 'Backup created successfully' },
+      { status: 201 }
+    );
+  } catch (error) {
     console.error('Error creating backup:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to create backup' },
@@ -94,89 +131,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
-export async function POST(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Only admin can restore backups
-  if (!isAdmin(session)) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized - Admin access required' },
-      { status: 403 }
-    );
-  }
-
-  try {
-    await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
-    
-    const body = await request.json();
-    const { backupData } = body;
-
-    if (!backupData || !backupData.data) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid backup data' },
-        { status: 400 }
-      );
-    }
-
-    const db = mongoose.connection.db;
-    if (!db) {
-      throw new Error('Database connection not available');
-    }
-
-    const results: { [key: string]: { inserted: number; errors: number } } = {};
-
-    // Restore each collection
-    for (const [collectionName, documents] of Object.entries(backupData.data)) {
-      try {
-        // Clear existing collection (WARNING: This deletes all data)
-        await db.collection(collectionName).deleteMany({});
-        
-        // Insert backup data
-        if (Array.isArray(documents) && documents.length > 0) {
-          await db.collection(collectionName).insertMany(documents);
-          results[collectionName] = { inserted: documents.length, errors: 0 };
-        }
-      } catch (error: any) {
-        console.error(`Error restoring collection ${collectionName}:`, error);
-        results[collectionName] = { inserted: 0, errors: 1 };
-      }
-    }
-
-    // Log restore action
-    await createAuditLog({
-      userId: session.userId,
-      userEmail: session.email,
-      userRole: session.role,
-      tenantId: tenantId,
-      action: 'restore',
-      resource: 'system',
-      description: 'Database backup restored',
-      metadata: {
-        backupTimestamp: backupData.timestamp,
-        results,
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: results,
-      message: 'Backup restored successfully',
-    });
-  } catch (error: any) {
-    console.error('Error restoring backup:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to restore backup' },
-      { status: 500 }
-    );
-  }
-}
-
