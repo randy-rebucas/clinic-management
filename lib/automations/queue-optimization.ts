@@ -35,25 +35,27 @@ export interface QueueOptimizationResult {
 export async function optimizeQueue(
   tenantId: string | Types.ObjectId
 ): Promise<QueueOptimizationResult> {
+  const emptyResult: QueueOptimizationResult = {
+    optimized: false,
+    changes: [],
+    metrics: { averageWaitTime: 0, totalPatients: 0, doctorsAvailable: 0, roomsAvailable: 0 },
+  };
+
+  if (!tenantId || (typeof tenantId === 'string' && !Types.ObjectId.isValid(tenantId))) {
+    logger.error('optimizeQueue called with invalid tenantId', new Error('Invalid tenantId'), { tenantId });
+    return emptyResult;
+  }
+
   try {
     await connectDB();
 
     const settings = await getSettings(tenantId.toString());
     if (!settings?.automationSettings?.autoQueueOptimization) {
-      return {
-        optimized: false,
-        changes: [],
-        metrics: {
-          averageWaitTime: 0,
-          totalPatients: 0,
-          doctorsAvailable: 0,
-          roomsAvailable: 0,
-        },
-      };
+      return emptyResult;
     }
 
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
+    const tenantIdObj = typeof tenantId === 'string'
+      ? new Types.ObjectId(tenantId)
       : tenantId;
 
     // Get active queue entries
@@ -177,16 +179,7 @@ export async function optimizeQueue(
     };
   } catch (error: any) {
     logger.error('Error optimizing queue', error as Error, { tenantId });
-    return {
-      optimized: false,
-      changes: [],
-      metrics: {
-        averageWaitTime: 0,
-        totalPatients: 0,
-        doctorsAvailable: 0,
-        roomsAvailable: 0,
-      },
-    };
+    return emptyResult;
   }
 }
 
@@ -267,11 +260,16 @@ export async function optimizeQueueScheduling(
     impact: 'high' | 'medium' | 'low';
   }>;
 }> {
+  if (!tenantId || (typeof tenantId === 'string' && !Types.ObjectId.isValid(tenantId))) {
+    logger.error('optimizeQueueScheduling called with invalid tenantId', new Error('Invalid tenantId'), { tenantId });
+    return { success: false, recommendations: [] };
+  }
+
   try {
     await connectDB();
 
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
+    const tenantIdObj = typeof tenantId === 'string'
+      ? new Types.ObjectId(tenantId)
       : tenantId;
 
     const recommendations: Array<{
