@@ -54,3 +54,6 @@ Thumbs.db
 coverage/
 .nyc_output/
 *.log
+
+# Local backup files
+backups/
