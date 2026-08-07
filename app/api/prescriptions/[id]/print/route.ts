@@ -136,7 +136,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
     }
     .header h1 {
       margin: 0;
-      color: #2563eb;
+      color: #000000;
     }
     .info-section {
       margin-bottom: 20px;
@@ -158,11 +158,11 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
     .medication-name {
       font-size: 18px;
       font-weight: bold;
-      color: #1f2937;
+      color: #000000;
     }
     .medication-details {
       margin-left: 20px;
-      color: #4b5563;
+      color: #000000;
       font-family: monospace;
       font-size: 18px;
       font-style: italic;
@@ -181,7 +181,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
       padding-top: 4px;
       border-top: 1px solid #ddd;
       font-size: 12px;
-      color: #6b7280;
+      color: #000000;
       text-align: center;
     }
     .footer p {
@@ -197,14 +197,14 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
       <div style="display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
           <h1 style="margin-bottom: 4px;">${settingInfo && settingInfo.clinicName ? settingInfo.clinicName : 'Clinic Name'}</h1>
-          <div style="font-size: 14px; color: #374151;">${settingInfo && settingInfo.clinicAddress ? settingInfo.clinicAddress : ''}</div>
-          <div style="font-size: 14px; color: #374151;">${settingInfo && settingInfo.clinicPhone ? 'Tel: ' + settingInfo.clinicPhone : ''}</div>
-          <div style="font-size: 14px; color: #374151;">${settingInfo && settingInfo.clinicEmail ? 'Email: ' + settingInfo.clinicEmail : ''}</div>
+          <div style="font-size: 14px; color: #000000;">${settingInfo && settingInfo.clinicAddress ? settingInfo.clinicAddress : ''}</div>
+          <div style="font-size: 14px; color: #000000;">${settingInfo && settingInfo.clinicPhone ? 'Tel: ' + settingInfo.clinicPhone : ''}</div>
+          <div style="font-size: 14px; color: #000000;">${settingInfo && settingInfo.clinicEmail ? 'Email: ' + settingInfo.clinicEmail : ''}</div>
         </div>
         <div style="text-align: right;">
-          <h2 style="margin: 0; color: #2563eb;">PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h2>
+          <h2 style="margin: 0; color: #000000;">PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h2>
           <strong>Code:</strong> ${prescription.prescriptionCode}<br>
-          ${!isPatientCopy ? `<small style="color: #6b7280;">Archived: ${new Date().toLocaleString()}</small>` : ''}
+          ${!isPatientCopy ? `<small style="color: #000000;">Archived: ${new Date().toLocaleString()}</small>` : ''}
         </div>
       </div>
     </div>
@@ -324,7 +324,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
         ${settingInfo && settingInfo.clinicPhone ? 'Tel: ' + settingInfo.clinicPhone : ''}<br>
         ${settingInfo && settingInfo.clinicEmail ? 'Email: ' + settingInfo.clinicEmail : ''}
       </p>
-      <p style="margin-top: 8px; font-weight: bold; color: #2563eb;">Powered by: DevCom Digital Marketing Services</p>
+      <p style="margin-top: 8px; font-weight: bold; color: #000000;">Powered by: DevCom Digital Marketing Services</p>
     </div>
   </div>
 </body>
