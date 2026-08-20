@@ -1,12 +1,17 @@
-import { Types } from 'mongoose';
-import Appointment from '@/models/Appointment';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getAppointmentById, updateAppointment } from '@/lib/data/appointment';
+import prisma from '@/lib/prisma';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 interface UpdateAppointmentFromQueueParams {
-  queueId: Types.ObjectId | string;
-  patientId: Types.ObjectId | string;
-  appointmentId?: Types.ObjectId | string;
+  queueId: string;
+  patientId: string;
+  appointmentId?: string;
   newQueueStatus: string;
-  tenantId?: Types.ObjectId;
+  tenantId?: string;
   skipAutomation?: boolean; // Prevent circular automation
 }
 
@@ -15,7 +20,7 @@ interface UpdateAppointmentFromQueueParams {
  * This maintains data consistency between the queue and appointment systems
  */
 export async function updateAppointmentFromQueue(params: UpdateAppointmentFromQueueParams): Promise<void> {
-  const { queueId, patientId, appointmentId, newQueueStatus, tenantId, skipAutomation } = params;
+  const { patientId, appointmentId, newQueueStatus, tenantId, skipAutomation } = params;
 
   // Prevent circular automation if this was triggered by appointment update
   if (skipAutomation) {
@@ -23,13 +28,17 @@ export async function updateAppointmentFromQueue(params: UpdateAppointmentFromQu
   }
 
   try {
-    // Map queue status to appointment status
-    const statusMap: Record<string, string> = {
+    // Map queue status to appointment status. Postgres's AppointmentStatus
+    // enum (prisma/schema.prisma) only has pending/scheduled/confirmed/
+    // rescheduled/no_show/completed/cancelled — there is no 'in-progress' or
+    // 'checked-in' member (unlike the old Mongoose model), so queue
+    // 'in-progress' has no valid appointment-status equivalent and is
+    // intentionally left unmapped (no-op).
+    const statusMap: Record<string, string | undefined> = {
       'waiting': 'scheduled',           // Patient is waiting → appointment is scheduled
-      'in-progress': 'in-progress',     // Patient is being seen → appointment in progress
       'completed': 'completed',          // Consultation done → appointment completed
       'cancelled': 'cancelled',          // Queue cancelled → appointment cancelled
-      'no-show': 'no-show',             // Patient didn't show → appointment no-show
+      'no-show': 'no_show',             // Patient didn't show → appointment no-show
     };
 
     const newAppointmentStatus = statusMap[newQueueStatus];
@@ -38,58 +47,44 @@ export async function updateAppointmentFromQueue(params: UpdateAppointmentFromQu
       return;
     }
 
-    // Build query to find the appointment
-    const query: any = { patient: patientId };
+    await run(tenantId ? String(tenantId) : undefined, async () => {
+      // Prepare update data
+      const updateData: Record<string, any> = {
+        status: newAppointmentStatus,
+      };
 
-    // If specific appointmentId provided, use it
-    if (appointmentId) {
-      query._id = appointmentId;
-    } else {
-      // Otherwise, find the most recent active appointment for this patient
-      query.status = { $in: ['scheduled', 'confirmed', 'checked-in', 'in-progress'] };
-    }
-
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = tenantId;
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    // Prepare update data
-    const updateData: any = {
-      status: newAppointmentStatus,
-      updatedAt: new Date(),
-      _skipAutomation: true, // Flag to prevent circular automation
-    };
-
-    // Add timestamps based on status
-    if (newAppointmentStatus === 'in-progress') {
-      updateData.checkedInAt = updateData.checkedInAt || new Date();
-    } else if (newAppointmentStatus === 'completed') {
-      updateData.completedAt = new Date();
-    } else if (newAppointmentStatus === 'cancelled') {
-      updateData.cancelledAt = new Date();
-    } else if (newAppointmentStatus === 'no-show') {
-      updateData.noShowAt = new Date();
-    }
-
-    // Update the appointment
-    const updatedAppointment = await Appointment.findOneAndUpdate(
-      query,
-      updateData,
-      { 
-        new: true, 
-        sort: { appointmentDate: -1, appointmentTime: -1 } // Most recent appointment
+      // Add timestamps based on status
+      if (newAppointmentStatus === 'completed') {
+        updateData.completedAt = new Date();
+      } else if (newAppointmentStatus === 'cancelled') {
+        updateData.cancelledAt = new Date();
+      } else if (newAppointmentStatus === 'no_show') {
+        updateData.noShowAt = new Date();
       }
-    );
 
-    if (updatedAppointment) {
-    } else {
-    }
+      let targetId = appointmentId ? String(appointmentId) : undefined;
 
+      if (!targetId) {
+        // Otherwise, find the most recent active appointment for this patient
+        const candidate = await prisma.appointment.findFirst({
+          where: {
+            patientId: String(patientId),
+            status: { in: ['scheduled', 'confirmed'] as any },
+          },
+          orderBy: [{ appointmentDate: 'desc' }, { appointmentTime: 'desc' }],
+          select: { id: true },
+        });
+        targetId = candidate?.id;
+      }
+
+      if (!targetId) {
+        return;
+      }
+
+      await updateAppointment(targetId, updateData as any);
+    });
   } catch (error) {
-    console.error('[Appointment Automation] ❌ Error updating appointment from queue:', error);
+    console.error('[Appointment Automation] Error updating appointment from queue:', error);
     // Don't throw - we don't want to fail queue operations if appointment update fails
   }
 }
@@ -99,26 +94,32 @@ export async function updateAppointmentFromQueue(params: UpdateAppointmentFromQu
  */
 export async function getAppointmentForQueue(queueEntry: any): Promise<any | null> {
   try {
-    if (queueEntry.appointment) {
-      // Queue has direct appointment reference
-      return await Appointment.findById(queueEntry.appointment);
-    }
+    const tenantId = queueEntry.tenantId ? String(queueEntry.tenantId) : undefined;
 
-    // Otherwise, try to find appointment by patient and date
-    const query: any = {
-      patient: queueEntry.patient,
-      status: { $in: ['scheduled', 'confirmed', 'checked-in', 'in-progress'] },
-    };
+    return await run(tenantId, async () => {
+      if (queueEntry.appointment) {
+        const appointmentId =
+          typeof queueEntry.appointment === 'string' ? queueEntry.appointment : queueEntry.appointment?.id ?? queueEntry.appointment?._id;
+        return appointmentId ? getAppointmentById(String(appointmentId)) : null;
+      }
 
-    if (queueEntry.tenantId) {
-      query.tenantId = queueEntry.tenantId;
-    }
+      // Otherwise, try to find appointment by patient and date
+      const patientId =
+        typeof queueEntry.patient === 'string' ? queueEntry.patient : queueEntry.patient?.id ?? queueEntry.patient?._id;
 
-    const appointment = await Appointment.findOne(query)
-      .sort({ appointmentDate: -1, appointmentTime: -1 })
-      .limit(1);
+      if (!patientId) return null;
 
-    return appointment;
+      const candidate = await prisma.appointment.findFirst({
+        where: {
+          patientId: String(patientId),
+          status: { in: ['scheduled', 'confirmed'] as any },
+        },
+        orderBy: [{ appointmentDate: 'desc' }, { appointmentTime: 'desc' }],
+        select: { id: true },
+      });
+
+      return candidate ? getAppointmentById(candidate.id) : null;
+    });
   } catch (error) {
     console.error('[Appointment Automation] Error finding appointment for queue:', error);
     return null;

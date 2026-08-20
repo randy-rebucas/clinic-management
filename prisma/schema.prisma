@@ -1,0 +1,3243 @@
+// ============================================================================
+// Clinic Management — Prisma Schema (Phase 1: MongoDB/Mongoose -> PostgreSQL)
+//
+// Translated from 39 Mongoose models in models/*.ts.
+// See prisma/MIGRATION_NOTES.md for every judgment call made during
+// translation — review before Phase 2 (data migration scripts).
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// Shared enums
+// ============================================================================
+
+// Reused across Admin/Doctor/Nurse/Receptionist/Accountant/MedicalRepresentative/Room-adjacent staff status
+enum StaffStatus {
+  active
+  inactive
+  on_leave @map("on-leave")
+}
+
+enum RecordStatus {
+  active
+  inactive
+  suspended
+}
+
+enum RoleName {
+  admin
+  owner
+  doctor
+  nurse
+  receptionist
+  accountant
+  medical_representative @map("medical-representative")
+}
+
+enum PatientSex {
+  male
+  female
+  other
+}
+
+enum SmokerStatus {
+  never
+  former
+  current
+  unknown
+}
+
+enum AlcoholStatus {
+  none
+  social
+  regular
+  unknown
+}
+
+enum DrugsStatus {
+  none
+  occasional
+  regular
+  unknown
+}
+
+enum ConditionStatus {
+  active
+  resolved
+  chronic
+}
+
+enum AppointmentStatus {
+  pending
+  scheduled
+  confirmed
+  rescheduled
+  no_show @map("no-show")
+  completed
+  cancelled
+}
+
+enum QueueStatus {
+  waiting
+  in_progress @map("in-progress")
+  completed
+  cancelled
+  no_show @map("no-show")
+}
+
+enum QueueType {
+  appointment
+  walk_in @map("walk-in")
+  follow_up @map("follow-up")
+}
+
+enum CheckInMethod {
+  manual
+  qr_code
+  kiosk
+}
+
+enum QueueNextAction {
+  billing
+  pharmacy
+  lab
+  checkout
+}
+
+enum VisitType {
+  consultation
+  follow_up @map("follow-up")
+  checkup
+  emergency
+  teleconsult
+  vaccination
+}
+
+enum VisitStatus {
+  draft
+  open
+  closed
+  cancelled
+}
+
+enum PrescriptionStatus {
+  active
+  completed
+  cancelled
+  dispensed
+  partially_dispensed @map("partially-dispensed")
+}
+
+enum DrugInteractionSeverity {
+  mild
+  moderate
+  severe
+  contraindicated
+}
+
+enum LabUrgency {
+  routine
+  urgent
+  stat
+}
+
+enum LabIntegrationType {
+  manual
+  api
+  hl7
+  other
+}
+
+enum LabThirdPartyStatus {
+  pending
+  sent
+  received
+  error
+}
+
+enum LabResultStatus {
+  ordered
+  in_progress @map("in-progress")
+  completed
+  reviewed
+  cancelled
+}
+
+enum NotificationMethod {
+  email
+  sms
+  both
+}
+
+enum ImagingStatus {
+  ordered
+  completed
+  reported
+  cancelled
+}
+
+enum InvoiceStatus {
+  unpaid
+  partial
+  paid
+  refunded
+}
+
+enum DiscountType {
+  pwd
+  senior
+  membership
+  promotional
+  other
+}
+
+enum PaymentMethod {
+  cash
+  gcash
+  bank_transfer
+  card
+  check
+  insurance
+  hmo
+  other
+}
+
+enum InsuranceCoverageType {
+  full
+  partial
+  co_pay @map("co-pay")
+}
+
+enum InsuranceClaimStatus {
+  pending
+  approved
+  rejected
+  paid
+}
+
+enum ReferralType {
+  doctor_to_doctor
+  patient_to_patient
+  external
+}
+
+enum ReferralStatus {
+  pending
+  accepted
+  completed
+  declined
+  cancelled
+}
+
+enum MembershipTier {
+  bronze
+  silver
+  gold
+  platinum
+}
+
+enum MembershipStatus {
+  active
+  inactive
+  expired
+  suspended
+}
+
+enum MembershipTransactionType {
+  earn
+  redeem
+  expire
+  adjustment
+}
+
+enum MembershipRelatedEntityType {
+  visit
+  appointment
+  invoice
+}
+
+enum DocumentCategory {
+  referral
+  laboratory_result
+  imaging
+  medical_certificate
+  prescription
+  invoice
+  id
+  insurance
+  other
+}
+
+enum DocumentType {
+  pdf
+  image
+  word
+  excel
+  other
+}
+
+enum DocumentStatus {
+  active
+  archived
+  deleted
+}
+
+enum NotificationType {
+  appointment
+  visit
+  prescription
+  lab_result
+  invoice
+  reminder
+  system
+  broadcast
+}
+
+enum NotificationPriority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum NotificationRelatedEntityType {
+  appointment
+  visit
+  prescription
+  lab_result
+  invoice
+  patient
+}
+
+enum AuditAction {
+  create
+  read
+  update
+  delete
+  login
+  logout
+  export
+  print
+  download
+  view
+  access_denied
+  password_change
+  permission_change
+  backup
+  restore
+  data_export
+  data_deletion
+}
+
+enum AuditResource {
+  patient
+  visit
+  appointment
+  prescription
+  lab_result
+  invoice
+  document
+  user
+  doctor
+  room
+  service
+  notification
+  system
+}
+
+enum SupportCategory {
+  general
+  technical
+  billing
+  account
+  onboarding
+  other
+}
+
+enum SupportStatus {
+  open
+  in_progress @map("in-progress")
+  resolved
+  closed
+}
+
+enum BackupStatus {
+  pending
+  completed
+  failed
+  restoring
+}
+
+enum PaypalOrderStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+enum TenantStatus {
+  active
+  inactive
+  suspended
+}
+
+enum SubscriptionStatus {
+  active
+  cancelled
+  expired
+}
+
+enum BillingCycle {
+  monthly
+  yearly
+}
+
+enum PaymentHistoryStatus {
+  completed
+  refunded
+  failed
+}
+
+enum RoomType {
+  consultation
+  examination
+  procedure
+  surgery
+  other
+}
+
+enum RoomStatus {
+  available
+  occupied
+  maintenance
+  unavailable
+}
+
+enum ServiceCategory {
+  consultation
+  procedure
+  laboratory
+  imaging
+  medication
+  other
+}
+
+enum MedicineForm {
+  tablet
+  capsule
+  syrup
+  injection
+  cream
+  drops
+  inhaler
+  other
+}
+
+enum MedicineRoute {
+  oral
+  iv
+  im
+  topical
+  inhalation
+  ophthalmic
+  otic
+  other
+}
+
+enum InventoryCategory {
+  medicine
+  supply
+  equipment
+  other
+}
+
+enum InventoryStatus {
+  in_stock @map("in-stock")
+  low_stock @map("low-stock")
+  out_of_stock @map("out-of-stock")
+  expired
+}
+
+enum ProductStatus {
+  active
+  discontinued
+  inactive
+}
+
+enum NoteVisibility {
+  private
+  internal
+  shared
+}
+
+enum NotePriority {
+  low
+  normal
+  high
+}
+
+enum ProfileAccessLevel {
+  full
+  limited
+}
+
+enum InvoiceProfessionalFeeType {
+  consultation
+  procedure
+  reading
+  other
+}
+
+enum MedRepPaymentStatus {
+  pending
+  completed
+  failed
+  refunded
+}
+
+enum CurrencyPosition {
+  before
+  after
+}
+
+enum TimeFormat {
+  h12 @map("12h")
+  h24 @map("24h")
+}
+
+enum Language {
+  en
+  es
+}
+
+enum SettingsTheme {
+  light
+  dark
+  auto
+}
+
+enum DayOfWeekName {
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+  sunday
+}
+
+enum MedRepVisitStatus {
+  scheduled
+  completed
+  cancelled
+}
+
+// ============================================================================
+// Tenant
+// ============================================================================
+
+model Tenant {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  subdomain   String       @unique
+  displayName String?
+  email       String?
+  phone       String?
+
+  // address (flattened - fixed shape struct, not independently queried)
+  addressStreet  String?
+  addressCity    String?
+  addressState   String?
+  addressZipCode String?
+  addressCountry String?
+
+  // settings (flattened - fixed shape struct)
+  settingsTimezone              String? @default("UTC")
+  settingsCurrency              String? @default("PHP")
+  settingsCurrencySymbol        String?
+  settingsCurrencyPosition      CurrencyPosition?
+  settingsDateFormat            String? @default("MM/DD/YYYY")
+  settingsTimeFormat            TimeFormat?
+  settingsLanguage              Language?
+  settingsNumberDecimalSep      String?
+  settingsNumberThousandsSep    String?
+  settingsNumberDecimalPlaces   Int?
+  settingsLogo                  String?
+  settingsPrimaryColor          String?
+  settingsSecondaryColor        String?
+
+  status TenantStatus @default(active)
+
+  // subscription (flattened - fixed shape struct)
+  subscriptionPlan                String?
+  subscriptionStatus              SubscriptionStatus? @default(active)
+  subscriptionBillingCycle        BillingCycle?        @default(monthly)
+  subscriptionExpiresAt           DateTime?
+  subscriptionRenewalAt           DateTime?
+  subscriptionPaypalOrderId       String?
+  subscriptionPaypalSubscriptionId String?
+  // processedWebhookIds: small primitive array -> native Postgres array
+  subscriptionProcessedWebhookIds String[] @default([])
+
+  paymentHistory TenantPaymentHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roles                    Role[]
+  permissions               Permission[]
+  admins                    Admin[]
+  doctors                   Doctor[]
+  nurses                    Nurse[]
+  receptionists              Receptionist[]
+  accountants                Accountant[]
+  medicalRepresentativeTenants MedicalRepresentativeTenant[]
+  staff                      Staff[]
+  users                      User[]
+  patientTenants              PatientTenant[]
+  patientNotes                PatientNote[]
+  rooms                       Room[]
+  services                    Service[]
+  medicines                   Medicine[]
+  products                    Product[]
+  inventoryItems               InventoryItem[]
+  queues                       Queue[]
+  appointments                 Appointment[]
+  visits                       Visit[]
+  prescriptions                 Prescription[]
+  labResults                    LabResult[]
+  imagings                      Imaging[]
+  procedures                    Procedure[]
+  invoices                      Invoice[]
+  referrals                     Referral[]
+  memberships                   Membership[]
+  documents                     Document[]
+  notifications                 Notification[]
+  pushSubscriptions              PushSubscription[]
+  auditLogs                      AuditLog[]
+  supportRequests                 SupportRequest[]
+  backupRecords                   BackupRecord[]
+  paypalOrders                     PaypalOrder[]
+  surveys                          SurveyResponse[]
+  settings                          Settings?
+  medicalRepresentativeVisits        MedicalRepresentativeVisit[]
+
+  @@index([status])
+  @@index([subscriptionStatus])
+  @@index([subscriptionPaypalOrderId])
+  @@index([createdAt])
+}
+
+// Multiple partial payments over time recorded historically -> child table
+model TenantPaymentHistory {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactionId String
+  orderId       String
+  amount        Float
+  currency      String   @default("USD")
+  payerEmail    String?
+  plan          String
+  billingCycle  BillingCycle @default(monthly)
+  status        PaymentHistoryStatus @default(completed)
+  paidAt        DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// ============================================================================
+// Attachment (helper — see MIGRATION_NOTES: embedded per-parent, not a shared table)
+// ============================================================================
+// Attachment is a small, fixed-shape embedded subdocument used on Patient,
+// Visit, LabResult, Imaging, Procedure. Each parent gets its own attachment
+// child table (PatientAttachment, VisitAttachment, LabResultAttachment,
+// ImagingAttachment, ProcedureAttachment) rather than one shared polymorphic
+// table, to keep real FK relations (see MIGRATION_NOTES.md).
+
+// ============================================================================
+// Role / Permission
+// ============================================================================
+
+model Role {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String?   @db.Uuid
+  tenant      Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        RoleName
+  displayName String
+  description String?
+  level       Int?
+  isActive    Boolean   @default(true)
+
+  defaultPermissions RoleDefaultPermission[]
+  permissions        Permission[]             @relation("RolePermissions")
+  users              User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId, name, isActive])
+  @@index([tenantId, level])
+  @@index([tenantId, isActive])
+}
+
+// defaultPermissions: array of {resource, actions[]} objects, independently meaningful -> child table
+model RoleDefaultPermission {
+  id       String   @id @default(uuid()) @db.Uuid
+  roleId   String   @db.Uuid
+  role     Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  resource String
+  // actions: small primitive string array -> native Postgres array
+  actions  String[] @default([])
+
+  @@index([roleId])
+}
+
+model Permission {
+  id       String   @id @default(uuid()) @db.Uuid
+  tenantId String?  @db.Uuid
+  tenant   Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String? @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // explicit many-to-many via Prisma implicit relation table on Role<->Permission
+  roles Role[] @relation("RolePermissions")
+
+  resource String
+  actions  String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, userId, resource])
+  @@index([tenantId, resource])
+}
+
+// ============================================================================
+// Profile models: Staff / Admin / Doctor / Nurse / Receptionist / Accountant /
+// MedicalRepresentative
+// ============================================================================
+
+model Staff {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  firstName String
+  lastName  String
+  email     String
+  phone     String
+
+  staffType  String?
+  employeeId String?
+  department String?
+  position   String?
+  hireDate   DateTime?
+  address    String?
+
+  // emergencyContact (flattened - fixed shape struct)
+  emergencyContactName         String?
+  emergencyContactPhone        String?
+  emergencyContactRelationship String?
+
+  status StaffStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[] @relation("UserStaffInfo")
+
+  @@unique([tenantId, email])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, department])
+  @@index([tenantId, position])
+  @@index([tenantId, status])
+}
+
+model Admin {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  firstName String
+  lastName  String
+  email     String
+  phone     String?
+
+  title       String?
+  department  String?
+  accessLevel ProfileAccessLevel @default(full)
+
+  internalNotes AdminInternalNote[]
+
+  bio    String?
+  status RecordStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User?
+
+  @@unique([tenantId, email])
+  @@index([tenantId, status])
+  @@index([tenantId, department, status])
+  @@index([tenantId, accessLevel, status])
+}
+
+model AdminInternalNote {
+  id          String   @id @default(uuid()) @db.Uuid
+  adminId     String   @db.Uuid
+  admin       Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  note        String
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  isImportant Boolean  @default(false)
+
+  @@index([adminId])
+}
+
+model Doctor {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  firstName        String
+  lastName         String
+  email            String
+  phone            String
+  specializationId String @db.Uuid
+  specialization   Specialization @relation(fields: [specializationId], references: [id])
+  licenseNumber    String
+  ptr              String? @default("")
+
+  schedule               DoctorScheduleSlot[]
+  availabilityOverrides  DoctorAvailabilityOverride[]
+  internalNotes          DoctorInternalNote[]
+
+  // performanceMetrics (flattened - fixed shape struct)
+  perfTotalAppointments     Int      @default(0)
+  perfCompletedAppointments Int      @default(0)
+  perfCancelledAppointments Int      @default(0)
+  perfNoShowAppointments    Int      @default(0)
+  perfAverageRating         Float?
+  perfLastUpdated           DateTime?
+
+  title          String?
+  // qualifications: small primitive array -> native array
+  qualifications String[] @default([])
+  bio            String?
+  department     String?
+  status         StaffStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user                User?
+  queues              Queue[]
+  appointments        Appointment[]
+  invoicesAsPFDoctor  Invoice[] @relation("InvoiceProfessionalFeeDoctor")
+  referralsReferring  Referral[] @relation("ReferralReferringDoctor")
+  referralsReceiving  Referral[] @relation("ReferralReceivingDoctor")
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, licenseNumber])
+  @@index([tenantId, ptr])
+  @@index([tenantId, specializationId, status])
+  @@index([tenantId, department, status])
+  @@index([tenantId, status])
+}
+
+model DoctorScheduleSlot {
+  id          String  @id @default(uuid()) @db.Uuid
+  doctorId    String  @db.Uuid
+  doctor      Doctor  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int
+  startTime   String
+  endTime     String
+  isAvailable Boolean @default(true)
+
+  @@index([doctorId])
+}
+
+model DoctorAvailabilityOverride {
+  id          String   @id @default(uuid()) @db.Uuid
+  doctorId    String   @db.Uuid
+  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  date        DateTime
+  isAvailable Boolean
+  startTime   String?
+  endTime     String?
+  reason      String?
+
+  @@index([doctorId])
+}
+
+model DoctorInternalNote {
+  id          String   @id @default(uuid()) @db.Uuid
+  doctorId    String   @db.Uuid
+  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  note        String
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  isImportant Boolean  @default(false)
+
+  @@index([doctorId])
+}
+
+model Nurse {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  firstName      String
+  lastName       String
+  email          String
+  phone          String
+  employeeId     String?
+  licenseNumber  String?
+  department     String?
+  specialization String?
+  hireDate       DateTime?
+  address        String?
+
+  schedule              NurseScheduleSlot[]
+  availabilityOverrides NurseAvailabilityOverride[]
+
+  emergencyContactName         String?
+  emergencyContactPhone        String?
+  emergencyContactRelationship String?
+
+  internalNotes NurseInternalNote[]
+
+  perfTotalVisits     Int       @default(0)
+  perfCompletedVisits Int       @default(0)
+  perfCancelledVisits Int       @default(0)
+  perfLastUpdated     DateTime?
+
+  title          String?
+  qualifications String[] @default([])
+  bio            String?
+  status         StaffStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User?
+
+  @@unique([tenantId, email])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, licenseNumber])
+  @@index([tenantId, department, status])
+  @@index([tenantId, specialization, status])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+}
+
+model NurseScheduleSlot {
+  id          String  @id @default(uuid()) @db.Uuid
+  nurseId     String  @db.Uuid
+  nurse       Nurse   @relation(fields: [nurseId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int
+  startTime   String
+  endTime     String
+  isAvailable Boolean @default(true)
+
+  @@index([nurseId])
+}
+
+model NurseAvailabilityOverride {
+  id          String   @id @default(uuid()) @db.Uuid
+  nurseId     String   @db.Uuid
+  nurse       Nurse    @relation(fields: [nurseId], references: [id], onDelete: Cascade)
+  date        DateTime
+  isAvailable Boolean
+  startTime   String?
+  endTime     String?
+  reason      String?
+
+  @@index([nurseId])
+}
+
+model NurseInternalNote {
+  id          String   @id @default(uuid()) @db.Uuid
+  nurseId     String   @db.Uuid
+  nurse       Nurse    @relation(fields: [nurseId], references: [id], onDelete: Cascade)
+  note        String
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  isImportant Boolean  @default(false)
+
+  @@index([nurseId])
+}
+
+model Receptionist {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  firstName  String
+  lastName   String
+  email      String
+  phone      String
+  employeeId String?
+  department String?
+  hireDate   DateTime?
+  address    String?
+
+  schedule              ReceptionistScheduleSlot[]
+  availabilityOverrides ReceptionistAvailabilityOverride[]
+
+  emergencyContactName         String?
+  emergencyContactPhone        String?
+  emergencyContactRelationship String?
+
+  internalNotes ReceptionistInternalNote[]
+
+  perfTotalAppointments      Int       @default(0)
+  perfScheduledAppointments  Int       @default(0)
+  perfCancelledAppointments  Int       @default(0)
+  perfLastUpdated            DateTime?
+
+  title  String?
+  bio    String?
+  status StaffStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User?
+
+  @@unique([tenantId, email])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, department, status])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+}
+
+model ReceptionistScheduleSlot {
+  id             String       @id @default(uuid()) @db.Uuid
+  receptionistId String       @db.Uuid
+  receptionist   Receptionist @relation(fields: [receptionistId], references: [id], onDelete: Cascade)
+  dayOfWeek      Int
+  startTime      String
+  endTime        String
+  isAvailable    Boolean      @default(true)
+
+  @@index([receptionistId])
+}
+
+model ReceptionistAvailabilityOverride {
+  id             String       @id @default(uuid()) @db.Uuid
+  receptionistId String       @db.Uuid
+  receptionist   Receptionist @relation(fields: [receptionistId], references: [id], onDelete: Cascade)
+  date           DateTime
+  isAvailable    Boolean
+  startTime      String?
+  endTime        String?
+  reason         String?
+
+  @@index([receptionistId])
+}
+
+model ReceptionistInternalNote {
+  id             String       @id @default(uuid()) @db.Uuid
+  receptionistId String       @db.Uuid
+  receptionist   Receptionist @relation(fields: [receptionistId], references: [id], onDelete: Cascade)
+  note           String
+  createdById    String?      @db.Uuid
+  createdAt      DateTime     @default(now())
+  isImportant    Boolean      @default(false)
+
+  @@index([receptionistId])
+}
+
+model Accountant {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  firstName     String
+  lastName      String
+  email         String
+  phone         String
+  employeeId    String?
+  department    String?
+  hireDate      DateTime?
+  address       String?
+  certification String?
+  licenseNumber String?
+
+  schedule              AccountantScheduleSlot[]
+  availabilityOverrides AccountantAvailabilityOverride[]
+
+  emergencyContactName         String?
+  emergencyContactPhone        String?
+  emergencyContactRelationship String?
+
+  internalNotes AccountantInternalNote[]
+
+  perfTotalInvoices     Int       @default(0)
+  perfProcessedInvoices Int       @default(0)
+  perfTotalRevenue      Float     @default(0)
+  perfLastUpdated       DateTime?
+
+  title  String?
+  bio    String?
+  status StaffStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User?
+
+  @@unique([tenantId, email])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, licenseNumber])
+  @@index([tenantId, department, status])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+}
+
+model AccountantScheduleSlot {
+  id           String     @id @default(uuid()) @db.Uuid
+  accountantId String     @db.Uuid
+  accountant   Accountant @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  dayOfWeek    Int
+  startTime    String
+  endTime      String
+  isAvailable  Boolean    @default(true)
+
+  @@index([accountantId])
+}
+
+model AccountantAvailabilityOverride {
+  id           String     @id @default(uuid()) @db.Uuid
+  accountantId String     @db.Uuid
+  accountant   Accountant @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  date         DateTime
+  isAvailable  Boolean
+  startTime    String?
+  endTime      String?
+  reason       String?
+
+  @@index([accountantId])
+}
+
+model AccountantInternalNote {
+  id           String     @id @default(uuid()) @db.Uuid
+  accountantId String     @db.Uuid
+  accountant   Accountant @relation(fields: [accountantId], references: [id], onDelete: Cascade)
+  note         String
+  createdById  String?    @db.Uuid
+  createdAt    DateTime   @default(now())
+  isImportant  Boolean    @default(false)
+
+  @@index([accountantId])
+}
+
+// MedicalRepresentative: Mongoose tenantIds is an ARRAY of Tenant refs (like Patient) -> many-to-many junction table
+model MedicalRepresentative {
+  id String @id @default(uuid()) @db.Uuid
+
+  tenants MedicalRepresentativeTenant[]
+
+  firstName String
+  lastName  String
+  email     String
+  phone     String
+
+  company   String
+  territory String?
+  products  String[] @default([])
+
+  availability          MedicalRepresentativeAvailabilitySlot[]
+  availabilityOverrides MedicalRepresentativeAvailabilityOverride[]
+  internalNotes         MedicalRepresentativeInternalNote[]
+
+  perfTotalVisits     Int       @default(0)
+  perfCompletedVisits Int       @default(0)
+  perfCancelledVisits Int       @default(0)
+  perfLastUpdated     DateTime?
+
+  title  String?
+  bio    String?
+  status StaffStatus @default(inactive)
+
+  isActivated      Boolean   @default(false)
+  activationDate   DateTime?
+  paymentStatus    MedRepPaymentStatus @default(pending)
+  paymentDate      DateTime?
+  paymentAmount    Float?
+  paymentMethod    String?
+  paymentReference String?
+  lastLogin        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user               User?
+  productsRepped     Product[]
+  visits             MedicalRepresentativeVisit[]
+
+  @@index([company, status])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// PatientTenant-style junction table (see agreed pattern for many-to-many tenant refs)
+model MedicalRepresentativeTenant {
+  medicalRepresentativeId String                 @db.Uuid
+  medicalRepresentative   MedicalRepresentative  @relation(fields: [medicalRepresentativeId], references: [id], onDelete: Cascade)
+  tenantId                String                 @db.Uuid
+  tenant                  Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt               DateTime               @default(now())
+
+  @@id([medicalRepresentativeId, tenantId])
+  @@index([tenantId])
+}
+
+model MedicalRepresentativeAvailabilitySlot {
+  id                      String                @id @default(uuid()) @db.Uuid
+  medicalRepresentativeId String                @db.Uuid
+  medicalRepresentative   MedicalRepresentative @relation(fields: [medicalRepresentativeId], references: [id], onDelete: Cascade)
+  dayOfWeek               Int
+  startTime               String
+  endTime                 String
+  isAvailable             Boolean               @default(true)
+
+  @@index([medicalRepresentativeId])
+}
+
+model MedicalRepresentativeAvailabilityOverride {
+  id                      String                @id @default(uuid()) @db.Uuid
+  medicalRepresentativeId String                @db.Uuid
+  medicalRepresentative   MedicalRepresentative @relation(fields: [medicalRepresentativeId], references: [id], onDelete: Cascade)
+  date                    DateTime
+  isAvailable             Boolean
+  startTime               String?
+  endTime                 String?
+  reason                  String?
+
+  @@index([medicalRepresentativeId])
+}
+
+model MedicalRepresentativeInternalNote {
+  id                      String                @id @default(uuid()) @db.Uuid
+  medicalRepresentativeId String                @db.Uuid
+  medicalRepresentative   MedicalRepresentative @relation(fields: [medicalRepresentativeId], references: [id], onDelete: Cascade)
+  note                    String
+  createdById             String?               @db.Uuid
+  createdAt               DateTime              @default(now())
+  isImportant             Boolean               @default(false)
+
+  @@index([medicalRepresentativeId])
+}
+
+// ============================================================================
+// User
+// ============================================================================
+
+model User {
+  id       String  @id @default(uuid()) @db.Uuid
+  name     String
+  email    String
+  password String
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  roleId String @db.Uuid
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  // DEPRECATED legacy staff link, kept for backward compatibility
+  staffInfoId String? @db.Uuid
+  staffInfo   Staff?  @relation("UserStaffInfo", fields: [staffInfoId], references: [id])
+
+  permissions Permission[]
+
+  // One-of profile refs — nullable unique FK columns, each with a real relation
+  adminProfileId                 String? @unique @db.Uuid
+  adminProfile                   Admin?  @relation(fields: [adminProfileId], references: [id])
+  doctorProfileId                String? @unique @db.Uuid
+  doctorProfile                  Doctor? @relation(fields: [doctorProfileId], references: [id])
+  nurseProfileId                 String? @unique @db.Uuid
+  nurseProfile                   Nurse?  @relation(fields: [nurseProfileId], references: [id])
+  receptionistProfileId          String? @unique @db.Uuid
+  receptionistProfile            Receptionist? @relation(fields: [receptionistProfileId], references: [id])
+  accountantProfileId            String? @unique @db.Uuid
+  accountantProfile               Accountant?  @relation(fields: [accountantProfileId], references: [id])
+  medicalRepresentativeProfileId  String? @unique @db.Uuid
+  medicalRepresentativeProfile     MedicalRepresentative? @relation(fields: [medicalRepresentativeProfileId], references: [id])
+
+  status RecordStatus @default(active)
+
+  lastLogin   DateTime?
+  totpSecret  String? // select:false in Mongoose — app layer must exclude by default; see MIGRATION_NOTES
+  totpEnabled Boolean? @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  productsCreated             Product[]
+  inventoryRestocks           InventoryItem[] @relation("InventoryLastRestockedBy")
+  appointmentsAsProvider      Appointment[]   @relation("AppointmentProvider")
+  appointmentsCreated         Appointment[]   @relation("AppointmentCreatedBy")
+  visitsAsProvider            Visit[]         @relation("VisitProvider")
+  visitDigitalSignatures      VisitDigitalSignature[]
+  prescriptionsPrescribed     Prescription[]  @relation("PrescriptionPrescribedBy")
+  prescriptionCopiesPrinted   PrescriptionPatientCopy[]  @relation("PrescriptionCopyPrintedBy")
+  prescriptionCopiesArchived  PrescriptionClinicCopy[]   @relation("PrescriptionCopyArchivedBy")
+  labResultsOrdered           LabResult[]     @relation("LabResultOrderedBy")
+  labResultsReviewed          LabResult[]     @relation("LabResultReviewedBy")
+  imagingsOrdered             Imaging[]       @relation("ImagingOrderedBy")
+  imagingsReported            Imaging[]       @relation("ImagingReportedBy")
+  proceduresPerformed         Procedure[]     @relation("ProcedurePerformedBy")
+  invoicesCreated              Invoice[]       @relation("InvoiceCreatedBy")
+  invoiceDiscountsApplied      InvoiceDiscount[] @relation("InvoiceDiscountAppliedBy")
+  invoicePaymentsProcessed     InvoicePayment[] @relation("InvoicePaymentProcessedBy")
+  referralFeedbackSubmitted    Referral[]      @relation("ReferralFeedbackSubmittedBy")
+  documentsUploaded            Document[]      @relation("DocumentUploadedBy")
+  documentsModified            Document[]      @relation("DocumentLastModifiedBy")
+  notifications                 Notification[]
+  pushSubscriptions              PushSubscription[]
+  auditLogs                      AuditLog[]
+  auditLogsRestored              BackupRecord[]  @relation("BackupRestoredBy")
+  backupsCreated                 BackupRecord[]  @relation("BackupCreatedBy")
+  supportRequests                 SupportRequest[]
+  medicalRepresentativeVisits      MedicalRepresentativeVisit[]
+
+  @@index([roleId, status])
+  @@index([status])
+  @@index([email, tenantId])
+  @@index([tenantId, status])
+  @@index([lastLogin])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// Specialization
+// ============================================================================
+
+model Specialization {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  category    String?
+  active      Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctors Doctor[]
+
+  @@index([category, active])
+}
+
+// ============================================================================
+// Patient (+ PatientTenant, + PatientAllergy)
+// ============================================================================
+
+model Patient {
+  id String @id @default(uuid()) @db.Uuid
+
+  tenants PatientTenant[]
+
+  patientCode String?
+
+  firstName   String
+  middleName  String?
+  lastName    String
+  suffix      String?
+  dateOfBirth DateTime
+  sex         PatientSex
+  civilStatus String?
+  nationality String?
+  occupation  String?
+
+  email String?
+  phone String
+
+  // contacts (flattened - fixed shape struct, redundant with top-level fields)
+  contactsPhone   String?
+  contactsEmail   String?
+  contactsAddress String?
+
+  // address (flattened - fixed shape struct)
+  addressStreet  String
+  addressCity    String
+  addressState   String
+  addressZipCode String
+
+  // emergencyContact (flattened - fixed shape struct)
+  emergencyContactName         String?
+  emergencyContactPhone        String?
+  emergencyContactRelationship String?
+  emergencyContactRelation     String?
+
+  // identifiers (mostly flattened; "other" is a genuine dynamic map -> Json)
+  identifierPhilHealth String?
+  identifierGovId      String?
+  identifierOther      Json? // Map<string,string> in Mongoose — dynamic keys
+
+  medicalHistory String? @default("")
+
+  preExistingConditions PatientPreExistingCondition[]
+  // allergies: mixed type (string | structured object), clinically important -> own child table (see MIGRATION_NOTES)
+  allergies              PatientAllergy[]
+  immunizations          PatientImmunization[]
+
+  // socialHistory (flattened - fixed shape struct)
+  socialHistorySmoker  SmokerStatus?  @default(unknown)
+  socialHistoryAlcohol AlcoholStatus? @default(unknown)
+  socialHistoryDrugs   DrugsStatus?   @default(unknown)
+  socialHistoryNotes   String?
+
+  // familyHistory: genuine dynamic map (e.g. { diabetes: 'father' }) -> Json
+  familyHistory Json?
+
+  // discountEligibility (flattened - fixed shape nested struct)
+  pwdEligible                Boolean?
+  pwdIdNumber                String?
+  pwdExpiryDate               DateTime?
+  seniorEligible               Boolean?
+  seniorIdNumber                String?
+  membershipDiscEligible          Boolean?
+  membershipDiscType               String?
+  membershipDiscNumber              String?
+  membershipDiscExpiryDate           DateTime?
+  membershipDiscPercentage            Float?
+
+  password    String? // select:false in Mongoose — app layer must exclude by default
+  otp         String? // select:false in Mongoose — app layer must exclude by default
+  otpExpiry   DateTime?
+  otpAttempts Int?      @default(0)
+
+  // readNotificationIds: small primitive array -> native array
+  readNotificationIds String[] @default([])
+
+  active      Boolean  @default(true)
+  attachments PatientAttachment[]
+
+  tags String[] @default([])
+
+  // segmentFlags (flattened - fixed shape struct)
+  segFlagIsVIP                  Boolean? @default(false)
+  segFlagIsHighRisk              Boolean? @default(false)
+  segFlagIsHighUtilizer           Boolean? @default(false)
+  segFlagHasRecurringNoShow        Boolean? @default(false)
+  segFlagIsPendingVerification      Boolean? @default(false)
+  segFlagHasOutstandingBalance       Boolean? @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notes                       PatientNote[]
+  queues                       Queue[]
+  appointments                  Appointment[]
+  visits                         Visit[]
+  prescriptions                   Prescription[]
+  labResults                       LabResult[]
+  imagings                          Imaging[]
+  procedures                         Procedure[]
+  invoices                            Invoice[]
+  referralsAsSubject                   Referral[] @relation("ReferralPatientSubject")
+  referralsAsReferringPatient           Referral[] @relation("ReferralReferringPatient")
+  membership                             Membership?
+  documents                                Document[]
+  memberReferralsMade                       Membership[] @relation("MembershipReferredBy")
+  surveyResponses                            SurveyResponse[]
+  auditLogsAsDataSubject                      AuditLog[]
+
+  // NOTE: patientCode uniqueness in Mongoose was via a compound tenantIds+patientCode
+  // sparse index — but Patient.tenantIds is now a many-to-many relation (no single
+  // tenantId column exists on Patient), so a per-tenant compound unique isn't directly
+  // expressible here. patientCode is enforced as GLOBALLY unique instead; see
+  // MIGRATION_NOTES.md for the tradeoff and app-level enforcement note.
+
+  @@unique([patientCode])
+  @@index([lastName, firstName])
+  @@index([email])
+  @@index([dateOfBirth])
+  @@index([sex])
+  @@index([active])
+  @@index([identifierPhilHealth])
+  @@index([identifierGovId])
+  @@index([createdAt])
+  @@index([segFlagIsVIP])
+  @@index([segFlagIsHighRisk])
+  @@index([segFlagIsHighUtilizer])
+  @@index([segFlagHasOutstandingBalance])
+}
+
+model PatientTenant {
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  tenantId  String  @db.Uuid
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([patientId, tenantId])
+  @@index([tenantId])
+}
+
+model PatientPreExistingCondition {
+  id             String          @id @default(uuid()) @db.Uuid
+  patientId      String          @db.Uuid
+  patient        Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  condition      String
+  diagnosisDate  DateTime?
+  status         ConditionStatus @default(active)
+  notes          String?
+
+  @@index([patientId])
+}
+
+// allergies: Mongoose Mixed (string | {substance, reaction, severity}) — modeled as
+// own child table with nullable structured columns; `rawText` holds the simple-string
+// form when the source was just a plain string. See MIGRATION_NOTES.md.
+model PatientAllergy {
+  id        String  @id @default(uuid()) @db.Uuid
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  rawText   String? // used when source Mongoose value was a plain string
+  substance String?
+  reaction  String?
+  severity  String?
+
+  @@index([patientId])
+}
+
+model PatientImmunization {
+  id        String   @id @default(uuid()) @db.Uuid
+  patientId String   @db.Uuid
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name      String
+  date      DateTime
+  batch     String?
+  notes     String?
+
+  @@index([patientId])
+}
+
+model PatientAttachment {
+  id            String   @id @default(uuid()) @db.Uuid
+  patientId     String   @db.Uuid
+  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  filename      String
+  contentType   String?
+  size          Int?
+  url           String?
+  gridFsId      String?
+  uploadedById  String?  @db.Uuid
+  uploadDate    DateTime @default(now())
+  notes         String?
+
+  @@index([patientId])
+}
+
+// ============================================================================
+// PatientNote
+// ============================================================================
+
+model PatientNote {
+  id String @id @default(uuid()) @db.Uuid
+
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  // author (flattened - fixed shape struct, denormalized snapshot)
+  authorUserId String
+  authorName   String
+  authorRole   String
+
+  content    String
+  visibility NoteVisibility @default(internal)
+  priority   NotePriority?  @default(normal)
+  tags       String[]       @default([])
+
+  attachments PatientNoteAttachment[]
+
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId, createdAt])
+  @@index([patientId, visibility])
+  @@index([authorUserId, createdAt])
+  @@index([tenantId])
+}
+
+model PatientNoteAttachment {
+  id            String      @id @default(uuid()) @db.Uuid
+  patientNoteId String      @db.Uuid
+  patientNote   PatientNote @relation(fields: [patientNoteId], references: [id], onDelete: Cascade)
+  url           String?
+  name          String?
+  type          String?
+  uploadedAt    DateTime    @default(now())
+
+  @@index([patientNoteId])
+}
+
+// ============================================================================
+// Room
+// ============================================================================
+
+model Room {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name       String
+  roomNumber String?
+  floor      Int?
+  building   String?
+  roomType   RoomType   @default(consultation)
+  capacity   Int?
+  equipment  String[]   @default([])
+  amenities  String[]   @default([])
+  status     RoomStatus @default(available)
+  notes      String?
+
+  schedule              RoomScheduleSlot[]
+  availabilityOverrides RoomAvailabilityOverride[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  queues       Queue[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, roomType, status])
+  @@index([tenantId, status])
+  @@index([tenantId, roomType])
+}
+
+model RoomScheduleSlot {
+  id          String  @id @default(uuid()) @db.Uuid
+  roomId      String  @db.Uuid
+  room        Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int
+  startTime   String
+  endTime     String
+  isAvailable Boolean @default(true)
+
+  @@index([roomId])
+}
+
+model RoomAvailabilityOverride {
+  id          String   @id @default(uuid()) @db.Uuid
+  roomId      String   @db.Uuid
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  date        DateTime
+  isAvailable Boolean
+  reason      String?
+
+  @@index([roomId])
+}
+
+// ============================================================================
+// Service
+// ============================================================================
+
+model Service {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code           String
+  name           String
+  description    String?
+  category       ServiceCategory
+  type           String?
+  unitPrice      Float
+  unit           String  @default("per service")
+  duration       Int?
+  requiresDoctor Boolean @default(false)
+  active         Boolean @default(true)
+  notes          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoiceLineItems InvoiceLineItem[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, category, active])
+  @@index([tenantId, active])
+  @@index([tenantId, requiresDoctor, active])
+}
+
+// ============================================================================
+// Medicine (+ DosageRange child table)
+// ============================================================================
+
+model Medicine {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  genericName String?
+  brandNames  String[] @default([])
+  form        MedicineForm
+  strength    String
+  unit        String
+  route       MedicineRoute
+  category    String
+
+  indications        String[] @default([])
+  contraindications  String[] @default([])
+  sideEffects        String[] @default([])
+
+  dosageRanges MedicineDosageRange[]
+
+  standardDosage      String?
+  standardFrequency   String?
+  duration            String?
+  requiresPrescription Boolean @default(true)
+  controlledSubstance  Boolean @default(false)
+  schedule             String?
+  active               Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  inventoryItems InventoryItem[]
+  medications    PrescriptionMedication[]
+
+  @@index([tenantId, category, active])
+  @@index([tenantId, active])
+  @@index([tenantId, requiresPrescription, active])
+  @@index([tenantId, controlledSubstance])
+}
+
+model MedicineDosageRange {
+  id           String   @id @default(uuid()) @db.Uuid
+  medicineId   String   @db.Uuid
+  medicine     Medicine @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+  minAge       Int?
+  maxAge       Int?
+  minWeight    Float?
+  maxWeight    Float?
+  dose         String
+  frequency    String
+  maxDailyDose String?
+
+  @@index([medicineId])
+}
+
+// ============================================================================
+// Product
+// ============================================================================
+
+model Product {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+
+  medicalRepresentativeId String?                @db.Uuid
+  medicalRepresentative   MedicalRepresentative? @relation(fields: [medicalRepresentativeId], references: [id])
+
+  name           String
+  category       String
+  manufacturer   String
+  description    String
+  dosage         String?
+  strength       String?
+  packaging      String
+  expiryDate     DateTime
+  status         ProductStatus @default(active)
+  specifications String[]      @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, userId, status])
+  @@index([tenantId, category, status])
+}
+
+// ============================================================================
+// Inventory
+// ============================================================================
+
+model InventoryItem {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  medicineId String?   @db.Uuid
+  medicine   Medicine? @relation(fields: [medicineId], references: [id])
+
+  name            String
+  category        InventoryCategory
+  sku             String?
+  quantity        Int     @default(0)
+  unit            String  @default("pieces")
+  reorderLevel    Int     @default(10)
+  reorderQuantity Int     @default(50)
+  unitCost        Float   @default(0)
+  supplier        String?
+  expiryDate      DateTime?
+  location        String?
+  notes           String?
+  lastRestocked   DateTime?
+
+  lastRestockedById String? @db.Uuid
+  lastRestockedBy   User?   @relation("InventoryLastRestockedBy", fields: [lastRestockedById], references: [id])
+
+  status InventoryStatus @default(in_stock)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, sku])
+  @@index([tenantId, category, status])
+  @@index([tenantId, status])
+  @@index([tenantId, expiryDate])
+  @@index([tenantId, medicineId])
+  @@index([tenantId, medicineId, status])
+  @@index([tenantId, lastRestockedById])
+  @@index([tenantId, status, expiryDate])
+}
+
+// ============================================================================
+// Queue
+// ============================================================================
+
+model Queue {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  queueNumber String?
+  queueType   QueueType
+
+  patientId   String  @db.Uuid
+  patient     Patient @relation(fields: [patientId], references: [id])
+  patientName String
+
+  appointmentId String?      @db.Uuid
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  visitId       String?      @db.Uuid
+  visit         Visit?       @relation(fields: [visitId], references: [id])
+
+  doctorId String? @db.Uuid
+  doctor   Doctor? @relation(fields: [doctorId], references: [id])
+  roomId   String? @db.Uuid
+  room     Room?   @relation(fields: [roomId], references: [id])
+
+  status             QueueStatus @default(waiting)
+  priority           Int         @default(0)
+  estimatedWaitTime  Int?
+
+  queuedAt    DateTime  @default(now())
+  calledAt    DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  checkedIn     Boolean        @default(false)
+  checkedInAt   DateTime?
+  checkInMethod CheckInMethod?
+  qrCode        String?
+
+  consultationDuration Int?
+  completionNotes      String?
+  nextAction           QueueNextAction?
+
+  // vitals (flattened - fixed shape struct; Mongoose stored as Mixed but shape is documented and fixed)
+  vitalsBp       String?
+  vitalsHr       Int?
+  vitalsRr       Int?
+  vitalsTempC    Float?
+  vitalsSpo2     Int?
+  vitalsHeightCm Float?
+  vitalsWeightKg Float?
+  vitalsBmi      Float?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, queueNumber])
+  @@index([tenantId, status, priority, queuedAt])
+  @@index([tenantId, doctorId, status, priority])
+  @@index([tenantId, roomId, status])
+  @@index([tenantId, checkedIn, status])
+  @@index([tenantId, qrCode])
+}
+
+// ============================================================================
+// Appointment
+// ============================================================================
+
+model Appointment {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  doctorId String? @db.Uuid
+  doctor   Doctor? @relation(fields: [doctorId], references: [id])
+  providerId String? @db.Uuid
+  provider   User?   @relation("AppointmentProvider", fields: [providerId], references: [id])
+
+  appointmentCode String?
+
+  appointmentDate DateTime?
+  appointmentTime String?
+  scheduledAt     DateTime?
+  duration        Int       @default(30)
+
+  status AppointmentStatus @default(scheduled)
+
+  isWalkIn          Boolean @default(false)
+  queueNumber       Int?
+  estimatedWaitTime Int?
+  queueId           String? @db.Uuid
+  // NOTE: no back-relation declared to Queue here to avoid a relation cycle
+  // ambiguity with Queue.appointmentId; treat queueId as an informational FK.
+
+  room String?
+
+  reason String?
+  notes  String? @default("")
+
+  createdById String? @db.Uuid
+  createdBy   User?   @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  queues       Queue[]
+  visits       Visit[]
+  documents    Document[]
+  referrals    Referral[]
+
+  @@unique([appointmentCode])
+  @@index([tenantId, appointmentDate, appointmentTime])
+  @@index([tenantId, doctorId, appointmentDate])
+  @@index([tenantId, providerId, scheduledAt])
+  @@index([tenantId, patientId, status])
+  @@index([tenantId, status])
+  @@index([tenantId, room, appointmentDate, appointmentTime])
+  @@index([tenantId, doctorId])
+  @@index([tenantId, providerId])
+  @@index([tenantId, createdById])
+  @@index([tenantId, patientId, createdAt])
+  @@index([tenantId, status, scheduledAt])
+  @@index([tenantId, appointmentDate, status])
+  @@index([tenantId, isWalkIn, appointmentDate])
+  @@index([tenantId, room, status])
+  @@index([tenantId, patientId, appointmentDate])
+}
+
+// ============================================================================
+// Visit (+ children replacing embedded arrays/subdocs)
+// ============================================================================
+
+model Visit {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  visitCode String
+  date      DateTime  @default(now())
+
+  providerId String? @db.Uuid
+  provider   User?   @relation("VisitProvider", fields: [providerId], references: [id])
+
+  visitType               VisitType @default(consultation)
+  chiefComplaint          String?
+  historyOfPresentIllness String?
+  admittingImpression     String?
+
+  // vitals (flattened - fixed shape struct, mirrors Queue.vitals shape)
+  vitalsBp       String?
+  vitalsHr       Int?
+  vitalsRr       Int?
+  vitalsTempC    Float?
+  vitalsSpo2     Int?
+  vitalsHeightCm Float?
+  vitalsWeightKg Float?
+  vitalsBmi      Float?
+
+  // physicalExam (flattened - fixed shape struct, all free-text fields)
+  peGeneral         String?
+  peHeadEent        String?
+  peHeent           String?
+  peChest           String?
+  peLungs           String?
+  peCardiovascular  String?
+  peAbdomen         String?
+  peExtremities     String?
+  peNeuro           String?
+  peNeurological    String?
+  peSkin            String?
+  peLymphNotes      String?
+  peBreast          String?
+  peRectum          String?
+  peGenitalia       String?
+  peMusculoskeletal String?
+  peOther           String?
+
+  diagnoses VisitDiagnosis[]
+
+  assessment String? // legacy, superseded by soapAssessment
+  plan       String? // legacy, superseded by soapPlan
+
+  // soapNotes (flattened - fixed shape struct)
+  soapSubjective String?
+  soapObjective  String?
+  soapAssessment String?
+  soapPlan       String?
+
+  // treatmentPlan sub-structures -> child tables (independently meaningful lists)
+  treatmentMedications VisitTreatmentMedication[]
+  treatmentProcedures  VisitTreatmentProcedure[]
+  treatmentLifestyle   VisitTreatmentLifestyle[]
+  // treatmentPlan.followUp (flattened - single embedded object)
+  treatmentFollowUpDate         DateTime?
+  treatmentFollowUpInstructions String?
+  treatmentFollowUpReminderSent Boolean?  @default(false)
+
+  digitalSignature VisitDigitalSignature?
+
+  // Reverse relations replacing Visit's redundant array-of-refs fields
+  // (Prescription/LabResult/Imaging/Procedure each carry visitId back to Visit)
+  prescriptions       Prescription[]
+  labsOrdered         LabResult[]
+  imagingOrdered      Imaging[]
+  proceduresPerformed Procedure[]
+
+  attachments VisitAttachment[]
+
+  notes                 String?
+  followUpDate           DateTime?
+  followUpReminderSent    Boolean?  @default(false)
+  feedbackRequested        Boolean?  @default(false)
+  feedbackToken             String?  @unique
+
+  status VisitStatus @default(open)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoices       Invoice[]
+  queues         Queue[]
+  documents      Document[]
+  referrals      Referral[]
+  appointmentId  String?      @db.Uuid
+  appointment    Appointment? @relation(fields: [appointmentId], references: [id])
+  surveyResponse SurveyResponse?
+
+  @@index([tenantId, patientId, date])
+  @@index([tenantId, providerId])
+  @@index([tenantId, providerId, date])
+  @@index([tenantId, status, date])
+  @@index([tenantId, visitCode])
+  @@index([tenantId, visitType, date])
+  @@index([tenantId, date, status])
+  @@index([tenantId, patientId, status])
+}
+
+model VisitDiagnosis {
+  id          String  @id @default(uuid()) @db.Uuid
+  visitId     String  @db.Uuid
+  visit       Visit   @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  code        String?
+  description String?
+  primary     Boolean @default(false)
+
+  @@index([visitId])
+}
+
+model VisitTreatmentMedication {
+  id           String  @id @default(uuid()) @db.Uuid
+  visitId      String  @db.Uuid
+  visit        Visit   @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  name         String
+  dosage       String?
+  frequency    String?
+  duration     String?
+  quantity     Int?
+  instructions String?
+
+  @@index([visitId])
+}
+
+model VisitTreatmentProcedure {
+  id            String    @id @default(uuid()) @db.Uuid
+  visitId       String    @db.Uuid
+  visit         Visit     @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  scheduledDate DateTime?
+
+  @@index([visitId])
+}
+
+model VisitTreatmentLifestyle {
+  id           String  @id @default(uuid()) @db.Uuid
+  visitId      String  @db.Uuid
+  visit        Visit   @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  category     String?
+  instructions String
+
+  @@index([visitId])
+}
+
+// 1:1 embedded object with all-or-nothing validation in Mongoose -> own table (not flattened)
+// so the "all required fields present or none" app-level rule stays enforceable via a
+// row's presence/absence, and providerId keeps a real FK relation.
+model VisitDigitalSignature {
+  id             String   @id @default(uuid()) @db.Uuid
+  visitId        String   @unique @db.Uuid
+  visit          Visit    @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  providerName   String
+  providerId     String   @db.Uuid
+  provider       User     @relation(fields: [providerId], references: [id])
+  signatureData  String
+  signedAt       DateTime @default(now())
+  ipAddress      String?
+
+  @@index([providerId])
+}
+
+model VisitAttachment {
+  id           String   @id @default(uuid()) @db.Uuid
+  visitId      String   @db.Uuid
+  visit        Visit    @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  filename     String
+  contentType  String?
+  size         Int?
+  url          String?
+  gridFsId     String?
+  uploadedById String?  @db.Uuid
+  uploadDate   DateTime @default(now())
+  notes        String?
+
+  @@index([visitId])
+}
+
+// ============================================================================
+// Prescription
+// ============================================================================
+
+model Prescription {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  prescriptionCode String
+
+  visitId String? @db.Uuid
+  visit   Visit?  @relation(fields: [visitId], references: [id])
+
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  prescribedById String? @db.Uuid
+  prescribedBy   User?   @relation("PrescriptionPrescribedBy", fields: [prescribedById], references: [id])
+
+  issuedAt DateTime @default(now())
+
+  medications PrescriptionMedication[]
+
+  notes String?
+
+  status PrescriptionStatus @default(active)
+
+  pharmacyDispenseId String? // legacy field, superseded by pharmacyDispenses
+  pharmacyDispenses  PrescriptionPharmacyDispense[]
+
+  // digitalSignature (flattened - fixed shape struct, no FK to User here — providerName is a text snapshot)
+  digitalSignatureProviderName  String?
+  digitalSignatureData          String?
+  digitalSignatureSignedAt      DateTime?
+
+  printable Boolean? @default(true)
+
+  patientCopy PrescriptionPatientCopy?
+  clinicCopy  PrescriptionClinicCopy?
+
+  drugInteractions PrescriptionDrugInteraction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, prescriptionCode])
+  @@index([tenantId, patientId, issuedAt])
+  @@index([tenantId, visitId])
+  @@index([tenantId, prescribedById])
+  @@index([tenantId, status])
+  @@index([tenantId, prescribedById, issuedAt])
+  @@index([tenantId, status, issuedAt])
+  @@index([tenantId, patientId, status])
+}
+
+model PrescriptionMedication {
+  id                  String    @id @default(uuid()) @db.Uuid
+  prescriptionId      String    @db.Uuid
+  prescription        Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medicineId          String?   @db.Uuid
+  medicine            Medicine? @relation(fields: [medicineId], references: [id])
+  name                String
+  genericName         String?
+  form                String?
+  strength            String?
+  dose                String?
+  route               String?
+  frequency           String?
+  durationDays        Int?
+  quantity            Int?
+  instructions        String?
+  // calculatedDosage (flattened - fixed shape nested struct)
+  calcDose            String?
+  calcFrequency       String?
+  calcTotalDailyDose  String?
+  calcInstructions    String?
+
+  @@index([prescriptionId])
+  @@index([medicineId])
+}
+
+model PrescriptionPharmacyDispense {
+  id                String        @id @default(uuid()) @db.Uuid
+  prescriptionId    String        @db.Uuid
+  prescription      Prescription  @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  pharmacyId        String?
+  pharmacyName      String?
+  dispensedAt       DateTime?
+  dispensedBy       String?
+  quantityDispensed Int?
+  notes             String?
+  trackingNumber    String?
+
+  @@index([prescriptionId])
+}
+
+// copies.patientCopy (flattened embedded object) -> own 1:1 table so printedBy keeps a real FK
+model PrescriptionPatientCopy {
+  id               String       @id @default(uuid()) @db.Uuid
+  prescriptionId   String       @unique @db.Uuid
+  prescription     Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  printedAt        DateTime?
+  printedById      String?      @db.Uuid
+  printedBy        User?        @relation("PrescriptionCopyPrintedBy", fields: [printedById], references: [id])
+  digitalCopySent  Boolean?     @default(false)
+  sentAt           DateTime?
+
+  @@index([printedById])
+}
+
+// copies.clinicCopy (flattened embedded object) -> own 1:1 table so archivedBy keeps a real FK
+model PrescriptionClinicCopy {
+  id             String       @id @default(uuid()) @db.Uuid
+  prescriptionId String       @unique @db.Uuid
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  archivedAt     DateTime?
+  archivedById   String?      @db.Uuid
+  archivedBy     User?        @relation("PrescriptionCopyArchivedBy", fields: [archivedById], references: [id])
+  location       String?
+
+  @@index([archivedById])
+}
+
+model PrescriptionDrugInteraction {
+  id             String                   @id @default(uuid()) @db.Uuid
+  prescriptionId String                   @db.Uuid
+  prescription   Prescription             @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medication1    String
+  medication2    String
+  severity       DrugInteractionSeverity
+  description    String
+  recommendation String?
+  checkedAt      DateTime                 @default(now())
+
+  @@index([prescriptionId])
+}
+
+// ============================================================================
+// LabResult
+// ============================================================================
+
+model LabResult {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  visitId String? @db.Uuid
+  visit   Visit?  @relation(fields: [visitId], references: [id])
+
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  orderedById String? @db.Uuid
+  orderedBy   User?   @relation("LabResultOrderedBy", fields: [orderedById], references: [id])
+
+  orderDate   DateTime @default(now())
+  requestCode String?
+
+  // request (flattened - fixed shape struct, embedded 1:1)
+  requestTestType             String
+  requestTestCode              String?
+  requestDescription            String?
+  requestUrgency                 LabUrgency? @default(routine)
+  requestSpecialInstructions      String?
+  requestFastingRequired           Boolean?    @default(false)
+  requestPreparationNotes           String?
+
+  // thirdPartyLab (flattened - fixed shape struct, embedded 1:1, optional)
+  thirdPartyLabName              String?
+  thirdPartyLabId                 String?
+  thirdPartyLabCode                String?
+  thirdPartyIntegrationType         LabIntegrationType?
+  thirdPartyApiEndpoint              String?
+  thirdPartyApiKey                    String? // TODO: encrypt at rest — was plaintext in Mongoose too
+  thirdPartyExternalRequestId          String?
+  thirdPartyExternalResultId            String?
+  thirdPartyStatus                       LabThirdPartyStatus?
+  thirdPartySentAt                        DateTime?
+  thirdPartyReceivedAt                     DateTime?
+  thirdPartyErrorMessage                    String?
+
+  // results / referenceRanges: genuinely dynamic structured data (e.g. { hb: 13.2, wbc: 6.5 }) -> Json
+  results         Json?
+  resultDate      DateTime?
+  interpretation  String?
+  referenceRanges Json?
+  // abnormalFlags: Map<string, 'high'|'low'|'normal'> — dynamic keys -> Json
+  abnormalFlags   Json?
+
+  status LabResultStatus @default(ordered)
+
+  attachments LabResultAttachment[]
+
+  reviewedById String? @db.Uuid
+  reviewedBy   User?   @relation("LabResultReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+
+  notificationSent      Boolean?            @default(false)
+  notificationSentAt    DateTime?
+  notificationMethod    NotificationMethod?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents Document[]
+
+  @@unique([tenantId, requestCode])
+  @@index([tenantId, patientId, orderDate])
+  @@index([tenantId, visitId])
+  @@index([tenantId, orderedById])
+  @@index([tenantId, reviewedById])
+  @@index([tenantId, status])
+  @@index([tenantId, orderedById, orderDate])
+  @@index([tenantId, status, orderDate])
+  @@index([tenantId, patientId, status])
+}
+
+model LabResultAttachment {
+  id           String    @id @default(uuid()) @db.Uuid
+  labResultId  String    @db.Uuid
+  labResult    LabResult @relation(fields: [labResultId], references: [id], onDelete: Cascade)
+  filename     String
+  contentType  String?
+  size         Int?
+  url          String?
+  gridFsId     String?
+  uploadedById String?   @db.Uuid
+  uploadDate   DateTime  @default(now())
+  notes        String?
+
+  @@index([labResultId])
+}
+
+// ============================================================================
+// Imaging
+// ============================================================================
+
+model Imaging {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  visitId String? @db.Uuid
+  visit   Visit?  @relation(fields: [visitId], references: [id])
+
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  orderedById String? @db.Uuid
+  orderedBy   User?   @relation("ImagingOrderedBy", fields: [orderedById], references: [id])
+
+  modality   String?
+  bodyPart   String?
+  orderDate  DateTime @default(now())
+  findings   String?
+  impression String?
+
+  images ImagingAttachment[]
+
+  status ImagingStatus @default(ordered)
+
+  reportedById String?   @db.Uuid
+  reportedBy   User?     @relation("ImagingReportedBy", fields: [reportedById], references: [id])
+  reportedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, patientId, orderDate])
+  @@index([tenantId, visitId])
+  @@index([tenantId, orderedById])
+  @@index([tenantId, reportedById])
+  @@index([tenantId, status])
+  @@index([tenantId, orderedById, orderDate])
+  @@index([tenantId, status, orderDate])
+  @@index([tenantId, patientId, status])
+  @@index([tenantId, modality])
+}
+
+model ImagingAttachment {
+  id           String   @id @default(uuid()) @db.Uuid
+  imagingId    String   @db.Uuid
+  imaging      Imaging  @relation(fields: [imagingId], references: [id], onDelete: Cascade)
+  filename     String
+  contentType  String?
+  size         Int?
+  url          String?
+  gridFsId     String?
+  uploadedById String?  @db.Uuid
+  uploadDate   DateTime @default(now())
+  notes        String?
+
+  @@index([imagingId])
+}
+
+// ============================================================================
+// Procedure
+// ============================================================================
+
+model Procedure {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  visitId String? @db.Uuid
+  visit   Visit?  @relation(fields: [visitId], references: [id])
+
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  type String?
+
+  performedById String? @db.Uuid
+  performedBy   User?   @relation("ProcedurePerformedBy", fields: [performedById], references: [id])
+
+  date    DateTime @default(now())
+  details String?
+  outcome String?
+
+  attachments ProcedureAttachment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, patientId, date])
+  @@index([tenantId, visitId])
+  @@index([tenantId, performedById])
+  @@index([tenantId, performedById, date])
+  @@index([tenantId, type, date])
+}
+
+model ProcedureAttachment {
+  id           String    @id @default(uuid()) @db.Uuid
+  procedureId  String    @db.Uuid
+  procedure    Procedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  filename     String
+  contentType  String?
+  size         Int?
+  url          String?
+  gridFsId     String?
+  uploadedById String?   @db.Uuid
+  uploadDate   DateTime  @default(now())
+  notes        String?
+
+  @@index([procedureId])
+}
+
+// ============================================================================
+// Invoice (+ InvoiceLineItem, + InvoicePayment)
+// ============================================================================
+
+model Invoice {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  visitId String? @db.Uuid
+  visit   Visit?  @relation(fields: [visitId], references: [id])
+
+  invoiceNumber String
+
+  lineItems InvoiceLineItem[]
+
+  subtotal Float?
+
+  professionalFee       Float?  @default(0)
+  professionalFeeDoctorId String? @db.Uuid
+  professionalFeeDoctor   Doctor? @relation("InvoiceProfessionalFeeDoctor", fields: [professionalFeeDoctorId], references: [id])
+  professionalFeeType      InvoiceProfessionalFeeType?
+  professionalFeeNotes      String?
+
+  discounts InvoiceDiscount[]
+
+  tax   Float?
+  total Float?
+
+  payments InvoicePayment[]
+
+  // insurance (flattened - fixed shape struct, embedded 1:1)
+  insuranceProvider       String?
+  insurancePolicyNumber    String?
+  insuranceMemberId         String?
+  insuranceCoverageType       InsuranceCoverageType?
+  insuranceCoverageAmount      Float?
+  insuranceClaimNumber          String?
+  insuranceStatus                 InsuranceClaimStatus?
+  insuranceNotes                    String?
+
+  outstandingBalance Float?
+  totalPaid          Float?
+  status             InvoiceStatus @default(unpaid)
+
+  createdAt   DateTime @default(now())
+  createdById String?  @db.Uuid
+  createdBy   User?    @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  updatedAt   DateTime @updatedAt
+
+  documents Document[]
+
+  @@index([tenantId, patientId, createdAt])
+  @@index([tenantId, visitId])
+  @@index([tenantId, status])
+  @@index([tenantId, invoiceNumber])
+  @@index([tenantId, createdById])
+  @@index([tenantId, createdById, createdAt])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, patientId, status])
+  @@index([tenantId, insuranceStatus])
+  @@index([tenantId, createdAt, status])
+  @@index([tenantId, visitId, status])
+}
+
+model InvoiceLineItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  invoiceId   String   @db.Uuid
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  serviceId   String?  @db.Uuid
+  service     Service? @relation(fields: [serviceId], references: [id])
+  code        String?
+  description String?
+  category    String?
+  quantity    Int      @default(1)
+  unitPrice   Float    @default(0)
+  total       Float    @default(0)
+
+  @@index([invoiceId])
+}
+
+// discounts[]: multiple discounts can be applied over time on one invoice -> child table
+model InvoiceDiscount {
+  id          String       @id @default(uuid()) @db.Uuid
+  invoiceId   String       @db.Uuid
+  invoice     Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  type        DiscountType
+  reason      String?
+  percentage  Float?
+  amount      Float
+  appliedById String?      @db.Uuid
+  appliedBy   User?        @relation("InvoiceDiscountAppliedBy", fields: [appliedById], references: [id])
+
+  @@index([invoiceId])
+}
+
+// payments[]: Mongoose schema allows multiple payments over time (partial payments) -> child table
+model InvoicePayment {
+  id            String        @id @default(uuid()) @db.Uuid
+  invoiceId     String        @db.Uuid
+  invoice       Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  method        PaymentMethod
+  amount        Float
+  date          DateTime      @default(now())
+  receiptNo     String?
+  referenceNo   String?
+  processedById String?       @db.Uuid
+  processedBy   User?         @relation("InvoicePaymentProcessedBy", fields: [processedById], references: [id])
+  notes         String?
+
+  @@index([invoiceId])
+}
+
+// ============================================================================
+// Referral
+// ============================================================================
+
+model Referral {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  referralCode String?
+  type         ReferralType
+
+  referringDoctorId String? @db.Uuid
+  referringDoctor   Doctor? @relation("ReferralReferringDoctor", fields: [referringDoctorId], references: [id])
+
+  referringPatientId String?  @db.Uuid
+  referringPatient   Patient? @relation("ReferralReferringPatient", fields: [referringPatientId], references: [id])
+
+  referringClinic String?
+
+  // referringContact (flattened - fixed shape struct)
+  referringContactName  String?
+  referringContactPhone String?
+  referringContactEmail String?
+
+  receivingDoctorId String? @db.Uuid
+  receivingDoctor   Doctor? @relation("ReferralReceivingDoctor", fields: [receivingDoctorId], references: [id])
+
+  receivingClinic String?
+
+  patientId String  @db.Uuid
+  patient   Patient @relation("ReferralPatientSubject", fields: [patientId], references: [id])
+
+  reason    String
+  urgency   LabUrgency @default(routine)
+  specialty String?
+  notes     String?
+
+  chiefComplaint  String?
+  diagnosis       String?
+  relevantHistory String?
+  medications     String[] @default([])
+
+  attachments ReferralAttachment[]
+
+  status ReferralStatus @default(pending)
+
+  referredDate   DateTime  @default(now())
+  acceptedDate   DateTime?
+  completedDate  DateTime?
+  declinedDate   DateTime?
+  declinedReason String?
+
+  visitId       String?      @db.Uuid
+  visit         Visit?       @relation(fields: [visitId], references: [id])
+  appointmentId String?      @db.Uuid
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+
+  followUpRequired Boolean   @default(false)
+  followUpDate     DateTime?
+  followUpNotes    String?
+
+  // feedback (flattened - fixed shape struct, embedded 1:1, optional)
+  feedbackRating         Int?
+  feedbackComments        String?
+  feedbackSubmittedById     String?   @db.Uuid
+  feedbackSubmittedBy       User?     @relation("ReferralFeedbackSubmittedBy", fields: [feedbackSubmittedById], references: [id])
+  feedbackSubmittedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, referralCode])
+  @@index([tenantId, referringDoctorId, status])
+  @@index([tenantId, receivingDoctorId, status])
+  @@index([tenantId, patientId, status])
+  @@index([tenantId, status, referredDate])
+  @@index([tenantId, type, status])
+  @@index([tenantId, feedbackSubmittedById])
+}
+
+model ReferralAttachment {
+  id         String   @id @default(uuid()) @db.Uuid
+  referralId String   @db.Uuid
+  referral   Referral @relation(fields: [referralId], references: [id], onDelete: Cascade)
+  filename   String
+  url        String
+  uploadDate DateTime @default(now())
+
+  @@index([referralId])
+}
+
+// ============================================================================
+// Membership (+ MembershipTransaction)
+// ============================================================================
+
+model Membership {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  patientId String  @unique @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  membershipNumber String
+
+  tier   MembershipTier   @default(bronze)
+  status MembershipStatus @default(active)
+
+  points               Int @default(0)
+  totalPointsEarned    Int @default(0)
+  totalPointsRedeemed  Int @default(0)
+
+  joinDate   DateTime @default(now())
+  expiryDate DateTime?
+  renewalDate DateTime?
+
+  discountPercentage Float    @default(0)
+  benefits           String[] @default([])
+
+  // self-relation: referredBy lives on Membership in the Mongoose model (Membership.referredBy -> Patient)
+  referredById String?  @db.Uuid
+  referredBy   Patient? @relation("MembershipReferredBy", fields: [referredById], references: [id])
+  // NOTE: Mongoose Membership.referrals (Patient[]) is the inverse of referredBy but points at
+  // Patient, not other Memberships — modeled here as informational only; the actual patients
+  // referred are queryable via Patient.memberReferralsMade using referredById. No separate
+  // array column is created (see MIGRATION_NOTES.md).
+
+  transactions MembershipTransaction[]
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, membershipNumber])
+  @@index([tenantId, tier, status])
+  @@index([tenantId, points])
+  @@index([tenantId, expiryDate])
+  @@index([referredById])
+}
+
+model MembershipTransaction {
+  id           String                       @id @default(uuid()) @db.Uuid
+  membershipId String                       @db.Uuid
+  membership   Membership                   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  type         MembershipTransactionType
+  points       Int
+  description  String
+  // relatedEntity (flattened - fixed shape struct; id is informational, no FK since it's polymorphic across Visit/Appointment/Invoice)
+  relatedEntityType MembershipRelatedEntityType?
+  relatedEntityId   String?                       @db.Uuid
+  createdAt         DateTime                       @default(now())
+
+  @@index([membershipId])
+}
+
+// ============================================================================
+// Document (polymorphic optional refs -> nullable FK columns)
+// ============================================================================
+
+model Document {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  documentCode String
+  title        String
+  description  String?
+  category     DocumentCategory
+  documentType DocumentType
+
+  filename         String
+  originalFilename String
+  contentType      String
+  size             Int
+  url              String
+  thumbnailUrl     String?
+
+  // Polymorphic optional relations — app layer must enforce "at most one set" (no CHECK
+  // constraint added here; see MIGRATION_NOTES.md)
+  patientId     String?      @db.Uuid
+  patient       Patient?     @relation(fields: [patientId], references: [id])
+  visitId       String?      @db.Uuid
+  visit         Visit?       @relation(fields: [visitId], references: [id])
+  appointmentId String?      @db.Uuid
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  labResultId   String?      @db.Uuid
+  labResult     LabResult?   @relation(fields: [labResultId], references: [id])
+  invoiceId     String?      @db.Uuid
+  invoice       Invoice?     @relation(fields: [invoiceId], references: [id])
+
+  tags       String[] @default([])
+  scanned    Boolean? @default(false)
+  ocrText    String?
+  expiryDate DateTime?
+  metadata   Json? // genuinely dynamic key-value metadata (e.g. cloudinaryPublicId)
+
+  // referral (flattened - fixed shape struct, embedded 1:1, optional)
+  referralReferringDoctor String?
+  referralReferringClinic String?
+  referralDate            DateTime?
+  referralReason          String?
+
+  // imaging (flattened - fixed shape struct, embedded 1:1, optional)
+  imagingModality    String?
+  imagingBodyPart    String?
+  imagingStudyDate   DateTime?
+  imagingRadiologist String?
+
+  // medicalCertificate (flattened - fixed shape struct, embedded 1:1, optional)
+  medCertIssueDate    DateTime?
+  medCertValidUntil   DateTime?
+  medCertPurpose      String?
+  medCertRestrictions String?
+
+  // labResultMetadata (flattened - fixed shape struct, embedded 1:1, optional)
+  labMetaTestType String?
+  labMetaTestDate DateTime?
+  labMetaLabName  String?
+
+  uploadedById String @db.Uuid
+  uploadedBy   User   @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
+  uploadDate   DateTime @default(now())
+
+  lastModifiedById String?   @db.Uuid
+  lastModifiedBy   User?     @relation("DocumentLastModifiedBy", fields: [lastModifiedById], references: [id])
+  lastModifiedDate DateTime?
+
+  status          DocumentStatus @default(active)
+  isConfidential  Boolean?       @default(false)
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, documentCode])
+  @@index([tenantId, patientId, category, status])
+  @@index([tenantId, category, status])
+  @@index([tenantId, tags])
+  @@index([tenantId, uploadDate])
+  @@index([tenantId, expiryDate])
+  @@index([tenantId, uploadedById])
+  @@index([tenantId, uploadedById, uploadDate])
+  @@index([tenantId, lastModifiedById])
+  @@index([tenantId, visitId, category])
+  @@index([tenantId, appointmentId, category])
+}
+
+// ============================================================================
+// Notification
+// ============================================================================
+
+model Notification {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+
+  type     NotificationType
+  priority NotificationPriority @default(normal)
+  title    String
+  message  String
+
+  // relatedEntity (flattened - fixed shape struct; id is informational/polymorphic, no FK)
+  relatedEntityType NotificationRelatedEntityType?
+  relatedEntityId   String?                          @db.Uuid
+
+  actionUrl String?
+  read      Boolean  @default(false)
+  readAt    DateTime?
+
+  metadata  Json? // genuinely dynamic
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, userId, read, createdAt])
+  @@index([tenantId, userId, type, read])
+  @@index([tenantId, expiresAt])
+}
+
+// ============================================================================
+// PushSubscription
+// ============================================================================
+
+model PushSubscription {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+
+  endpoint String @unique
+
+  // keys (flattened - fixed shape struct)
+  keysP256dh String
+  keysAuth   String
+
+  userAgent String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, userId])
+}
+
+// ============================================================================
+// AuditLog (+ Change[] child table)
+// ============================================================================
+
+model AuditLog {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId    String  @db.Uuid
+  user      User    @relation(fields: [userId], references: [id])
+  userEmail String?
+  userRole  String?
+
+  action     AuditAction
+  resource   AuditResource
+  resourceId String?       @db.Uuid
+
+  ipAddress     String?
+  userAgent     String?
+  requestMethod String?
+  requestPath   String?
+
+  changes AuditLogChange[]
+
+  description String?
+  metadata    Json? // genuinely dynamic context data
+
+  success      Boolean @default(true)
+  errorMessage String?
+
+  isSensitive  Boolean? @default(false)
+  dataSubjectId String? @db.Uuid
+  dataSubject   Patient? @relation(fields: [dataSubjectId], references: [id])
+
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, userId, timestamp])
+  @@index([tenantId, resource, resourceId, timestamp])
+  @@index([tenantId, action, timestamp])
+  @@index([tenantId, dataSubjectId, timestamp])
+  @@index([tenantId, isSensitive, timestamp])
+  @@index([tenantId, timestamp])
+  @@index([userEmail])
+  @@index([userRole])
+}
+
+model AuditLogChange {
+  id         String   @id @default(uuid()) @db.Uuid
+  auditLogId String   @db.Uuid
+  auditLog   AuditLog @relation(fields: [auditLogId], references: [id], onDelete: Cascade)
+  field      String
+  // oldValue/newValue: genuinely dynamic (any type in Mongoose) -> Json
+  oldValue   Json?
+  newValue   Json?
+
+  @@index([auditLogId])
+}
+
+// ============================================================================
+// SupportRequest
+// ============================================================================
+
+model SupportRequest {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String? @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id])
+
+  email    String
+  subject  String
+  category SupportCategory @default(general)
+  message  String
+  status   SupportStatus   @default(open)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, email, createdAt])
+}
+
+// ============================================================================
+// BackupRecord
+// ============================================================================
+
+model BackupRecord {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdById    String  @db.Uuid
+  createdBy      User    @relation("BackupCreatedBy", fields: [createdById], references: [id])
+  createdByEmail String?
+
+  label       String?
+  status      BackupStatus @default(pending)
+  collections String[]     @default([])
+
+  totalDocuments Int   @default(0)
+  sizeBytes      Int   @default(0)
+  version        String @default("1.0")
+
+  // data: Record<string, unknown[]> — inherently dynamic dump of arbitrary collection data -> Json
+  data Json
+
+  errorMessage String?
+
+  restoredAt   DateTime?
+  restoredById String?   @db.Uuid
+  restoredBy   User?     @relation("BackupRestoredBy", fields: [restoredById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+}
+
+// ============================================================================
+// PaypalOrder
+// ============================================================================
+
+model PaypalOrder {
+  id       String @id @default(uuid()) @db.Uuid
+  orderId  String @unique
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  plan         String
+  billingCycle BillingCycle
+  amount       Float
+  currency     String            @default("USD")
+  status       PaypalOrderStatus @default(pending)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([createdAt, status])
+}
+
+// ============================================================================
+// Survey
+// ============================================================================
+
+model SurveyResponse {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  visitId String @unique @db.Uuid
+  visit   Visit  @relation(fields: [visitId], references: [id])
+
+  patientId String?  @db.Uuid
+  patient   Patient? @relation(fields: [patientId], references: [id])
+
+  overallRating   Int
+  doctorRating    Int?
+  staffRating     Int?
+  facilityRating  Int?
+  waitTimeRating  Int?
+
+  comments       String?
+  wouldRecommend Boolean?
+
+  submittedAt DateTime @default(now())
+  ipAddress   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, submittedAt])
+}
+
+// ============================================================================
+// Settings
+// ============================================================================
+
+model Settings {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @unique @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  clinicName    String @default("MyClinicSoft")
+  clinicAddress String @default("")
+  clinicPhone   String @default("")
+  clinicEmail   String @default("")
+  clinicWebsite String? @default("")
+  taxId         String? @default("")
+  licenseNumber String? @default("")
+  ptr           String? @default("")
+
+  businessHours SettingsBusinessHours[]
+
+  // appointmentSettings (flattened - fixed shape struct)
+  apptDefaultDuration        Int      @default(30)
+  // reminderHoursBefore: small primitive number array -> native array
+  apptReminderHoursBefore    Int[]    @default([24, 2])
+  apptAllowOnlineBooking      Boolean  @default(true)
+  apptRequireConfirmation      Boolean  @default(false)
+  apptMaxAdvanceBookingDays     Int      @default(90)
+  apptMinAdvanceBookingHours     Int      @default(2)
+
+  // communicationSettings (flattened - fixed shape struct)
+  commSmsEnabled               Boolean @default(false)
+  commEmailEnabled              Boolean @default(false)
+  commAppointmentReminders       Boolean @default(true)
+  commLabResultNotifications      Boolean @default(true)
+  commInvoiceReminders             Boolean @default(true)
+
+  // billingSettings (flattened - fixed shape struct)
+  billingCurrency         String  @default("PHP")
+  billingTaxRate           Float   @default(0)
+  billingPaymentTerms        Int     @default(30)
+  billingLateFeePercentage     Float   @default(0)
+  billingInvoicePrefix           String  @default("INV")
+  billingAllowPartialPayments      Boolean @default(true)
+
+  // queueSettings (flattened - fixed shape struct)
+  queueEnable                  Boolean @default(true)
+  queueAutoAssignRooms           Boolean @default(false)
+  queueEstimatedWaitTimeMinutes    Int     @default(15)
+  queueDisplayPublicly               Boolean @default(false)
+
+  // generalSettings (flattened - fixed shape struct)
+  generalTimezone               String     @default("UTC")
+  generalDateFormat               String     @default("MM/DD/YYYY")
+  generalTimeFormat                 TimeFormat @default(h12)
+  generalItemsPerPage                 Int        @default(20)
+  generalEnableAuditLog                 Boolean    @default(true)
+  generalSessionTimeoutMinutes            Int        @default(480)
+
+  // integrationSettings (flattened - fixed shape struct)
+  integrationCloudinaryEnabled Boolean @default(false)
+  integrationTwilioEnabled      Boolean @default(false)
+  integrationSmtpEnabled          Boolean @default(false)
+
+  // automationSettings: large fixed-shape boolean struct — flattened as columns,
+  // all default true to match Mongoose defaults (see MIGRATION_NOTES.md for the
+  // full field-by-field mapping decision)
+  autoInvoiceGeneration          Boolean @default(true)
+  autoPaymentReminders            Boolean @default(true)
+  autoLowStockAlerts                Boolean @default(true)
+  autoLabNotifications                Boolean @default(true)
+  autoExpiryMonitoring                  Boolean @default(true)
+  autoAppointmentConfirmation             Boolean @default(true)
+  autoPrescriptionRefills                   Boolean @default(true)
+  autoFollowupScheduling                      Boolean @default(true)
+  autoDailyReports                              Boolean @default(true)
+  autoWelcomeMessages                             Boolean @default(true)
+  autoVisitSummaries                                Boolean @default(true)
+  autoNoShowHandling                                  Boolean @default(true)
+  autoWaitlistManagement                                Boolean @default(true)
+  autoBirthdayGreetings                                   Boolean @default(true)
+  autoHealthReminders                                       Boolean @default(true)
+  autoFeedbackCollection                                      Boolean @default(true)
+  autoRecurringAppointments                                     Boolean @default(true)
+  autoMedicationAdherence                                         Boolean @default(true)
+  autoBroadcastMessaging                                            Boolean @default(true)
+  autoPeriodicReports                                                 Boolean @default(true)
+  autoStaffPerformanceReports                                           Boolean @default(true)
+  autoInsuranceVerification                                               Boolean @default(true)
+  autoQueueOptimization                                                     Boolean @default(true)
+  autoDataRetention                                                           Boolean @default(true)
+  autoSmartAssignment                                                           Boolean @default(true)
+  autoInventoryReordering                                                         Boolean @default(true)
+  autoPrescriptionExpiryWarnings                                                    Boolean @default(true)
+  autoDocumentExpiryTracking                                                          Boolean @default(true)
+  autoCancellationPolicies                                                              Boolean @default(true)
+
+  // displaySettings (flattened - fixed shape struct)
+  displayTheme             SettingsTheme @default(light)
+  displaySidebarCollapsed    Boolean       @default(true)
+  displayShowNotifications     Boolean       @default(true)
+
+  prescriptionDigitalSignatureEnabled Boolean? @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SettingsBusinessHours {
+  id         String        @id @default(uuid()) @db.Uuid
+  settingsId String        @db.Uuid
+  settings   Settings      @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+  day        DayOfWeekName
+  open       String
+  close      String
+  closed     Boolean       @default(false)
+
+  @@index([settingsId])
+}
+
+// ============================================================================
+// MedicalRepresentativeVisit
+// ============================================================================
+
+model MedicalRepresentativeVisit {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String? @db.Uuid
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+
+  medicalRepresentativeId String?                @db.Uuid
+  medicalRepresentative   MedicalRepresentative? @relation(fields: [medicalRepresentativeId], references: [id])
+
+  clinicName     String
+  clinicLocation String
+  purpose        String
+  date           DateTime
+  time           String
+  duration       Int      @default(60)
+  status         MedRepVisitStatus @default(scheduled)
+  notes          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, userId, date])
+}
+

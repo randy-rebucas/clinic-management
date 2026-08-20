@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Visit from '@/models/Visit';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getVisitById } from '@/lib/data/visit';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -15,12 +20,10 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    const visit = await Visit.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth gender')
-      .populate('provider', 'name email')
-      .populate('labsOrdered');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const visit = await run(tenantId, () => getVisitById(id));
 
     if (!visit) {
       return NextResponse.json(
@@ -68,7 +71,7 @@ function generateLabRequestHTML(visit: any): string {
 
   // Get lab tests from labsOrdered or from treatment plan
   const labTests = visit.labsOrdered && visit.labsOrdered.length > 0
-    ? visit.labsOrdered.map((lab: any) => lab.testType || 'Lab Test').join(', ')
+    ? visit.labsOrdered.map((lab: any) => lab.requestTestType || 'Lab Test').join(', ')
     : 'As per clinical indication';
 
   return `
@@ -244,7 +247,7 @@ function generateLabRequestHTML(visit: any): string {
     ${visit.labsOrdered && visit.labsOrdered.length > 0 ? `
       ${visit.labsOrdered.map((lab: any, index: number) => `
         <div class="test-item">
-          <strong>${index + 1}. ${lab.testType || 'Lab Test'}</strong>
+          <strong>${index + 1}. ${lab.requestTestType || 'Lab Test'}</strong>
           ${lab.status ? `<span class="urgency-badge ${lab.status === 'ordered' ? 'urgency-routine' : 'urgency-urgent'}">${lab.status.toUpperCase()}</span>` : ''}
           ${lab.interpretation ? `<p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">${lab.interpretation}</p>` : ''}
         </div>

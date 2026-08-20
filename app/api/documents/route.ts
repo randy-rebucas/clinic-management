@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Document from '@/models/Document';
-import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getDocumentType, inferDocumentCategory, validateFile } from '@/lib/document-utils';
 import { uploadDocumentToCloudinary, getThumbnailUrl, isCloudinaryConfigured } from '@/lib/cloudinary';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { buildDocumentWhere, listDocuments, createDocument } from '@/lib/data/document';
+import { getPatientById } from '@/lib/data/patient';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
+
+class ValidationError extends Error {}
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -23,12 +28,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-    
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
     const category = searchParams.get('category');
@@ -38,61 +41,20 @@ export async function GET(request: NextRequest) {
     const visitId = searchParams.get('visitId');
     const limit = parseInt(searchParams.get('limit') || '50', 10);
 
-    const query: any = { status };
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    const where = buildDocumentWhere({
+      patientId: patientId || undefined,
+      category: category || undefined,
+      documentType: documentType || undefined,
+      status: status || undefined,
+      visitId: visitId || undefined,
+      search: search || undefined,
+    });
 
-    // Filter by patient (users can only see documents for patients they have access to)
-    if (patientId) {
-      query.patient = patientId;
-    }
-
-    if (category) {
-      query.category = category;
-    }
-
-    if (documentType) {
-      query.documentType = documentType;
-    }
-
-    if (visitId) {
-      query.visit = visitId;
-    }
-
-    // Text search
-    if (search) {
-      query.$text = { $search: search };
-    }
-
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-
-    const documents = await Document.find(query)
-      .populate(patientPopulateOptions)
-      .populate('uploadedBy', 'name')
-      .populate('visit', 'visitCode date')
-      .sort({ uploadDate: -1 })
-      .limit(limit);
-
-    // Get total count for pagination
-    const total = await Document.countDocuments(query);
+    const { items, total } = await run(tenantId, () => listDocuments(where, limit));
 
     return NextResponse.json({
       success: true,
-      data: documents,
+      data: items,
       total,
     });
   } catch (error: any) {
@@ -118,7 +80,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const category = formData.get('category') as string;
@@ -210,8 +171,8 @@ export async function POST(request: NextRequest) {
       const storageCheck = await checkStorageLimit(tenantId, file.size);
       if (!storageCheck.allowed) {
         return NextResponse.json(
-          { 
-            success: false, 
+          {
+            success: false,
             error: storageCheck.reason || 'Storage limit exceeded',
             storageUsage: storageCheck.currentUsage,
           },
@@ -219,95 +180,56 @@ export async function POST(request: NextRequest) {
         );
       }
     }
-    
-    // Validate that the patient belongs to the tenant
-    // Patient model uses tenantIds (array) since patients can belong to multiple clinics
-    if (patientId && tenantId) {
-      const patientQuery: any = {
-        _id: patientId,
-        tenantIds: new Types.ObjectId(tenantId),
-      };
-      const patient = await Patient.findOne(patientQuery);
-      if (!patient) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
-          { status: 400 }
-        );
+
+    const document = await run(tenantId, async () => {
+      // Validate that the patient belongs to the tenant (junction-scoped)
+      if (patientId && tenantId) {
+        const patient = await runAsSystem(() => getPatientById(patientId));
+        const belongsToTenant = patient?.tenantIds?.some((tid: string) => tid === tenantId);
+        if (!belongsToTenant) {
+          throw new ValidationError('Invalid patient selected. Please select a patient from this clinic.');
+        }
       }
-    }
 
-    // Build document object
-    const documentData: any = {
-      documentCode,
-      title: title || file.name,
-      description: description || undefined,
-      category: finalCategory,
-      documentType,
-      filename: file.name,
-      originalFilename: file.name,
-      contentType: file.type,
-      size: file.size,
-      url: fileUrl,
-      thumbnailUrl: thumbnailUrl || undefined,
-      scanned,
-      uploadedBy: session.userId,
-      uploadDate: new Date(),
-      status: 'active',
-      tags: tags ? tags.split(',').map(t => t.trim()) : [],
-      notes: notes || undefined,
-      // Store Cloudinary public ID in metadata for future operations
-      metadata: cloudinaryPublicId ? { cloudinaryPublicId } : undefined,
-    };
+      const documentData: Record<string, any> = {
+        documentCode,
+        title: title || file.name,
+        description: description || undefined,
+        category: finalCategory,
+        documentType,
+        filename: file.name,
+        originalFilename: file.name,
+        contentType: file.type,
+        size: file.size,
+        url: fileUrl,
+        thumbnailUrl: thumbnailUrl || undefined,
+        scanned,
+        uploadedById: session.userId,
+        uploadDate: new Date(),
+        status: 'active',
+        tags: tags ? tags.split(',').map(t => t.trim()) : [],
+        notes: notes || undefined,
+        metadata: cloudinaryPublicId ? { cloudinaryPublicId } : undefined,
+      };
 
-    // Add relationships
-    if (patientId) documentData.patient = patientId;
-    if (visitId) documentData.visit = visitId;
-    
-    // Ensure document is created with tenantId
-    if (tenantId && !documentData.tenantId) {
-      documentData.tenantId = new Types.ObjectId(tenantId);
-    }
+      if (patientId) documentData.patientId = patientId;
+      if (visitId) documentData.visitId = visitId;
 
-    // Add category-specific data
-    if (category === 'referral' && referralData) {
-      documentData.referral = referralData;
-    }
-    if (category === 'imaging' && imagingData) {
-      documentData.imaging = imagingData;
-    }
-    if (category === 'medical_certificate' && medicalCertificateData) {
-      documentData.medicalCertificate = medicalCertificateData;
-    }
-    if (category === 'laboratory_result' && labResultData) {
-      documentData.labResultMetadata = labResultData;
-    }
+      if (category === 'referral' && referralData) documentData.referral = referralData;
+      if (category === 'imaging' && imagingData) documentData.imaging = imagingData;
+      if (category === 'medical_certificate' && medicalCertificateData) documentData.medicalCertificate = medicalCertificateData;
+      if (category === 'laboratory_result' && labResultData) documentData.labResultMetadata = labResultData;
 
-    const document = await Document.create(documentData);
-    
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    await document.populate(patientPopulateOptions);
-    await document.populate('uploadedBy', 'name');
+      return createDocument(documentData as any);
+    });
 
     return NextResponse.json({ success: true, data: document }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating document:', error);
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
+    if (error instanceof ValidationError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 400 });
     }
-    if (error.code === 11000) {
+    if (error.code === 'P2002') {
       return NextResponse.json(
         { success: false, error: 'Document code already exists' },
         { status: 409 }
@@ -319,4 +241,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

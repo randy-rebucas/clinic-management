@@ -1,11 +1,15 @@
 // Role-Based Permissions System
 // Defines what each role can do in the system
 
-import connectDB from '@/lib/mongodb';
-import Role, { RoleName } from '@/models/Role';
-import Permission from '@/models/Permission';
-import User from '@/models/User';
-import mongoose, { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getRoleById, roleNameToAppRole } from '@/lib/data/role';
+import { getUserById } from '@/lib/data/user';
+import { listPermissions } from '@/lib/data/permission';
+
+// RoleName kept as the local string-union type this module has always used
+// (Prisma's RoleName enum is the DB-level source of truth; see
+// prisma/schema.prisma — 'owner' is a pre-existing gap not addressed here).
+export type RoleName = 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
 
 export interface PermissionData {
   resource: string;
@@ -83,28 +87,23 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
  * @param roleIdOrName Role ID or role name
  * @param tenantId Optional tenant ID for tenant-scoped role lookup
  */
-async function getRoleName(roleIdOrName: string | Types.ObjectId | undefined | null, tenantId?: string | null): Promise<RoleName | null> {
+async function getRoleName(roleIdOrName: string | undefined | null, tenantId?: string | null): Promise<RoleName | null> {
   if (!roleIdOrName) return null;
-  
+
   // If it's already a role name string, return it
-  if (typeof roleIdOrName === 'string' && ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'].includes(roleIdOrName)) {
+  if (['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'].includes(roleIdOrName)) {
     return roleIdOrName as RoleName;
   }
-  
+
   try {
-    await connectDB();
-    
-    // Build query with tenant filter if tenantId provided
-    const query: any = { _id: roleIdOrName };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const role = await Role.findOne(query).select('name').lean();
-    if (!role || Array.isArray(role)) return null;
-    return (role as any).name as RoleName;
+    // Explicit tenant branch: real tenantId -> runWithTenant (auto-scoped);
+    // no tenantId (legacy no-subdomain mode) -> runAsSystem, unscoped
+    // lookup across all tenants + untenanted roles.
+    const role = tenantId
+      ? await runWithTenant(tenantId, () => getRoleById(roleIdOrName))
+      : await runAsSystem(() => getRoleById(roleIdOrName));
+    if (!role) return null;
+    return roleNameToAppRole(role.name) as RoleName;
   } catch (error) {
     console.error('Error getting role name:', error);
     return null;
@@ -116,111 +115,55 @@ async function getRoleName(roleIdOrName: string | Types.ObjectId | undefined | n
  * @param userId User ID
  * @param tenantId Optional tenant ID for tenant-scoped permission lookup
  */
-export async function getUserPermissions(userId: string | Types.ObjectId, tenantId?: string | null): Promise<PermissionData[]> {
+export async function getUserPermissions(userId: string, tenantId?: string | null): Promise<PermissionData[]> {
   try {
-    await connectDB();
-    
-    // Ensure Permission model is registered before populate
-    // This is necessary in Next.js to avoid "Schema hasn't been registered" errors
-    // The Permission model is imported at the top, but we ensure it's registered here
-    if (!mongoose.models.Permission) {
-      // Re-import to ensure model registration executes
-      await import('@/models/Permission');
-    }
-    
-    // Build query with tenant filter if tenantId provided
-    const userQuery: any = { _id: userId };
-    if (tenantId) {
-      userQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      userQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    // Build populate options with tenant filter
-    const rolePopulateOptions: any = {
-      path: 'role',
-      select: 'name defaultPermissions permissions',
+    // Explicit tenant branch: real tenantId -> runWithTenant (auto-scoped
+    // User/Role/Permission queries); no tenantId (legacy no-subdomain mode)
+    // -> runAsSystem, unscoped lookup across all tenants + untenanted rows
+    // (closest Postgres equivalent of the old Mongoose
+    // `$or: [{tenantId:{$exists:false}}, {tenantId:null}]`).
+    const load = async () => {
+      const user = await getUserById(userId, { withRole: true });
+      if (!user) return null;
+
+      const roleWithDefaults = user.roleId ? await getRoleById(user.roleId, { withDefaultPermissions: true }) : null;
+      const customPermissions = await listPermissions({ userId });
+
+      return { user, roleWithDefaults, customPermissions };
     };
-    if (tenantId) {
-      rolePopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      rolePopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-    
-    const permissionPopulateOptions: any = {
-      path: 'permissions',
-      select: 'resource actions',
-    };
-    if (tenantId) {
-      permissionPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      permissionPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-    
-    // Get user with role and permissions (tenant-scoped)
-    const user = await User.findOne(userQuery)
-      .populate(rolePopulateOptions)
-      .populate(permissionPopulateOptions)
-      .lean();
-    
-    if (!user || Array.isArray(user)) {
-      return [];
-    }
-    
+
+    const result = tenantId ? await runWithTenant(tenantId, load) : await runAsSystem(load);
+    if (!result) return [];
+
+    const { user, roleWithDefaults, customPermissions } = result;
     const permissions: PermissionData[] = [];
-    const roleName = await getRoleName((user as any).role?._id || (user as any).role, tenantId);
-    
+    const roleName = await getRoleName(user.roleId, tenantId);
+
     // Get role-based permissions
-    if ((user as any).role) {
-      const role = (user as any).role;
-      
-      // Check if role has permissions array (populated)
-      if (role.permissions && Array.isArray(role.permissions)) {
-        for (const perm of role.permissions) {
-          if (perm && typeof perm === 'object' && 'resource' in perm && 'actions' in perm) {
-            permissions.push({
-              resource: perm.resource,
-              actions: Array.isArray(perm.actions) ? perm.actions : [],
-            });
-          }
-        }
+    if (roleWithDefaults) {
+      for (const perm of roleWithDefaults.permissions) {
+        permissions.push({ resource: perm.resource, actions: perm.actions });
       }
-      
-      // Check defaultPermissions on role
-      if (role.defaultPermissions && Array.isArray(role.defaultPermissions)) {
-        for (const perm of role.defaultPermissions) {
-          if (perm && typeof perm === 'object' && 'resource' in perm && 'actions' in perm) {
-            permissions.push({
-              resource: perm.resource,
-              actions: Array.isArray(perm.actions) ? perm.actions : [],
-            });
-          }
-        }
+      for (const perm of roleWithDefaults.defaultPermissions) {
+        permissions.push({ resource: perm.resource, actions: perm.actions });
       }
-      
+
       // Fallback to default permissions if role name is known
       if (roleName && permissions.length === 0) {
         return DEFAULT_ROLE_PERMISSIONS[roleName] || [];
       }
     }
-    
+
     // Get custom user permissions
-    if ((user as any).permissions && Array.isArray((user as any).permissions)) {
-      for (const perm of (user as any).permissions) {
-        if (perm && typeof perm === 'object' && 'resource' in perm && 'actions' in perm) {
-          permissions.push({
-            resource: perm.resource,
-            actions: Array.isArray(perm.actions) ? perm.actions : [],
-          });
-        }
-      }
+    for (const perm of customPermissions) {
+      permissions.push({ resource: perm.resource, actions: perm.actions });
     }
-    
+
     // If no permissions found, use default for role
     if (permissions.length === 0 && roleName) {
       return DEFAULT_ROLE_PERMISSIONS[roleName] || [];
     }
-    
+
     return permissions;
   } catch (error) {
     console.error('Error getting user permissions:', error);
@@ -232,7 +175,7 @@ export async function getUserPermissions(userId: string | Types.ObjectId, tenant
  * Check if user has permission for a resource and action
  */
 export async function hasPermission(
-  userId: string | Types.ObjectId,
+  userId: string,
   resource: string,
   action: string,
   tenantId?: string | null
@@ -310,7 +253,7 @@ export function getRolePermissions(roleName: RoleName): PermissionData[] {
  * Check if user can access a resource (read permission)
  */
 export async function canAccess(
-  userId: string | Types.ObjectId,
+  userId: string,
   resource: string
 ): Promise<boolean> {
   return hasPermission(userId, resource, 'read');
@@ -320,7 +263,7 @@ export async function canAccess(
  * Check if user can modify a resource (write or update permission)
  */
 export async function canModify(
-  userId: string | Types.ObjectId,
+  userId: string,
   resource: string
 ): Promise<boolean> {
   return (
@@ -333,7 +276,7 @@ export async function canModify(
  * Check if user can delete a resource
  */
 export async function canDelete(
-  userId: string | Types.ObjectId,
+  userId: string,
   resource: string
 ): Promise<boolean> {
   return hasPermission(userId, resource, 'delete');

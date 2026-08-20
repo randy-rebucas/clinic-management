@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession } from '@/app/lib/dal';
-import connectDB from '@/lib/mongodb';
-import MedicalRepresentative from '@/models/MedicalRepresentative';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { cookies } from 'next/headers';
 
 /**
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   try {
     // Verify session
     const session = await verifySession();
-    
+
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - No session found' },
@@ -28,15 +28,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    await connectDB();
+    // NOTE: there is no lib/data/medical-representative.ts (Phase 4 did not
+    // produce one for this batch), so this reads prisma.medicalRepresentative
+    // directly rather than reaching for a data-access module that doesn't
+    // exist. MedicalRepresentative is a junction-scoped model (see
+    // lib/prisma-tenant-extension.ts) so it still needs a tenant context.
+    // Explicit tenant branch: a real session.tenantId -> runWithTenant
+    // (auto-scoped lookup); no tenantId (legacy no-subdomain mode) ->
+    // runAsSystem, since there is no tenant to scope by.
+    const tenantId = session.tenantId;
+    const lookup = () =>
+      prisma.medicalRepresentative.findFirst({
+        where: { user: { id: session.userId } },
+        omit: {
+          paymentStatus: true,
+          paymentDate: true,
+          paymentAmount: true,
+          paymentMethod: true,
+          paymentReference: true,
+        },
+      });
 
-    // Find medical representative by user ID, scoped to tenant
-    const medicalRep = await MedicalRepresentative.findOne({
-      userId: session.userId,
-      tenantIds: session.tenantId,
-    })
-      .select('-internalNotes -paymentStatus -paymentDate -paymentAmount -paymentMethod -paymentReference -password')
-      .lean();
+    const medicalRep = tenantId ? await runWithTenant(tenantId, lookup) : await runAsSystem(lookup);
 
     if (!medicalRep) {
       return NextResponse.json(
@@ -65,7 +78,7 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const cookieStore = await cookies();
-    
+
     // Delete the session cookie
     cookieStore.delete('session');
 

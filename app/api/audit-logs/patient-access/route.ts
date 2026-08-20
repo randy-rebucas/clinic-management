@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import AuditLog from '@/models/AuditLog';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listAuditLogs } from '@/lib/data/audit-log';
 
 /**
  * Get audit logs for a specific patient (PH DPA compliance - right to access)
@@ -15,7 +16,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
 
@@ -29,17 +29,20 @@ export async function GET(request: NextRequest) {
     // Users can only view access logs for patients they have permission to access
     // In production, add additional permission checks here
 
-    const logs = await AuditLog.find({
-      dataSubject: patientId,
-      isSensitive: true,
-    })
-      .populate('userId', 'name email role')
-      .sort({ timestamp: -1 })
-      .limit(100);
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
+    const { items } = tenantId
+      ? await runWithTenant(tenantId, () =>
+          listAuditLogs({ dataSubjectId: patientId, isSensitive: true }, 0, 100)
+        )
+      : await runAsSystem(() =>
+          listAuditLogs({ dataSubjectId: patientId, isSensitive: true }, 0, 100)
+        );
 
     return NextResponse.json({
       success: true,
-      data: logs,
+      data: items,
       message: 'Patient data access history (PH DPA compliance)',
     });
   } catch (error: any) {
@@ -50,4 +53,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

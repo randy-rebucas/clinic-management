@@ -1,20 +1,32 @@
 // Waitlist Management Automation
 // Automatically fills cancelled appointment slots from waitlist
 
-import connectDB from '@/lib/mongodb';
-import Appointment from '@/models/Appointment';
-import Patient from '@/models/Patient';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getAppointmentById, createAppointment, getMaxAppointmentCodeNumber } from '@/lib/data/appointment';
+import { getPatientById } from '@/lib/data/patient';
+import prisma from '@/lib/prisma';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
+import { createNotification } from '@/lib/data/notification';
 import { sendEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
+
+/**
+ * Some call sites (e.g. app/api/waitlist/route.ts) have not yet been updated
+ * to pass a plain string tenantId/doctorId and still construct a Mongoose
+ * `Types.ObjectId` — accept anything string-coercible here and normalize
+ * with String() below so this module has no ODM dependency.
+ */
+type IdLike = string | { toString(): string };
 
 export interface WaitlistEntry {
-  patientId: Types.ObjectId;
+  patientId: string;
   preferredDate?: Date;
   preferredTime?: string;
-  doctorId?: Types.ObjectId;
+  doctorId?: string;
   priority?: number; // Higher number = higher priority
   createdAt: Date;
 }
@@ -26,10 +38,10 @@ const waitlist: Map<string, WaitlistEntry[]> = new Map();
  * Add patient to waitlist
  */
 export async function addToWaitlist(
-  patientId: string | Types.ObjectId,
+  patientId: string,
   options: {
-    tenantId?: string | Types.ObjectId;
-    doctorId?: string | Types.ObjectId;
+    tenantId?: IdLike;
+    doctorId?: IdLike;
     preferredDate?: Date;
     preferredTime?: string;
     priority?: number;
@@ -40,68 +52,63 @@ export async function addToWaitlist(
   error?: string;
 }> {
   try {
-    await connectDB();
+    const patientIdStr = String(patientId);
+    const tenantId = options.tenantId ? String(options.tenantId) : undefined;
 
-    const patientIdObj = typeof patientId === 'string' 
-      ? new Types.ObjectId(patientId) 
-      : patientId;
-
-    const patient = await Patient.findById(patientIdObj);
-    if (!patient) {
-      return { success: false, added: false, error: 'Patient not found' };
-    }
-
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : patient.tenantId;
-
-    const waitlistKey = tenantId ? tenantId.toString() : 'default';
-    
-    if (!waitlist.has(waitlistKey)) {
-      waitlist.set(waitlistKey, []);
-    }
-
-    const entries = waitlist.get(waitlistKey)!;
-    
-    // Check if patient is already on waitlist
-    const existingIndex = entries.findIndex(
-      entry => entry.patientId.toString() === patientIdObj.toString()
-    );
-
-    const entry: WaitlistEntry = {
-      patientId: patientIdObj,
-      preferredDate: options.preferredDate,
-      preferredTime: options.preferredTime,
-      doctorId: options.doctorId 
-        ? (typeof options.doctorId === 'string' ? new Types.ObjectId(options.doctorId) : options.doctorId)
-        : undefined,
-      priority: options.priority || 0,
-      createdAt: new Date(),
-    };
-
-    if (existingIndex >= 0) {
-      // Update existing entry
-      entries[existingIndex] = entry;
-    } else {
-      // Add new entry
-      entries.push(entry);
-    }
-
-    // Sort by priority (descending) and creation date (ascending)
-    entries.sort((a, b) => {
-      if (b.priority !== a.priority) {
-        return (b.priority || 0) - (a.priority || 0);
+    return await run(tenantId, async () => {
+      const patient = await getPatientById(patientIdStr);
+      if (!patient) {
+        return { success: false, added: false, error: 'Patient not found' };
       }
-      return a.createdAt.getTime() - b.createdAt.getTime();
-    });
 
-    return { success: true, added: true };
+      const effectiveTenantId = tenantId ?? (patient as any).tenantIds?.[0];
+
+      const waitlistKey = effectiveTenantId ? String(effectiveTenantId) : 'default';
+
+      if (!waitlist.has(waitlistKey)) {
+        waitlist.set(waitlistKey, []);
+      }
+
+      const entries = waitlist.get(waitlistKey)!;
+
+      // Check if patient is already on waitlist
+      const existingIndex = entries.findIndex(
+        entry => entry.patientId === patientIdStr
+      );
+
+      const entry: WaitlistEntry = {
+        patientId: patientIdStr,
+        preferredDate: options.preferredDate,
+        preferredTime: options.preferredTime,
+        doctorId: options.doctorId ? String(options.doctorId) : undefined,
+        priority: options.priority || 0,
+        createdAt: new Date(),
+      };
+
+      if (existingIndex >= 0) {
+        // Update existing entry
+        entries[existingIndex] = entry;
+      } else {
+        // Add new entry
+        entries.push(entry);
+      }
+
+      // Sort by priority (descending) and creation date (ascending)
+      entries.sort((a, b) => {
+        if (b.priority !== a.priority) {
+          return (b.priority || 0) - (a.priority || 0);
+        }
+        return a.createdAt.getTime() - b.createdAt.getTime();
+      });
+
+      return { success: true, added: true };
+    });
   } catch (error: any) {
     console.error('Error adding to waitlist:', error);
-    return { 
-      success: false, 
+    return {
+      success: false,
       added: false,
-      error: error.message || 'Failed to add to waitlist' 
+      error: error.message || 'Failed to add to waitlist'
     };
   }
 }
@@ -110,31 +117,26 @@ export async function addToWaitlist(
  * Remove patient from waitlist
  */
 export async function removeFromWaitlist(
-  patientId: string | Types.ObjectId,
-  tenantId?: string | Types.ObjectId
+  patientId: string,
+  tenantId?: IdLike
 ): Promise<{
   success: boolean;
   removed: boolean;
   error?: string;
 }> {
   try {
-    const patientIdObj = typeof patientId === 'string' 
-      ? new Types.ObjectId(patientId) 
-      : patientId;
+    const patientIdStr = String(patientId);
+    const tenantIdStr = tenantId ? String(tenantId) : undefined;
 
-    const tenantIdObj = tenantId 
-      ? (typeof tenantId === 'string' ? new Types.ObjectId(tenantId) : tenantId)
-      : undefined;
+    const waitlistKey = tenantIdStr ?? 'default';
 
-    const waitlistKey = tenantIdObj ? tenantIdObj.toString() : 'default';
-    
     if (!waitlist.has(waitlistKey)) {
       return { success: true, removed: false };
     }
 
     const entries = waitlist.get(waitlistKey)!;
     const index = entries.findIndex(
-      entry => entry.patientId.toString() === patientIdObj.toString()
+      entry => entry.patientId === patientIdStr
     );
 
     if (index >= 0) {
@@ -145,10 +147,10 @@ export async function removeFromWaitlist(
     return { success: true, removed: false };
   } catch (error: any) {
     console.error('Error removing from waitlist:', error);
-    return { 
-      success: false, 
+    return {
+      success: false,
       removed: false,
-      error: error.message || 'Failed to remove from waitlist' 
+      error: error.message || 'Failed to remove from waitlist'
     };
   }
 }
@@ -156,20 +158,20 @@ export async function removeFromWaitlist(
 /**
  * Find matching waitlist entry for cancelled appointment
  */
-async function findMatchingWaitlistEntry(
+function findMatchingWaitlistEntry(
   cancelledAppointment: any,
-  tenantId?: Types.ObjectId
-): Promise<WaitlistEntry | null> {
-  const waitlistKey = tenantId ? tenantId.toString() : 'default';
-  
+  tenantId?: string
+): WaitlistEntry | null {
+  const waitlistKey = tenantId ?? 'default';
+
   if (!waitlist.has(waitlistKey)) {
     return null;
   }
 
   const entries = waitlist.get(waitlistKey)!;
-  const appointmentDate = cancelledAppointment.appointmentDate 
+  const appointmentDate = cancelledAppointment.appointmentDate
     ? new Date(cancelledAppointment.appointmentDate)
-    : cancelledAppointment.scheduledAt 
+    : cancelledAppointment.scheduledAt
     ? new Date(cancelledAppointment.scheduledAt)
     : null;
 
@@ -177,8 +179,8 @@ async function findMatchingWaitlistEntry(
   for (const entry of entries) {
     // Check doctor match
     if (cancelledAppointment.doctor || cancelledAppointment.provider) {
-      const appointmentDoctorId = cancelledAppointment.doctor?._id || cancelledAppointment.provider?._id;
-      if (entry.doctorId && entry.doctorId.toString() !== appointmentDoctorId?.toString()) {
+      const appointmentDoctorId = cancelledAppointment.doctor?.id ?? cancelledAppointment.provider?.id;
+      if (entry.doctorId && entry.doctorId !== appointmentDoctorId) {
         continue;
       }
     }
@@ -204,8 +206,8 @@ async function findMatchingWaitlistEntry(
  * Fill cancelled appointment slot from waitlist
  */
 export async function fillCancelledSlot(
-  appointmentId: string | Types.ObjectId,
-  tenantId?: string | Types.ObjectId
+  appointmentId: string,
+  tenantId?: string
 ): Promise<{
   success: boolean;
   filled: boolean;
@@ -213,171 +215,141 @@ export async function fillCancelledSlot(
   error?: string;
 }> {
   try {
-    await connectDB();
+    const appointmentIdStr = String(appointmentId);
+    const tId = tenantId ? String(tenantId) : undefined;
 
-    const settings = await getSettings();
-    const autoWaitlistManagement = (settings.automationSettings as any)?.autoWaitlistManagement !== false;
+    return await run(tId, async () => {
+      const settings = await getSettings(tId);
+      const autoWaitlistManagement = (settings.automationSettings as any)?.autoWaitlistManagement !== false;
 
-    if (!autoWaitlistManagement) {
-      return { success: true, filled: false };
-    }
-
-    const appointmentIdObj = typeof appointmentId === 'string' 
-      ? new Types.ObjectId(appointmentId) 
-      : appointmentId;
-
-    const appointment = await Appointment.findById(appointmentIdObj)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('doctor', 'firstName lastName');
-
-    if (!appointment) {
-      return { success: false, filled: false, error: 'Appointment not found' };
-    }
-
-    // Only fill if appointment is cancelled
-    if (appointment.status !== 'cancelled') {
-      return { success: true, filled: false };
-    }
-
-    const tenantIdObj = tenantId 
-      ? (typeof tenantId === 'string' ? new Types.ObjectId(tenantId) : tenantId)
-      : appointment.tenantId;
-
-    // Find matching waitlist entry
-    const waitlistEntry = await findMatchingWaitlistEntry(appointment, tenantIdObj);
-
-    if (!waitlistEntry) {
-      return { success: true, filled: false };
-    }
-
-    // Get patient
-    const patient = await Patient.findById(waitlistEntry.patientId);
-    if (!patient) {
-      return { success: false, filled: false, error: 'Waitlist patient not found' };
-    }
-
-    // Create new appointment with same slot
-    const appointmentDate = appointment.appointmentDate 
-      ? new Date(appointment.appointmentDate)
-      : appointment.scheduledAt 
-      ? new Date(appointment.scheduledAt)
-      : new Date();
-
-    const appointmentTime = appointment.appointmentTime 
-      || (appointment.scheduledAt 
-        ? `${appointment.scheduledAt.getHours().toString().padStart(2, '0')}:${appointment.scheduledAt.getMinutes().toString().padStart(2, '0')}`
-        : waitlistEntry.preferredTime || '09:00');
-
-    // Generate appointment code
-    const codeQuery: any = { appointmentCode: { $exists: true, $ne: null } };
-    if (tenantIdObj) {
-      codeQuery.tenantId = tenantIdObj;
-    } else {
-      codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    const lastAppointment = await Appointment.findOne(codeQuery)
-      .sort({ appointmentCode: -1 })
-      .exec();
-
-    let nextNumber = 1;
-    if (lastAppointment?.appointmentCode) {
-      const match = lastAppointment.appointmentCode.match(/(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
+      if (!autoWaitlistManagement) {
+        return { success: true, filled: false };
       }
-    }
 
-    const appointmentCode = `APT-${String(nextNumber).padStart(6, '0')}`;
+      const appointment = await getAppointmentById(appointmentIdStr);
 
-    // Create new appointment
-    const newAppointmentData: any = {
-      tenantId: tenantIdObj,
-      patient: patient._id,
-      doctor: appointment.doctor || appointment.provider,
-      provider: appointment.provider || appointment.doctor,
-      appointmentCode,
-      appointmentDate,
-      appointmentTime,
-      scheduledAt: appointment.scheduledAt || appointmentDate,
-      status: 'scheduled',
-      reason: 'Waitlist fill',
-      notes: `Appointment filled from waitlist (replacing cancelled appointment ${appointment.appointmentCode})`,
-      duration: appointment.duration || 30,
-    };
+      if (!appointment) {
+        return { success: false, filled: false, error: 'Appointment not found' };
+      }
 
-    const newAppointment = await Appointment.create(newAppointmentData);
+      // Only fill if appointment is cancelled
+      if (appointment.status !== 'cancelled') {
+        return { success: true, filled: false };
+      }
 
-    // Populate new appointment
-    await newAppointment.populate('patient', 'firstName lastName email phone');
-    await newAppointment.populate('doctor', 'firstName lastName');
+      const effectiveTenantId = tId ?? (appointment.tenantId ?? undefined);
 
-    // Remove from waitlist
-    await removeFromWaitlist(patient._id, tenantIdObj);
+      // Find matching waitlist entry
+      const waitlistEntry = findMatchingWaitlistEntry(appointment, effectiveTenantId);
 
-    // Notify patient
-    const patientObj = newAppointment.patient as any;
-    if (patientObj) {
-      // Send SMS
-      if (patientObj.phone) {
-        try {
-          let phoneNumber = patientObj.phone.trim();
-          if (!phoneNumber.startsWith('+')) {
-            phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
+      if (!waitlistEntry) {
+        return { success: true, filled: false };
+      }
+
+      // Get patient
+      const patient = await getPatientById(waitlistEntry.patientId);
+      if (!patient) {
+        return { success: false, filled: false, error: 'Waitlist patient not found' };
+      }
+
+      // Create new appointment with same slot
+      const appointmentDate = appointment.appointmentDate
+        ? new Date(appointment.appointmentDate as any)
+        : appointment.scheduledAt
+        ? new Date(appointment.scheduledAt as any)
+        : new Date();
+
+      const appointmentTime = appointment.appointmentTime
+        || (appointment.scheduledAt
+          ? `${new Date(appointment.scheduledAt as any).getHours().toString().padStart(2, '0')}:${new Date(appointment.scheduledAt as any).getMinutes().toString().padStart(2, '0')}`
+          : waitlistEntry.preferredTime || '09:00');
+
+      // Generate appointment code
+      const nextNumber = (await getMaxAppointmentCodeNumber()) + 1;
+      const appointmentCode = `APT-${String(nextNumber).padStart(6, '0')}`;
+
+      const doctorId = (appointment.doctor as any)?.id ?? (appointment.provider as any)?.id ?? undefined;
+
+      // Create new appointment
+      const newAppointment = await createAppointment({
+        patient: { connect: { id: patient.id } },
+        doctor: doctorId ? { connect: { id: doctorId } } : undefined,
+        provider: doctorId ? { connect: { id: doctorId } } : undefined,
+        appointmentCode,
+        appointmentDate,
+        appointmentTime,
+        scheduledAt: appointment.scheduledAt ?? appointmentDate,
+        status: 'scheduled',
+        reason: 'Waitlist fill',
+        notes: `Appointment filled from waitlist (replacing cancelled appointment ${appointment.appointmentCode})`,
+        duration: appointment.duration || 30,
+        ...(effectiveTenantId ? { tenant: { connect: { id: effectiveTenantId } } } : {}),
+      } as any);
+
+      // Remove from waitlist
+      await removeFromWaitlist(patient.id, effectiveTenantId);
+
+      // Notify patient
+      const patientObj = newAppointment.patient as any;
+      if (patientObj) {
+        // Send SMS
+        if (patientObj.phone) {
+          try {
+            let phoneNumber = patientObj.phone.trim();
+            if (!phoneNumber.startsWith('+')) {
+              phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
+            }
+
+            const message = `Great news! An appointment slot has become available. Your appointment is scheduled for ${appointmentDate.toLocaleDateString()} at ${appointmentTime}. Appointment Code: ${appointmentCode}. Please confirm by replying YES.`;
+
+            await sendSMS({
+              to: phoneNumber,
+              message,
+            });
+          } catch (error) {
+            console.error('Error sending waitlist fill SMS:', error);
           }
-
-          const message = `Great news! An appointment slot has become available. Your appointment is scheduled for ${appointmentDate.toLocaleDateString()} at ${appointmentTime}. Appointment Code: ${appointmentCode}. Please confirm by replying YES.`;
-
-          await sendSMS({
-            to: phoneNumber,
-            message,
-          });
-        } catch (error) {
-          console.error('Error sending waitlist fill SMS:', error);
         }
-      }
 
-      // Send email
-      if (patientObj.email) {
+        // Send email
+        if (patientObj.email) {
+          try {
+            const emailContent = generateWaitlistFillEmail(newAppointment);
+            await sendEmail({
+              to: patientObj.email,
+              subject: emailContent.subject,
+              html: emailContent.html,
+            });
+          } catch (error) {
+            console.error('Error sending waitlist fill email:', error);
+          }
+        }
+
+        // Send notification
         try {
-          const emailContent = generateWaitlistFillEmail(newAppointment);
-          await sendEmail({
-            to: patientObj.email,
-            subject: emailContent.subject,
-            html: emailContent.html,
+          await createNotification({
+            userId: patient.id,
+            type: 'appointment',
+            priority: 'high',
+            title: 'Appointment Available from Waitlist',
+            message: `An appointment slot has become available. Your appointment is scheduled for ${appointmentDate.toLocaleDateString()} at ${appointmentTime}.`,
+            relatedEntityType: 'appointment',
+            relatedEntityId: newAppointment.id,
+            actionUrl: `/appointments/${newAppointment.id}`,
           });
         } catch (error) {
-          console.error('Error sending waitlist fill email:', error);
+          console.error('Error creating waitlist fill notification:', error);
         }
       }
 
-      // Send notification
-      try {
-        await createNotification({
-          userId: patient._id,
-          tenantId: tenantIdObj,
-          type: 'appointment',
-          priority: 'high',
-          title: 'Appointment Available from Waitlist',
-          message: `An appointment slot has become available. Your appointment is scheduled for ${appointmentDate.toLocaleDateString()} at ${appointmentTime}.`,
-          relatedEntity: {
-            type: 'appointment',
-            id: newAppointment._id,
-          },
-          actionUrl: `/appointments/${newAppointment._id}`,
-        });
-      } catch (error) {
-        console.error('Error creating waitlist fill notification:', error);
-      }
-    }
-
-    return { success: true, filled: true, newAppointment };
+      return { success: true, filled: true, newAppointment };
+    });
   } catch (error: any) {
     console.error('Error filling cancelled slot:', error);
-    return { 
-      success: false, 
+    return {
+      success: false,
       filled: false,
-      error: error.message || 'Failed to fill cancelled slot' 
+      error: error.message || 'Failed to fill cancelled slot'
     };
   }
 }
@@ -386,7 +358,7 @@ export async function fillCancelledSlot(
  * Process cancelled appointments and fill from waitlist
  * This should be called by a cron job or when appointment is cancelled
  */
-export async function processWaitlistFills(tenantId?: string | Types.ObjectId): Promise<{
+export async function processWaitlistFills(tenantId?: string): Promise<{
   success: boolean;
   processed: number;
   filled: number;
@@ -394,61 +366,60 @@ export async function processWaitlistFills(tenantId?: string | Types.ObjectId): 
   results: Array<{ appointmentId: string; success: boolean; filled: boolean; error?: string }>;
 }> {
   try {
-    await connectDB();
+    const tId = tenantId ? String(tenantId) : undefined;
 
-    const settings = await getSettings();
-    const autoWaitlistManagement = (settings.automationSettings as any)?.autoWaitlistManagement !== false;
+    return await run(tId, async () => {
+      const settings = await getSettings(tId);
+      const autoWaitlistManagement = (settings.automationSettings as any)?.autoWaitlistManagement !== false;
 
-    if (!autoWaitlistManagement) {
-      return { success: true, processed: 0, filled: 0, errors: 0, results: [] };
-    }
+      if (!autoWaitlistManagement) {
+        return { success: true, processed: 0, filled: 0, errors: 0, results: [] };
+      }
 
-    // Find recently cancelled appointments (within last hour)
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      // Find recently cancelled appointments (within last hour)
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
-    const query: any = {
-      status: 'cancelled',
-      updatedAt: { $gte: oneHourAgo },
-    };
-
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
-
-    const cancelledAppointments = await Appointment.find(query)
-      .populate('patient', 'firstName lastName')
-      .populate('doctor', 'firstName lastName');
-
-    const results: Array<{ appointmentId: string; success: boolean; filled: boolean; error?: string }> = [];
-    let filled = 0;
-    let errors = 0;
-
-    for (const appointment of cancelledAppointments) {
-      const result = await fillCancelledSlot(appointment._id, appointment.tenantId);
-
-      results.push({
-        appointmentId: appointment._id.toString(),
-        success: result.success,
-        filled: result.filled,
-        error: result.error,
+      const cancelledAppointments = await prisma.appointment.findMany({
+        where: {
+          ...(tId ? { tenantId: tId } : {}),
+          status: 'cancelled',
+          updatedAt: { gte: oneHourAgo },
+        },
+        include: {
+          patient: { select: { id: true, firstName: true, lastName: true } },
+          doctor: { select: { id: true, firstName: true, lastName: true } },
+        },
       });
 
-      if (result.success && result.filled) {
-        filled++;
-      } else if (!result.success) {
-        errors++;
-      }
-    }
+      const results: Array<{ appointmentId: string; success: boolean; filled: boolean; error?: string }> = [];
+      let filled = 0;
+      let errors = 0;
 
-    return {
-      success: true,
-      processed: cancelledAppointments.length,
-      filled,
-      errors,
-      results,
-    };
+      for (const appointment of cancelledAppointments) {
+        const result = await fillCancelledSlot(appointment.id, appointment.tenantId ?? undefined);
+
+        results.push({
+          appointmentId: appointment.id,
+          success: result.success,
+          filled: result.filled,
+          error: result.error,
+        });
+
+        if (result.success && result.filled) {
+          filled++;
+        } else if (!result.success) {
+          errors++;
+        }
+      }
+
+      return {
+        success: true,
+        processed: cancelledAppointments.length,
+        filled,
+        errors,
+        results,
+      };
+    });
   } catch (error: any) {
     console.error('Error processing waitlist fills:', error);
     return {
@@ -470,7 +441,7 @@ function generateWaitlistFillEmail(appointment: any): { subject: string; html: s
   const appointmentDate = new Date(appointment.appointmentDate || appointment.scheduledAt).toLocaleDateString();
   const appointmentTime = appointment.appointmentTime || 'TBD';
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
-  const confirmUrl = `${baseUrl}/api/appointments/${appointment._id}/confirm?action=yes`;
+  const confirmUrl = `${baseUrl}/api/appointments/${appointment.id}/confirm?action=yes`;
 
   const subject = `Appointment Available - ${appointmentDate}`;
 
@@ -518,4 +489,3 @@ function generateWaitlistFillEmail(appointment: any): { subject: string; html: s
 
   return { subject, html };
 }
-

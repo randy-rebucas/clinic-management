@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import PatientNote from '@/models/PatientNote';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientNote, updatePatientNote, deletePatientNote } from '@/lib/data/patient-note';
+
+async function resolveTenantId(session: { tenantId?: string | null }) {
+  const tenantContext = await getTenantContext();
+  return session.tenantId || tenantContext.tenantId;
+}
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * PUT /api/patients/[id]/notes/[noteId]
@@ -21,32 +29,15 @@ export async function PUT(
   if (permissionCheck) return permissionCheck;
 
   try {
-    await connectDB();
     const { id, noteId } = await params;
+    const tenantId = await resolveTenantId(session);
 
-    if (!Types.ObjectId.isValid(id) || !Types.ObjectId.isValid(noteId)) {
-      return NextResponse.json({ success: false, error: 'Invalid IDs' }, { status: 400 });
-    }
-
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    const query: any = {
-      _id: new Types.ObjectId(noteId),
-      patient: new Types.ObjectId(id),
-    };
-
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    }
-
-    const note = await PatientNote.findOne(query);
+    const note = await run(tenantId, () => getPatientNote(noteId, id));
     if (!note) {
       return NextResponse.json({ success: false, error: 'Note not found' }, { status: 404 });
     }
 
-    // Only author or admin can edit
-    if (note.author.userId.toString() !== session.userId && session.role !== 'admin') {
+    if (note.author.userId !== session.userId && session.role !== 'admin') {
       return NextResponse.json(
         { success: false, error: 'You do not have permission to edit this note' },
         { status: 403 }
@@ -56,28 +47,17 @@ export async function PUT(
     const body = await request.json();
     const { content, visibility, priority, tags } = body;
 
-    if (content && typeof content === 'string') {
-      note.content = content.trim();
-    }
-
-    if (visibility && ['private', 'internal', 'shared'].includes(visibility)) {
-      note.visibility = visibility;
-    }
-
-    if (priority && ['low', 'normal', 'high'].includes(priority)) {
-      note.priority = priority;
-    }
-
+    const updates: { content?: string; visibility?: any; priority?: any; tags?: string[] } = {};
+    if (content && typeof content === 'string') updates.content = content.trim();
+    if (visibility && ['private', 'internal', 'shared'].includes(visibility)) updates.visibility = visibility;
+    if (priority && ['low', 'normal', 'high'].includes(priority)) updates.priority = priority;
     if (Array.isArray(tags)) {
-      note.tags = tags.filter((t: string) => typeof t === 'string' && t.trim().length > 0);
+      updates.tags = tags.filter((t: string) => typeof t === 'string' && t.trim().length > 0);
     }
 
-    await note.save();
+    const updated = await run(tenantId, () => updatePatientNote(noteId, id, updates));
 
-    return NextResponse.json({
-      success: true,
-      data: note,
-    });
+    return NextResponse.json({ success: true, data: updated });
   } catch (error) {
     console.error('Error updating patient note:', error);
     return NextResponse.json({ success: false, error: 'Failed to update note' }, { status: 500 });
@@ -99,44 +79,24 @@ export async function DELETE(
   if (permissionCheck) return permissionCheck;
 
   try {
-    await connectDB();
     const { id, noteId } = await params;
+    const tenantId = await resolveTenantId(session);
 
-    if (!Types.ObjectId.isValid(id) || !Types.ObjectId.isValid(noteId)) {
-      return NextResponse.json({ success: false, error: 'Invalid IDs' }, { status: 400 });
-    }
-
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    const query: any = {
-      _id: new Types.ObjectId(noteId),
-      patient: new Types.ObjectId(id),
-    };
-
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    }
-
-    const note = await PatientNote.findOne(query);
+    const note = await run(tenantId, () => getPatientNote(noteId, id));
     if (!note) {
       return NextResponse.json({ success: false, error: 'Note not found' }, { status: 404 });
     }
 
-    // Only author or admin can delete
-    if (note.author.userId.toString() !== session.userId && session.role !== 'admin') {
+    if (note.author.userId !== session.userId && session.role !== 'admin') {
       return NextResponse.json(
         { success: false, error: 'You do not have permission to delete this note' },
         { status: 403 }
       );
     }
 
-    await PatientNote.deleteOne(query);
+    await run(tenantId, () => deletePatientNote(noteId, id));
 
-    return NextResponse.json({
-      success: true,
-      message: 'Note deleted',
-    });
+    return NextResponse.json({ success: true, message: 'Note deleted' });
   } catch (error) {
     console.error('Error deleting patient note:', error);
     return NextResponse.json({ success: false, error: 'Failed to delete note' }, { status: 500 });

@@ -1,20 +1,22 @@
 // Health Check Reminders Automation
 // Reminds patients of routine check-ups and preventive care
 
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
-import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientById, listActivePatientsForAutomation, type PatientAutomationRow } from '@/lib/data/patient';
+import { findMostRecentClosedCheckups } from '@/lib/data/visit';
+import { getAutomationSettings, getOrCreateSettings } from '@/lib/data/settings';
+import { createNotification } from '@/lib/data/notification';
 import { sendEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export interface HealthReminderOptions {
-  patientId: string | Types.ObjectId;
+  patientId: string;
   reminderType: 'annual-checkup' | 'vaccination' | 'screening' | 'dental';
-  tenantId?: string | Types.ObjectId;
+  tenantId?: string;
   sendSMS?: boolean;
   sendEmail?: boolean;
   sendNotification?: boolean;
@@ -28,11 +30,11 @@ function calculateAge(dateOfBirth: Date): number {
   const birthDate = new Date(dateOfBirth);
   let age = today.getFullYear() - birthDate.getFullYear();
   const monthDiff = today.getMonth() - birthDate.getMonth();
-  
+
   if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
     age--;
   }
-  
+
   return age;
 }
 
@@ -117,29 +119,20 @@ export async function sendHealthReminder(options: HealthReminderOptions): Promis
   error?: string;
 }> {
   try {
-    await connectDB();
+    const tenantId = options.tenantId ?? null;
 
-    const settings = await getSettings();
-    const autoHealthReminders = (settings.automationSettings as any)?.autoHealthReminders !== false;
-
-    if (!autoHealthReminders) {
+    const automationSettings = await run(tenantId, () => getAutomationSettings(tenantId));
+    if (!automationSettings.autoHealthReminders) {
       return { success: true, sent: false };
     }
 
-    const patientId = typeof options.patientId === 'string' 
-      ? new Types.ObjectId(options.patientId) 
-      : options.patientId;
-
-    const patient = await Patient.findById(patientId);
+    const patient = await run(tenantId, () => getPatientById(options.patientId));
 
     if (!patient) {
       return { success: false, sent: false, error: 'Patient not found' };
     }
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : patient.tenantId;
-
+    const settings = await run(tenantId, () => getOrCreateSettings(tenantId));
     const clinicName = settings.clinicName || 'Our Clinic';
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
     const bookingUrl = `${baseUrl}/book`;
@@ -150,9 +143,10 @@ export async function sendHealthReminder(options: HealthReminderOptions): Promis
     let sent = false;
 
     // Send SMS if enabled and phone available
-    if (options.sendSMS !== false && patient.phone) {
+    const phone = patient.phone || patient.contacts?.phone;
+    if (options.sendSMS !== false && phone) {
       try {
-        let phoneNumber = patient.phone.trim();
+        let phoneNumber = String(phone).trim();
         if (!phoneNumber.startsWith('+')) {
           phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
         }
@@ -171,10 +165,11 @@ export async function sendHealthReminder(options: HealthReminderOptions): Promis
     }
 
     // Send email if enabled and email available
-    if (options.sendEmail !== false && patient.email) {
+    const email = patient.email || patient.contacts?.email;
+    if (options.sendEmail !== false && email) {
       try {
         const emailResult = await sendEmail({
-          to: patient.email,
+          to: email,
           subject: emailContent.subject,
           html: emailContent.html,
         });
@@ -187,18 +182,22 @@ export async function sendHealthReminder(options: HealthReminderOptions): Promis
       }
     }
 
-    // Send in-app notification
-    if (options.sendNotification !== false && patient._id) {
+    // Send in-app notification. Note: Notification.userId is a hard FK to
+    // User, and patients have no linked User account — this call mirrors the
+    // pre-migration Mongoose behavior (which had the same conceptual gap) and
+    // is expected to fail gracefully here; caught below.
+    if (options.sendNotification !== false && patient.id) {
       try {
-        await createNotification({
-          userId: patient._id,
-          tenantId,
-          type: 'reminder',
-          priority: 'normal',
-          title: 'Health Check Reminder',
-          message: emailContent.subject,
-          actionUrl: bookingUrl,
-        });
+        await run(tenantId, () =>
+          createNotification({
+            userId: patient.id,
+            type: 'reminder',
+            priority: 'normal',
+            title: 'Health Check Reminder',
+            message: emailContent.subject,
+            actionUrl: bookingUrl,
+          })
+        );
         sent = true;
       } catch (error) {
         console.error('Error creating health reminder notification:', error);
@@ -208,10 +207,10 @@ export async function sendHealthReminder(options: HealthReminderOptions): Promis
     return { success: true, sent };
   } catch (error: any) {
     console.error('Error sending health reminder:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send health reminder' 
+      error: error.message || 'Failed to send health reminder',
     };
   }
 }
@@ -220,7 +219,7 @@ export async function sendHealthReminder(options: HealthReminderOptions): Promis
  * Process all patients and send health reminders
  * This should be called by a cron job
  */
-export async function processHealthReminders(tenantId?: string | Types.ObjectId): Promise<{
+export async function processHealthReminders(tenantId?: string): Promise<{
   success: boolean;
   processed: number;
   remindersSent: number;
@@ -228,72 +227,43 @@ export async function processHealthReminders(tenantId?: string | Types.ObjectId)
   results: Array<{ patientId: string; reminderType: string; success: boolean; error?: string }>;
 }> {
   try {
-    await connectDB();
+    const resolvedTenantId = tenantId ?? null;
 
-    const settings = await getSettings();
-    const autoHealthReminders = (settings.automationSettings as any)?.autoHealthReminders !== false;
-
-    if (!autoHealthReminders) {
+    const automationSettings = await run(resolvedTenantId, () => getAutomationSettings(resolvedTenantId));
+    if (!automationSettings.autoHealthReminders) {
       return { success: true, processed: 0, remindersSent: 0, errors: 0, results: [] };
     }
 
-    // Get all active patients
-    const query: any = {
-      active: { $ne: false },
-      dateOfBirth: { $exists: true, $ne: null },
-    };
-
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
-
-    const patients = await Patient.find(query);
+    const allPatients = await run(resolvedTenantId, () => listActivePatientsForAutomation());
+    const patients = allPatients.filter((p: PatientAutomationRow) => p.dateOfBirth);
 
     const results: Array<{ patientId: string; reminderType: string; success: boolean; error?: string }> = [];
     let remindersSent = 0;
     let errors = 0;
 
-    // Get recent visits to check last check-up date
-    const patientIds = patients.map(p => p._id);
-    const recentVisits = await Visit.find({
-      tenantId: tenantId || { $exists: true },
-      patient: { $in: patientIds },
-      status: 'closed',
-      visitType: 'checkup',
-    })
-      .sort({ date: -1 })
-      .exec();
-
-    // Group visits by patient
-    const lastCheckups = new Map<string, Date>();
-    for (const visit of recentVisits) {
-      const patientId = visit.patient.toString();
-      if (!lastCheckups.has(patientId)) {
-        lastCheckups.set(patientId, new Date(visit.date));
-      }
-    }
+    // Get recent closed checkup visits to check last check-up date
+    const patientIds = patients.map((p) => p.id);
+    const lastCheckups = await run(resolvedTenantId, () => findMostRecentClosedCheckups(patientIds));
 
     const today = new Date();
     const oneYearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
 
     for (const patient of patients) {
-      const lastCheckup = lastCheckups.get(patient._id.toString());
-      
+      const lastCheckup = lastCheckups.get(patient.id);
+
       // Send annual check-up reminder if no check-up in last year
       if (!lastCheckup || lastCheckup < oneYearAgo) {
         const result = await sendHealthReminder({
-          patientId: patient._id,
+          patientId: patient.id,
           reminderType: 'annual-checkup',
-          tenantId: patient.tenantId,
+          tenantId: resolvedTenantId ?? undefined,
           sendSMS: true,
           sendEmail: true,
           sendNotification: true,
         });
 
         results.push({
-          patientId: patient._id.toString(),
+          patientId: patient.id,
           reminderType: 'annual-checkup',
           success: result.success,
           error: result.error,
@@ -349,7 +319,6 @@ function generateHealthReminderEmail(
   settings: any,
   bookingUrl: string
 ): { subject: string; html: string } {
-  const clinicName = settings.clinicName || 'Our Clinic';
   const clinicPhone = settings.clinicPhone || '';
 
   const reminderNames: Record<string, { name: string; description: string }> = {
@@ -427,4 +396,3 @@ function generateHealthReminderEmail(
 
   return { subject, html };
 }
-

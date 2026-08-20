@@ -4,7 +4,6 @@ import { sendBroadcastMessage } from '@/lib/automations/broadcast-messaging';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
 
 /**
  * Send broadcast message to patient group
@@ -41,7 +40,7 @@ export async function POST(request: NextRequest) {
       message: body.message,
       subject: body.subject,
       targetGroup: body.targetGroup,
-      tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+      tenantId: tenantId || undefined,
       sendSMS: body.sendSMS !== false,
       sendEmail: body.sendEmail !== false,
       sendNotification: body.sendNotification !== false,

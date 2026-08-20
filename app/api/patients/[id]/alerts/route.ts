@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { getOutstandingBalanceForPatient } from '@/lib/data/invoice';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -17,27 +22,15 @@ export async function GET(
   }
 
   try {
-    await connectDB();
-    
-    // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
     const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
-    
-    const { id } = await params;
-    
-    // Build query with tenant filter
-    const patientQuery: any = { _id: id };
-    if (tenantId) {
-      patientQuery.tenantIds = new Types.ObjectId(tenantId);
-    } else {
-      patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-    }
-    
-    const patient = await Patient.findOne(patientQuery);
+    const tenantId = session.tenantId || tenantContext.tenantId || null;
 
-    if (!patient) {
+    const { id } = await params;
+
+    // Patient is junction-scoped; look it up cross-tenant then verify
+    // membership, same pattern as other Batch 3/4/5 routes.
+    const patient = await runAsSystem(() => getPatientById(id));
+    if (!patient || (tenantId && !patient.tenantIds?.some((tid: string) => tid === tenantId))) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
         { status: 404 }
@@ -81,51 +74,36 @@ export async function GET(
       }
     }
 
-    // Check for unpaid balances (tenant-scoped)
-    const invoiceQuery: any = {
-      patient: id,
-      status: { $in: ['unpaid', 'partial'] },
-    };
-    if (tenantId) {
-      invoiceQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      invoiceQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const unpaidInvoices = await Invoice.find(invoiceQuery);
+    // Check for unpaid balances — Invoice migration (this batch), via the
+    // shared getOutstandingBalanceForPatient() helper in lib/data/invoice.ts.
+    const { totalOutstanding, invoices: unpaidInvoices } = await run(tenantId, () =>
+      getOutstandingBalanceForPatient(id)
+    );
 
-    if (unpaidInvoices.length > 0) {
-      const totalUnpaid = unpaidInvoices.reduce((sum: number, invoice: any) => {
-        const paid = invoice.payments?.reduce((pSum: number, payment: any) => pSum + (payment.amount || 0), 0) || 0;
-        const total = invoice.total || 0;
-        return sum + (total - paid);
-      }, 0);
+    if (unpaidInvoices.length > 0 && totalOutstanding > 0) {
+      const settings = await getSettings(tenantId);
+      const currency = settings.billingSettings?.currency || 'PHP';
+      const formattedAmount = new Intl.NumberFormat('en-PH', {
+        style: 'currency',
+        currency: currency,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(totalOutstanding);
 
-      if (totalUnpaid > 0) {
-        const settings = await getSettings();
-        const currency = settings.billingSettings?.currency || 'PHP';
-        const formattedAmount = new Intl.NumberFormat('en-PH', {
-          style: 'currency',
-          currency: currency,
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }).format(totalUnpaid);
-
-        alerts.push({
-          type: 'unpaid_balance',
-          severity: totalUnpaid > 10000 ? 'high' : 'medium',
-          message: `Patient has unpaid balance: ${formattedAmount}`,
-          details: {
-            totalUnpaid,
-            invoiceCount: unpaidInvoices.length,
-            invoices: unpaidInvoices.map((inv) => ({
-              invoiceNumber: inv.invoiceNumber,
-              total: inv.total,
-              status: inv.status,
-            })),
-          },
-        });
-      }
+      alerts.push({
+        type: 'unpaid_balance',
+        severity: totalOutstanding > 10000 ? 'high' : 'medium',
+        message: `Patient has unpaid balance: ${formattedAmount}`,
+        details: {
+          totalUnpaid: totalOutstanding,
+          invoiceCount: unpaidInvoices.length,
+          invoices: unpaidInvoices.map((inv: any) => ({
+            invoiceNumber: inv.invoiceNumber,
+            total: inv.total,
+            status: inv.status,
+          })),
+        },
+      });
     }
 
     // Check for critical pre-existing conditions
@@ -185,4 +163,3 @@ export async function GET(
     );
   }
 }
-

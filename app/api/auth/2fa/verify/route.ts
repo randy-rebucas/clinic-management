@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verify as totpVerify } from 'otplib';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getUserTotpSecret, updateUser } from '@/lib/data/user';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 
@@ -25,9 +25,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Token is required' }, { status: 400 });
     }
 
-    await connectDB();
+    // Explicit tenant branch: a real session.tenantId -> runWithTenant
+    // (auto-scoped read/update); no tenantId (legacy no-subdomain mode) ->
+    // runAsSystem, since there is no tenant to scope by.
+    const tenantId = session.tenantId;
+    const user = tenantId
+      ? await runWithTenant(tenantId, () => getUserTotpSecret(session.userId))
+      : await runAsSystem(() => getUserTotpSecret(session.userId));
 
-    const user = await User.findById(session.userId).select('+totpSecret totpEnabled').lean() as any;
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
@@ -47,7 +52,12 @@ export async function POST(request: NextRequest) {
 
     // Enable 2FA if this was the enrollment verification
     if (!user.totpEnabled) {
-      await User.findByIdAndUpdate(session.userId, { totpEnabled: true });
+      const enable = () => updateUser(session.userId, { totpEnabled: true });
+      if (tenantId) {
+        await runWithTenant(tenantId, enable);
+      } else {
+        await runAsSystem(enable);
+      }
     }
 
     return NextResponse.json({ success: true, enabled: true });

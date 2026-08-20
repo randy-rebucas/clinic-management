@@ -1,38 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
 import logger from '@/lib/logger';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { sanitizeSearch } from '@/lib/utils';
+import {
+  listPatients,
+  createPatient,
+  getMaxPatientCodeNumber,
+  patientCodeExists,
+} from '@/lib/data/patient';
+import type { Prisma } from '@prisma/client';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(request: NextRequest) {
-  // User authentication check
   const session = await verifySession();
-
   if (!session) {
     return unauthorizedResponse();
   }
 
-  // Check permission to read patients
   const permissionCheck = await requirePermission(session, 'patients', 'read');
   if (permissionCheck) {
     return permissionCheck;
   }
 
   try {
-    await connectDB();
-
-    // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
-    // Get query parameters
     const searchParams = request.nextUrl.searchParams;
-
     const search = searchParams.get('search') || '';
     const sex = searchParams.get('sex') || '';
     const active = searchParams.get('active');
@@ -44,178 +45,116 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get('sortOrder') || 'desc';
     const limit = searchParams.get('limit');
     const page = searchParams.get('page') || '1';
-
-    // Build filter query
-    const filter: any = {};
     const isGlobal = searchParams.get('global') === 'true';
 
-    const tenantFilter: any = {};
-    if (!isGlobal) {
-   
-      if (tenantId) {
-        // Support patients with multiple tenantIds (array)
-        tenantFilter.$or = [
-          { tenantIds: { $in: [new Types.ObjectId(tenantId)] } },
-          { tenantIds: { $exists: false } },
-          { tenantIds: null },
-          { tenantIds: { $size: 0 } }
-        ];
-      } else {
-        tenantFilter.$or = [
-          { tenantIds: { $exists: false } },
-          { tenantIds: null },
-          { tenantIds: { $size: 0 } }
-        ];
-      }
-    }
+    const where: Prisma.PatientWhereInput = {};
 
-    // Search filter - search across multiple fields
     if (search) {
       const safeSearch = sanitizeSearch(search);
-      const searchRegex = new RegExp(safeSearch, 'i');
-      let phoneCondition;
-      if (/\d/.test(search)) {
-        // If search contains digits, search phone by digits only
-        const safeDigits = search.replace(/\D/g, '').slice(0, 20);
-        phoneCondition = { phone: { $regex: safeDigits, $options: 'i' } };
-      } else {
-        // Otherwise, search phone as text
-        phoneCondition = { phone: searchRegex };
-      }
-      const searchConditions = [
-        { firstName: searchRegex },
-        { lastName: searchRegex },
-        { middleName: searchRegex },
-        { email: searchRegex },
-        phoneCondition,
-        { patientCode: searchRegex },
-        { 'address.city': searchRegex },
-        { 'address.state': searchRegex },
+      const insensitive = { contains: safeSearch, mode: 'insensitive' as const };
+      const phoneOr: Prisma.PatientWhereInput[] = /\d/.test(search)
+        ? [{ phone: { contains: search.replace(/\D/g, '').slice(0, 20) } }]
+        : [{ phone: insensitive }];
+
+      where.OR = [
+        { firstName: insensitive },
+        { lastName: insensitive },
+        { middleName: insensitive },
+        { email: insensitive },
+        ...phoneOr,
+        { patientCode: insensitive },
+        { addressCity: insensitive },
+        { addressState: insensitive },
       ];
-    
-      if (isGlobal) {
-        // Global search: show all patients matching search (no tenant restriction)
-        filter.$or = searchConditions;
-      } else {
-        // Tenant search: restrict to tenant, then search
-        filter.$and = [tenantFilter, { $or: searchConditions }];
-      }
-    } else {
-      // No search: restrict by tenant if not global
-      if (!isGlobal) {
-        Object.assign(filter, tenantFilter);
-      }
-      // If global, filter remains empty (all patients)
     }
 
-    // Sex filter
     if (sex && sex !== 'all') {
-      filter.sex = sex;
+      where.sex = sex as Prisma.PatientWhereInput['sex'];
     }
 
-    // Active status filter
     if (active !== null && active !== undefined) {
-      filter.active = active === 'true';
+      where.active = active === 'true';
     }
 
-    // Age range filter
     if (minAge || maxAge) {
       const now = new Date();
+      const dob: Prisma.DateTimeFilter = {};
       if (maxAge) {
-        const minDate = new Date(now.getFullYear() - parseInt(maxAge) - 1, now.getMonth(), now.getDate());
-        filter.dateOfBirth = { ...filter.dateOfBirth, $gte: minDate };
+        dob.gte = new Date(now.getFullYear() - parseInt(maxAge) - 1, now.getMonth(), now.getDate());
       }
       if (minAge) {
-        const maxDate = new Date(now.getFullYear() - parseInt(minAge), now.getMonth(), now.getDate());
-        filter.dateOfBirth = { ...filter.dateOfBirth, $lte: maxDate };
+        dob.lte = new Date(now.getFullYear() - parseInt(minAge), now.getMonth(), now.getDate());
       }
+      where.dateOfBirth = dob;
     }
 
-    // Location filters
     if (city) {
-      filter['address.city'] = new RegExp(city, 'i');
+      where.addressCity = { contains: city, mode: 'insensitive' };
     }
     if (state) {
-      filter['address.state'] = new RegExp(state, 'i');
+      where.addressState = { contains: state, mode: 'insensitive' };
     }
 
-    // Build sort object
-    const sort: any = {};
+    const orderBy: Prisma.PatientOrderByWithRelationInput = {};
     if (sortBy === 'name') {
-      sort.lastName = sortOrder === 'asc' ? 1 : -1;
-      sort.firstName = sortOrder === 'asc' ? 1 : -1;
+      // Prisma orderBy doesn't support compound multi-field the same way as Mongo sort objects;
+      // approximate with lastName as primary sort key.
+      orderBy.lastName = sortOrder === 'asc' ? 'asc' : 'desc';
     } else if (sortBy === 'dateOfBirth') {
-      sort.dateOfBirth = sortOrder === 'asc' ? 1 : -1;
+      orderBy.dateOfBirth = sortOrder === 'asc' ? 'asc' : 'desc';
     } else if (sortBy === 'patientCode') {
-      sort.patientCode = sortOrder === 'asc' ? 1 : -1;
+      orderBy.patientCode = sortOrder === 'asc' ? 'asc' : 'desc';
     } else {
-      sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+      (orderBy as any)[sortBy] = sortOrder === 'asc' ? 'asc' : 'desc';
     }
- 
-    // Pagination - use settings default if limit not provided
+
     const settings = await getSettings();
     const defaultLimit = settings.generalSettings?.itemsPerPage || 20;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(500, Math.max(1, limit ? parseInt(limit) : defaultLimit));
     const skip = (pageNum - 1) * limitNum;
 
-    // Build query
-
-    const query = Patient.find(filter).sort(sort).skip(skip).limit(limitNum);
-
-    // Execute query
-    const [patients, total] = await Promise.all([
-      query.exec(),
-      Patient.countDocuments(filter),
-    ]);
+    // Junction scoping (JUNCTION_SCOPED_MODELS.Patient) already restricts to
+    // the active tenant automatically; `global=true` bypasses tenant scoping
+    // by running the query via runAsSystem() instead.
+    const { patients, total } = isGlobal
+      ? await runAsSystem(() => listPatients(where, { skip, take: limitNum, orderBy }))
+      : await run(tenantId, () => listPatients(where, { skip, take: limitNum, orderBy }));
 
     return NextResponse.json({
       success: true,
       data: patients,
-      pagination: limitNum ? {
-        page: pageNum,
-        limit: limitNum,
-        total,
-        pages: Math.ceil(total / limitNum),
-      } : undefined,
+      pagination: limitNum
+        ? {
+            page: pageNum,
+            limit: limitNum,
+            total,
+            pages: Math.ceil(total / limitNum),
+          }
+        : undefined,
     });
   } catch (error: any) {
     console.error('Error fetching patients:', error);
     const errorMessage = error?.message || 'Failed to fetch patients';
-    return NextResponse.json(
-      { success: false, error: errorMessage },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
-  // User authentication check
   const session = await verifySession();
-
   if (!session) {
     return unauthorizedResponse();
   }
 
-  // Check permission to write/create patients
   const permissionCheck = await requirePermission(session, 'patients', 'write');
   if (permissionCheck) {
     return permissionCheck;
   }
 
   try {
-    await connectDB();
-
-    // One-time migration: drop the old compound multikey index { tenantIds, tags }
-    // which caused MongoServerError 171 on every patient insert.
-    // dropIndex is a no-op if the index doesn't exist.
-    Patient.collection.dropIndex('tenantIds_1_tags_1').catch(() => { /* already gone */ });
-
-    // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
-    // Check subscription limit for creating patients
     if (tenantId) {
       const { checkSubscriptionLimit } = await import('@/lib/subscription-limits');
       const limitCheck = await checkSubscriptionLimit(tenantId, 'createPatient');
@@ -233,10 +172,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-
     const body = await request.json();
 
-    // Clean up empty strings/nulls from optional fields
     if (body.email === '') delete body.email;
     if (body.middleName === '' || body.middleName === null) delete body.middleName;
     if (body.suffix === '' || body.suffix === null) delete body.suffix;
@@ -255,29 +192,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Ensure patient is created with tenantIds array
-    if (tenantId && !body.tenantIds) {
-      body.tenantIds = [new Types.ObjectId(tenantId)];
-    } else if (body.tenantId && !body.tenantIds) {
-      // Migrate single tenantId to tenantIds array if present in body
-      body.tenantIds = [new Types.ObjectId(body.tenantId)];
-      delete body.tenantId;
+    // Determine tenant membership for the new patient (explicit nested
+    // junction create — see lib/data/patient.ts createPatient()).
+    let tenantIds: string[] = Array.isArray(body.tenantIds) ? body.tenantIds : [];
+    if (tenantId && tenantIds.length === 0) {
+      tenantIds = [tenantId];
+    } else if (body.tenantId && tenantIds.length === 0) {
+      tenantIds = [body.tenantId];
     }
+    delete body.tenantIds;
+    delete body.tenantId;
 
-    // Ensure tenantIds is always an array of ObjectIds if present
-    if (body.tenantIds && Array.isArray(body.tenantIds)) {
-      body.tenantIds = body.tenantIds.map((id: string | Types.ObjectId) =>
-        id instanceof Types.ObjectId ? id : new Types.ObjectId(id)
-      );
-    }
-
-    // Auto-generate patientCode if not provided
-    // Use retry mechanism to handle race conditions
+    // Auto-generate patientCode if not provided (globally unique — see
+    // prisma/schema.prisma note on Patient.patientCode).
     if (!body.patientCode) {
-      let patientCode: string;
+      let patientCode = '';
       let attempts = 0;
       const maxAttempts = 10;
-
       do {
         attempts++;
         if (attempts > maxAttempts) {
@@ -286,90 +217,34 @@ export async function POST(request: NextRequest) {
             { status: 500 }
           );
         }
-
-        // Find the highest patient code number (tenant-scoped)
-        const codeQuery: any = {
-          patientCode: { $exists: true, $ne: null, $regex: /^CLINIC-\d+$/ }
-        };
-
-        const lastPatient = await Patient.findOne(codeQuery)
-          .sort({ patientCode: -1 })
-          .exec();
-
-        let nextNumber = 1;
-        if (lastPatient?.patientCode) {
-          const match = lastPatient.patientCode.match(/(\d+)$/);
-          if (match) {
-            nextNumber = parseInt(match[1], 10) + attempts; // Add attempts to avoid collisions
-          }
-        }
-
+        const nextNumber = (await runAsSystem(() => getMaxPatientCodeNumber())) + attempts;
         patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
-        // Check if this code already exists
-        const existing = await Patient.findOne({ patientCode });
-        if (!existing) {
-          break; // Code is available
-        }
-
-        // If code exists, try next number
-        nextNumber++;
-        patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
+        const exists = await runAsSystem(() => patientCodeExists(patientCode));
+        if (!exists) break;
       } while (true);
-
       body.patientCode = patientCode;
     }
 
-    // Create patient with retry on duplicate key error
     let patient;
     let createAttempts = 0;
     const maxCreateAttempts = 5;
-
     while (createAttempts < maxCreateAttempts) {
       try {
-        patient = await Patient.create(body);
-        break; // Success
+        patient = await runAsSystem(() => createPatient(body, { tenantIds }));
+        break;
       } catch (createError: any) {
         createAttempts++;
-
-        // If it's a duplicate key error for patientCode, generate a new one
-        if (createError.code === 11000 && createError.keyPattern?.patientCode) {
+        if (createError.code === 'P2002' && createError.meta?.target?.includes?.('patientCode')) {
           if (createAttempts >= maxCreateAttempts) {
             return NextResponse.json(
               { success: false, error: 'Unable to create patient due to code conflict. Please try again.' },
               { status: 500 }
             );
           }
-
-          // Generate a new patient code (tenant-scoped)
-          const codeQuery: any = {
-            patientCode: { $exists: true, $ne: null, $regex: /^CLINIC-\d+$/ }
-          };
-          if (tenantId) {
-            codeQuery.tenantIds = { $in: [new Types.ObjectId(tenantId)] };
-          } else {
-            codeQuery.$or = [
-              { tenantIds: { $exists: false } },
-              { tenantIds: null },
-              { tenantIds: { $size: 0 } }
-            ];
-          }
-          const lastPatient = await Patient.findOne(codeQuery)
-            .sort({ patientCode: -1 })
-            .exec();
-
-          let nextNumber = 1;
-          if (lastPatient?.patientCode) {
-            const match = lastPatient.patientCode.match(/(\d+)$/);
-            if (match) {
-              nextNumber = parseInt(match[1], 10) + createAttempts + 1;
-            }
-          }
-
+          const nextNumber = (await runAsSystem(() => getMaxPatientCodeNumber())) + createAttempts + 1;
           body.patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
-          continue; // Retry with new code
+          continue;
         }
-
-        // If it's not a duplicate key error, throw it
         throw createError;
       }
     }
@@ -380,51 +255,34 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-    // only send email if email field is present
+
     if (body.email) {
-      // Send welcome message (async, don't wait)
       import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
         sendWelcomeMessage({
-          patientId: patient._id,
-          tenantIds: Array.isArray(patient.tenantIds) ? patient.tenantIds.map((id: any) => id.toString()) : [],
+          patientId: patient!.id,
+          tenantIds,
           sendSMS: true,
           sendEmail: true,
           sendNotification: false,
         }).catch((error) => {
           console.error('Error sending welcome message:', error);
-          // Don't fail patient creation if welcome message fails
         });
       }).catch((error) => {
         console.error('Error loading welcome messages module:', error);
       });
     }
-    
+
     return NextResponse.json({ success: true, data: patient }, { status: 201 });
   } catch (error: any) {
     logger.error('Error creating patient', error as Error, {
       name: error.name,
       code: error.code,
-      errors: error.errors,
     });
 
-    if (error.name === 'ValidationError') {
-      // Extract validation error messages
-      const validationErrors = Object.values(error.errors || {}).map((err: any) => err.message).join(', ');
-      return NextResponse.json(
-        { success: false, error: validationErrors || error.message },
-        { status: 400 }
-      );
-    }
-    if (error.code === 11000) {
+    if (error.code === 'P2002') {
       return NextResponse.json(
         { success: false, error: 'Patient with this email already exists' },
         { status: 409 }
-      );
-    }
-    if (error.code === 171 || (error.message && error.message.includes('parallel arrays'))) {
-      return NextResponse.json(
-        { success: false, error: 'Database index conflict prevented patient creation. Please try again — the issue is being resolved automatically.' },
-        { status: 500 }
       );
     }
     return NextResponse.json(
@@ -433,4 +291,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

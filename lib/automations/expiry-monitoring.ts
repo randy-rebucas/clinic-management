@@ -1,17 +1,20 @@
 // Expiry Date Monitoring Automation
 // Alerts before medicines expire
 
-import connectDB from '@/lib/mongodb';
-import Inventory from '@/models/Inventory';
-import User from '@/models/User';
-import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getInventoryItemById, listInventoryExpiringInRange } from '@/lib/data/inventory';
+import { listActiveUsersByRoleNames, listActiveUsersFallback } from '@/lib/data/user';
+import { getAutomationSettings } from '@/lib/data/settings';
+import { createNotification } from '@/lib/data/notification';
 import { sendEmail } from '@/lib/email';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export interface ExpiryAlertOptions {
-  inventoryId?: string | Types.ObjectId;
-  tenantId?: string | Types.ObjectId;
+  inventoryId?: string;
+  tenantId?: string;
   daysBeforeExpiry?: number;
   sendEmail?: boolean;
   sendNotification?: boolean;
@@ -26,29 +29,18 @@ export async function sendExpiryAlert(options: ExpiryAlertOptions): Promise<{
   error?: string;
 }> {
   try {
-    await connectDB();
+    const tenantId = options.tenantId ?? null;
 
-    const settings = await getSettings();
-    const autoExpiryMonitoring = (settings.automationSettings as any)?.autoExpiryMonitoring !== false;
-
-    if (!autoExpiryMonitoring) {
+    const automationSettings = await run(tenantId, () => getAutomationSettings(tenantId));
+    if (!automationSettings.autoExpiryMonitoring) {
       return { success: true, sent: false };
     }
 
-    // Get inventory item
-    const inventoryQuery: any = {};
-    if (options.inventoryId) {
-      inventoryQuery._id = typeof options.inventoryId === 'string' 
-        ? new Types.ObjectId(options.inventoryId) 
-        : options.inventoryId;
-    }
-    if (options.tenantId) {
-      inventoryQuery.tenantId = typeof options.tenantId === 'string' 
-        ? new Types.ObjectId(options.tenantId) 
-        : options.tenantId;
+    if (!options.inventoryId) {
+      return { success: false, sent: false, error: 'Inventory item not found' };
     }
 
-    const inventory = await Inventory.findOne(inventoryQuery);
+    const inventory = await run(tenantId, () => getInventoryItemById(options.inventoryId!));
 
     if (!inventory) {
       return { success: false, sent: false, error: 'Inventory item not found' };
@@ -74,35 +66,11 @@ export async function sendExpiryAlert(options: ExpiryAlertOptions): Promise<{
       return { success: true, sent: false };
     }
 
-    // Get users with inventory management permissions
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : inventory.tenantId;
-
-    const usersQuery: any = {};
-    if (tenantId) {
-      usersQuery.tenantId = tenantId;
-    }
-
-    // Get admin and accountant users
-    const users = await User.find(usersQuery)
-      .populate('role')
-      .exec();
-
-    const alertRecipients = users.filter((user: any) => {
-      const role = user.role;
-      if (!role) return false;
-      return role.name === 'admin' || role.name === 'accountant';
-    });
+    // Get admin/accountant users
+    let alertRecipients = await run(tenantId, () => listActiveUsersByRoleNames(['admin', 'accountant']));
 
     if (alertRecipients.length === 0) {
-      // Fallback: get any admin user
-      const adminUser = await User.findOne({ ...usersQuery, role: { $exists: true } })
-        .populate('role')
-        .exec();
-      if (adminUser) {
-        alertRecipients.push(adminUser);
-      }
+      alertRecipients = (await run(tenantId, () => listActiveUsersFallback(1))) as typeof alertRecipients;
     }
 
     if (alertRecipients.length === 0) {
@@ -118,22 +86,19 @@ export async function sendExpiryAlert(options: ExpiryAlertOptions): Promise<{
     if (options.sendNotification !== false) {
       for (const user of alertRecipients) {
         try {
-          await createNotification({
-            userId: user._id,
-            tenantId,
-            type: 'system',
-            priority: daysUntilExpiry <= 7 ? 'high' : 'normal',
-            title: daysUntilExpiry <= 7 ? 'URGENT: Medicine Expiring Soon' : 'Medicine Expiring Soon',
-            message: alertMessage,
-            relatedEntity: {
-              type: 'invoice', // Using invoice type as placeholder
-              id: inventory._id,
-            },
-            actionUrl: `/inventory/${inventory._id}`,
-          });
+          await run(tenantId, () =>
+            createNotification({
+              userId: user.id,
+              type: 'system',
+              priority: daysUntilExpiry <= 7 ? 'high' : 'normal',
+              title: daysUntilExpiry <= 7 ? 'URGENT: Medicine Expiring Soon' : 'Medicine Expiring Soon',
+              message: alertMessage,
+              actionUrl: `/inventory/${inventory.id}`,
+            })
+          );
           sent = true;
         } catch (error) {
-          console.error(`Error creating notification for user ${user._id}:`, error);
+          console.error(`Error creating notification for user ${user.id}:`, error);
         }
       }
     }
@@ -163,10 +128,10 @@ export async function sendExpiryAlert(options: ExpiryAlertOptions): Promise<{
     return { success: true, sent };
   } catch (error: any) {
     console.error('Error sending expiry alert:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send expiry alert' 
+      error: error.message || 'Failed to send expiry alert',
     };
   }
 }
@@ -175,7 +140,7 @@ export async function sendExpiryAlert(options: ExpiryAlertOptions): Promise<{
  * Process all inventory items and send expiry alerts
  * This should be called by a cron job
  */
-export async function processExpiryAlerts(tenantId?: string | Types.ObjectId): Promise<{
+export async function processExpiryAlerts(tenantId?: string): Promise<{
   success: boolean;
   processed: number;
   alertsSent: number;
@@ -183,40 +148,19 @@ export async function processExpiryAlerts(tenantId?: string | Types.ObjectId): P
   results: Array<{ inventoryId: string; daysUntilExpiry: number; success: boolean; error?: string }>;
 }> {
   try {
-    await connectDB();
+    const resolvedTenantId = tenantId ?? null;
 
-    const settings = await getSettings();
-    const autoExpiryMonitoring = (settings.automationSettings as any)?.autoExpiryMonitoring !== false;
-
-    if (!autoExpiryMonitoring) {
+    const automationSettings = await run(resolvedTenantId, () => getAutomationSettings(resolvedTenantId));
+    if (!automationSettings.autoExpiryMonitoring) {
       return { success: true, processed: 0, alertsSent: 0, errors: 0, results: [] };
     }
 
-    // Build query for items with expiry dates
+    // Build range for items with expiry dates within 30 days
     const today = new Date();
     const thirtyDaysFromNow = new Date(today);
     thirtyDaysFromNow.setDate(today.getDate() + 30);
-    const sevenDaysFromNow = new Date(today);
-    sevenDaysFromNow.setDate(today.getDate() + 7);
 
-    const query: any = {
-      expiryDate: { 
-        $exists: true, 
-        $ne: null,
-        $gte: today, 
-        $lte: thirtyDaysFromNow 
-      }, // Within 30 days
-      status: { $ne: 'expired' }, // Not already expired
-    };
-
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
-
-    // Get all inventory items expiring within 30 days
-    const inventoryItems = await Inventory.find(query);
+    const inventoryItems = await run(resolvedTenantId, () => listInventoryExpiringInRange(today, thirtyDaysFromNow));
 
     const results: Array<{ inventoryId: string; daysUntilExpiry: number; success: boolean; error?: string }> = [];
     let alertsSent = 0;
@@ -233,15 +177,15 @@ export async function processExpiryAlerts(tenantId?: string | Types.ObjectId): P
 
       if (shouldAlert) {
         const result = await sendExpiryAlert({
-          inventoryId: item._id,
-          tenantId: item.tenantId,
+          inventoryId: item.id,
+          tenantId: resolvedTenantId ?? undefined,
           daysBeforeExpiry: daysUntilExpiry,
           sendEmail: true,
           sendNotification: true,
         });
 
         results.push({
-          inventoryId: item._id.toString(),
+          inventoryId: item.id,
           daysUntilExpiry,
           success: result.success,
           error: result.error,
@@ -348,7 +292,7 @@ function generateExpiryEmail(inventory: any, daysUntilExpiry: number): { subject
             <p><strong>Expiry Date:</strong> ${expiryDate}</p>
             <p class="days">Days Until Expiry: ${daysUntilExpiry}</p>
           </div>
-          ${daysUntilExpiry <= 1 
+          ${daysUntilExpiry <= 1
             ? '<p><strong>This item expires very soon. Please use or dispose immediately.</strong></p>'
             : daysUntilExpiry <= 7
             ? '<p><strong>This item is expiring soon. Please prioritize usage to avoid waste.</strong></p>'
@@ -365,4 +309,3 @@ function generateExpiryEmail(inventory: any, daysUntilExpiry: number): { subject
 
   return { subject, html };
 }
-

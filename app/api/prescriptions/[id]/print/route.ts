@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Prescription from '@/models/Prescription';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
 import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPrescriptionById, markPatientCopyPrinted, markClinicCopyArchived } from '@/lib/data/prescription';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -17,7 +21,6 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
     const searchParams = request.nextUrl.searchParams;
     const copyType = searchParams.get('copy') || 'patient'; // 'patient' or 'clinic'
@@ -36,17 +39,7 @@ export async function GET(
     }
     const settingInfo = await getSettings(tenantId);
 
-    const prescription = await Prescription.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth address gender')
-      .populate({
-        path: 'prescribedBy',
-        select: 'name email doctorProfile licenseNumber',
-        populate: {
-          path: 'doctorProfile',
-          select: 'licenseNumber'
-        }
-      })
-      .populate('visit', 'visitCode date followUpDate');
+    let prescription = await run(tenantId, () => getPrescriptionById(id));
 
     if (!prescription) {
       return NextResponse.json(
@@ -57,23 +50,9 @@ export async function GET(
 
     // Update archive tracking
     if (copyType === 'patient') {
-      prescription.copies = prescription.copies || {};
-      prescription.copies.patientCopy = {
-        ...prescription.copies.patientCopy,
-        printedAt: new Date(),
-        printedBy: session.userId as any,
-      };
-
-      await prescription.save();
+      prescription = await run(tenantId, () => markPatientCopyPrinted(id, session.userId));
     } else if (copyType === 'clinic') {
-      prescription.copies = prescription.copies || {};
-      prescription.copies.clinicCopy = {
-        ...prescription.copies.clinicCopy,
-        archivedAt: new Date(),
-        archivedBy: session.userId as any,
-        location: 'Digital Archive',
-      };
-      await prescription.save();
+      prescription = await run(tenantId, () => markClinicCopyArchived(id, session.userId));
     }
 
     // Generate HTML for printable prescription

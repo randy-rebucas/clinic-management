@@ -1,18 +1,21 @@
 // No-Show Handling Automation
 // Automatically handles appointments marked as no-show
 
-import connectDB from '@/lib/mongodb';
-import Appointment from '@/models/Appointment';
-import Patient from '@/models/Patient';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getAppointmentById, updateAppointment } from '@/lib/data/appointment';
+import prisma from '@/lib/prisma';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
+import { createNotification } from '@/lib/data/notification';
 import { sendEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export interface NoShowHandlingOptions {
-  appointmentId: string | Types.ObjectId;
-  tenantId?: string | Types.ObjectId;
+  appointmentId: string;
+  tenantId?: string;
   autoReschedule?: boolean;
   sendNotification?: boolean;
   sendEmail?: boolean;
@@ -29,105 +32,95 @@ export async function handleNoShow(options: NoShowHandlingOptions): Promise<{
   error?: string;
 }> {
   try {
-    await connectDB();
+    const tenantId = options.tenantId ? String(options.tenantId) : undefined;
+    const appointmentId = String(options.appointmentId);
 
-    const settings = await getSettings();
-    const autoNoShowHandling = (settings.automationSettings as any)?.autoNoShowHandling !== false;
+    return await run(tenantId, async () => {
+      const settings = await getSettings(tenantId);
+      const autoNoShowHandling = (settings.automationSettings as any)?.autoNoShowHandling !== false;
 
-    if (!autoNoShowHandling) {
-      return { success: true, handled: false };
-    }
+      if (!autoNoShowHandling) {
+        return { success: true, handled: false };
+      }
 
-    const appointmentId = typeof options.appointmentId === 'string' 
-      ? new Types.ObjectId(options.appointmentId) 
-      : options.appointmentId;
+      const appointment = await getAppointmentById(appointmentId);
 
-    const appointment = await Appointment.findById(appointmentId)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('doctor', 'firstName lastName');
+      if (!appointment) {
+        return { success: false, handled: false, error: 'Appointment not found' };
+      }
 
-    if (!appointment) {
-      return { success: false, handled: false, error: 'Appointment not found' };
-    }
+      // Only handle if status is no-show
+      if (appointment.status !== 'no_show') {
+        return { success: true, handled: false };
+      }
 
-    // Only handle if status is no-show
-    if (appointment.status !== 'no-show') {
-      return { success: true, handled: false };
-    }
+      const patient = appointment.patient as any;
+      if (!patient) {
+        return { success: false, handled: false, error: 'Patient not found' };
+      }
 
-    const patient = appointment.patient as any;
-    if (!patient) {
-      return { success: false, handled: false, error: 'Patient not found' };
-    }
+      const rescheduled = false;
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : appointment.tenantId;
+      // Send apology and rescheduling offer
+      const message = generateNoShowMessage(appointment);
+      const emailContent = generateNoShowEmail(appointment, settings);
 
-    const rescheduled = false;
+      // Send SMS
+      if (options.sendSMS !== false && patient.phone) {
+        try {
+          let phoneNumber = patient.phone.trim();
+          if (!phoneNumber.startsWith('+')) {
+            phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
+          }
 
-    // Send apology and rescheduling offer
-    const message = generateNoShowMessage(appointment);
-    const emailContent = generateNoShowEmail(appointment, settings);
-
-    // Send SMS
-    if (options.sendSMS !== false && patient.phone) {
-      try {
-        let phoneNumber = patient.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
+          await sendSMS({
+            to: phoneNumber,
+            message,
+          });
+        } catch (error) {
+          console.error('Error sending no-show SMS:', error);
         }
-
-        await sendSMS({
-          to: phoneNumber,
-          message,
-        });
-      } catch (error) {
-        console.error('Error sending no-show SMS:', error);
       }
-    }
 
-    // Send email
-    if (options.sendEmail !== false && patient.email) {
-      try {
-        await sendEmail({
-          to: patient.email,
-          subject: emailContent.subject,
-          html: emailContent.html,
-        });
-      } catch (error) {
-        console.error('Error sending no-show email:', error);
+      // Send email
+      if (options.sendEmail !== false && patient.email) {
+        try {
+          await sendEmail({
+            to: patient.email,
+            subject: emailContent.subject,
+            html: emailContent.html,
+          });
+        } catch (error) {
+          console.error('Error sending no-show email:', error);
+        }
       }
-    }
 
-    // Send notification
-    if (options.sendNotification !== false && patient._id) {
-      try {
-        await createNotification({
-          userId: patient._id,
-          tenantId,
-          type: 'appointment',
-          priority: 'normal',
-          title: 'Missed Appointment',
-          message: 'We noticed you missed your appointment. Would you like to reschedule?',
-          relatedEntity: {
+      // Send notification
+      if (options.sendNotification !== false && patient.id) {
+        try {
+          await createNotification({
+            userId: patient.id,
             type: 'appointment',
-            id: appointment._id,
-          },
-          actionUrl: `/appointments?reschedule=${appointment._id}`,
-        });
-      } catch (error) {
-        console.error('Error creating no-show notification:', error);
+            priority: 'normal',
+            title: 'Missed Appointment',
+            message: 'We noticed you missed your appointment. Would you like to reschedule?',
+            relatedEntityType: 'appointment',
+            relatedEntityId: appointment.id,
+            actionUrl: `/appointments?reschedule=${appointment.id}`,
+          });
+        } catch (error) {
+          console.error('Error creating no-show notification:', error);
+        }
       }
-    }
 
-    return { success: true, handled: true, rescheduled };
+      return { success: true, handled: true, rescheduled };
+    });
   } catch (error: any) {
     console.error('Error handling no-show:', error);
-    return { 
-      success: false, 
+    return {
+      success: false,
       handled: false,
-      error: error.message || 'Failed to handle no-show' 
+      error: error.message || 'Failed to handle no-show'
     };
   }
 }
@@ -136,7 +129,7 @@ export async function handleNoShow(options: NoShowHandlingOptions): Promise<{
  * Process all no-show appointments and handle them
  * This should be called by a cron job
  */
-export async function processNoShows(tenantId?: string | Types.ObjectId): Promise<{
+export async function processNoShows(tenantId?: string): Promise<{
   success: boolean;
   processed: number;
   handled: number;
@@ -144,96 +137,85 @@ export async function processNoShows(tenantId?: string | Types.ObjectId): Promis
   results: Array<{ appointmentId: string; success: boolean; error?: string }>;
 }> {
   try {
-    await connectDB();
+    const tId = tenantId ? String(tenantId) : undefined;
 
-    const settings = await getSettings();
-    const autoNoShowHandling = (settings.automationSettings as any)?.autoNoShowHandling !== false;
+    return await run(tId, async () => {
+      const settings = await getSettings(tId);
+      const autoNoShowHandling = (settings.automationSettings as any)?.autoNoShowHandling !== false;
 
-    if (!autoNoShowHandling) {
-      return { success: true, processed: 0, handled: 0, errors: 0, results: [] };
-    }
+      if (!autoNoShowHandling) {
+        return { success: true, processed: 0, handled: 0, errors: 0, results: [] };
+      }
 
-    // Find appointments that should be marked as no-show
-    // (appointment time has passed, status is still scheduled/confirmed)
-    const now = new Date();
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      // Find appointments that should be marked as no-show
+      // (appointment time has passed, status is still scheduled/confirmed)
+      const now = new Date();
 
-    const query: any = {
-      status: { $in: ['scheduled', 'confirmed'] },
-      $or: [
-        { 
-          scheduledAt: { $lt: oneHourAgo }
+      const appointments = await prisma.appointment.findMany({
+        where: {
+          ...(tId ? { tenantId: tId } : {}),
+          status: { in: ['scheduled', 'confirmed'] as any },
+          appointmentDate: { lt: now },
         },
-        {
-          appointmentDate: { $lt: now },
-          appointmentTime: { $exists: true }
+        include: {
+          patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+        },
+      });
+
+      const results: Array<{ appointmentId: string; success: boolean; error?: string }> = [];
+      let handled = 0;
+      let errors = 0;
+
+      for (const appointment of appointments) {
+        // Check if appointment time has actually passed
+        let appointmentDateTime: Date | null = null;
+
+        if (appointment.appointmentDate && appointment.appointmentTime) {
+          const [hours, minutes] = appointment.appointmentTime.split(':').map(Number);
+          appointmentDateTime = new Date(appointment.appointmentDate);
+          appointmentDateTime.setHours(hours, minutes, 0, 0);
+        } else if (appointment.appointmentDate) {
+          appointmentDateTime = new Date(appointment.appointmentDate);
         }
-      ],
-    };
 
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
+        if (!appointmentDateTime || appointmentDateTime > now) {
+          continue; // Appointment hasn't passed yet
+        }
 
-    const appointments = await Appointment.find(query)
-      .populate('patient', 'firstName lastName email phone');
+        // Mark as no-show
+        await updateAppointment(appointment.id, { status: 'no_show' } as any);
 
-    const results: Array<{ appointmentId: string; success: boolean; error?: string }> = [];
-    let handled = 0;
-    let errors = 0;
+        // Handle no-show
+        const result = await handleNoShow({
+          appointmentId: appointment.id,
+          tenantId: appointment.tenantId ?? undefined,
+          autoReschedule: false, // Don't auto-reschedule, just offer
+          sendNotification: true,
+          sendEmail: true,
+          sendSMS: true,
+        });
 
-    for (const appointment of appointments) {
-      // Check if appointment time has actually passed
-      let appointmentDateTime: Date | null = null;
-      
-      if (appointment.scheduledAt) {
-        appointmentDateTime = new Date(appointment.scheduledAt);
-      } else if (appointment.appointmentDate && appointment.appointmentTime) {
-        const [hours, minutes] = appointment.appointmentTime.split(':').map(Number);
-        appointmentDateTime = new Date(appointment.appointmentDate);
-        appointmentDateTime.setHours(hours, minutes, 0, 0);
+        results.push({
+          appointmentId: appointment.id,
+          success: result.success,
+          error: result.error,
+        });
+
+        if (result.success && result.handled) {
+          handled++;
+        } else if (!result.success) {
+          errors++;
+        }
       }
 
-      if (!appointmentDateTime || appointmentDateTime > now) {
-        continue; // Appointment hasn't passed yet
-      }
-
-      // Mark as no-show
-      appointment.status = 'no-show';
-      await appointment.save();
-
-      // Handle no-show
-      const result = await handleNoShow({
-        appointmentId: appointment._id,
-        tenantId: appointment.tenantId,
-        autoReschedule: false, // Don't auto-reschedule, just offer
-        sendNotification: true,
-        sendEmail: true,
-        sendSMS: true,
-      });
-
-      results.push({
-        appointmentId: appointment._id.toString(),
-        success: result.success,
-        error: result.error,
-      });
-
-      if (result.success && result.handled) {
-        handled++;
-      } else if (!result.success) {
-        errors++;
-      }
-    }
-
-    return {
-      success: true,
-      processed: appointments.length,
-      handled,
-      errors,
-      results,
-    };
+      return {
+        success: true,
+        processed: appointments.length,
+        handled,
+        errors,
+        results,
+      };
+    });
   } catch (error: any) {
     console.error('Error processing no-shows:', error);
     return {
@@ -250,11 +232,10 @@ export async function processNoShows(tenantId?: string | Types.ObjectId): Promis
  * Generate no-show message
  */
 function generateNoShowMessage(appointment: any): string {
-  const patient = appointment.patient as any;
   const doctor = appointment.doctor as any;
   const appointmentDate = new Date(appointment.appointmentDate).toLocaleDateString();
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
-  const rescheduleUrl = `${baseUrl}/book?reschedule=${appointment._id}`;
+  const rescheduleUrl = `${baseUrl}/book?reschedule=${appointment.id}`;
 
   return `We noticed you missed your appointment on ${appointmentDate}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. We understand things come up. Would you like to reschedule? Visit ${rescheduleUrl} or reply RESCHEDULE.`;
 }
@@ -268,7 +249,7 @@ function generateNoShowEmail(appointment: any, settings: any): { subject: string
   const appointmentDate = new Date(appointment.appointmentDate).toLocaleDateString();
   const clinicName = settings.clinicName || 'Clinic';
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
-  const rescheduleUrl = `${baseUrl}/book?reschedule=${appointment._id}`;
+  const rescheduleUrl = `${baseUrl}/book?reschedule=${appointment.id}`;
 
   const subject = `Missed Appointment - ${clinicName}`;
 
@@ -316,4 +297,3 @@ function generateNoShowEmail(appointment: any, settings: any): { subject: string
 
   return { subject, html };
 }
-

@@ -1,8 +1,8 @@
 import 'server-only';
 import { SignJWT, jwtVerify, JWTPayload } from 'jose';
 import { cookies } from 'next/headers';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getUserById } from '@/lib/data/user';
 
 const secretKey = process.env.SESSION_SECRET;
 // Only enforce SESSION_SECRET at runtime, not during build
@@ -213,77 +213,32 @@ export async function getUser() {
     const session = await verifySession();
     if (!session) return null;
 
-    await connectDB();
-    
-    // First get user without populating to check role type
-    const user = await User.findById(session.userId)
-      .select('-password')
-      .lean();
-    if (!user || Array.isArray(user)) return null;
-    
-    // Type assertion for lean() result
-    const userObj = user as unknown as { _id: { toString(): string }; role?: any; [key: string]: any };
-    
-    // Handle role - could be ObjectId, string, or already populated object
-    let roleData: { name: string; displayName?: string } | null = null;
-    
-    if (userObj.role) {
-      // If role is already an object (populated), use it directly
-      if (typeof userObj.role === 'object' && userObj.role !== null && 'name' in userObj.role) {
-        roleData = {
-          name: (userObj.role as any).name,
-          displayName: (userObj.role as any).displayName,
-        };
-      } 
-      // If role is a string (legacy data or invalid ObjectId), look up by name
-      else if (typeof userObj.role === 'string') {
-        const Role = (await import('@/models/Role')).default;
-        const roleDoc = await Role.findOne({ name: userObj.role }).lean();
-        if (roleDoc && !Array.isArray(roleDoc)) {
-          const roleObj = roleDoc as unknown as { name: string; displayName?: string };
-          roleData = {
-            name: roleObj.name,
-            displayName: roleObj.displayName,
-          };
-        }
-      }
-      // If role is an ObjectId, populate it
-      else {
-        try {
-          const Role = (await import('@/models/Role')).default;
-          const roleDoc = await Role.findById(userObj.role).lean();
-          if (roleDoc && !Array.isArray(roleDoc)) {
-            const roleObj = roleDoc as unknown as { name: string; displayName?: string };
-            roleData = {
-              name: roleObj.name,
-              displayName: roleObj.displayName,
-            };
-          }
-        } catch (populateError) {
-          // If populate fails (invalid ObjectId), try to find by name from session
-          if (session.role) {
-            const Role = (await import('@/models/Role')).default;
-            const roleDoc = await Role.findOne({ name: session.role }).lean();
-            if (roleDoc && !Array.isArray(roleDoc)) {
-              const roleObj = roleDoc as unknown as { name: string; displayName?: string };
-              roleData = {
-                name: roleObj.name,
-                displayName: roleObj.displayName,
-              };
-            }
-          }
-        }
-      }
-    }
-    
-    // Use role name from populated data or fallback to session role
+    // Explicit tenant branch: a real tenantId resolved on the session ->
+    // scope the lookup via runWithTenant (the extension auto-injects
+    // tenantId into the User query). No tenantId on the session -> legacy
+    // no-subdomain mode, bypass scoping via runAsSystem so untenanted /
+    // cross-tenant users can still be found, matching the old Mongoose
+    // `$or: [{tenantId:{$exists:false}}, {tenantId:null}]` semantics as
+    // closely as Postgres's nullable-column model allows.
+    const tenantId = session.tenantId;
+    const user = tenantId
+      ? await runWithTenant(tenantId, () => getUserById(session.userId, { withRole: true }))
+      : await runAsSystem(() => getUserById(session.userId, { withRole: true }));
+
+    if (!user) return null;
+
+    const roleData = user.role
+      ? { name: user.role.name, displayName: user.role.displayName }
+      : null;
+
+    // Use role name from resolved role or fallback to session role
     const roleName = roleData?.name || session.role || 'receptionist';
-    
+
     return {
-      ...userObj,
-      _id: userObj._id.toString(),
+      ...user,
+      _id: user.id,
       role: roleName, // Return role as string for compatibility
-      roleData: roleData, // Include full role data if available
+      roleData, // Include full role data if available
     };
   } catch (error) {
     console.error('Failed to get user:', error);

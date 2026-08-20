@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Medicine from '@/models/Medicine';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { sanitizeSearch } from '@/lib/utils';
+import { listMedicines, createMedicine } from '@/lib/data/medicine';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -15,57 +14,24 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-    
-    // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search');
     const category = searchParams.get('category');
     const active = searchParams.get('active') !== 'false';
 
-    const query: any = {};
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    if (active) {
-      query.active = true;
-    }
-    if (category) {
-      query.category = category;
-    }
-    if (search) {
-      const safeSearch = sanitizeSearch(search);
-      const searchConditions = [
-        { name: { $regex: safeSearch, $options: 'i' } },
-        { genericName: { $regex: safeSearch, $options: 'i' } },
-        { brandNames: { $in: [new RegExp(safeSearch, 'i')] } },
-      ];
-      
-      // Combine tenant filter with search conditions
-      const tenantFilter: any = {};
-      if (tenantId) {
-        tenantFilter.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      query.$and = [
-        tenantFilter,
-        { $or: searchConditions }
-      ];
-    }
+    const opts = {
+      category: category || undefined,
+      active,
+      search: search ? sanitizeSearch(search) : undefined,
+      take: 100,
+    };
 
-    const medicines = await Medicine.find(query)
-      .sort({ name: 1 })
-      .limit(100);
+    const medicines = tenantId
+      ? await runWithTenant(tenantId, () => listMedicines(opts))
+      : await runAsSystem(() => listMedicines(opts));
 
     return NextResponse.json({ success: true, data: medicines });
   } catch (error: any) {
@@ -93,37 +59,25 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const body = await request.json();
-    
-    // Get tenant context from session or headers
+
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
-    // Ensure medicine is created with tenantId
-    const medicineData: any = { ...body };
-    if (tenantId && !medicineData.tenantId) {
-      medicineData.tenantId = new Types.ObjectId(tenantId);
-    }
-    
-    const medicine = await Medicine.create(medicineData);
-    return NextResponse.json({ 
-      success: true, 
+    const medicine = tenantId
+      ? await runWithTenant(tenantId, () => createMedicine(body))
+      : await runAsSystem(() => createMedicine(body));
+
+    return NextResponse.json({
+      success: true,
       data: medicine,
       message: 'Medicine created successfully'
     }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating medicine:', error);
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
     return NextResponse.json(
       { success: false, error: 'Failed to create medicine' },
       { status: 500 }
     );
   }
 }
-

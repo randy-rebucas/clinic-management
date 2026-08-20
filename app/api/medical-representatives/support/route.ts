@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession } from '@/app/lib/dal';
-import connectDB from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
-import SupportRequestModel from '@/models/SupportRequest';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { createSupportRequest } from '@/lib/data/support-request';
 
 const VALID_CATEGORIES = ['general', 'technical', 'billing', 'account', 'onboarding', 'other'] as const;
 type SupportCategory = typeof VALID_CATEGORIES[number];
@@ -65,17 +65,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Message must be 5000 characters or fewer.' }, { status: 400 });
     }
 
-    await connectDB();
-
-    const supportRequest = await SupportRequestModel.create({
-      tenantId: session.tenantId,
-      userId: session.userId,
-      email,
-      subject,
-      category,
-      message,
-      status: 'open',
-    });
+    const supportRequest = await (session.tenantId
+      ? runWithTenant(session.tenantId, () =>
+          createSupportRequest({
+            userId: session.userId,
+            email,
+            subject,
+            category: category as SupportCategory,
+            message,
+          })
+        )
+      : runAsSystem(() =>
+          createSupportRequest({
+            userId: session.userId,
+            email,
+            subject,
+            category: category as SupportCategory,
+            message,
+          })
+        ));
 
     // Send email notification to support team
     try {

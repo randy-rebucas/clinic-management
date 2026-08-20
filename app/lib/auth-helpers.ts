@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 import { redirect } from 'next/navigation';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
-import Permission from '@/models/Permission';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getUserById } from '@/lib/data/user';
+import { listPermissions } from '@/lib/data/permission';
 import { verifySession } from './dal';
 
 export interface JWTPayload {
@@ -58,22 +57,29 @@ export async function getCurrentUser(request: NextRequest): Promise<JWTPayload |
     if (!payload) {
       return null;
     }
-    await connectDB();
-    const user = await User.findById(payload.userId).select('isActive status tenantId').lean<{ isActive?: boolean; status?: string; tenantId?: string } | null>();
+
+    // Explicit tenant branch: a tenantId on the JWT payload -> scope the
+    // User lookup via runWithTenant; no tenantId (legacy no-subdomain mode)
+    // -> runAsSystem so cross-tenant / untenanted users can still resolve.
+    const user = payload.tenantId
+      ? await runWithTenant(payload.tenantId, () => getUserById(payload.userId, { withRole: false }))
+      : await runAsSystem(() => getUserById(payload.userId, { withRole: false }));
 
     // Check if user exists and is active
     if (!user) {
       return null;
     }
 
-    // Check user is active (support both isActive boolean and status string)
-    const isUserActive = user.isActive !== false && user.status !== 'inactive';
+    // Check user is active (Prisma's `status` is RecordStatus; there is no
+    // separate `isActive` boolean column post-migration — see
+    // prisma/MIGRATION_NOTES.md)
+    const isUserActive = user.status !== 'inactive';
     if (!isUserActive) {
       return null;
     }
 
     // For multi-tenant, verify tenant matches if both have tenantId
-    if (payload.tenantId && user.tenantId && user.tenantId.toString() !== payload.tenantId) {
+    if (payload.tenantId && user.tenantId && user.tenantId !== payload.tenantId) {
       return null;
     }
 
@@ -204,47 +210,8 @@ export async function hasPermission(
   }
 
   try {
-    await connectDB();
-
-    // Build query for permissions
-    const permissionQuery: any = {
-      resource,
-      actions: action,
-    };
-
-    // Add tenant filter if available
-    if (session.tenantId) {
-      permissionQuery.tenantId = new Types.ObjectId(session.tenantId);
-    } else {
-      permissionQuery.$or = [
-        { tenantId: { $exists: false } },
-        { tenantId: null }
-      ];
-    }
-
-    // Check user-specific permission
-    if (session.userId) {
-      const userPermission = await Permission.findOne({
-        ...permissionQuery,
-        user: new Types.ObjectId(session.userId),
-      }).lean();
-
-      if (userPermission) {
-        return true;
-      }
-    }
-
-    // Check role-based permission
-    if (session.roleId) {
-      const rolePermission = await Permission.findOne({
-        ...permissionQuery,
-        role: new Types.ObjectId(session.roleId),
-      }).lean();
-
-      if (rolePermission) {
-        return true;
-      }
-    }
+    const granted = await checkDbPermission(session, resource, action);
+    if (granted) return true;
 
     // Check default role permissions
     if (session.role && defaultRolePermissions[session.role]) {
@@ -259,6 +226,46 @@ export async function hasPermission(
     console.error('Error checking permission:', error);
     return false;
   }
+}
+
+/**
+ * Shared DB lookup for user-specific and role-based Permission rows, used by
+ * hasPermission/requirePermission/requirePagePermission below. Explicit
+ * tenant branch: a real session.tenantId -> runWithTenant (auto-scoped);
+ * no tenantId (legacy no-subdomain mode) -> runAsSystem, searching across
+ * all tenants + untenanted permissions (closest Postgres equivalent of the
+ * old Mongoose `$or: [{tenantId:{$exists:false}}, {tenantId:null}]`).
+ */
+async function checkDbPermission(
+  session: { userId?: string; role?: string; roleId?: string; tenantId?: string },
+  resource: string,
+  action: string
+): Promise<boolean> {
+  const lookup = async () => {
+    // Check user-specific permission first
+    if (session.userId) {
+      const userPermissions = await listPermissions({
+        resource,
+        actions: { has: action },
+        userId: session.userId,
+      });
+      if (userPermissions.length > 0) return true;
+    }
+
+    // Check role-based permission
+    if (session.roleId) {
+      const rolePermissions = await listPermissions({
+        resource,
+        actions: { has: action },
+        roles: { some: { id: session.roleId } },
+      });
+      if (rolePermissions.length > 0) return true;
+    }
+
+    return false;
+  };
+
+  return session.tenantId ? runWithTenant(session.tenantId, lookup) : runAsSystem(lookup);
 }
 
 /**
@@ -280,47 +287,8 @@ export async function requirePermission(
   }
 
   try {
-    await connectDB();
-
-    // Build query for permissions - check both user-specific and role-based
-    const permissionQuery: any = {
-      resource,
-      actions: action,
-    };
-
-    // Add tenant filter if available
-    if (session.tenantId) {
-      permissionQuery.tenantId = new Types.ObjectId(session.tenantId);
-    } else {
-      permissionQuery.$or = [
-        { tenantId: { $exists: false } },
-        { tenantId: null }
-      ];
-    }
-
-    // Check user-specific permission first
-    if (session.userId) {
-      const userPermission = await Permission.findOne({
-        ...permissionQuery,
-        user: new Types.ObjectId(session.userId),
-      }).lean();
-
-      if (userPermission) {
-        return null; // Permission granted
-      }
-    }
-
-    // Check role-based permission
-    if (session.roleId) {
-      const rolePermission = await Permission.findOne({
-        ...permissionQuery,
-        role: new Types.ObjectId(session.roleId),
-      }).lean();
-
-      if (rolePermission) {
-        return null; // Permission granted
-      }
-    }
+    const granted = await checkDbPermission(session, resource, action);
+    if (granted) return null; // Permission granted
 
     // Check default role permissions
     if (session.role && defaultRolePermissions[session.role]) {
@@ -378,47 +346,8 @@ export async function requirePagePermission(
   }
 
   try {
-    await connectDB();
-
-    // Build query for permissions
-    const permissionQuery: any = {
-      resource,
-      actions: action,
-    };
-
-    // Add tenant filter if available
-    if (session.tenantId) {
-      permissionQuery.tenantId = new Types.ObjectId(session.tenantId);
-    } else {
-      permissionQuery.$or = [
-        { tenantId: { $exists: false } },
-        { tenantId: null }
-      ];
-    }
-
-    // Check user-specific permission
-    if (session.userId) {
-      const userPermission = await Permission.findOne({
-        ...permissionQuery,
-        user: new Types.ObjectId(session.userId),
-      }).lean();
-
-      if (userPermission) {
-        return; // Permission granted
-      }
-    }
-
-    // Check role-based permission
-    if (session.roleId) {
-      const rolePermission = await Permission.findOne({
-        ...permissionQuery,
-        role: new Types.ObjectId(session.roleId),
-      }).lean();
-
-      if (rolePermission) {
-        return; // Permission granted
-      }
-    }
+    const granted = await checkDbPermission(session, resource, action);
+    if (granted) return; // Permission granted
 
     // Check default role permissions
     if (session.role && defaultRolePermissions[session.role]) {

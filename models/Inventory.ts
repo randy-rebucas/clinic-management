@@ -100,8 +100,8 @@ InventoryItemSchema.post('save', function (this: IInventoryItem) {
     // Schedule alert (don't wait)
     import('@/lib/automations/inventory-alerts').then(({ sendLowStockAlert }) => {
       sendLowStockAlert({
-        inventoryId: this._id,
-        tenantId: this.tenantId,
+        inventoryId: this._id.toString(),
+        tenantId: this.tenantId?.toString(),
         alertType: this.status as 'low-stock' | 'out-of-stock' | 'expired',
         sendEmail: true,
         sendNotification: true,

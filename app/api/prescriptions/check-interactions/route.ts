@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Prescription from '@/models/Prescription';
-import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { checkDrugInteractionsAdvanced, checkInteractionsWithPatientMedications, getApiStats } from '@/lib/drug-interactions';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { listActivePrescriptionsForPatient } from '@/lib/data/prescription';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function POST(request: NextRequest) {
   const session = await verifySession();
@@ -14,64 +19,35 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const body = await request.json();
     const { medications, patientId, includePatientMedications } = body;
 
     if (!medications || !Array.isArray(medications)) {
-      return NextResponse.json(
-        { success: false, error: 'Medications array is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Medications array is required' }, { status: 400 });
     }
 
-    // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
 
     let interactions;
     if (includePatientMedications && patientId) {
-      // Get patient's current active prescriptions (tenant-scoped)
-      const patientQuery: any = { _id: patientId };
-      if (tenantId) {
-        patientQuery.tenantIds = new Types.ObjectId(tenantId);
-      } else {
-        patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-      }
-      
-      const patient = await Patient.findOne(patientQuery);
-      if (!patient) {
-        return NextResponse.json(
-          { success: false, error: 'Patient not found' },
-          { status: 404 }
-        );
+      const patient = await runAsSystem(() => getPatientById(patientId));
+      const belongsToTenant = tenantId ? patient?.tenantIds?.some((tid: string) => tid === tenantId) : Boolean(patient);
+      if (!patient || !belongsToTenant) {
+        return NextResponse.json({ success: false, error: 'Patient not found' }, { status: 404 });
       }
 
-      // Get active prescriptions for this patient (tenant-scoped)
-      const prescriptionQuery: any = {
-        patient: patientId,
-        status: { $in: ['active', 'partially-dispensed'] },
-      };
-      if (tenantId) {
-        prescriptionQuery.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        prescriptionQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const activePrescriptions = await Prescription.find(prescriptionQuery);
+      const activePrescriptions = await run(tenantId, () => listActivePrescriptionsForPatient(patientId));
 
       const currentMedications = activePrescriptions.flatMap((prescription) =>
-        prescription.medications.map((med: any) => ({
+        prescription.medications.map((med) => ({
           name: med.name,
-          genericName: med.genericName,
+          genericName: med.genericName ?? undefined,
         }))
       );
 
       interactions = await checkInteractionsWithPatientMedications(medications, currentMedications);
     } else {
-      // Use advanced RxNav API-powered interaction check for better accuracy
       interactions = await checkDrugInteractionsAdvanced(medications);
     }
 
@@ -92,10 +68,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Error checking drug interactions:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to check drug interactions' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to check drug interactions' }, { status: 500 });
   }
 }
-

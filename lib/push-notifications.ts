@@ -1,7 +1,14 @@
 import webpush from 'web-push';
-import connectDB from '@/lib/mongodb';
-import PushSubscription from '@/models/PushSubscription';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import {
+  listPushSubscriptionsForUser,
+  listAllPushSubscriptions,
+  deletePushSubscriptionsByEndpoints,
+} from '@/lib/data/push-subscription';
+
+function run<T>(tenantId: string | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 let vapidConfigured = false;
 
@@ -34,12 +41,7 @@ export async function sendPushToUser(
   ensureVapidConfigured();
   if (!vapidConfigured) return;
 
-  await connectDB();
-
-  const query: any = { userId: new Types.ObjectId(userId) };
-  if (tenantId) query.tenantId = new Types.ObjectId(tenantId);
-
-  const subscriptions = await PushSubscription.find(query).lean();
+  const subscriptions = await run(tenantId, () => listPushSubscriptionsForUser(userId));
   if (!subscriptions.length) return;
 
   const staleEndpoints: string[] = [];
@@ -60,7 +62,7 @@ export async function sendPushToUser(
   );
 
   if (staleEndpoints.length) {
-    await PushSubscription.deleteMany({ endpoint: { $in: staleEndpoints } });
+    await run(tenantId, () => deletePushSubscriptionsByEndpoints(staleEndpoints));
   }
 }
 
@@ -74,12 +76,7 @@ export async function sendPushToTenant(
   ensureVapidConfigured();
   if (!vapidConfigured) return;
 
-  await connectDB();
-
-  const subscriptions = await PushSubscription.find({
-    tenantId: new Types.ObjectId(tenantId),
-  }).lean();
-
+  const subscriptions = await runWithTenant(tenantId, () => listAllPushSubscriptions());
   if (!subscriptions.length) return;
 
   const staleEndpoints: string[] = [];
@@ -100,6 +97,6 @@ export async function sendPushToTenant(
   );
 
   if (staleEndpoints.length) {
-    await PushSubscription.deleteMany({ endpoint: { $in: staleEndpoints } });
+    await runWithTenant(tenantId, () => deletePushSubscriptionsByEndpoints(staleEndpoints));
   }
 }

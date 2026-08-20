@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Specialization from '@/models/Specialization';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { runAsSystem } from '@/lib/tenant-context';
 import { sanitizeSearch } from '@/lib/utils';
+import { listSpecializations, getSpecializationByName, createSpecialization } from '@/lib/data/specialization';
 
 /**
  * GET /api/specializations
- * 
+ *
  * Fetch all active medical specializations.
- * Specializations are global and shared across all tenants.
- * 
+ * Specializations are global and shared across all tenants — not
+ * tenant-scoped in prisma/schema.prisma (no tenantId column), so this
+ * legitimately runs cross-tenant via runAsSystem().
+ *
  * Query Parameters:
  * - category: Filter by category (optional)
  * - search: Search by name (optional)
@@ -23,32 +25,21 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const search = searchParams.get('search');
 
-    // Build query - specializations are global (not tenant-scoped)
-    const query: any = { active: true };
-    
-    if (category) {
-      query.category = category;
-    }
-    
-    if (search) {
-      query.name = { $regex: sanitizeSearch(search), $options: 'i' };
-    }
+    const specializations = await runAsSystem(() =>
+      listSpecializations({
+        category: category || undefined,
+        search: search ? sanitizeSearch(search) : undefined,
+      })
+    );
 
-    const specializations = await Specialization.find(query)
-      .select('_id name description category active')
-      .sort({ name: 1 })
-      .lean();
-
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: specializations,
-      count: specializations.length 
+      count: specializations.length
     });
   } catch (error: any) {
     console.error('Error fetching specializations:', error);
@@ -61,7 +52,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/specializations
- * 
+ *
  * Create a new specialization.
  * Requires admin privileges.
  */
@@ -81,8 +72,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-
     const body = await request.json();
     const { name, description, category, active = true } = body;
 
@@ -93,21 +82,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if specialization already exists (global check)
-    const existing = await Specialization.findOne({ name: name.trim() });
-    if (existing) {
+    const specialization = await runAsSystem(async () => {
+      // Check if specialization already exists (global check)
+      const existing = await getSpecializationByName(name.trim());
+      if (existing) {
+        return null;
+      }
+
+      return createSpecialization({
+        name: name.trim(),
+        description: description?.trim(),
+        category: category?.trim(),
+        active,
+      });
+    });
+
+    if (!specialization) {
       return NextResponse.json(
         { success: false, error: 'Specialization already exists' },
         { status: 400 }
       );
     }
-
-    const specialization = await Specialization.create({
-      name: name.trim(),
-      description: description?.trim(),
-      category: category?.trim(),
-      active,
-    });
 
     return NextResponse.json(
       { success: true, data: specialization },

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Document from '@/models/Document';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getCloudinaryFileUrl, extractPublicIdFromUrl, isCloudinaryConfigured } from '@/lib/cloudinary';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getDocumentRaw } from '@/lib/data/document';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -17,15 +20,10 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
 
     // Scope lookup to the session's tenant to prevent cross-tenant document access
-    const docQuery: any = { _id: id };
-    if (session.tenantId) {
-      docQuery.tenantId = new Types.ObjectId(session.tenantId);
-    }
-    const document = await Document.findOne(docQuery);
+    const document = await run(session.tenantId || null, () => getDocumentRaw(id));
 
     if (!document) {
       return NextResponse.json(
@@ -45,17 +43,17 @@ export async function GET(
     if (isCloudinaryConfigured() && document.url.startsWith('http')) {
       // File is in Cloudinary - redirect to Cloudinary URL or fetch and proxy
       const publicId = (document.metadata as any)?.cloudinaryPublicId || extractPublicIdFromUrl(document.url);
-      
+
       if (publicId) {
         // Get direct download URL from Cloudinary
         const downloadUrl = getCloudinaryFileUrl(publicId);
-        
+
         // Redirect to Cloudinary URL for download
         return NextResponse.redirect(downloadUrl);
       }
     }
 
-    // Fallback: Extract base64 data from data URL (for files stored in MongoDB)
+    // Fallback: Extract base64 data from data URL (for files stored inline)
     if (document.url.startsWith('data:')) {
       const base64Data = document.url.split(',')[1];
       const buffer = Buffer.from(base64Data, 'base64');
@@ -79,4 +77,3 @@ export async function GET(
     );
   }
 }
-

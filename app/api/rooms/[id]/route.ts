@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Room from '@/models/Room';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getRoomById, updateRoom, deleteRoom } from '@/lib/data/room';
+
+async function resolveTenantId(session: { tenantId?: string | null }) {
+  const tenantContext = await getTenantContext();
+  return session.tenantId || tenantContext.tenantId;
+}
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -17,22 +25,10 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const room = await Room.findOne(query);
+    const tenantId = await resolveTenantId(session);
+
+    const room = await run(tenantId, () => getRoomById(id));
 
     if (!room) {
       return NextResponse.json(
@@ -41,8 +37,8 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: room,
       message: 'Room updated successfully'
     });
@@ -66,26 +62,20 @@ export async function PUT(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
     const body = await request.json();
+    const tenantId = await resolveTenantId(session);
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    let room;
+    try {
+      room = await run(tenantId, () => updateRoom(id, body));
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        room = null;
+      } else {
+        throw error;
+      }
     }
-
-    const room = await Room.findOneAndUpdate(query, body, {
-      new: true,
-      runValidators: true,
-    });
 
     if (!room) {
       return NextResponse.json(
@@ -94,19 +84,13 @@ export async function PUT(
       );
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: room,
       message: 'Room updated successfully'
     });
   } catch (error: any) {
     console.error('Error updating room:', error);
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
     return NextResponse.json(
       { success: false, error: 'Failed to update room' },
       { status: 500 }
@@ -125,21 +109,19 @@ export async function DELETE(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    const tenantId = await resolveTenantId(session);
+
+    let room;
+    try {
+      room = await run(tenantId, () => deleteRoom(id));
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        room = null;
+      } else {
+        throw error;
+      }
     }
-    
-    const room = await Room.findOneAndDelete(query);
 
     if (!room) {
       return NextResponse.json(
@@ -148,8 +130,8 @@ export async function DELETE(
       );
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: {},
       message: 'Room deleted successfully'
     });
@@ -161,4 +143,3 @@ export async function DELETE(
     );
   }
 }
-

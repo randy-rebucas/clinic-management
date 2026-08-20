@@ -1,19 +1,18 @@
 // Daily Reports Generation Automation
 // Automatically generates and sends daily reports
 
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
-import Invoice from '@/models/Invoice';
-import Doctor from '@/models/Doctor';
-import User from '@/models/User';
-import { getSettings } from '@/lib/settings';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getAutomationSettings, getOrCreateSettings } from '@/lib/data/settings';
+import { listActiveUsersByRoleNames } from '@/lib/data/user';
 import { sendEmail } from '@/lib/email';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export interface DailyReportOptions {
-  tenantId?: string | Types.ObjectId;
+  tenantId?: string;
   date?: Date;
   recipients?: string[];
   sendEmail?: boolean;
@@ -28,7 +27,7 @@ export async function generateDailyReport(options: DailyReportOptions = {}): Pro
   error?: string;
 }> {
   try {
-    await connectDB();
+    const tenantId = options.tenantId ?? null;
 
     const reportDate = options.date || new Date();
     const dateStart = new Date(reportDate);
@@ -36,186 +35,96 @@ export async function generateDailyReport(options: DailyReportOptions = {}): Pro
     const dateEnd = new Date(reportDate);
     dateEnd.setHours(23, 59, 59, 999);
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : undefined;
-
-    // Build tenant filter
-    const tenantFilter: any = {};
-    if (tenantId) {
-      tenantFilter.tenantId = tenantId;
-    } else {
-      tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    // Fetch all statistics in parallel
-    const [
-      newPatients,
-      totalAppointments,
-      completedAppointments,
-      cancelledAppointments,
-      totalVisits,
-      completedVisits,
-      newInvoices,
-      paidInvoices,
-      totalRevenue,
-      outstandingBalance,
-    ] = await Promise.all([
-      // New patients today
-      Patient.countDocuments({
-        ...tenantFilter,
-        createdAt: { $gte: dateStart, $lte: dateEnd },
-      }),
-      // Total appointments today
-      Appointment.countDocuments({
-        ...tenantFilter,
-        appointmentDate: { $gte: dateStart, $lte: dateEnd },
-      }),
-      // Completed appointments
-      Appointment.countDocuments({
-        ...tenantFilter,
-        appointmentDate: { $gte: dateStart, $lte: dateEnd },
-        status: 'completed',
-      }),
-      // Cancelled appointments
-      Appointment.countDocuments({
-        ...tenantFilter,
-        appointmentDate: { $gte: dateStart, $lte: dateEnd },
-        status: 'cancelled',
-      }),
-      // Total visits today
-      Visit.countDocuments({
-        ...tenantFilter,
-        date: { $gte: dateStart, $lte: dateEnd },
-      }),
-      // Completed visits
-      Visit.countDocuments({
-        ...tenantFilter,
-        date: { $gte: dateStart, $lte: dateEnd },
-        status: 'closed',
-      }),
-      // New invoices today
-      Invoice.countDocuments({
-        ...tenantFilter,
-        createdAt: { $gte: dateStart, $lte: dateEnd },
-      }),
-      // Paid invoices today
-      Invoice.find({
-        ...tenantFilter,
-        'payments.date': { $gte: dateStart, $lte: dateEnd },
-        status: 'paid',
-      }),
-      // Total revenue today (from paid invoices)
-      Invoice.aggregate([
-        {
-          $match: {
-            ...tenantFilter,
-            'payments.date': { $gte: dateStart, $lte: dateEnd },
-            status: 'paid',
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: '$totalPaid' },
-          },
-        },
-      ]),
-      // Outstanding balance
-      Invoice.aggregate([
-        {
-          $match: {
-            ...tenantFilter,
-            status: { $in: ['unpaid', 'partial'] },
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: '$outstandingBalance' },
-          },
-        },
-      ]),
-    ]);
-
-    // Get appointment breakdown by status
-    const appointmentsByStatus = await Appointment.aggregate([
-      {
-        $match: {
-          ...tenantFilter,
-          appointmentDate: { $gte: dateStart, $lte: dateEnd },
-        },
-      },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-        },
-      },
-    ]);
-
-    // Get revenue breakdown by payment method
-    const revenueByMethod = await Invoice.aggregate([
-      {
-        $match: {
-          ...tenantFilter,
-          'payments.date': { $gte: dateStart, $lte: dateEnd },
-        },
-      },
-      {
-        $unwind: '$payments',
-      },
-      {
-        $match: {
-          'payments.date': { $gte: dateStart, $lte: dateEnd },
-        },
-      },
-      {
-        $group: {
-          _id: '$payments.method',
-          total: { $sum: '$payments.amount' },
-        },
-      },
-    ]);
-
-    const report = {
-      date: reportDate.toISOString().split('T')[0],
-      period: 'daily',
-      summary: {
+    const report = await run(tenantId, async () => {
+      const [
         newPatients,
-        appointments: {
-          total: totalAppointments,
-          completed: completedAppointments,
-          cancelled: cancelledAppointments,
-          byStatus: appointmentsByStatus.reduce((acc: any, item: any) => {
-            acc[item._id] = item.count;
-            return acc;
-          }, {}),
+        totalAppointments,
+        completedAppointments,
+        cancelledAppointments,
+        totalVisits,
+        completedVisits,
+        newInvoices,
+        paidInvoicesToday,
+        appointmentsByStatus,
+        invoicesWithPaymentToday,
+      ] = await Promise.all([
+        prisma.patient.count({ where: { createdAt: { gte: dateStart, lte: dateEnd } } }),
+        prisma.appointment.count({ where: { appointmentDate: { gte: dateStart, lte: dateEnd } } }),
+        prisma.appointment.count({ where: { appointmentDate: { gte: dateStart, lte: dateEnd }, status: 'completed' } }),
+        prisma.appointment.count({ where: { appointmentDate: { gte: dateStart, lte: dateEnd }, status: 'cancelled' } }),
+        prisma.visit.count({ where: { date: { gte: dateStart, lte: dateEnd } } }),
+        prisma.visit.count({ where: { date: { gte: dateStart, lte: dateEnd }, status: 'closed' } }),
+        prisma.invoice.count({ where: { createdAt: { gte: dateStart, lte: dateEnd } } }),
+        prisma.invoice.findMany({
+          where: { status: 'paid', payments: { some: { date: { gte: dateStart, lte: dateEnd } } } },
+        }),
+        prisma.appointment.groupBy({
+          by: ['status'],
+          where: { appointmentDate: { gte: dateStart, lte: dateEnd } },
+          _count: { _all: true },
+        }),
+        prisma.invoice.findMany({
+          where: { payments: { some: { date: { gte: dateStart, lte: dateEnd } } } },
+          include: { payments: true },
+        }),
+      ]);
+
+      // Total revenue today: sum of payments dated today across all invoices
+      let totalRevenue = 0;
+      const revenueByMethod: Record<string, number> = {};
+      for (const inv of invoicesWithPaymentToday) {
+        for (const payment of inv.payments) {
+          if (payment.date >= dateStart && payment.date <= dateEnd) {
+            totalRevenue += payment.amount || 0;
+            const method = payment.method || 'unknown';
+            revenueByMethod[method] = (revenueByMethod[method] || 0) + (payment.amount || 0);
+          }
+        }
+      }
+
+      // Outstanding balance across all unpaid/partial invoices
+      const outstandingInvoices = await prisma.invoice.findMany({
+        where: { status: { in: ['unpaid', 'partial'] } },
+        select: { outstandingBalance: true },
+      });
+      const outstandingBalance = outstandingInvoices.reduce((sum, i) => sum + (i.outstandingBalance || 0), 0);
+
+      return {
+        date: reportDate.toISOString().split('T')[0],
+        period: 'daily',
+        summary: {
+          newPatients,
+          appointments: {
+            total: totalAppointments,
+            completed: completedAppointments,
+            cancelled: cancelledAppointments,
+            byStatus: appointmentsByStatus.reduce((acc: any, item) => {
+              acc[item.status] = item._count._all;
+              return acc;
+            }, {}),
+          },
+          visits: {
+            total: totalVisits,
+            completed: completedVisits,
+          },
+          billing: {
+            newInvoices,
+            paidInvoices: paidInvoicesToday.length,
+            totalRevenue,
+            outstandingBalance,
+            revenueByMethod,
+          },
         },
-        visits: {
-          total: totalVisits,
-          completed: completedVisits,
-        },
-        billing: {
-          newInvoices,
-          paidInvoices: paidInvoices.length,
-          totalRevenue: totalRevenue[0]?.total || 0,
-          outstandingBalance: outstandingBalance[0]?.total || 0,
-          revenueByMethod: revenueByMethod.reduce((acc: any, item: any) => {
-            acc[item._id] = item.total;
-            return acc;
-          }, {}),
-        },
-      },
-      generatedAt: new Date().toISOString(),
-    };
+        generatedAt: new Date().toISOString(),
+      };
+    });
 
     return { success: true, report };
   } catch (error: any) {
     console.error('Error generating daily report:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to generate daily report' 
+    return {
+      success: false,
+      error: error.message || 'Failed to generate daily report',
     };
   }
 }
@@ -230,60 +139,41 @@ export async function sendDailyReport(options: DailyReportOptions = {}): Promise
   error?: string;
 }> {
   try {
-    await connectDB();
+    const tenantId = options.tenantId ?? null;
 
-    const settings = await getSettings();
-    const autoDailyReports = (settings.automationSettings as any)?.autoDailyReports !== false;
-
-    if (!autoDailyReports) {
+    const automationSettings = await run(tenantId, () => getAutomationSettings(tenantId));
+    if (!automationSettings.autoDailyReports) {
       return { success: true, sent: 0, errors: 0 };
     }
 
     // Generate report
     const reportResult = await generateDailyReport(options);
     if (!reportResult.success || !reportResult.report) {
-      return { 
-        success: false, 
-        sent: 0, 
-        errors: 0, 
-        error: reportResult.error || 'Failed to generate report' 
+      return {
+        success: false,
+        sent: 0,
+        errors: 0,
+        error: reportResult.error || 'Failed to generate report',
       };
     }
 
     const report = reportResult.report;
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : undefined;
+    const settings = await run(tenantId, () => getOrCreateSettings(tenantId));
 
     // Get recipients
     let recipients: string[] = options.recipients || [];
 
     if (recipients.length === 0) {
-      // Get admin users
-      const usersQuery: any = {};
-      if (tenantId) {
-        usersQuery.tenantId = tenantId;
-      }
-
-      const users = await User.find(usersQuery)
-        .populate('role')
-        .exec();
-
-      recipients = users
-        .filter((user: any) => {
-          const role = user.role;
-          return role && (role.name === 'admin' || role.name === 'accountant');
-        })
-        .map((user: any) => user.email)
-        .filter(Boolean);
+      const users = await run(tenantId, () => listActiveUsersByRoleNames(['admin', 'accountant']));
+      recipients = users.map((u) => u.email).filter(Boolean);
     }
 
     if (recipients.length === 0) {
-      return { 
-        success: false, 
-        sent: 0, 
-        errors: 0, 
-        error: 'No recipients found' 
+      return {
+        success: false,
+        sent: 0,
+        errors: 0,
+        error: 'No recipients found',
       };
     }
 
@@ -318,11 +208,11 @@ export async function sendDailyReport(options: DailyReportOptions = {}): Promise
     return { success: true, sent, errors };
   } catch (error: any) {
     console.error('Error sending daily report:', error);
-    return { 
-      success: false, 
-      sent: 0, 
-      errors: 1, 
-      error: error.message || 'Failed to send daily report' 
+    return {
+      success: false,
+      sent: 0,
+      errors: 1,
+      error: error.message || 'Failed to send daily report',
     };
   }
 }
@@ -448,4 +338,3 @@ function generateReportEmail(report: any, settings: any): { subject: string; htm
 
   return { subject, html };
 }
-

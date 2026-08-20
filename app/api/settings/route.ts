@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Settings from '@/models/Settings';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { clearSettingsCache, getDefaultSettings } from '@/lib/settings';
 import { isSMSConfigured } from '@/lib/sms';
 import { isEmailConfigured } from '@/lib/email';
 import { isCloudinaryConfigured } from '@/lib/cloudinary';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getOrCreateSettings, updateSettings } from '@/lib/data/settings';
+import { clearSettingsCache } from '@/lib/settings';
 
 // GET settings - accessible to all authenticated users
 export async function GET() {
@@ -19,47 +18,16 @@ export async function GET() {
   }
 
   try {
-    await connectDB();
-    
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
-    // Get or create default settings (tenant-scoped)
-    const settingsQuery: any = {};
-    if (tenantId) {
-      settingsQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      settingsQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    let settings = await Settings.findOne(settingsQuery);
+    const settingsObj = tenantId
+      ? await runWithTenant(tenantId, () => getOrCreateSettings(tenantId))
+      : await runAsSystem(() => getOrCreateSettings(null));
 
-    if (!settings) {
-      // Create default settings if none exist - use full default values
-      const defaultSettingsData = getDefaultSettings();
-      const settingsData: any = {
-        ...defaultSettingsData,
-      };
-      if (tenantId) {
-        settingsData.tenantId = new Types.ObjectId(tenantId);
-      }
-      settings = await Settings.create(settingsData);
-    }
-
-    // Merge with defaults to ensure all fields are present
-    const defaultSettingsData = getDefaultSettings();
-    const settingsObj = {
-      ...defaultSettingsData,
-      ...settings.toObject(),
-    };
-    // Ensure digital signature toggle is present (default true)
-    if (typeof settingsObj.prescriptionDigitalSignatureEnabled === 'undefined') {
-      settingsObj.prescriptionDigitalSignatureEnabled = true;
-    }
-    
     // Add integration status based on environment variables
-    settingsObj.integrationStatus = {
+    (settingsObj as any).integrationStatus = {
       twilio: isSMSConfigured(),
       smtp: isEmailConfigured(),
       cloudinary: isCloudinaryConfigured(),
@@ -92,56 +60,18 @@ export async function PUT(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-    
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
     const body = await request.json();
 
-    // Get existing settings or create new (tenant-scoped)
-    const settingsQuery: any = {};
-    if (tenantId) {
-      settingsQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      settingsQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    let settings = await Settings.findOne(settingsQuery);
+    const settings = tenantId
+      ? await runWithTenant(tenantId, () => updateSettings(tenantId, body))
+      : await runAsSystem(() => updateSettings(null, body));
 
-    if (!settings) {
-      // Merge with defaults when creating new settings
-      const defaultSettingsData = getDefaultSettings();
-      const settingsData: any = {
-        ...defaultSettingsData,
-        ...body,
-      };
-      if (tenantId && !settingsData.tenantId) {
-        settingsData.tenantId = new Types.ObjectId(tenantId);
-      }
-      // Ensure digital signature toggle is present (default true)
-      if (typeof settingsData.prescriptionDigitalSignatureEnabled === 'undefined') {
-        settingsData.prescriptionDigitalSignatureEnabled = true;
-      }
-      settings = await Settings.create(settingsData);
-    } else {
-      // Update settings - merge with defaults to ensure all fields exist
-      const defaultSettingsData = getDefaultSettings();
-      const updatedData = {
-        ...defaultSettingsData,
-        ...settings.toObject(),
-        ...body,
-      };
-      // Ensure digital signature toggle is present (default true)
-      if (typeof updatedData.prescriptionDigitalSignatureEnabled === 'undefined') {
-        updatedData.prescriptionDigitalSignatureEnabled = true;
-      }
-      Object.assign(settings, updatedData);
-      await settings.save();
-    }
-
-    // Clear cache so next request gets fresh settings
+    // Clear lib/settings.ts's in-process cache so other callers (e.g.
+    // lib/settings.ts's getSettings()) pick up the fresh values.
     clearSettingsCache();
 
     return NextResponse.json(settings, { status: 200 });
@@ -153,4 +83,3 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
-

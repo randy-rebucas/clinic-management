@@ -2,14 +2,16 @@
 // Identifies inactive patients (no visit in X months) and sends a friendly
 // re-engagement message encouraging them to book an appointment.
 
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Visit from '@/models/Visit';
-import Appointment from '@/models/Appointment';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listPatientsByIdsForAutomation } from '@/lib/data/patient';
+import { distinctPatientIdsWithVisitSince, distinctPatientIdsWithAnyVisit } from '@/lib/data/visit';
+import { distinctPatientIdsWithAppointmentSince } from '@/lib/data/appointment';
 import { sendEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
-import { createNotification } from '@/lib/notifications';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /** Patients with no visit for this many months are considered inactive */
 const INACTIVE_MONTHS = 6;
@@ -28,10 +30,8 @@ export interface PatientReengagementResult {
 /**
  * Find inactive patients and send re-engagement messages.
  */
-export async function processPatientReengagement(
-  tenantId?: Types.ObjectId | string
-): Promise<PatientReengagementResult> {
-  await connectDB();
+export async function processPatientReengagement(tenantId?: string): Promise<PatientReengagementResult> {
+  const resolvedTenantId = tenantId ?? null;
 
   const result: PatientReengagementResult = {
     processed: 0,
@@ -41,51 +41,32 @@ export async function processPatientReengagement(
     errors: [],
   };
 
-  const tenantFilter = tenantId
-    ? { tenantId: typeof tenantId === 'string' ? new Types.ObjectId(tenantId) : tenantId }
-    : {};
-
   const now = new Date();
   const cutoffDate = new Date(now);
   cutoffDate.setMonth(cutoffDate.getMonth() - INACTIVE_MONTHS);
 
   try {
-    // Find patients who have had at least one visit but none after the cutoff
     // Step 1: get IDs of patients with a recent visit or appointment
-    const recentVisitPatientIds = await Visit.distinct('patient', {
-      ...tenantFilter,
-      date: { $gte: cutoffDate },
-    });
+    const [recentVisitPatientIds, recentApptPatientIds] = await run(resolvedTenantId, () =>
+      Promise.all([
+        distinctPatientIdsWithVisitSince(cutoffDate),
+        distinctPatientIdsWithAppointmentSince(cutoffDate, ['completed', 'confirmed']),
+      ])
+    );
 
-    const recentApptPatientIds = await Appointment.distinct('patient', {
-      ...tenantFilter,
-      $or: [
-        { appointmentDate: { $gte: cutoffDate } },
-        { scheduledAt: { $gte: cutoffDate } },
-      ],
-      status: { $in: ['completed', 'confirmed'] },
-    });
-
-    const recentIds = new Set([
-      ...recentVisitPatientIds.map(String),
-      ...recentApptPatientIds.map(String),
-    ]);
+    const recentIds = new Set([...recentVisitPatientIds, ...recentApptPatientIds]);
 
     // Step 2: get patients who HAVE had a visit (not brand new) but NOT recently
-    const pastVisitPatientIds = await Visit.distinct('patient', tenantFilter);
-    
-    const inactiveIds = pastVisitPatientIds
-      .filter(id => !recentIds.has(String(id)))
-      .slice(0, BATCH_LIMIT);
+    const pastVisitPatientIds = await run(resolvedTenantId, () => distinctPatientIdsWithAnyVisit());
+
+    const inactiveIds = pastVisitPatientIds.filter((id) => !recentIds.has(id)).slice(0, BATCH_LIMIT);
 
     if (inactiveIds.length === 0) return result;
 
-    const patients = await Patient.find({
-      _id: { $in: inactiveIds },
-      $or: [{ email: { $exists: true, $ne: '' } }, { phone: { $exists: true, $ne: '' } }],
-    }).limit(BATCH_LIMIT);
+    const patients = await run(resolvedTenantId, () => listPatientsByIdsForAutomation(inactiveIds));
+    const contactable = patients.filter((p) => p.email || p.phone || p.contactsEmail || p.contactsPhone).slice(0, BATCH_LIMIT);
 
-    for (const patient of patients) {
+    for (const patient of contactable) {
       result.processed++;
 
       const patientName = `${patient.firstName} ${patient.lastName}`;
@@ -97,17 +78,18 @@ export async function processPatientReengagement(
 
       try {
         // SMS
-        if (patient.phone) {
-          let phone = (patient.phone as string).trim();
-          if (!phone.startsWith('+')) phone = `+63${phone.replace(/\D/g, '').slice(-10)}`;
-          await sendSMS({ to: phone, message: smsMessage });
+        const phone = patient.phone || patient.contactsPhone;
+        if (phone) {
+          let phoneStr = String(phone).trim();
+          if (!phoneStr.startsWith('+')) phoneStr = `+63${phoneStr.replace(/\D/g, '').slice(-10)}`;
+          await sendSMS({ to: phoneStr, message: smsMessage });
         }
 
         // Email
-        const patientEmail = (patient.email as string | undefined);
-        if (patientEmail) {
+        const email = patient.email || patient.contactsEmail;
+        if (email) {
           await sendEmail({
-            to: patientEmail,
+            to: email,
             subject: `We Miss You, ${patient.firstName}! Time for Your Check-Up`,
             html: `
               <div style="font-family:sans-serif;max-width:600px;margin:auto">
@@ -124,27 +106,17 @@ export async function processPatientReengagement(
           });
         }
 
-        // In-app notification
-        await createNotification({
-          type: 'patient_reengagement',
-          title: 'We Miss You!',
-          message: smsMessage,
-          patientId: patient._id,
-          metadata: { inactiveMonths: INACTIVE_MONTHS },
-        } as any);
+        // In-app notification: skipped — Notification.userId is a hard FK to
+        // User and patients have no linked User account.
 
         result.contacted++;
       } catch (err: unknown) {
         result.failed++;
-        result.errors.push(
-          `Patient ${patient._id}: ${err instanceof Error ? err.message : String(err)}`
-        );
+        result.errors.push(`Patient ${patient.id}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   } catch (err: unknown) {
-    result.errors.push(
-      `Query failed: ${err instanceof Error ? err.message : String(err)}`
-    );
+    result.errors.push(`Query failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   return result;

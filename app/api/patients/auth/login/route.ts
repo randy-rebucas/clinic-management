@@ -1,33 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SignJWT } from 'jose';
 import bcrypt from 'bcryptjs';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { Types } from 'mongoose';
+import { runAsSystem } from '@/lib/tenant-context';
+import { findPatientAcrossTenantsWithAuthFields } from '@/lib/data/patient';
 
 /**
  * Patient email + password login
  * POST /api/patients/auth/login
  * Body: { email, password, tenantId? }
  * Returns: patient_session cookie (7-day JWT)
+ *
+ * Cross-tenant lookup via runAsSystem() — no tenant/session exists yet at
+ * login time. See lib/data/patient.ts findPatientAcrossTenantsWithAuthFields().
  */
 export async function POST(request: NextRequest) {
   const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
   if (rateLimitResponse) return rateLimitResponse;
 
   try {
-    await connectDB();
-
     let body: { email?: string; password?: string; tenantId?: string };
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
-        { success: false, error: 'Invalid request format' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
     }
 
     const email = typeof body.email === 'string' ? body.email.toLowerCase().trim() : '';
@@ -35,22 +32,11 @@ export async function POST(request: NextRequest) {
     const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : undefined;
 
     if (!email || !password) {
-      return NextResponse.json(
-        { success: false, error: 'Email and password are required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Email and password are required' }, { status: 400 });
     }
 
-    // Build tenant-scoped query
-    const query: any = { email };
-    if (tenantId) {
-      query.tenantIds = new Types.ObjectId(tenantId);
-    }
+    const patient = await runAsSystem(() => findPatientAcrossTenantsWithAuthFields({ email, tenantId }));
 
-    // Explicitly select password (it has select: false in schema)
-    const patient = await Patient.findOne(query).select('+password');
-
-    // Use a generic error to avoid user enumeration
     const invalidCredentialsError = NextResponse.json(
       { success: false, error: 'Invalid email or password' },
       { status: 401 }
@@ -59,7 +45,6 @@ export async function POST(request: NextRequest) {
     if (!patient) return invalidCredentialsError;
 
     if (!patient.password) {
-      // Account exists but was not created with a password — redirect to QR or OTP
       return NextResponse.json(
         {
           success: false,
@@ -89,7 +74,7 @@ export async function POST(request: NextRequest) {
     const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     const patientJwt = await new SignJWT({
-      patientId: patient._id.toString(),
+      patientId: patient.id,
       patientCode: patient.patientCode,
       type: 'patient',
       email: patient.email || email,
@@ -102,7 +87,7 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({
       success: true,
       data: {
-        patientId: patient._id.toString(),
+        patientId: patient.id,
         patientCode: patient.patientCode,
         firstName: patient.firstName,
         lastName: patient.lastName,
@@ -120,16 +105,13 @@ export async function POST(request: NextRequest) {
     });
 
     logger.info('Patient email login successful', {
-      patientId: patient._id.toString(),
+      patientId: patient.id,
       patientCode: patient.patientCode,
     });
 
     return response;
   } catch (error: any) {
     logger.error('Error in patient email login', error as Error);
-    return NextResponse.json(
-      { success: false, error: 'Login failed. Please try again.' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Login failed. Please try again.' }, { status: 500 });
   }
 }

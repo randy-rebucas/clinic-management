@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Room from '@/models/Room';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listRooms, createRoom } from '@/lib/data/room';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -14,37 +13,23 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-    
-    // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     const searchParams = request.nextUrl.searchParams;
     const roomType = searchParams.get('roomType');
     const status = searchParams.get('status');
     const available = searchParams.get('available');
 
-    const query: any = {};
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    if (roomType) {
-      query.roomType = roomType;
-    }
-    if (status) {
-      query.status = status;
-    }
-    if (available === 'true') {
-      query.status = 'available';
-    }
+    const opts = {
+      roomType: roomType || undefined,
+      status: status || undefined,
+      onlyAvailable: available === 'true',
+    };
 
-    const rooms = await Room.find(query).sort({ name: 1 });
+    const rooms = tenantId
+      ? await runWithTenant(tenantId, () => listRooms(opts))
+      : await runAsSystem(() => listRooms(opts));
 
     return NextResponse.json({ success: true, data: rooms });
   } catch (error: any) {
@@ -64,24 +49,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const body = await request.json();
-    
-    // Get tenant context from session or headers
+
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
-    // Ensure room is created with tenantId
-    const roomData: any = { ...body };
-    if (tenantId && !roomData.tenantId) {
-      roomData.tenantId = new Types.ObjectId(tenantId);
-    }
-
-    const room = await Room.create(roomData);
+    const room = tenantId
+      ? await runWithTenant(tenantId, () => createRoom(body))
+      : await runAsSystem(() => createRoom(body));
 
     return NextResponse.json(
-      { 
-        success: true, 
+      {
+        success: true,
         data: room,
         message: 'Room created successfully'
       },
@@ -89,13 +68,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (error: any) {
     console.error('Error creating room:', error);
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
-    if (error.code === 11000) {
+    if (error.code === 'P2002') {
       return NextResponse.json(
         { success: false, error: 'Room with this name already exists' },
         { status: 409 }
@@ -107,4 +80,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

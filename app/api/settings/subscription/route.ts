@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getTenantContext } from '@/lib/tenant';
-import Tenant from '@/models/Tenant';
-import connectDB from '@/lib/mongodb';
+import { runAsSystem } from '@/lib/tenant-context';
+import { getTenantById } from '@/lib/data/tenant';
 
 export async function GET() {
   try {
     // Get tenant context
     const tenantContext = await getTenantContext();
-    
+
     if (!tenantContext.tenant) {
       return NextResponse.json(
         { success: false, message: 'No tenant found' },
@@ -15,11 +15,8 @@ export async function GET() {
       );
     }
 
-    // Connect to database
-    await connectDB();
-
-    // Fetch tenant with subscription data
-    const tenant = await Tenant.findById(tenantContext.tenant._id).select('subscription');
+    // Tenant is the scoping root — wrap in runAsSystem() per lib/data/tenant.ts's convention.
+    const tenant = await runAsSystem(() => getTenantById(tenantContext.tenant!._id));
 
     if (!tenant) {
       return NextResponse.json(
@@ -31,7 +28,15 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       data: {
-        subscription: tenant.subscription || null,
+        subscription: tenant.subscriptionPlan || tenant.subscriptionStatus || tenant.subscriptionExpiresAt
+          ? {
+              plan: tenant.subscriptionPlan,
+              status: tenant.subscriptionStatus,
+              billingCycle: tenant.subscriptionBillingCycle,
+              expiresAt: tenant.subscriptionExpiresAt,
+              renewalAt: tenant.subscriptionRenewalAt,
+            }
+          : null,
       },
     });
   } catch (error) {

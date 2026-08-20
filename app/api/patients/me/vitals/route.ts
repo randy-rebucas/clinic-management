@@ -1,3 +1,8 @@
+// NOT MIGRATED (Phase 5 Batch 3): vitals live on the Visit model, not Patient
+// itself — this route's core query is `Visit.find({ patient, vitals: {$exists:true} })`.
+// Visit is clinical-core and owned by a later batch; left on Mongoose per the
+// batch instructions ("only migrate if vitals genuinely live on the Patient
+// model itself" — they don't).
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';

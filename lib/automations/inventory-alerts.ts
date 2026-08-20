@@ -1,17 +1,21 @@
 // Inventory Alert Automation
 // Sends alerts when inventory is low or expired
 
-import connectDB from '@/lib/mongodb';
-import Inventory from '@/models/Inventory';
-import User from '@/models/User';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getInventoryItemById, listInventoryItems, buildInventoryWhere } from '@/lib/data/inventory';
+import { listUsers } from '@/lib/data/user';
 import { getSettings } from '@/lib/settings';
 import { createNotification } from '@/lib/notifications';
 import { sendEmail } from '@/lib/email';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: any, fn: () => T | Promise<T>): T | Promise<T> {
+  const tid = tenantId ? String(tenantId) : null;
+  return tid ? runWithTenant(tid, fn) : runAsSystem(fn);
+}
 
 export interface InventoryAlertOptions {
-  inventoryId?: string | Types.ObjectId;
-  tenantId?: string | Types.ObjectId;
+  inventoryId?: string;
+  tenantId?: any;
   alertType: 'low-stock' | 'out-of-stock' | 'expiring-soon' | 'expired';
   sendEmail?: boolean;
   sendNotification?: boolean;
@@ -26,136 +30,110 @@ export async function sendLowStockAlert(options: InventoryAlertOptions): Promise
   error?: string;
 }> {
   try {
-    await connectDB();
+    return await run(options.tenantId, async () => {
+      const settings = await getSettings();
+      const autoLowStockAlerts = (settings.automationSettings as any)?.autoLowStockAlerts !== false;
 
-    const settings = await getSettings();
-    const autoLowStockAlerts = (settings.automationSettings as any)?.autoLowStockAlerts !== false;
-
-    if (!autoLowStockAlerts) {
-      return { success: true, sent: false };
-    }
-
-    // Get inventory item
-    const inventoryQuery: any = {};
-    if (options.inventoryId) {
-      inventoryQuery._id = typeof options.inventoryId === 'string' 
-        ? new Types.ObjectId(options.inventoryId) 
-        : options.inventoryId;
-    }
-    if (options.tenantId) {
-      inventoryQuery.tenantId = typeof options.tenantId === 'string' 
-        ? new Types.ObjectId(options.tenantId) 
-        : options.tenantId;
-    }
-
-    const inventory = await Inventory.findOne(inventoryQuery);
-
-    if (!inventory) {
-      return { success: false, sent: false, error: 'Inventory item not found' };
-    }
-
-    // Check if alert is appropriate
-    if (options.alertType === 'low-stock' && inventory.status !== 'low-stock') {
-      return { success: true, sent: false };
-    }
-    if (options.alertType === 'out-of-stock' && inventory.status !== 'out-of-stock') {
-      return { success: true, sent: false };
-    }
-
-    // Get users with inventory management permissions (admin, accountant, or custom role)
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : inventory.tenantId;
-
-    const usersQuery: any = {};
-    if (tenantId) {
-      usersQuery.tenantId = tenantId;
-    }
-
-    // Get admin and accountant users
-    const users = await User.find(usersQuery)
-      .populate('role')
-      .exec();
-
-    const alertRecipients = users.filter((user: any) => {
-      const role = user.role;
-      if (!role) return false;
-      // Admin and accountant typically have inventory access
-      return role.name === 'admin' || role.name === 'accountant';
-    });
-
-    if (alertRecipients.length === 0) {
-      // Fallback: get any admin user
-      const adminUser = await User.findOne({ ...usersQuery, role: { $exists: true } })
-        .populate('role')
-        .exec();
-      if (adminUser) {
-        alertRecipients.push(adminUser);
+      if (!autoLowStockAlerts) {
+        return { success: true, sent: false };
       }
-    }
 
-    if (alertRecipients.length === 0) {
-      return { success: false, sent: false, error: 'No alert recipients found' };
-    }
-
-    const alertMessage = generateAlertMessage(inventory, options.alertType);
-    const emailContent = generateAlertEmail(inventory, options.alertType);
-
-    let sent = false;
-
-    // Send notifications to all recipients
-    if (options.sendNotification !== false) {
-      for (const user of alertRecipients) {
-        try {
-          await createNotification({
-            userId: user._id,
-            tenantId,
-            type: 'system',
-            priority: options.alertType === 'expired' || options.alertType === 'out-of-stock' ? 'high' : 'normal',
-            title: getAlertTitle(options.alertType),
-            message: alertMessage,
-            relatedEntity: {
-              type: 'invoice', // Using invoice type as placeholder - you might want to add 'inventory' type
-              id: inventory._id,
-            },
-            actionUrl: `/inventory/${inventory._id}`,
-          });
-          sent = true;
-        } catch (error) {
-          console.error(`Error creating notification for user ${user._id}:`, error);
-        }
+      if (!options.inventoryId) {
+        return { success: false, sent: false, error: 'Inventory item not found' };
       }
-    }
 
-    // Send email to first recipient (typically admin)
-    if (options.sendEmail && alertRecipients.length > 0) {
-      const recipient = alertRecipients[0] as any;
-      if (recipient.email) {
-        try {
-          const emailResult = await sendEmail({
-            to: recipient.email,
-            subject: emailContent.subject,
-            html: emailContent.html,
-            // CC other recipients
-            cc: alertRecipients.slice(1).map((u: any) => u.email).filter(Boolean),
-          });
+      const inventory = await getInventoryItemById(options.inventoryId);
 
-          if (emailResult.success) {
+      if (!inventory) {
+        return { success: false, sent: false, error: 'Inventory item not found' };
+      }
+
+      // Check if alert is appropriate
+      if (options.alertType === 'low-stock' && (inventory as any).status !== 'low-stock') {
+        return { success: true, sent: false };
+      }
+      if (options.alertType === 'out-of-stock' && (inventory as any).status !== 'out-of-stock') {
+        return { success: true, sent: false };
+      }
+
+      // Get admin and accountant users
+      const users = await listUsers();
+
+      const alertRecipients = users.filter((user: any) => {
+        const role = user.role;
+        if (!role) return false;
+        // Admin and accountant typically have inventory access
+        return role.name === 'admin' || role.name === 'accountant';
+      });
+
+      if (alertRecipients.length === 0 && users.length > 0) {
+        // Fallback: get any user with a role
+        alertRecipients.push(users[0] as any);
+      }
+
+      if (alertRecipients.length === 0) {
+        return { success: false, sent: false, error: 'No alert recipients found' };
+      }
+
+      const alertMessage = generateAlertMessage(inventory, options.alertType);
+      const emailContent = generateAlertEmail(inventory, options.alertType);
+
+      let sent = false;
+
+      // Send notifications to all recipients
+      if (options.sendNotification !== false) {
+        for (const user of alertRecipients) {
+          try {
+            await createNotification({
+              userId: (user as any).id,
+              tenantId: options.tenantId ? String(options.tenantId) : (inventory as any).tenantId,
+              type: 'system',
+              priority: options.alertType === 'expired' || options.alertType === 'out-of-stock' ? 'high' : 'normal',
+              title: getAlertTitle(options.alertType),
+              message: alertMessage,
+              relatedEntity: {
+                type: 'invoice', // Using invoice type as placeholder - you might want to add 'inventory' type
+                id: (inventory as any).id,
+              },
+              actionUrl: `/inventory/${(inventory as any).id}`,
+            });
             sent = true;
+          } catch (error) {
+            console.error(`Error creating notification for user ${(user as any).id}:`, error);
           }
-        } catch (error) {
-          console.error('Error sending inventory alert email:', error);
         }
       }
-    }
 
-    return { success: true, sent };
+      // Send email to first recipient (typically admin)
+      if (options.sendEmail && alertRecipients.length > 0) {
+        const recipient = alertRecipients[0] as any;
+        if (recipient.email) {
+          try {
+            const emailResult = await sendEmail({
+              to: recipient.email,
+              subject: emailContent.subject,
+              html: emailContent.html,
+              // CC other recipients
+              cc: alertRecipients.slice(1).map((u: any) => u.email).filter(Boolean),
+            });
+
+            if (emailResult.success) {
+              sent = true;
+            }
+          } catch (error) {
+            console.error('Error sending inventory alert email:', error);
+          }
+        }
+      }
+
+      return { success: true, sent };
+    });
   } catch (error: any) {
     console.error('Error sending inventory alert:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send inventory alert' 
+      error: error.message || 'Failed to send inventory alert'
     };
   }
 }
@@ -164,7 +142,7 @@ export async function sendLowStockAlert(options: InventoryAlertOptions): Promise
  * Process all inventory items and send alerts for low stock/expired items
  * This should be called by a cron job
  */
-export async function processInventoryAlerts(tenantId?: string | Types.ObjectId): Promise<{
+export async function processInventoryAlerts(tenantId?: any): Promise<{
   success: boolean;
   processed: number;
   alertsSent: number;
@@ -172,73 +150,64 @@ export async function processInventoryAlerts(tenantId?: string | Types.ObjectId)
   results: Array<{ inventoryId: string; type: string; success: boolean; error?: string }>;
 }> {
   try {
-    await connectDB();
+    return await run(tenantId, async () => {
+      const settings = await getSettings();
+      const autoLowStockAlerts = (settings.automationSettings as any)?.autoLowStockAlerts !== false;
 
-    const settings = await getSettings();
-    const autoLowStockAlerts = (settings.automationSettings as any)?.autoLowStockAlerts !== false;
-
-    if (!autoLowStockAlerts) {
-      return { success: true, processed: 0, alertsSent: 0, errors: 0, results: [] };
-    }
-
-    // Build query
-    const query: any = {
-      status: { $in: ['low-stock', 'out-of-stock', 'expired'] },
-    };
-
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
-
-    // Get all inventory items that need alerts
-    const inventoryItems = await Inventory.find(query);
-
-    const results: Array<{ inventoryId: string; type: string; success: boolean; error?: string }> = [];
-    let alertsSent = 0;
-    let errors = 0;
-
-    for (const item of inventoryItems) {
-      let alertType: 'low-stock' | 'out-of-stock' | 'expired' = 'low-stock';
-      
-      if (item.status === 'expired') {
-        alertType = 'expired';
-      } else if (item.status === 'out-of-stock') {
-        alertType = 'out-of-stock';
-      } else {
-        alertType = 'low-stock';
+      if (!autoLowStockAlerts) {
+        return { success: true, processed: 0, alertsSent: 0, errors: 0, results: [] };
       }
 
-      const result = await sendLowStockAlert({
-        inventoryId: item._id,
-        tenantId: item.tenantId,
-        alertType,
-        sendEmail: true,
-        sendNotification: true,
-      });
+      // Get all inventory items that need alerts
+      const inventoryItems = await listInventoryItems(
+        buildInventoryWhere({ status: ['low-stock', 'out-of-stock', 'expired'] })
+      );
 
-      results.push({
-        inventoryId: item._id.toString(),
-        type: alertType,
-        success: result.success,
-        error: result.error,
-      });
+      const results: Array<{ inventoryId: string; type: string; success: boolean; error?: string }> = [];
+      let alertsSent = 0;
+      let errors = 0;
 
-      if (result.success && result.sent) {
-        alertsSent++;
-      } else if (!result.success) {
-        errors++;
+      for (const item of inventoryItems) {
+        let alertType: 'low-stock' | 'out-of-stock' | 'expired' = 'low-stock';
+
+        if ((item as any).status === 'expired') {
+          alertType = 'expired';
+        } else if ((item as any).status === 'out-of-stock') {
+          alertType = 'out-of-stock';
+        } else {
+          alertType = 'low-stock';
+        }
+
+        const result = await sendLowStockAlert({
+          inventoryId: (item as any).id,
+          tenantId: (item as any).tenantId,
+          alertType,
+          sendEmail: true,
+          sendNotification: true,
+        });
+
+        results.push({
+          inventoryId: (item as any).id,
+          type: alertType,
+          success: result.success,
+          error: result.error,
+        });
+
+        if (result.success && result.sent) {
+          alertsSent++;
+        } else if (!result.success) {
+          errors++;
+        }
       }
-    }
 
-    return {
-      success: true,
-      processed: inventoryItems.length,
-      alertsSent,
-      errors,
-      results,
-    };
+      return {
+        success: true,
+        processed: inventoryItems.length,
+        alertsSent,
+        errors,
+        results,
+      };
+    });
   } catch (error: any) {
     console.error('Error processing inventory alerts:', error);
     return {
@@ -281,8 +250,8 @@ function generateAlertEmail(inventory: any, alertType: string): { subject: strin
   const reorderQuantity = inventory.reorderQuantity || 0;
   const sku = inventory.sku || 'N/A';
   const supplier = inventory.supplier || 'N/A';
-  const expiryDate = inventory.expiryDate 
-    ? new Date(inventory.expiryDate).toLocaleDateString() 
+  const expiryDate = inventory.expiryDate
+    ? new Date(inventory.expiryDate).toLocaleDateString()
     : 'N/A';
 
   let subject = '';
@@ -333,7 +302,7 @@ function generateAlertEmail(inventory: any, alertType: string): { subject: strin
             <p><strong>Supplier:</strong> ${supplier}</p>
             ${alertType === 'expired' ? `<p><strong>Expiry Date:</strong> ${expiryDate}</p>` : ''}
           </div>
-          ${alertType === 'expired' 
+          ${alertType === 'expired'
             ? '<p><strong>This item has expired. Please remove it from inventory immediately.</strong></p>'
             : alertType === 'out-of-stock'
             ? '<p><strong>This item is out of stock. Please reorder immediately.</strong></p>'
@@ -363,4 +332,3 @@ function getAlertTitle(alertType: string): string {
     return 'Low Stock Alert';
   }
 }
-

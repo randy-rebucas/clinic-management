@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
-import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getInvoiceById } from '@/lib/data/invoice';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -17,9 +20,8 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    
+
     if (!id || id === 'undefined') {
       return NextResponse.json(
         { success: false, error: 'Invalid invoice ID' },
@@ -27,52 +29,22 @@ export async function GET(
       );
     }
 
-    const invoice = await Invoice.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth address')
-      .populate('visit', 'visitCode date')
-      .populate('createdBy', 'name email');
+    const tenantId = session.tenantId || null;
+    const invoiceData = await run(tenantId, () => getInvoiceById(id));
 
-    if (!invoice) {
+    if (!invoiceData) {
       return NextResponse.json(
         { success: false, error: 'Invoice not found' },
         { status: 404 }
       );
     }
 
-    // Manually populate items.serviceId if needed (convert to plain object first)
-    const invoiceData = invoice.toObject ? invoice.toObject() : invoice;
-    
-    // Populate serviceId for each item if it exists
-    if (invoiceData.items && Array.isArray(invoiceData.items)) {
-      const Service = mongoose.models.Service;
-      if (Service) {
-        const populatedItems = await Promise.all(
-          invoiceData.items.map(async (item: any) => {
-            if (item.serviceId && typeof item.serviceId === 'object' && item.serviceId._id) {
-              // Already populated
-              return item;
-            }
-            if (item.serviceId && typeof item.serviceId === 'string') {
-              try {
-                const service = await Service.findById(item.serviceId)
-                  .select('name code category unitPrice')
-                  .lean();
-                if (service) {
-                  item.serviceId = service;
-                }
-              } catch (err) {
-                // Silently skip if service not found
-              }
-            }
-            return item;
-          })
-        );
-        invoiceData.items = populatedItems;
-      }
-    }
-
-    // Generate HTML for printable receipt (EOR - Electronic Official Receipt)
-    const html = await generateReceiptHTML(invoiceData);
+    // Generate HTML for printable receipt (EOR - Electronic Official Receipt).
+    // NOTE: this route only ever rendered an HTML string for the browser; it
+    // never wrote a Document record for the receipt in the Mongoose-era
+    // implementation, so there is no Document-model write to carve out here
+    // (Document model migration is a later batch).
+    const html = await generateReceiptHTML(invoiceData, tenantId);
 
     return new NextResponse(html, {
       headers: {
@@ -88,14 +60,14 @@ export async function GET(
   }
 }
 
-async function generateReceiptHTML(invoice: any): Promise<string> {
-  const settings = await getSettings();
+async function generateReceiptHTML(invoice: any, tenantId: string | null): Promise<string> {
+  const settings = await getSettings(tenantId);
   const currency = settings.billingSettings?.currency || 'PHP';
   const clinicName = settings.clinicName || 'MyClinicSoft';
   const clinicAddress = settings.clinicAddress || '';
   const clinicPhone = settings.clinicPhone || '';
   const clinicEmail = settings.clinicEmail || '';
-  
+
   const patient = invoice.patient;
   const date = new Date(invoice.createdAt).toLocaleDateString();
   const time = new Date(invoice.createdAt).toLocaleTimeString();
@@ -306,10 +278,10 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
       <div>${patient.phone}</div>
     </div>
     ` : ''}
-    ${patient.address ? `
+    ${patient.addressStreet ? `
     <div class="info-row">
       <div class="info-label">Address:</div>
-      <div>${patient.address.street}, ${patient.address.city}, ${patient.address.state} ${patient.address.zipCode}</div>
+      <div>${patient.addressStreet}, ${patient.addressCity}, ${patient.addressState} ${patient.addressZipCode}</div>
     </div>
     ` : ''}
   </div>
@@ -326,8 +298,8 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
     </thead>
     <tbody>
       ${invoice.items.map((item: any, index: number) => {
-        const serviceName = typeof item.serviceId === 'object' && item.serviceId?.name 
-          ? item.serviceId.name 
+        const serviceName = item.serviceId && typeof item.serviceId === 'object' && item.serviceId?.name
+          ? item.serviceId.name
           : item.description || 'Service';
         return `
         <tr>
@@ -441,4 +413,3 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
 </html>
   `;
 }
-

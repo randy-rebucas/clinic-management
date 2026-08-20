@@ -1,19 +1,23 @@
 // Visit Summary Automation
 // Sends visit summaries automatically after visits are completed
 
-import connectDB from '@/lib/mongodb';
-import Visit from '@/models/Visit';
-import Prescription from '@/models/Prescription';
-import LabResult from '@/models/LabResult';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getVisitById } from '@/lib/data/visit';
+import { listPrescriptions, buildPrescriptionWhere } from '@/lib/data/prescription';
+import { listLabResults, buildLabResultWhere } from '@/lib/data/lab-result';
 import { getSettings } from '@/lib/settings';
 import { createNotification } from '@/lib/notifications';
 import { sendEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: any, fn: () => T | Promise<T>): T | Promise<T> {
+  const tid = tenantId ? String(tenantId) : null;
+  return tid ? runWithTenant(tid, fn) : runAsSystem(fn);
+}
 
 export interface VisitSummaryOptions {
-  visitId: string | Types.ObjectId;
-  tenantId?: string | Types.ObjectId;
+  visitId: string;
+  tenantId?: any;
   sendSMS?: boolean;
   sendEmail?: boolean;
   sendNotification?: boolean;
@@ -28,126 +32,107 @@ export async function sendVisitSummary(options: VisitSummaryOptions): Promise<{
   error?: string;
 }> {
   try {
-    await connectDB();
+    return await run(options.tenantId, async () => {
+      const settings = await getSettings();
+      const autoVisitSummaries = (settings.automationSettings as any)?.autoVisitSummaries !== false;
 
-    const settings = await getSettings();
-    const autoVisitSummaries = (settings.automationSettings as any)?.autoVisitSummaries !== false;
-
-    if (!autoVisitSummaries) {
-      return { success: true, sent: false };
-    }
-
-    const visitId = typeof options.visitId === 'string' 
-      ? new Types.ObjectId(options.visitId) 
-      : options.visitId;
-
-    const visit = await Visit.findById(visitId)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('provider', 'name')
-      .populate('prescriptions')
-      .populate('labsOrdered');
-
-    if (!visit) {
-      return { success: false, sent: false, error: 'Visit not found' };
-    }
-
-    // Only send summary for closed visits
-    if (visit.status !== 'closed') {
-      return { success: true, sent: false };
-    }
-
-    const patient = visit.patient as any;
-    if (!patient) {
-      return { success: false, sent: false, error: 'Patient not found' };
-    }
-
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : visit.tenantId;
-
-    // Get prescriptions and lab results
-    const prescriptions = await Prescription.find({
-      visit: visitId,
-      tenantId,
-    });
-
-    const labResults = await LabResult.find({
-      visit: visitId,
-      tenantId,
-    });
-
-    const summaryMessage = generateSummarySMS(visit, prescriptions, labResults);
-    const emailContent = generateSummaryEmail(visit, prescriptions, labResults, settings);
-
-    let sent = false;
-
-    // Send SMS if enabled and phone available
-    if (options.sendSMS !== false && patient.phone) {
-      try {
-        let phoneNumber = patient.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-        }
-
-        const smsResult = await sendSMS({
-          to: phoneNumber,
-          message: summaryMessage,
-        });
-
-        if (smsResult.success) {
-          sent = true;
-        }
-      } catch (error) {
-        console.error('Error sending visit summary SMS:', error);
+      if (!autoVisitSummaries) {
+        return { success: true, sent: false };
       }
-    }
 
-    // Send email if enabled and email available
-    if (options.sendEmail !== false && patient.email) {
-      try {
-        const emailResult = await sendEmail({
-          to: patient.email,
-          subject: emailContent.subject,
-          html: emailContent.html,
-        });
+      const visit = await getVisitById(options.visitId);
 
-        if (emailResult.success) {
-          sent = true;
-        }
-      } catch (error) {
-        console.error('Error sending visit summary email:', error);
+      if (!visit) {
+        return { success: false, sent: false, error: 'Visit not found' };
       }
-    }
 
-    // Send in-app notification
-    if (options.sendNotification !== false && patient._id) {
-      try {
-        await createNotification({
-          userId: patient._id,
-          tenantId,
-          type: 'visit',
-          priority: 'normal',
-          title: 'Visit Summary Available',
-          message: `Your visit summary for ${new Date(visit.date).toLocaleDateString()} is now available.`,
-          relatedEntity: {
+      // Only send summary for closed visits
+      if ((visit as any).status !== 'closed') {
+        return { success: true, sent: false };
+      }
+
+      const patient = (visit as any).patient;
+      if (!patient) {
+        return { success: false, sent: false, error: 'Patient not found' };
+      }
+
+      // Get prescriptions and lab results
+      const prescriptions = await listPrescriptions(buildPrescriptionWhere({ visitId: options.visitId }));
+      const labResults = await listLabResults(buildLabResultWhere({ visitId: options.visitId }));
+
+      const summaryMessage = generateSummarySMS(visit, prescriptions, labResults);
+      const emailContent = generateSummaryEmail(visit, prescriptions, labResults, settings);
+
+      let sent = false;
+
+      // Send SMS if enabled and phone available
+      if (options.sendSMS !== false && patient.phone) {
+        try {
+          let phoneNumber = patient.phone.trim();
+          if (!phoneNumber.startsWith('+')) {
+            phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
+          }
+
+          const smsResult = await sendSMS({
+            to: phoneNumber,
+            message: summaryMessage,
+          });
+
+          if (smsResult.success) {
+            sent = true;
+          }
+        } catch (error) {
+          console.error('Error sending visit summary SMS:', error);
+        }
+      }
+
+      // Send email if enabled and email available
+      if (options.sendEmail !== false && patient.email) {
+        try {
+          const emailResult = await sendEmail({
+            to: patient.email,
+            subject: emailContent.subject,
+            html: emailContent.html,
+          });
+
+          if (emailResult.success) {
+            sent = true;
+          }
+        } catch (error) {
+          console.error('Error sending visit summary email:', error);
+        }
+      }
+
+      // Send in-app notification
+      if (options.sendNotification !== false && patient.id) {
+        try {
+          await createNotification({
+            userId: patient.id,
+            tenantId: options.tenantId ? String(options.tenantId) : (visit as any).tenantId,
             type: 'visit',
-            id: visit._id,
-          },
-          actionUrl: `/visits/${visit._id}`,
-        });
-        sent = true;
-      } catch (error) {
-        console.error('Error creating visit summary notification:', error);
+            priority: 'normal',
+            title: 'Visit Summary Available',
+            message: `Your visit summary for ${new Date((visit as any).date).toLocaleDateString()} is now available.`,
+            relatedEntity: {
+              type: 'visit',
+              id: (visit as any).id,
+            },
+            actionUrl: `/visits/${(visit as any).id}`,
+          });
+          sent = true;
+        } catch (error) {
+          console.error('Error creating visit summary notification:', error);
+        }
       }
-    }
 
-    return { success: true, sent };
+      return { success: true, sent };
+    });
   } catch (error: any) {
     console.error('Error sending visit summary:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send visit summary' 
+      error: error.message || 'Failed to send visit summary'
     };
   }
 }
@@ -158,23 +143,23 @@ export async function sendVisitSummary(options: VisitSummaryOptions): Promise<{
 function generateSummarySMS(visit: any, prescriptions: any[], labResults: any[]): string {
   const visitDate = new Date(visit.date).toLocaleDateString();
   const diagnoses = visit.diagnoses?.map((d: any) => d.description || d.code).join(', ') || 'N/A';
-  
+
   let message = `Visit Summary (${visitDate}): Diagnosis: ${diagnoses}. `;
-  
+
   if (prescriptions.length > 0) {
     message += `Prescriptions: ${prescriptions.length}. `;
   }
-  
+
   if (labResults.length > 0) {
     message += `Lab tests ordered: ${labResults.length}. `;
   }
-  
+
   if (visit.followUpDate) {
     message += `Follow-up: ${new Date(visit.followUpDate).toLocaleDateString()}. `;
   }
-  
+
   message += 'Full details sent via email.';
-  
+
   return message;
 }
 
@@ -219,7 +204,7 @@ function generateSummaryEmail(visit: any, prescriptions: any[], labResults: any[
         <div class="content">
           <p>Dear ${patient.firstName} ${patient.lastName},</p>
           <p>Here is a summary of your visit:</p>
-          
+
           <div class="section">
             <h2>Visit Information</h2>
             <p><strong>Date:</strong> ${visitDate}</p>
@@ -314,4 +299,3 @@ function generateSummaryEmail(visit: any, prescriptions: any[], labResults: any[
 
   return { subject, html };
 }
-

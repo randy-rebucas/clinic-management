@@ -2,10 +2,14 @@
 // Automatically marks all active queue entries and pending/scheduled appointments
 // as "completed" at the end of each clinic day (runs at 6:00 PM).
 
-import connectDB from '@/lib/mongodb';
-import Queue from '@/models/Queue';
-import Appointment from '@/models/Appointment';
-import { Types } from 'mongoose';
+import type { AppointmentStatus } from '@prisma/client';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { countQueueInDayRange, bulkCloseQueueInDayRange } from '@/lib/data/queue';
+import { countAppointmentsInDayRange, bulkCloseAppointmentsInDayRange } from '@/lib/data/appointment';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export interface EndOfDayCleanupResult {
   queues: {
@@ -24,7 +28,7 @@ export interface EndOfDayCleanupResult {
 
 export interface EndOfDayCleanupOptions {
   /** Scope cleanup to a specific tenant. Omit to run across all tenants. */
-  tenantId?: Types.ObjectId | string;
+  tenantId?: string;
   /**
    * Date to clean up (defaults to today). Useful for back-filling or testing.
    */
@@ -52,8 +56,6 @@ function dayRange(date: Date): [Date, Date] {
 export async function runEndOfDayCleanup(
   options: EndOfDayCleanupOptions = {}
 ): Promise<EndOfDayCleanupResult> {
-  await connectDB();
-
   const result: EndOfDayCleanupResult = {
     queues: { matched: 0, updated: 0, statuses: [] },
     appointments: { matched: 0, updated: 0, statuses: [] },
@@ -67,41 +69,20 @@ export async function runEndOfDayCleanup(
   const queueStatus = options.queueCompletionStatus ?? 'completed';
   const appointmentStatus = options.appointmentCompletionStatus ?? 'completed';
 
-  // ── Tenant filter ───────────────────────────────────────────────────────────
-  const tenantFilter: Record<string, unknown> = {};
-  if (options.tenantId) {
-    tenantFilter.tenantId =
-      typeof options.tenantId === 'string'
-        ? new Types.ObjectId(options.tenantId)
-        : options.tenantId;
-  }
+  const tenantId = options.tenantId ?? null;
 
   // ── 1. Clean up Queue entries ───────────────────────────────────────────────
   try {
     // Active statuses that should be closed at end of day
     const activeQueueStatuses: string[] = ['waiting', 'in-progress'];
 
-    const queueFilter = {
-      ...tenantFilter,
-      status: { $in: activeQueueStatuses },
-      queuedAt: { $gte: dayStart, $lte: dayEnd },
-    };
+    const queueFilter = { dayStart, dayEnd, statuses: activeQueueStatuses };
 
-    // Count before updating
-    result.queues.matched = await Queue.countDocuments(queueFilter);
+    result.queues.matched = await run(tenantId, () => countQueueInDayRange(queueFilter));
     result.queues.statuses = activeQueueStatuses;
 
     if (result.queues.matched > 0) {
-      const queueUpdate = await Queue.updateMany(queueFilter, {
-        $set: {
-          status: queueStatus,
-          completedAt: new Date(),
-          completionNotes: 'Auto-closed by end-of-day cleanup',
-          updatedAt: new Date(),
-        },
-      });
-
-      result.queues.updated = queueUpdate.modifiedCount ?? 0;
+      result.queues.updated = await run(tenantId, () => bulkCloseQueueInDayRange(queueFilter, queueStatus));
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -112,32 +93,17 @@ export async function runEndOfDayCleanup(
   // ── 2. Clean up Appointments ────────────────────────────────────────────────
   try {
     // Statuses that represent "still pending" at end of day
-    const activeApptStatuses: string[] = ['pending', 'scheduled', 'confirmed'];
+    const activeApptStatuses: AppointmentStatus[] = ['pending', 'scheduled', 'confirmed'];
 
-    // Support both date field formats used in the Appointment model
-    const apptFilter = {
-      ...tenantFilter,
-      status: { $in: activeApptStatuses },
-      $or: [
-        // Original format: appointmentDate field
-        { appointmentDate: { $gte: dayStart, $lte: dayEnd } },
-        // Extended format: scheduledAt field
-        { scheduledAt: { $gte: dayStart, $lte: dayEnd } },
-      ],
-    };
+    const apptFilter = { dayStart, dayEnd, statuses: activeApptStatuses };
 
-    result.appointments.matched = await Appointment.countDocuments(apptFilter);
+    result.appointments.matched = await run(tenantId, () => countAppointmentsInDayRange(apptFilter));
     result.appointments.statuses = activeApptStatuses;
 
     if (result.appointments.matched > 0) {
-      const apptUpdate = await Appointment.updateMany(apptFilter, {
-        $set: {
-          status: appointmentStatus,
-          updatedAt: new Date(),
-        },
-      });
-
-      result.appointments.updated = apptUpdate.modifiedCount ?? 0;
+      result.appointments.updated = await run(tenantId, () =>
+        bulkCloseAppointmentsInDayRange(apptFilter, appointmentStatus as AppointmentStatus)
+      );
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

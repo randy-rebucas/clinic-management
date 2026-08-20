@@ -1,18 +1,23 @@
 // Audit logging utilities
 // Logs all user actions for compliance and security
+//
+// Migrated off Mongoose (Phase 5 Batch 6): internals now call
+// lib/data/audit-log.ts (Prisma) instead of models/AuditLog.ts. Every
+// exported function signature below is UNCHANGED from the pre-migration
+// version — callers throughout the app (createAuditLog, logLogin, etc.)
+// require no changes and automatically start writing to Postgres.
 
-import connectDB from '@/lib/mongodb';
-import AuditLog from '@/models/AuditLog';
-import { Types } from 'mongoose';
+import { createAuditLogEntry, createSystemAuditLogEntry } from '@/lib/data/audit-log';
+import { runWithTenant } from '@/lib/tenant-context';
 
 export interface AuditLogOptions {
-  userId: string | Types.ObjectId;
+  userId: string;
   userEmail?: string;
   userRole?: string;
-  tenantId?: string | Types.ObjectId; // Tenant ID for multi-tenant support
+  tenantId?: string; // Tenant ID for multi-tenant support
   action: 'create' | 'read' | 'update' | 'delete' | 'login' | 'logout' | 'export' | 'print' | 'download' | 'view' | 'access_denied' | 'password_change' | 'permission_change' | 'backup' | 'restore' | 'data_export' | 'data_deletion';
   resource: 'patient' | 'visit' | 'appointment' | 'prescription' | 'lab_result' | 'invoice' | 'document' | 'user' | 'doctor' | 'room' | 'service' | 'notification' | 'system';
-  resourceId?: string | Types.ObjectId;
+  resourceId?: string;
   ipAddress?: string;
   userAgent?: string;
   requestMethod?: string;
@@ -23,7 +28,7 @@ export interface AuditLogOptions {
   success?: boolean;
   errorMessage?: string;
   isSensitive?: boolean;
-  dataSubject?: string | Types.ObjectId; // Patient ID for PH DPA compliance
+  dataSubject?: string; // Patient ID for PH DPA compliance
 }
 
 /**
@@ -31,8 +36,6 @@ export interface AuditLogOptions {
  */
 export async function createAuditLog(options: AuditLogOptions): Promise<void> {
   try {
-    await connectDB();
-    
     // Get tenantId from options or try to get from context
     let tenantId = options.tenantId;
     if (!tenantId) {
@@ -45,8 +48,8 @@ export async function createAuditLog(options: AuditLogOptions): Promise<void> {
         console.warn('Could not get tenant context for audit log');
       }
     }
-    
-    const auditLogData: any = {
+
+    const entryInput = {
       userId: options.userId,
       userEmail: options.userEmail,
       userRole: options.userRole,
@@ -63,15 +66,20 @@ export async function createAuditLog(options: AuditLogOptions): Promise<void> {
       success: options.success !== undefined ? options.success : true,
       errorMessage: options.errorMessage,
       isSensitive: options.isSensitive || false,
-      dataSubject: options.dataSubject,
+      dataSubjectId: options.dataSubject,
       timestamp: new Date(),
     };
-    
+
+    // AuditLog carries a nullable tenantId column and is a directly-scoped
+    // model in lib/prisma-tenant-extension.ts, so every write needs an
+    // active tenant context (runWithTenant when we resolved one, otherwise
+    // createSystemAuditLogEntry's own runAsSystem for genuinely tenant-less
+    // system/cron actions).
     if (tenantId) {
-      auditLogData.tenantId = typeof tenantId === 'string' ? new Types.ObjectId(tenantId) : tenantId;
+      await runWithTenant(tenantId, () => createAuditLogEntry({ ...entryInput, tenantId }));
+    } else {
+      await createSystemAuditLogEntry(entryInput);
     }
-    
-    await AuditLog.create(auditLogData);
   } catch (error) {
     // Don't throw - audit logging should not break the application
     console.error('Error creating audit log:', error);
@@ -82,12 +90,12 @@ export async function createAuditLog(options: AuditLogOptions): Promise<void> {
  * Log user login
  */
 export async function logLogin(
-  userId: string | Types.ObjectId,
+  userId: string,
   userEmail: string,
   userRole: string,
   ipAddress?: string,
   userAgent?: string,
-  tenantId?: string | Types.ObjectId
+  tenantId?: string
 ): Promise<void> {
   await createAuditLog({
     userId,
@@ -106,11 +114,11 @@ export async function logLogin(
  * Log user logout
  */
 export async function logLogout(
-  userId: string | Types.ObjectId,
+  userId: string,
   userEmail: string,
   userRole: string,
   ipAddress?: string,
-  tenantId?: string | Types.ObjectId
+  tenantId?: string
 ): Promise<void> {
   await createAuditLog({
     userId,
@@ -128,16 +136,16 @@ export async function logLogout(
  * Log data access (for PH DPA compliance)
  */
 export async function logDataAccess(
-  userId: string | Types.ObjectId,
+  userId: string,
   userEmail: string,
   userRole: string,
   resource: AuditLogOptions['resource'],
-  resourceId: string | Types.ObjectId,
-  dataSubject: string | Types.ObjectId, // Patient ID
+  resourceId: string,
+  dataSubject: string, // Patient ID
   ipAddress?: string,
   userAgent?: string,
   requestPath?: string,
-  tenantId?: string | Types.ObjectId
+  tenantId?: string
 ): Promise<void> {
   await createAuditLog({
     userId,
@@ -160,16 +168,16 @@ export async function logDataAccess(
  * Log data modification
  */
 export async function logDataModification(
-  userId: string | Types.ObjectId,
+  userId: string,
   userEmail: string,
   userRole: string,
   resource: AuditLogOptions['resource'],
-  resourceId: string | Types.ObjectId,
+  resourceId: string,
   changes: Array<{ field: string; oldValue?: any; newValue?: any }>,
-  dataSubject?: string | Types.ObjectId,
+  dataSubject?: string,
   ipAddress?: string,
   requestPath?: string,
-  tenantId?: string | Types.ObjectId
+  tenantId?: string
 ): Promise<void> {
   await createAuditLog({
     userId,
@@ -192,15 +200,15 @@ export async function logDataModification(
  * Log data deletion
  */
 export async function logDataDeletion(
-  userId: string | Types.ObjectId,
+  userId: string,
   userEmail: string,
   userRole: string,
   resource: AuditLogOptions['resource'],
-  resourceId: string | Types.ObjectId,
-  dataSubject?: string | Types.ObjectId,
+  resourceId: string,
+  dataSubject?: string,
   ipAddress?: string,
   requestPath?: string,
-  tenantId?: string | Types.ObjectId
+  tenantId?: string
 ): Promise<void> {
   await createAuditLog({
     userId,
@@ -222,15 +230,15 @@ export async function logDataDeletion(
  * Log access denied
  */
 export async function logAccessDenied(
-  userId: string | Types.ObjectId,
+  userId: string,
   userEmail: string,
   userRole: string,
   resource: AuditLogOptions['resource'],
-  resourceId?: string | Types.ObjectId,
+  resourceId?: string,
   ipAddress?: string,
   requestPath?: string,
   reason?: string,
-  tenantId?: string | Types.ObjectId
+  tenantId?: string
 ): Promise<void> {
   await createAuditLog({
     userId,
@@ -251,14 +259,14 @@ export async function logAccessDenied(
  * Log data export (for PH DPA compliance)
  */
 export async function logDataExport(
-  userId: string | Types.ObjectId,
+  userId: string,
   userEmail: string,
   userRole: string,
   resource: AuditLogOptions['resource'],
-  dataSubject?: string | Types.ObjectId,
+  dataSubject?: string,
   ipAddress?: string,
   metadata?: { [key: string]: any },
-  tenantId?: string | Types.ObjectId
+  tenantId?: string
 ): Promise<void> {
   await createAuditLog({
     userId,
@@ -274,4 +282,3 @@ export async function logDataExport(
     description: `Exported ${resource} data${dataSubject ? ` for patient ${dataSubject}` : ''}`,
   });
 }
-

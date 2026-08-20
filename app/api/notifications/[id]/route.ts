@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Notification from '@/models/Notification';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { deleteNotification, getNotificationRaw, toNotificationDTO, updateNotification } from '@/lib/data/notification';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -17,22 +20,12 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    
-    // Get tenant context from session or headers
+
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const notification = await Notification.findOne(query);
+
+    const notification = await run(tenantId, () => getNotificationRaw(id));
 
     if (!notification) {
       return NextResponse.json(
@@ -42,14 +35,14 @@ export async function GET(
     }
 
     // Users can only view their own notifications (unless admin)
-    if (notification.user.toString() !== session.userId && session.role !== 'admin') {
+    if (notification.userId !== session.userId && session.role !== 'admin') {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
       );
     }
 
-    return NextResponse.json({ success: true, data: notification });
+    return NextResponse.json({ success: true, data: toNotificationDTO(notification) });
   } catch (error: any) {
     console.error('Error fetching notification:', error);
     return NextResponse.json(
@@ -70,60 +63,56 @@ export async function PUT(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
     const body = await request.json();
 
-    // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
 
-    const notification = await Notification.findOne(query);
+    const updatedNotification = await run(tenantId, async () => {
+      const notification = await getNotificationRaw(id);
+      if (!notification) {
+        return { status: 404 as const };
+      }
 
-    if (!notification) {
+      // Users can only update their own notifications (unless admin)
+      if (notification.userId !== session.userId && session.role !== 'admin') {
+        return { status: 403 as const };
+      }
+
+      // If marking as read, set readAt timestamp
+      if (body.read === true && !notification.read) {
+        body.readAt = new Date();
+      } else if (body.read === false) {
+        body.readAt = null;
+      }
+
+      const { user, relatedEntity, ...rest } = body;
+      const data: any = { ...rest };
+      if (relatedEntity) {
+        data.relatedEntityType = relatedEntity.type;
+        data.relatedEntityId = relatedEntity.id;
+      }
+
+      return { status: 200 as const, data: await updateNotification(id, data) };
+    });
+
+    if (updatedNotification.status === 404) {
       return NextResponse.json(
         { success: false, error: 'Notification not found' },
         { status: 404 }
       );
     }
-
-    // Users can only update their own notifications (unless admin)
-    if (notification.user.toString() !== session.userId && session.role !== 'admin') {
+    if (updatedNotification.status === 403) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
       );
     }
 
-    // If marking as read, set readAt timestamp
-    if (body.read === true && !notification.read) {
-      body.readAt = new Date();
-    } else if (body.read === false) {
-      body.readAt = undefined;
-    }
-
-    const updatedNotification = await Notification.findOneAndUpdate(query, body, {
-      new: true,
-      runValidators: true,
-    });
-
-    return NextResponse.json({ success: true, data: updatedNotification });
+    return NextResponse.json({ success: true, data: updatedNotification.data });
   } catch (error: any) {
     console.error('Error updating notification:', error);
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
     return NextResponse.json(
       { success: false, error: 'Failed to update notification' },
       { status: 500 }
@@ -142,38 +131,38 @@ export async function DELETE(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    // Get tenant context from session or headers
+
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
 
-    const notification = await Notification.findOne(query);
+    const result = await run(tenantId, async () => {
+      const notification = await getNotificationRaw(id);
+      if (!notification) {
+        return { status: 404 as const };
+      }
 
-    if (!notification) {
+      // Users can only delete their own notifications (unless admin)
+      if (notification.userId !== session.userId && session.role !== 'admin') {
+        return { status: 403 as const };
+      }
+
+      await deleteNotification(id);
+      return { status: 200 as const };
+    });
+
+    if (result.status === 404) {
       return NextResponse.json(
         { success: false, error: 'Notification not found' },
         { status: 404 }
       );
     }
-
-    // Users can only delete their own notifications (unless admin)
-    if (notification.user.toString() !== session.userId && session.role !== 'admin') {
+    if (result.status === 403) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
       );
     }
-
-    await Notification.findOneAndDelete(query);
 
     return NextResponse.json({ success: true, data: {} });
   } catch (error: any) {
@@ -184,4 +173,3 @@ export async function DELETE(
     );
   }
 }
-

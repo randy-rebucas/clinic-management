@@ -3,19 +3,22 @@
  * Sends alerts when approaching subscription limits (80%, 90%, 100%)
  */
 
-import connectDB from '@/lib/mongodb';
-import Tenant from '@/models/Tenant';
-import User from '@/models/User';
+import { runWithTenant } from '@/lib/tenant-context';
+import { getTenantById, listTenants } from '@/lib/data/tenant';
+import { listActiveUsersByRoleNames, listActiveUsersFallback } from '@/lib/data/user';
+import { createNotification } from '@/lib/data/notification';
+import { getOrCreateSettings } from '@/lib/data/settings';
+// NOTE: subscription-limits.ts / storage-tracking.ts / subscription.ts are
+// still Mongoose-backed (out of scope for this batch — see lib/automations
+// migration plan). Calls into them are preserved as-is; they are expected to
+// fail gracefully (caught below) until those modules are migrated to Prisma.
 import { getSubscriptionUsage } from '@/lib/subscription-limits';
 import { getStorageUsageSummary } from '@/lib/storage-tracking';
 import { checkSubscriptionStatus } from '@/lib/subscription';
-import { createNotification } from '@/lib/notifications';
 import { sendEmail } from '@/lib/email';
-import { getSettings } from '@/lib/settings';
-import { Types } from 'mongoose';
 
 export interface UsageAlert {
-  tenantId: Types.ObjectId;
+  tenantId: string;
   alertType: 'patients' | 'users' | 'doctors' | 'appointments' | 'visits' | 'storage';
   current: number;
   limit: number | null;
@@ -27,33 +30,27 @@ export interface UsageAlert {
 /**
  * Check usage and send alerts if thresholds are met
  */
-export async function checkAndSendUsageAlerts(tenantId: string | Types.ObjectId): Promise<{
+export async function checkAndSendUsageAlerts(tenantId: string): Promise<{
   success: boolean;
   alertsSent: number;
   alerts: UsageAlert[];
 }> {
   try {
-    await connectDB();
-
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
-      : tenantId;
-
-    const tenant = await Tenant.findById(tenantIdObj);
+    const tenant = await runWithTenant(tenantId, () => getTenantById(tenantId));
     if (!tenant) {
       return { success: false, alertsSent: 0, alerts: [] };
     }
 
     // Get subscription status
-    const subscriptionStatus = await checkSubscriptionStatus(tenantIdObj);
+    const subscriptionStatus = await checkSubscriptionStatus(tenantId);
     if (!subscriptionStatus.isActive || subscriptionStatus.isExpired) {
       // Don't send alerts for expired subscriptions
       return { success: true, alertsSent: 0, alerts: [] };
     }
 
     // Get usage statistics
-    const usage = await getSubscriptionUsage(tenantIdObj);
-    const storageSummary = await getStorageUsageSummary(tenantIdObj);
+    const usage = await getSubscriptionUsage(tenantId);
+    const storageSummary = await getStorageUsageSummary(tenantId);
 
     const alerts: UsageAlert[] = [];
 
@@ -68,10 +65,9 @@ export async function checkAndSendUsageAlerts(tenantId: string | Types.ObjectId)
 
       const percentage = (current / limit) * 100;
 
-      // Check thresholds
       if (percentage >= 100) {
         alerts.push({
-          tenantId: tenantIdObj,
+          tenantId,
           alertType: type,
           current,
           limit,
@@ -81,7 +77,7 @@ export async function checkAndSendUsageAlerts(tenantId: string | Types.ObjectId)
         });
       } else if (percentage >= 90) {
         alerts.push({
-          tenantId: tenantIdObj,
+          tenantId,
           alertType: type,
           current,
           limit,
@@ -91,7 +87,7 @@ export async function checkAndSendUsageAlerts(tenantId: string | Types.ObjectId)
         });
       } else if (percentage >= 80) {
         alerts.push({
-          tenantId: tenantIdObj,
+          tenantId,
           alertType: type,
           current,
           limit,
@@ -102,87 +98,75 @@ export async function checkAndSendUsageAlerts(tenantId: string | Types.ObjectId)
       }
     };
 
-    // Check all limits
     checkLimit(usage.patients.current, usage.patients.limit, 'patients', 'Patients');
     checkLimit(usage.users.current, usage.users.limit, 'users', 'Users');
     checkLimit(usage.doctors.current, usage.doctors.limit, 'doctors', 'Doctors');
     checkLimit(usage.appointmentsThisMonth.current, usage.appointmentsThisMonth.limit, 'appointments', 'Monthly appointments');
     checkLimit(usage.visitsThisMonth.current, usage.visitsThisMonth.limit, 'visits', 'Monthly visits');
-    checkLimit(usage.storage.currentGB, usage.storage.limitGB, 'storage', 'Storage');
+    checkLimit(storageSummary.usage.totalGB, storageSummary.usage.limitGB, 'storage', 'Storage');
 
     // Send alerts
     let alertsSent = 0;
     if (alerts.length > 0) {
-      // Get admin users
-      const adminUsers = await User.find({
-        tenantId: tenantIdObj,
-        role: { $exists: true },
-        active: true,
-      }).populate('role', 'name').select('email firstName lastName');
+      const result = await runWithTenant(tenantId, async () => {
+        // Get admin users
+        let admins = await listActiveUsersByRoleNames(['admin']);
 
-      // Filter to actual admins (you may need to adjust this based on your role structure)
-      const admins = adminUsers.filter((user: any) => 
-        user.role?.name?.toLowerCase().includes('admin') || 
-        user.role?.name?.toLowerCase().includes('administrator')
-      );
+        if (admins.length === 0) {
+          // Fallback: use any active users for the tenant
+          admins = (await listActiveUsersFallback(5)) as typeof admins;
+        }
 
-      if (admins.length === 0) {
-        // Fallback: use all users with tenantId
-        const allUsers = await User.find({
-          tenantId: tenantIdObj,
-          active: true,
-        }).limit(5).select('email firstName lastName');
-        admins.push(...allUsers);
-      }
+        const settings = await getOrCreateSettings(tenantId);
+        const clinicName = settings?.clinicName || tenant.name || 'Clinic';
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
+        const subscriptionUrl = `${baseUrl}/subscription`;
 
-      const settings = await getSettings(tenantIdObj.toString());
-      const clinicName = settings?.clinicName || tenant.name || 'Clinic';
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
-      const subscriptionUrl = `${baseUrl}/subscription`;
+        const criticalAlerts = alerts.filter((a) => a.threshold === 100);
+        const warningAlerts = alerts.filter((a) => a.threshold === 90);
+        const infoAlerts = alerts.filter((a) => a.threshold === 80);
 
-      // Group alerts by threshold
-      const criticalAlerts = alerts.filter(a => a.threshold === 100);
-      const warningAlerts = alerts.filter(a => a.threshold === 90);
-      const infoAlerts = alerts.filter(a => a.threshold === 80);
+        let sentCount = 0;
 
-      for (const admin of admins) {
-        // Send email
-        if (admin.email) {
+        for (const admin of admins) {
+          if (admin.email) {
+            try {
+              const emailContent = generateUsageAlertEmail(
+                clinicName,
+                criticalAlerts,
+                warningAlerts,
+                infoAlerts,
+                subscriptionUrl
+              );
+              await sendEmail({
+                to: admin.email,
+                subject: emailContent.subject,
+                html: emailContent.html,
+              });
+              sentCount++;
+            } catch (error) {
+              console.error(`Error sending usage alert email to ${admin.email}:`, error);
+            }
+          }
+
           try {
-            const emailContent = generateUsageAlertEmail(
-              clinicName,
-              criticalAlerts,
-              warningAlerts,
-              infoAlerts,
-              subscriptionUrl
-            );
-            await sendEmail({
-              to: admin.email,
-              subject: emailContent.subject,
-              html: emailContent.html,
+            const alertMessages = alerts.map((a) => a.message).join('\n');
+            await createNotification({
+              userId: admin.id,
+              type: 'system',
+              priority: criticalAlerts.length > 0 ? 'high' : warningAlerts.length > 0 ? 'normal' : 'low',
+              title: 'Usage Alert',
+              message: alertMessages,
+              actionUrl: subscriptionUrl,
             });
-            alertsSent++;
           } catch (error) {
-            console.error(`Error sending usage alert email to ${admin.email}:`, error);
+            console.error(`Error creating usage alert notification:`, error);
           }
         }
 
-        // Send in-app notification
-        try {
-          const alertMessages = alerts.map(a => a.message).join('\n');
-          await createNotification({
-            userId: admin._id,
-            tenantId: tenantIdObj,
-            type: 'system',
-            priority: criticalAlerts.length > 0 ? 'high' : warningAlerts.length > 0 ? 'normal' : 'low',
-            title: 'Usage Alert',
-            message: alertMessages,
-            actionUrl: subscriptionUrl,
-          });
-        } catch (error) {
-          console.error(`Error creating usage alert notification:`, error);
-        }
-      }
+        return sentCount;
+      });
+      alertsSent = result;
     }
 
     return { success: true, alertsSent, alerts };
@@ -202,26 +186,20 @@ export async function processUsageAlerts(): Promise<{
   totalAlertsSent: number;
 }> {
   try {
-    await connectDB();
-
-    // Get all active tenants with active subscriptions
-    const tenants = await Tenant.find({
-      'subscription.status': 'active',
-      status: 'active',
-    }).select('_id subscription');
+    const tenants = await listTenants({ status: 'active', subscriptionStatus: 'active' });
 
     let tenantsProcessed = 0;
     let totalAlertsSent = 0;
 
     for (const tenant of tenants) {
       try {
-        const result = await checkAndSendUsageAlerts(tenant._id);
+        const result = await checkAndSendUsageAlerts(tenant.id);
         if (result.success) {
           tenantsProcessed++;
           totalAlertsSent += result.alertsSent;
         }
       } catch (error) {
-        console.error(`Error processing alerts for tenant ${tenant._id}:`, error);
+        console.error(`Error processing alerts for tenant ${tenant.id}:`, error);
       }
     }
 
@@ -293,11 +271,11 @@ function generateUsageAlertEmail(
         <div class="content">
           <p>Dear ${clinicName} Administrator,</p>
           <p>Your subscription usage has reached the following thresholds:</p>
-          
+
           ${alertSection(criticalAlerts, 'Critical (100% - Limit Reached)', '#dc2626')}
           ${alertSection(warningAlerts, 'Warning (90% - Approaching Limit)', '#f59e0b')}
           ${alertSection(infoAlerts, 'Info (80% - Consider Upgrade)', '#2196F3')}
-          
+
           <p><strong>Recommended Actions:</strong></p>
           <ul>
             <li>Review your current usage on the subscription dashboard</li>
@@ -305,7 +283,7 @@ function generateUsageAlertEmail(
             <li>Delete unused data if you're at storage limits</li>
             <li>Contact support if you need assistance</li>
           </ul>
-          
+
           <p style="text-align: center;">
             <a href="${subscriptionUrl}" class="button">View Subscription & Upgrade</a>
           </p>
@@ -320,4 +298,3 @@ function generateUsageAlertEmail(
 
   return { subject, html };
 }
-

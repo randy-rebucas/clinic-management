@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Document from '@/models/Document';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { extractTextFromDocument } from '@/lib/document-utils';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { markDocumentScanned } from '@/lib/data/document';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function POST(request: NextRequest) {
   const session = await verifySession();
@@ -13,7 +18,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const documentId = formData.get('documentId') as string;
@@ -30,32 +34,29 @@ export async function POST(request: NextRequest) {
 
     // If documentId provided, update existing document
     if (documentId) {
-      const document = await Document.findByIdAndUpdate(
-        documentId,
-        {
-          scanned: true,
-          ocrText: ocrText || undefined,
-          lastModifiedBy: session.userId,
-          lastModifiedDate: new Date(),
-        },
-        { new: true }
-      );
+      const tenantContext = await getTenantContext();
+      const tenantId = session.tenantId || tenantContext.tenantId;
 
-      if (!document) {
-        return NextResponse.json(
-          { success: false, error: 'Document not found' },
-          { status: 404 }
-        );
+      try {
+        const document = await run(tenantId, () => markDocumentScanned(documentId, ocrText || undefined, session.userId));
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            document,
+            ocrText,
+            scanned: true,
+          },
+        });
+      } catch (error: any) {
+        if (error.code === 'P2025') {
+          return NextResponse.json(
+            { success: false, error: 'Document not found' },
+            { status: 404 }
+          );
+        }
+        throw error;
       }
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          document,
-          ocrText,
-          scanned: true,
-        },
-      });
     }
 
     // Otherwise, return OCR result for new document creation
@@ -74,4 +75,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

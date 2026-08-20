@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import PushSubscription from '@/models/PushSubscription';
 import { verifySession } from '@/app/lib/dal';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { upsertPushSubscription } from '@/lib/data/push-subscription';
 
 export async function POST(request: NextRequest) {
   const session = await verifySession();
@@ -22,21 +21,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await connectDB();
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
-    await PushSubscription.findOneAndUpdate(
-      { endpoint },
-      {
-        endpoint,
-        keys,
-        userId: new Types.ObjectId(session.userId),
-        ...(tenantId ? { tenantId: new Types.ObjectId(tenantId) } : {}),
-        ...(userAgent ? { userAgent } : {}),
-      },
-      { upsert: true, new: true }
-    );
+    const input = {
+      userId: session.userId,
+      endpoint,
+      keysP256dh: keys.p256dh,
+      keysAuth: keys.auth,
+      userAgent,
+    };
+
+    if (tenantId) {
+      await runWithTenant(tenantId, () => upsertPushSubscription(input));
+    } else {
+      await runAsSystem(() => upsertPushSubscription(input));
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

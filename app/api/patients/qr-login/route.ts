@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SignJWT } from 'jose';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { runAsSystem } from '@/lib/tenant-context';
+import { findPatientAcrossTenants, getPatientById } from '@/lib/data/patient';
 
 /**
  * Patient QR Code Login
@@ -13,33 +12,24 @@ import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
  * Rate limited to prevent brute force attacks
  */
 export async function POST(request: NextRequest) {
-  // Apply strict rate limiting for authentication endpoint
   const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
   if (rateLimitResponse) {
     return rateLimitResponse;
   }
-  
+
   try {
-    await connectDB();
     const body = await request.json();
     const { qrCode, tenantId: bodyTenantId } = body;
 
     if (!qrCode) {
-      return NextResponse.json(
-        { success: false, error: 'QR code is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'QR code is required' }, { status: 400 });
     }
 
-    // Parse QR code data
     let qrData;
     try {
       qrData = typeof qrCode === 'string' ? JSON.parse(qrCode) : qrCode;
     } catch (error) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid QR code format' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Invalid QR code format' }, { status: 400 });
     }
 
     const { patientId, patientCode, type, tenantId: qrTenantId } = qrData;
@@ -58,40 +48,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get tenant context from subdomain or body/QR code
     const tenantContext = await getTenantContext();
     const tenantId = bodyTenantId || qrTenantId || tenantContext.tenantId;
 
-    // Find patient by ID or patient code (tenant-scoped)
-    let patient;
+    // findPatientAcrossTenants() matches by email/phone/patientCode — a
+    // patientId lookup needs a direct id fetch instead, verified against
+    // the resolved tenantId afterward (Patient is junction-scoped; see
+    // lib/data/patient.ts).
+    let patient: Awaited<ReturnType<typeof getPatientById>> | Awaited<ReturnType<typeof findPatientAcrossTenants>> = null;
     if (patientId) {
-      const patientQuery: any = { _id: patientId };
-      if (tenantId) {
-        patientQuery.tenantIds = new Types.ObjectId(tenantId);
-      } else {
-        // If no tenant, check for patients without tenantIds (backward compatibility)
-        patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
+      const byId = await runAsSystem(() => getPatientById(patientId, { withRelations: false }));
+      if (byId && (!tenantId || byId.tenantIds.includes(tenantId))) {
+        patient = byId;
       }
-      patient = await Patient.findOne(patientQuery);
-    } else if (patientCode) {
-      const patientQuery: any = { patientCode };
-      if (tenantId) {
-        patientQuery.tenantIds = new Types.ObjectId(tenantId);
-      } else {
-        // If no tenant, check for patients without tenantIds (backward compatibility)
-        patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-      }
-      patient = await Patient.findOne(patientQuery);
+    } else {
+      patient = await runAsSystem(() => findPatientAcrossTenants({ patientCode, tenantId }));
     }
 
     if (!patient) {
-      return NextResponse.json(
-        { success: false, error: 'Patient not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Patient not found' }, { status: 404 });
     }
 
-    // Verify patient is active
     if (patient.active === false) {
       return NextResponse.json(
         { success: false, error: 'Patient account is inactive. Please contact the clinic.' },
@@ -99,7 +76,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Sign a JWT so the patient_session cookie cannot be tampered with
     const secretKey = process.env.SESSION_SECRET;
     if (!secretKey) {
       return NextResponse.json({ success: false, error: 'Server configuration error' }, { status: 500 });
@@ -108,7 +84,7 @@ export async function POST(request: NextRequest) {
     const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     const patientJwt = await new SignJWT({
-      patientId: patient._id.toString(),
+      patientId: patient.id,
       patientCode: patient.patientCode,
       type: 'patient',
       email: patient.email || `patient-${patient.patientCode}@clinic.local`,
@@ -121,7 +97,7 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({
       success: true,
       data: {
-        patientId: patient._id.toString(),
+        patientId: patient.id,
         patientCode: patient.patientCode,
         firstName: patient.firstName,
         lastName: patient.lastName,
@@ -130,32 +106,20 @@ export async function POST(request: NextRequest) {
       message: 'Login successful',
     });
 
-    // Set signed JWT as the patient session cookie (7 days)
     response.cookies.set('patient_session', patientJwt, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      expires: expires,
+      expires,
       path: '/',
     });
 
-    logger.info('Patient QR code login successful', {
-      patientId: patient._id.toString(),
-      patientCode: patient.patientCode,
-    });
+    logger.info('Patient QR code login successful', { patientId: patient.id, patientCode: patient.patientCode });
 
     return response;
-
   } catch (error: any) {
-    logger.error('Error in patient QR code login', error as Error, {
-      name: error.name,
-      code: error.code,
-    });
+    logger.error('Error in patient QR code login', error as Error, { name: error.name, code: error.code });
 
-    return NextResponse.json(
-      { success: false, error: 'Failed to login with QR code' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to login with QR code' }, { status: 500 });
   }
 }
-

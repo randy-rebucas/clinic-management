@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, isAdmin } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listBackupRecords, createBackupRecord } from '@/lib/data/backup-record';
+// NOTE: the raw collection dump below (mongoose.connection.db) is genuine
+// pre-cutover MongoDB backup infrastructure — it snapshots the live Mongo
+// database, which still exists during the migration window. It intentionally
+// stays on the Mongo driver; only the BackupRecord bookkeeping row moves to
+// Prisma/Postgres (lib/data/backup-record.ts).
 import mongoose from 'mongoose';
-import BackupRecord from '@/models/BackupRecord';
+import connectDB from '@/lib/mongodb';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 // GET /api/backups — list all backup records for the tenant
 export async function GET(request: NextRequest) {
@@ -20,7 +30,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId || undefined;
 
@@ -29,20 +38,11 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '20')));
     const skip = (page - 1) * limit;
 
-    const filter = tenantId ? { tenantId } : {};
-
-    const [backups, total] = await Promise.all([
-      BackupRecord.find(filter, { data: 0 }) // exclude raw data from list
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      BackupRecord.countDocuments(filter),
-    ]);
+    const { items, total } = await run(tenantId, () => listBackupRecords(skip, limit));
 
     return NextResponse.json({
       success: true,
-      data: backups,
+      data: items,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (error) {
@@ -67,13 +67,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId || undefined;
 
     const body = await request.json().catch(() => ({}));
     const label: string | undefined = body?.label?.trim() || undefined;
 
+    // Genuine pre-cutover Mongo backup: dump every live Mongo collection.
+    await connectDB();
     const db = mongoose.connection.db;
     if (!db) throw new Error('Database connection not available');
 
@@ -92,18 +93,19 @@ export async function POST(request: NextRequest) {
     const totalDocuments = Object.values(backupData).reduce((s, d) => s + d.length, 0);
     const sizeBytes = Buffer.byteLength(JSON.stringify(backupData), 'utf8');
 
-    const record = await BackupRecord.create({
-      tenantId,
-      createdBy: session.userId,
-      createdByEmail: session.email,
-      label,
-      status: 'completed',
-      collections: collectionNames,
-      totalDocuments,
-      sizeBytes,
-      version: '1.0',
-      data: backupData,
-    });
+    const meta = await run(tenantId, () =>
+      createBackupRecord({
+        createdById: session.userId,
+        createdByEmail: session.email,
+        label,
+        status: 'completed',
+        collections: collectionNames,
+        totalDocuments,
+        sizeBytes,
+        version: '1.0',
+        data: backupData as any,
+      })
+    );
 
     await createAuditLog({
       userId: session.userId,
@@ -112,13 +114,11 @@ export async function POST(request: NextRequest) {
       tenantId,
       action: 'backup',
       resource: 'system',
-      resourceId: record._id as any,
+      resourceId: meta._id,
       description: `Database backup created${label ? `: ${label}` : ''}`,
       metadata: { collections: collectionNames, totalDocuments, sizeBytes },
     });
 
-    // Return metadata only (not the raw data blob)
-    const { data: _omit, ...meta } = record.toObject();
     return NextResponse.json(
       { success: true, data: meta, message: 'Backup created successfully' },
       { status: 201 }

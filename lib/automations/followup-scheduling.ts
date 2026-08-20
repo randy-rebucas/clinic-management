@@ -1,22 +1,44 @@
 // Follow-up Visit Scheduling Automation
 // Automatically schedules follow-up visits
 
-import connectDB from '@/lib/mongodb';
-import Visit from '@/models/Visit';
-import Appointment from '@/models/Appointment';
-import Patient from '@/models/Patient';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getVisitById, listVisits, buildVisitWhere } from '@/lib/data/visit';
+import {
+  listAppointments,
+  createAppointment,
+  getMaxAppointmentCodeNumber,
+} from '@/lib/data/appointment';
 import { getSettings } from '@/lib/settings';
 import { createNotification } from '@/lib/notifications';
 import { sendEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: any, fn: () => T | Promise<T>): T | Promise<T> {
+  const tid = tenantId ? String(tenantId) : null;
+  return tid ? runWithTenant(tid, fn) : runAsSystem(fn);
+}
 
 export interface FollowupSchedulingOptions {
-  visitId: string | Types.ObjectId;
-  tenantId?: string | Types.ObjectId;
+  visitId: string;
+  tenantId?: any;
   sendNotification?: boolean;
   sendEmail?: boolean;
   sendSMS?: boolean;
+}
+
+async function findExistingFollowupAppointment(patientId: string, followUpDate: Date) {
+  const dayStart = new Date(followUpDate);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(followUpDate);
+  dayEnd.setHours(23, 59, 59, 999);
+
+  const appointments = await listAppointments({
+    patientId,
+    appointmentDate: { gte: dayStart, lte: dayEnd },
+    status: { in: ['scheduled', 'confirmed', 'pending'] },
+  } as any);
+
+  return appointments[0];
 }
 
 /**
@@ -30,185 +52,142 @@ export async function scheduleFollowupAppointment(options: FollowupSchedulingOpt
   reason?: string;
 }> {
   try {
-    await connectDB();
+    return await run(options.tenantId, async () => {
+      const settings = await getSettings();
+      const autoFollowupScheduling = (settings.automationSettings as any)?.autoFollowupScheduling !== false;
 
-    const settings = await getSettings();
-    const autoFollowupScheduling = (settings.automationSettings as any)?.autoFollowupScheduling !== false;
-
-    if (!autoFollowupScheduling) {
-      return { 
-        success: false, 
-        skipped: true, 
-        reason: 'Automatic follow-up scheduling is disabled' 
-      };
-    }
-
-    const visitId = typeof options.visitId === 'string' 
-      ? new Types.ObjectId(options.visitId) 
-      : options.visitId;
-
-    const visit = await Visit.findById(visitId)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('provider', 'firstName lastName');
-
-    if (!visit) {
-      return { success: false, error: 'Visit not found' };
-    }
-
-    // Check if visit has follow-up date
-    if (!visit.followUpDate) {
-      return { 
-        success: false, 
-        skipped: true, 
-        reason: 'Visit does not have a follow-up date' 
-      };
-    }
-
-    // Check if visit is closed
-    if (visit.status !== 'closed') {
-      return { 
-        success: false, 
-        skipped: true, 
-        reason: 'Visit is not closed' 
-      };
-    }
-
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : visit.tenantId;
-
-    // Check if appointment already exists for this follow-up
-    const followUpDate = new Date(visit.followUpDate);
-    const existingAppointment = await Appointment.findOne({
-      tenantId,
-      patient: visit.patient,
-      appointmentDate: {
-        $gte: new Date(followUpDate.setHours(0, 0, 0, 0)),
-        $lt: new Date(followUpDate.setHours(23, 59, 59, 999)),
-      },
-      status: { $in: ['scheduled', 'confirmed', 'pending'] },
-    });
-
-    if (existingAppointment) {
-      return { 
-        success: false, 
-        skipped: true, 
-        reason: 'Appointment already exists for follow-up date',
-        appointment: existingAppointment
-      };
-    }
-
-    const patient = visit.patient as any;
-    const provider = visit.provider as any;
-
-    if (!patient) {
-      return { success: false, error: 'Patient not found' };
-    }
-
-    // Generate appointment code
-    const codeQuery: any = { appointmentCode: { $exists: true, $ne: null } };
-    if (tenantId) {
-      codeQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    const lastAppointment = await Appointment.findOne(codeQuery)
-      .sort({ appointmentCode: -1 })
-      .exec();
-
-    let nextNumber = 1;
-    if (lastAppointment?.appointmentCode) {
-      const match = lastAppointment.appointmentCode.match(/(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
+      if (!autoFollowupScheduling) {
+        return {
+          success: false,
+          skipped: true,
+          reason: 'Automatic follow-up scheduling is disabled'
+        };
       }
-    }
 
-    const appointmentCode = `APT-${String(nextNumber).padStart(6, '0')}`;
+      const visit = await getVisitById(options.visitId);
 
-    // Create appointment for follow-up
-    const appointmentData: any = {
-      tenantId,
-      patient: patient._id,
-      doctor: provider?._id,
-      provider: provider?._id,
-      appointmentCode,
-      appointmentDate: followUpDate,
-      appointmentTime: '09:00', // Default time, can be configured
-      status: 'scheduled',
-      reason: 'Follow-up visit',
-      notes: `Follow-up appointment for visit ${visit.visitCode}`,
-      duration: 30, // Default 30 minutes
-    };
+      if (!visit) {
+        return { success: false, error: 'Visit not found' };
+      }
 
-    const appointment = await Appointment.create(appointmentData);
+      // Check if visit has follow-up date
+      const followUpDateRaw = (visit as any).followUpDate || (visit as any).treatmentPlan?.followUp?.date;
+      if (!followUpDateRaw) {
+        return {
+          success: false,
+          skipped: true,
+          reason: 'Visit does not have a follow-up date'
+        };
+      }
 
-    // Populate appointment
-    await appointment.populate('patient', 'firstName lastName email phone');
-    await appointment.populate('doctor', 'firstName lastName');
-    await appointment.populate('provider', 'name email');
+      // Check if visit is closed
+      if ((visit as any).status !== 'closed') {
+        return {
+          success: false,
+          skipped: true,
+          reason: 'Visit is not closed'
+        };
+      }
 
-    // Send notifications
-    if (options.sendNotification !== false && patient._id) {
-      try {
-        await createNotification({
-          userId: patient._id,
-          tenantId,
-          type: 'appointment',
-          priority: 'normal',
-          title: 'Follow-up Appointment Scheduled',
-          message: `Your follow-up appointment has been scheduled for ${followUpDate.toLocaleDateString()}. Appointment Code: ${appointmentCode}.`,
-          relatedEntity: {
+      const patient = (visit as any).patient;
+      const provider = (visit as any).provider;
+
+      if (!patient) {
+        return { success: false, error: 'Patient not found' };
+      }
+
+      const followUpDate = new Date(followUpDateRaw);
+
+      // Check if appointment already exists for this follow-up
+      const existingAppointment = await findExistingFollowupAppointment(patient.id, followUpDate);
+
+      if (existingAppointment) {
+        return {
+          success: false,
+          skipped: true,
+          reason: 'Appointment already exists for follow-up date',
+          appointment: existingAppointment
+        };
+      }
+
+      const nextNumber = (await getMaxAppointmentCodeNumber()) + 1;
+      const appointmentCode = `APT-${String(nextNumber).padStart(6, '0')}`;
+
+      // Create appointment for follow-up
+      const appointment = await createAppointment({
+        appointmentCode,
+        appointmentDate: followUpDate,
+        appointmentTime: '09:00', // Default time, can be configured
+        status: 'scheduled',
+        reason: 'Follow-up visit',
+        notes: `Follow-up appointment for visit ${(visit as any).visitCode}`,
+        duration: 30, // Default 30 minutes
+        patient: { connect: { id: patient.id } },
+        doctor: provider?.id ? { connect: { id: provider.id } } : undefined,
+        provider: provider?.id ? { connect: { id: provider.id } } : undefined,
+      } as any);
+
+      // Send notifications
+      if (options.sendNotification !== false && patient.id) {
+        try {
+          await createNotification({
+            userId: patient.id,
+            tenantId: options.tenantId ? String(options.tenantId) : (visit as any).tenantId,
             type: 'appointment',
-            id: appointment._id,
-          },
-          actionUrl: `/appointments/${appointment._id}`,
-        });
-      } catch (error) {
-        console.error('Error creating follow-up appointment notification:', error);
-      }
-    }
-
-    // Send email
-    if (options.sendEmail && patient.email) {
-      try {
-        const emailContent = generateFollowupEmail(visit, appointment);
-        await sendEmail({
-          to: patient.email,
-          subject: emailContent.subject,
-          html: emailContent.html,
-        });
-      } catch (error) {
-        console.error('Error sending follow-up appointment email:', error);
-      }
-    }
-
-    // Send SMS
-    if (options.sendSMS && patient.phone) {
-      try {
-        const message = `Your follow-up appointment has been scheduled for ${followUpDate.toLocaleDateString()} at 9:00 AM. Appointment Code: ${appointmentCode}. We'll send a reminder closer to the date.`;
-
-        let phoneNumber = patient.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
+            priority: 'normal',
+            title: 'Follow-up Appointment Scheduled',
+            message: `Your follow-up appointment has been scheduled for ${followUpDate.toLocaleDateString()}. Appointment Code: ${appointmentCode}.`,
+            relatedEntity: {
+              type: 'appointment',
+              id: (appointment as any).id,
+            },
+            actionUrl: `/appointments/${(appointment as any).id}`,
+          });
+        } catch (error) {
+          console.error('Error creating follow-up appointment notification:', error);
         }
-
-        await sendSMS({
-          to: phoneNumber,
-          message,
-        });
-      } catch (error) {
-        console.error('Error sending follow-up appointment SMS:', error);
       }
-    }
 
-    return { success: true, appointment };
+      // Send email
+      if (options.sendEmail && patient.email) {
+        try {
+          const emailContent = generateFollowupEmail(visit, appointment);
+          await sendEmail({
+            to: patient.email,
+            subject: emailContent.subject,
+            html: emailContent.html,
+          });
+        } catch (error) {
+          console.error('Error sending follow-up appointment email:', error);
+        }
+      }
+
+      // Send SMS
+      if (options.sendSMS && patient.phone) {
+        try {
+          const message = `Your follow-up appointment has been scheduled for ${followUpDate.toLocaleDateString()} at 9:00 AM. Appointment Code: ${appointmentCode}. We'll send a reminder closer to the date.`;
+
+          let phoneNumber = patient.phone.trim();
+          if (!phoneNumber.startsWith('+')) {
+            phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
+          }
+
+          await sendSMS({
+            to: phoneNumber,
+            message,
+          });
+        } catch (error) {
+          console.error('Error sending follow-up appointment SMS:', error);
+        }
+      }
+
+      return { success: true, appointment };
+    });
   } catch (error: any) {
     console.error('Error scheduling follow-up appointment:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to schedule follow-up appointment' 
+    return {
+      success: false,
+      error: error.message || 'Failed to schedule follow-up appointment'
     };
   }
 }
@@ -217,7 +196,7 @@ export async function scheduleFollowupAppointment(options: FollowupSchedulingOpt
  * Process all visits with follow-up dates and schedule appointments
  * This should be called by a cron job
  */
-export async function processFollowupScheduling(tenantId?: string | Types.ObjectId): Promise<{
+export async function processFollowupScheduling(tenantId?: any): Promise<{
   success: boolean;
   processed: number;
   scheduled: number;
@@ -225,81 +204,65 @@ export async function processFollowupScheduling(tenantId?: string | Types.Object
   results: Array<{ visitId: string; success: boolean; error?: string; appointmentId?: string }>;
 }> {
   try {
-    await connectDB();
+    return await run(tenantId, async () => {
+      const settings = await getSettings();
+      const autoFollowupScheduling = (settings.automationSettings as any)?.autoFollowupScheduling !== false;
 
-    const settings = await getSettings();
-    const autoFollowupScheduling = (settings.automationSettings as any)?.autoFollowupScheduling !== false;
-
-    if (!autoFollowupScheduling) {
-      return { success: true, processed: 0, scheduled: 0, errors: 0, results: [] };
-    }
-
-    // Find visits with follow-up dates that are closed but don't have appointments yet
-    const query: any = {
-      status: 'closed',
-      followUpDate: { $exists: true, $ne: null },
-    };
-
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
-
-    const visits = await Visit.find(query)
-      .populate('patient', 'firstName lastName')
-      .populate('provider', 'name');
-
-    const results: Array<{ visitId: string; success: boolean; error?: string; appointmentId?: string }> = [];
-    let scheduled = 0;
-    let errors = 0;
-
-    for (const visit of visits) {
-      // Check if appointment already exists
-      const followUpDate = new Date(visit.followUpDate!);
-      const existingAppointment = await Appointment.findOne({
-        tenantId: visit.tenantId,
-        patient: visit.patient,
-        appointmentDate: {
-          $gte: new Date(followUpDate.setHours(0, 0, 0, 0)),
-          $lt: new Date(followUpDate.setHours(23, 59, 59, 999)),
-        },
-        status: { $in: ['scheduled', 'confirmed', 'pending'] },
-      });
-
-      if (existingAppointment) {
-        continue; // Skip if appointment already exists
+      if (!autoFollowupScheduling) {
+        return { success: true, processed: 0, scheduled: 0, errors: 0, results: [] };
       }
 
-      const result = await scheduleFollowupAppointment({
-        visitId: visit._id,
-        tenantId: visit.tenantId,
-        sendNotification: true,
-        sendEmail: true,
-        sendSMS: true,
-      });
+      // Find visits with follow-up dates that are closed but don't have appointments yet
+      const visits = (await listVisits(buildVisitWhere({ status: 'closed' }))).filter(
+        (v: any) => v.followUpDate || v.treatmentPlan?.followUp?.date
+      );
 
-      results.push({
-        visitId: visit._id.toString(),
-        success: result.success,
-        error: result.error,
-        appointmentId: result.appointment?._id?.toString(),
-      });
+      const results: Array<{ visitId: string; success: boolean; error?: string; appointmentId?: string }> = [];
+      let scheduled = 0;
+      let errors = 0;
 
-      if (result.success && result.appointment) {
-        scheduled++;
-      } else if (!result.success && !result.skipped) {
-        errors++;
+      for (const visit of visits) {
+        const followUpDateRaw = (visit as any).followUpDate || (visit as any).treatmentPlan?.followUp?.date;
+        const followUpDate = new Date(followUpDateRaw);
+        const patient = (visit as any).patient;
+        if (!patient) continue;
+
+        const existingAppointment = await findExistingFollowupAppointment(patient.id, followUpDate);
+
+        if (existingAppointment) {
+          continue; // Skip if appointment already exists
+        }
+
+        const result = await scheduleFollowupAppointment({
+          visitId: (visit as any).id,
+          tenantId: (visit as any).tenantId,
+          sendNotification: true,
+          sendEmail: true,
+          sendSMS: true,
+        });
+
+        results.push({
+          visitId: (visit as any).id,
+          success: result.success,
+          error: result.error,
+          appointmentId: result.appointment?.id,
+        });
+
+        if (result.success && result.appointment) {
+          scheduled++;
+        } else if (!result.success && !result.skipped) {
+          errors++;
+        }
       }
-    }
 
-    return {
-      success: true,
-      processed: visits.length,
-      scheduled,
-      errors,
-      results,
-    };
+      return {
+        success: true,
+        processed: visits.length,
+        scheduled,
+        errors,
+        results,
+      };
+    });
   } catch (error: any) {
     console.error('Error processing follow-up scheduling:', error);
     return {
@@ -364,4 +327,3 @@ function generateFollowupEmail(visit: any, appointment: any): { subject: string;
 
   return { subject, html };
 }
-

@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import PatientNote from '@/models/PatientNote';
-import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { listPatientNotes, createPatientNote } from '@/lib/data/patient-note';
+
+async function resolveTenantId(session: { tenantId?: string | null }) {
+  const tenantContext = await getTenantContext();
+  return session.tenantId || tenantContext.tenantId;
+}
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * GET /api/patients/[id]/notes
  * Get all notes for a patient (filtered by visibility)
- *
- * Query params:
- *   - limit: number (default 50)
- *   - skip: number (default 0)
- *   - visibility: 'private' | 'internal' | 'shared' (filter by visibility)
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await verifySession() as any;
@@ -24,50 +27,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (permissionCheck) return permissionCheck;
 
   try {
-    await connectDB();
     const { id } = await params;
+    const tenantId = await resolveTenantId(session);
 
-    if (!Types.ObjectId.isValid(id)) {
-      return NextResponse.json({ success: false, error: 'Invalid patient ID' }, { status: 400 });
-    }
-
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    // Verify patient exists and belongs to tenant
-    const patient = await Patient.findById(id).lean();
+    // Verify patient exists and belongs to tenant (Patient is junction-scoped;
+    // run() will correctly return null if the patient isn't in this tenant).
+    const patient = await run(tenantId, () => getPatientById(id, { withRelations: false }));
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found' }, { status: 404 });
     }
 
     const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') ?? '50'), 100);
     const skip = parseInt(request.nextUrl.searchParams.get('skip') ?? '0');
-    const visibility = request.nextUrl.searchParams.get('visibility');
+    const visibilityParam = request.nextUrl.searchParams.get('visibility');
 
-    const query: any = {
-      patient: new Types.ObjectId(id),
-    };
-
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    }
-
-    // Filter by visibility if requested
-    if (visibility && ['private', 'internal', 'shared'].includes(visibility)) {
-      query.visibility = visibility;
+    let visibility: 'private' | 'internal' | 'shared' | Array<'private' | 'internal' | 'shared'>;
+    if (visibilityParam && ['private', 'internal', 'shared'].includes(visibilityParam)) {
+      visibility = visibilityParam as 'private' | 'internal' | 'shared';
+    } else if (session.user?.role?.name === 'patient') {
+      visibility = 'shared';
     } else {
-      // Default: show internal and shared for staff, only shared for patients
-      if (session.user?.role?.name === 'patient') {
-        query.visibility = 'shared';
-      } else {
-        query.visibility = { $in: ['internal', 'shared'] };
-      }
+      visibility = ['internal', 'shared'];
     }
 
-    const [notes, total] = await Promise.all([
-      PatientNote.find(query).sort({ createdAt: -1 }).limit(limit).skip(skip).lean(),
-      PatientNote.countDocuments(query),
-    ]);
+    // PatientNote is directly tenant-scoped, so this must run in the same
+    // tenant branch as the patient lookup above.
+    const { notes, total } = await run(tenantId, () =>
+      listPatientNotes(id, { visibility, limit, skip })
+    );
 
     return NextResponse.json({
       success: true,
@@ -88,14 +75,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 /**
  * POST /api/patients/[id]/notes
  * Create a new note for a patient
- *
- * Request body:
- * {
- *   content: string,
- *   visibility?: 'private' | 'internal' | 'shared',
- *   priority?: 'low' | 'normal' | 'high',
- *   tags?: string[]
- * }
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await verifySession();
@@ -105,13 +84,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (permissionCheck) return permissionCheck;
 
   try {
-    await connectDB();
     const { id } = await params;
-
-    if (!Types.ObjectId.isValid(id)) {
-      return NextResponse.json({ success: false, error: 'Invalid patient ID' }, { status: 400 });
-    }
-
     const body = await request.json();
     const { content, visibility = 'internal', priority = 'normal', tags = [] } = body;
 
@@ -119,36 +92,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: false, error: 'Content is required' }, { status: 400 });
     }
 
-    // Verify patient exists
-    const patient = await Patient.findById(id).lean();
+    const tenantId = await resolveTenantId(session);
+
+    const patient = await run(tenantId, () => getPatientById(id, { withRelations: false }));
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found' }, { status: 404 });
     }
 
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    const note = await PatientNote.create({
-      patient: new Types.ObjectId(id),
-      author: {
-        userId: new Types.ObjectId(session.userId),
-        name: session.name || session.email,
-        role: session.role,
-      },
-      content: content.trim(),
-      visibility,
-      priority,
-      tags: tags.filter((t: string) => typeof t === 'string' && t.trim().length > 0),
-      tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
-    });
-
-    return NextResponse.json(
-      {
-        success: true,
-        data: note,
-      },
-      { status: 201 }
+    const note = await run(tenantId, () =>
+      createPatientNote({
+        patientId: id,
+        authorUserId: session.userId,
+        authorName: (session as any).name || session.email,
+        authorRole: session.role,
+        content: content.trim(),
+        visibility,
+        priority,
+        tags: Array.isArray(tags) ? tags.filter((t: string) => typeof t === 'string' && t.trim().length > 0) : [],
+        tenantId: tenantId ?? undefined,
+      })
     );
+
+    return NextResponse.json({ success: true, data: note }, { status: 201 });
   } catch (error) {
     console.error('Error creating patient note:', error);
     return NextResponse.json({ success: false, error: 'Failed to create note' }, { status: 500 });

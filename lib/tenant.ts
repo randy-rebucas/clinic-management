@@ -1,36 +1,20 @@
 /**
  * Tenant context utilities for multi-tenant support
+ *
+ * DB-touching functions below use lib/data/tenant.ts (Prisma). Tenant is the
+ * tenant-scoping ROOT (not in DIRECTLY_SCOPED_MODELS / JUNCTION_SCOPED_MODELS
+ * in lib/prisma-tenant-extension.ts), so these calls don't strictly need
+ * runWithTenant/runAsSystem for the extension's sake — they're wrapped in
+ * runAsSystem() anyway for consistency, and because getTenantContext() is
+ * frequently the FIRST call in a request path, so establishing an
+ * AsyncLocalStorage context here (even a bypass one) is harmless and keeps
+ * the pattern uniform for any future code added to this file.
  */
 import 'server-only';
 
 import { headers } from 'next/headers';
-import connectDB from '@/lib/mongodb';
-import Tenant, { ITenant } from '@/models/Tenant';
-import { Types } from 'mongoose';
-
-// Type for lean tenant result from database
-type TenantLean = {
-  _id: Types.ObjectId;
-  name: string;
-  subdomain: string;
-  displayName?: string;
-  status: 'active' | 'inactive' | 'suspended';
-  settings?: {
-    timezone?: string;
-    currency?: string;
-    dateFormat?: string;
-    logo?: string;
-    primaryColor?: string;
-    secondaryColor?: string;
-  };
-  subscription?: {
-    plan?: string;
-    status?: 'active' | 'cancelled' | 'expired';
-    expiresAt?: Date;
-  };
-  createdAt?: Date;
-  updatedAt?: Date;
-};
+import { runAsSystem } from '@/lib/tenant-context';
+import { getTenantBySubdomain } from '@/lib/data/tenant';
 
 // Type for tenant data returned in context (with string _id)
 export type TenantData = {
@@ -58,6 +42,52 @@ export interface TenantContext {
   tenantId: string | null;
   subdomain: string | null;
   tenant: TenantData | null;
+}
+
+/**
+ * Reconstruct the nested `settings`/`subscription` shape downstream callers
+ * expect from Prisma's flattened Tenant columns (see
+ * prisma/MIGRATION_NOTES.md — Tenant.settings-prefixed / subscription-prefixed
+ * columns are flattened fixed-shape structs, not JSON columns).
+ */
+function toTenantData(tenant: {
+  id: string;
+  name: string;
+  subdomain: string;
+  displayName: string | null;
+  status: string;
+  settingsTimezone: string | null;
+  settingsCurrency: string | null;
+  settingsDateFormat: string | null;
+  settingsLogo: string | null;
+  settingsPrimaryColor: string | null;
+  settingsSecondaryColor: string | null;
+  subscriptionPlan: string | null;
+  subscriptionStatus: string | null;
+  subscriptionExpiresAt: Date | null;
+}): TenantData {
+  return {
+    _id: tenant.id,
+    name: tenant.name,
+    subdomain: tenant.subdomain,
+    displayName: tenant.displayName ?? undefined,
+    status: tenant.status as TenantData['status'],
+    settings: {
+      timezone: tenant.settingsTimezone ?? undefined,
+      currency: tenant.settingsCurrency ?? undefined,
+      dateFormat: tenant.settingsDateFormat ?? undefined,
+      logo: tenant.settingsLogo ?? undefined,
+      primaryColor: tenant.settingsPrimaryColor ?? undefined,
+      secondaryColor: tenant.settingsSecondaryColor ?? undefined,
+    },
+    subscription: tenant.subscriptionPlan || tenant.subscriptionStatus || tenant.subscriptionExpiresAt
+      ? {
+          plan: tenant.subscriptionPlan ?? undefined,
+          status: (tenant.subscriptionStatus as 'active' | 'cancelled' | 'expired' | null) ?? undefined,
+          expiresAt: tenant.subscriptionExpiresAt ?? undefined,
+        }
+      : undefined,
+  };
 }
 
 /**
@@ -117,13 +147,11 @@ export async function getTenantContext(): Promise<TenantContext> {
       };
     }
 
-    await connectDB();
-    const tenant = await Tenant.findOne({ 
-      subdomain: subdomain.toLowerCase(),
-      status: 'active'
-    }).select('_id name subdomain displayName status settings subscription').lean() as TenantLean | null;
+    // Tenant is the scoping root, not itself tenant-scoped — wrap in
+    // runAsSystem() for pattern consistency (see file header comment).
+    const tenant = await runAsSystem(() => getTenantBySubdomain(subdomain.toLowerCase()));
 
-    if (!tenant) {
+    if (!tenant || tenant.status !== 'active') {
       return {
         tenantId: null,
         subdomain,
@@ -132,21 +160,9 @@ export async function getTenantContext(): Promise<TenantContext> {
     }
 
     return {
-      tenantId: tenant._id.toString(),
+      tenantId: tenant.id,
       subdomain: tenant.subdomain,
-      tenant: {
-        _id: tenant._id.toString(),
-        name: tenant.name,
-        subdomain: tenant.subdomain,
-        displayName: tenant.displayName,
-        status: tenant.status,
-        settings: tenant.settings,
-        subscription: tenant.subscription ? {
-          plan: tenant.subscription.plan,
-          status: tenant.subscription.status,
-          expiresAt: tenant.subscription.expiresAt,
-        } : undefined,
-      },
+      tenant: toTenantData(tenant),
     };
   } catch (error) {
     console.error('Error getting tenant context:', error);
@@ -166,45 +182,25 @@ export async function getTenantId(): Promise<string | null> {
   return context.tenantId;
 }
 
-export async function getTenantBySlug(slug: string): Promise<ITenant | null> {
-  try {
-    await connectDB();
-    const tenant = await Tenant.findOne({ slug: slug.toLowerCase(), status: 'active' }).lean<ITenant | null>();
-    return tenant;
-  } catch (error) {
-    console.error('Error getting tenant by slug:', error);
-    return null;
-  }
-}
+// NOTE: getTenantBySlug() was dropped in the Prisma cutover. It referenced a
+// `slug` field that never existed on the Mongoose Tenant model (the real
+// field is `subdomain`) — grepping the repo turned up no callers besides
+// this file and a docs mention, so it was dead/broken code. If a `slug`
+// lookup is needed in the future, add it against `getTenantBySubdomain` (or
+// a real `slug` column) rather than resurrecting this stub.
 
 /**
  * Verify that a tenant exists and is active
  */
 export async function verifyTenant(subdomain: string): Promise<TenantData | null> {
   try {
-    await connectDB();
-    const tenant = await Tenant.findOne({ 
-      subdomain: subdomain.toLowerCase(),
-      status: 'active'
-    }).select('_id name subdomain displayName status settings subscription').lean() as TenantLean | null;
+    const tenant = await runAsSystem(() => getTenantBySubdomain(subdomain.toLowerCase()));
 
-    if (!tenant) {
+    if (!tenant || tenant.status !== 'active') {
       return null;
     }
 
-    return {
-      _id: tenant._id.toString(),
-      name: tenant.name,
-      subdomain: tenant.subdomain,
-      displayName: tenant.displayName,
-      status: tenant.status,
-      settings: tenant.settings,
-      subscription: tenant.subscription ? {
-        plan: tenant.subscription.plan,
-        status: tenant.subscription.status,
-        expiresAt: tenant.subscription.expiresAt,
-      } : undefined,
-    };
+    return toTenantData(tenant);
   } catch (error) {
     console.error('Error verifying tenant:', error);
     return null;
@@ -217,4 +213,3 @@ export async function verifyTenant(subdomain: string): Promise<TenantData | null
 export function getRootDomain(): string {
   return process.env.ROOT_DOMAIN || 'localhost';
 }
-

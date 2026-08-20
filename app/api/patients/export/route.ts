@@ -1,3 +1,9 @@
+// NOT MIGRATED (Phase 5 Batch 3): this is a pure Patient bulk-export route,
+// but it is kept on Mongoose alongside app/api/patients/[id]/export/route.ts
+// (which does join to Visit/Prescription) so both export endpoints stay on
+// one datastore rather than splitting patient-record exports mid-migration.
+// Safe to migrate independently in a later pass once the FHIR export route
+// above also migrates.
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';

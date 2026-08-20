@@ -1,17 +1,21 @@
 // Lab Result Notification Automation
 // Automatically notifies patients and doctors when lab results are available
 
-import connectDB from '@/lib/mongodb';
-import LabResult from '@/models/LabResult';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getLabResultById, updateLabResult } from '@/lib/data/lab-result';
 import { getSettings } from '@/lib/settings';
 import { createNotification, createLabResultNotification } from '@/lib/notifications';
 import { sendEmail, generateLabResultEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: any, fn: () => T | Promise<T>): T | Promise<T> {
+  const tid = tenantId ? String(tenantId) : null;
+  return tid ? runWithTenant(tid, fn) : runAsSystem(fn);
+}
 
 export interface LabNotificationOptions {
-  labResultId: string | Types.ObjectId;
-  tenantId?: string | Types.ObjectId;
+  labResultId: any;
+  tenantId?: any;
   sendSMS?: boolean;
   sendEmail?: boolean;
   sendNotification?: boolean;
@@ -26,139 +30,130 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
   error?: string;
 }> {
   try {
-    await connectDB();
+    return await run(options.tenantId, async () => {
+      const settings = await getSettings();
+      const autoLabNotifications = (settings.automationSettings as any)?.autoLabNotifications !== false;
 
-    const settings = await getSettings();
-    const autoLabNotifications = (settings.automationSettings as any)?.autoLabNotifications !== false;
+      if (!autoLabNotifications) {
+        return { success: true, sent: false };
+      }
 
-    if (!autoLabNotifications) {
-      return { success: true, sent: false };
-    }
+      const labResult = await getLabResultById(String(options.labResultId));
 
-    // Get lab result with populated data
-    const labResultId = typeof options.labResultId === 'string' 
-      ? new Types.ObjectId(options.labResultId) 
-      : options.labResultId;
+      if (!labResult) {
+        return { success: false, sent: false, error: 'Lab result not found' };
+      }
 
-    const labResult = await LabResult.findById(labResultId)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('visit', 'visitCode date')
-      .populate('orderedBy', 'name email');
+      // Check if lab result is completed
+      if ((labResult as any).status !== 'completed' && (labResult as any).status !== 'reviewed') {
+        return { success: false, sent: false, error: 'Lab result is not completed' };
+      }
 
-    if (!labResult) {
-      return { success: false, sent: false, error: 'Lab result not found' };
-    }
+      // Check if already notified
+      if ((labResult as any).notificationSent) {
+        return { success: true, sent: false };
+      }
 
-    // Check if lab result is completed
-    if (labResult.status !== 'completed' && labResult.status !== 'reviewed') {
-      return { success: false, sent: false, error: 'Lab result is not completed' };
-    }
+      const patient = (labResult as any).patient;
+      if (!patient) {
+        return { success: false, sent: false, error: 'Patient not found' };
+      }
 
-    // Check if already notified
-    if (labResult.notificationSent) {
-      return { success: true, sent: false };
-    }
+      const tenantId = options.tenantId ? String(options.tenantId) : (labResult as any).tenantId;
 
-    const patient = labResult.patient as any;
-    if (!patient) {
-      return { success: false, sent: false, error: 'Patient not found' };
-    }
+      let sent = false;
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : labResult.tenantId;
+      // Send SMS if enabled and phone available
+      if (options.sendSMS !== false && patient.phone) {
+        try {
+          const message = `Your lab results for ${(labResult as any).request.testType} are now available. Request Code: ${(labResult as any).requestCode || 'N/A'}. Please contact the clinic to view your results.`;
 
-    let sent = false;
+          let phoneNumber = patient.phone.trim();
+          if (!phoneNumber.startsWith('+')) {
+            phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
+          }
 
-    // Send SMS if enabled and phone available
-    if (options.sendSMS !== false && patient.phone) {
-      try {
-        const message = `Your lab results for ${labResult.request.testType} are now available. Request Code: ${labResult.requestCode || 'N/A'}. Please contact the clinic to view your results.`;
+          const smsResult = await sendSMS({
+            to: phoneNumber,
+            message,
+          });
 
-        let phoneNumber = patient.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
+          if (smsResult.success) {
+            sent = true;
+          }
+        } catch (error) {
+          console.error('Error sending lab result SMS:', error);
         }
+      }
 
-        const smsResult = await sendSMS({
-          to: phoneNumber,
-          message,
-        });
+      // Send email if enabled and email available
+      if (options.sendEmail !== false && patient.email) {
+        try {
+          const emailContent = generateLabResultEmail(labResult);
+          const emailResult = await sendEmail({
+            to: patient.email,
+            subject: emailContent.subject,
+            html: emailContent.html,
+          });
 
-        if (smsResult.success) {
+          if (emailResult.success) {
+            sent = true;
+          }
+        } catch (error) {
+          console.error('Error sending lab result email:', error);
+        }
+      }
+
+      // Send in-app notification to patient
+      if (options.sendNotification !== false && patient.id) {
+        try {
+          await createLabResultNotification(patient.id, labResult);
           sent = true;
+        } catch (error) {
+          console.error('Error creating lab result notification:', error);
         }
-      } catch (error) {
-        console.error('Error sending lab result SMS:', error);
       }
-    }
 
-    // Send email if enabled and email available
-    if (options.sendEmail !== false && patient.email) {
-      try {
-        const emailContent = generateLabResultEmail(labResult);
-        const emailResult = await sendEmail({
-          to: patient.email,
-          subject: emailContent.subject,
-          html: emailContent.html,
-        });
-
-        if (emailResult.success) {
-          sent = true;
-        }
-      } catch (error) {
-        console.error('Error sending lab result email:', error);
-      }
-    }
-
-    // Send in-app notification to patient
-    if (options.sendNotification !== false && patient._id) {
-      try {
-        await createLabResultNotification(patient._id, labResult);
-        sent = true;
-      } catch (error) {
-        console.error('Error creating lab result notification:', error);
-      }
-    }
-
-    // Notify ordering doctor if different from current user
-    const orderedBy = labResult.orderedBy as any;
-    if (orderedBy && orderedBy._id && options.sendNotification !== false) {
-      try {
-        await createNotification({
-          userId: orderedBy._id,
-          tenantId,
-          type: 'lab_result',
-          priority: 'normal',
-          title: 'Lab Results Available',
-          message: `Lab results for ${labResult.request.testType} are now available for review.`,
-          relatedEntity: {
+      // Notify ordering doctor if different from current user
+      const orderedBy = (labResult as any).orderedBy;
+      if (orderedBy && orderedBy.id && options.sendNotification !== false) {
+        try {
+          await createNotification({
+            userId: orderedBy.id,
+            tenantId,
             type: 'lab_result',
-            id: labResult._id,
-          },
-          actionUrl: `/lab-results/${labResult._id}`,
-        });
-      } catch (error) {
-        console.error('Error notifying doctor:', error);
+            priority: 'normal',
+            title: 'Lab Results Available',
+            message: `Lab results for ${(labResult as any).request.testType} are now available for review.`,
+            relatedEntity: {
+              type: 'lab_result',
+              id: (labResult as any).id,
+            },
+            actionUrl: `/lab-results/${(labResult as any).id}`,
+          });
+        } catch (error) {
+          console.error('Error notifying doctor:', error);
+        }
       }
-    }
 
-    // Update notification status
-    if (sent) {
-      labResult.notificationSent = true;
-      labResult.notificationSentAt = new Date();
-      labResult.notificationMethod = (options.sendSMS && options.sendEmail) ? 'both' : 
-                                      (options.sendEmail ? 'email' : 'sms');
-      await labResult.save();
-    }
+      // Update notification status
+      if (sent) {
+        await updateLabResult((labResult as any).id, {
+          notificationSent: true,
+          notificationSentAt: new Date(),
+          notificationMethod: (options.sendSMS && options.sendEmail) ? 'both' :
+                              (options.sendEmail ? 'email' : 'sms'),
+        } as any);
+      }
 
-    return { success: true, sent };
+      return { success: true, sent };
+    });
   } catch (error: any) {
     console.error('Error sending lab result notification:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send lab result notification' 
+      error: error.message || 'Failed to send lab result notification'
     };
   }
 }
@@ -166,61 +161,54 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
 /**
  * Check for abnormal/critical lab values and send urgent alerts
  */
-export async function checkAbnormalLabValues(labResultId: string | Types.ObjectId): Promise<{
+export async function checkAbnormalLabValues(labResultId: any, tenantId?: any): Promise<{
   hasAbnormal: boolean;
   critical: boolean;
   alertsSent: boolean;
 }> {
   try {
-    await connectDB();
+    return await run(tenantId, async () => {
+      const labResult = await getLabResultById(String(labResultId));
 
-    const labResultIdObj = typeof labResultId === 'string' 
-      ? new Types.ObjectId(labResultId) 
-      : labResultId;
+      if (!labResult || !(labResult as any).abnormalFlags) {
+        return { hasAbnormal: false, critical: false, alertsSent: false };
+      }
 
-    const labResult = await LabResult.findById(labResultIdObj)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('orderedBy', 'name email');
+      const abnormalFlags = (labResult as any).abnormalFlags as any;
+      const hasAbnormal = Object.keys(abnormalFlags).length > 0;
+      const critical = Object.values(abnormalFlags).some((flag: any) =>
+        flag === 'high' || flag === 'low'
+      );
 
-    if (!labResult || !labResult.abnormalFlags) {
-      return { hasAbnormal: false, critical: false, alertsSent: false };
-    }
-
-    const abnormalFlags = labResult.abnormalFlags as any;
-    const hasAbnormal = Object.keys(abnormalFlags).length > 0;
-    const critical = Object.values(abnormalFlags).some((flag: any) => 
-      flag === 'high' || flag === 'low'
-    );
-
-    if (hasAbnormal && critical) {
-      // Send urgent notification to doctor
-      const orderedBy = labResult.orderedBy as any;
-      if (orderedBy && orderedBy._id) {
-        try {
-          await createNotification({
-            userId: orderedBy._id,
-            tenantId: labResult.tenantId,
-            type: 'lab_result',
-            priority: 'urgent',
-            title: 'URGENT: Abnormal Lab Results',
-            message: `Lab results for ${labResult.request.testType} show abnormal/critical values. Immediate review required.`,
-            relatedEntity: {
+      if (hasAbnormal && critical) {
+        // Send urgent notification to doctor
+        const orderedBy = (labResult as any).orderedBy;
+        if (orderedBy && orderedBy.id) {
+          try {
+            await createNotification({
+              userId: orderedBy.id,
+              tenantId: (labResult as any).tenantId,
               type: 'lab_result',
-              id: labResult._id,
-            },
-            actionUrl: `/lab-results/${labResult._id}`,
-          });
-          return { hasAbnormal: true, critical: true, alertsSent: true };
-        } catch (error) {
-          console.error('Error sending urgent lab alert:', error);
+              priority: 'urgent',
+              title: 'URGENT: Abnormal Lab Results',
+              message: `Lab results for ${(labResult as any).request.testType} show abnormal/critical values. Immediate review required.`,
+              relatedEntity: {
+                type: 'lab_result',
+                id: (labResult as any).id,
+              },
+              actionUrl: `/lab-results/${(labResult as any).id}`,
+            });
+            return { hasAbnormal: true, critical: true, alertsSent: true };
+          } catch (error) {
+            console.error('Error sending urgent lab alert:', error);
+          }
         }
       }
-    }
 
-    return { hasAbnormal, critical, alertsSent: false };
+      return { hasAbnormal, critical, alertsSent: false };
+    });
   } catch (error: any) {
     console.error('Error checking abnormal lab values:', error);
     return { hasAbnormal: false, critical: false, alertsSent: false };
   }
 }
-

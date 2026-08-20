@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Visit from '@/models/Visit';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getVisitById } from '@/lib/data/visit';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -15,11 +20,10 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    const visit = await Visit.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth gender')
-      .populate('provider', 'name email');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const visit = await run(tenantId, () => getVisitById(id));
 
     if (!visit) {
       return NextResponse.json(

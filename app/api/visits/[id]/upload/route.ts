@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Visit from '@/models/Visit';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { addVisitAttachment } from '@/lib/data/visit';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function POST(
   request: NextRequest,
@@ -15,24 +20,16 @@ export async function POST(
   }
 
   try {
-    await connectDB();
-    
-    // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
-    
+
     const { id } = await params;
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const notes = formData.get('notes') as string | null;
 
     if (!file) {
-      return NextResponse.json(
-        { success: false, error: 'No file provided' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'No file provided' }, { status: 400 });
     }
 
     // Check storage limit before uploading
@@ -41,8 +38,8 @@ export async function POST(
       const storageCheck = await checkStorageLimit(tenantId, file.size);
       if (!storageCheck.allowed) {
         return NextResponse.json(
-          { 
-            success: false, 
+          {
+            success: false,
             error: storageCheck.reason || 'Storage limit exceeded',
             storageUsage: storageCheck.currentUsage,
           },
@@ -58,67 +55,28 @@ export async function POST(
     const base64 = buffer.toString('base64');
     const dataUrl = `data:${file.type};base64,${base64}`;
 
-    const attachment = {
-      filename: file.name,
-      contentType: file.type,
-      size: file.size,
-      url: dataUrl, // In production, this would be an S3/CDN URL
-      uploadDate: new Date(),
-      notes: notes || undefined,
-      uploadedBy: session.userId,
-    };
-
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode email phone',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    const providerPopulateOptions: any = {
-      path: 'provider',
-      select: 'name email',
-    };
-    if (tenantId) {
-      providerPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      providerPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-
-    const visit = await Visit.findOneAndUpdate(
-      query,
-      { $push: { attachments: attachment } },
-      { new: true }
-    )
-      .populate(patientPopulateOptions)
-      .populate(providerPopulateOptions);
-
-    if (!visit) {
-      return NextResponse.json(
-        { success: false, error: 'Visit not found' },
-        { status: 404 }
+    let visit;
+    try {
+      visit = await run(tenantId, () =>
+        addVisitAttachment(id, {
+          filename: file.name,
+          contentType: file.type,
+          size: file.size,
+          url: dataUrl,
+          notes: notes || undefined,
+          uploadedById: session.userId,
+        })
       );
+    } catch (err: any) {
+      if (err?.code === 'P2025') {
+        return NextResponse.json({ success: false, error: 'Visit not found' }, { status: 404 });
+      }
+      throw err;
     }
 
     return NextResponse.json({ success: true, data: visit });
   } catch (error: any) {
     console.error('Error uploading file to visit:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to upload file' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to upload file' }, { status: 500 });
   }
 }
-

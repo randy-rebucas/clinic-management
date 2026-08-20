@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import MedicalRepresentative from '@/models/MedicalRepresentative';
-import User from '@/models/User';
-import Role from '@/models/Role';
 import bcrypt from 'bcryptjs';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getUserByEmailWithPassword } from '@/lib/data/user';
+import { getRoleById, roleNameToAppRole } from '@/lib/data/role';
 import { createSession } from '@/app/lib/dal';
 import { sanitizeEmail, checkRateLimit, resetRateLimit } from '@/app/lib/security';
 import { getTenantContext } from '@/lib/tenant';
 
+// NOTE: there is no lib/data/medical-representative.ts (Phase 4 did not
+// produce one for this batch), so MedicalRepresentative reads/writes below
+// call `prisma.medicalRepresentative` directly rather than reaching for a
+// data-access module that doesn't exist. MedicalRepresentative is a
+// junction-scoped model (see lib/prisma-tenant-extension.ts), so every call
+// here still needs to run inside runWithTenant/runAsSystem like the User
+// calls do.
 export async function POST(request: NextRequest) {
 	try {
-		
+
 		let body: { email?: string; password?: string };
 		try {
 			body = await request.json();
@@ -44,97 +51,83 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
-		await connectDB();
-
-		// Scope the user lookup to the current tenant to prevent cross-tenant auth
+		// Scope the user lookup to the current tenant to prevent cross-tenant auth.
+		// Explicit tenant branch: a resolved tenant -> runWithTenant (auto-scoped
+		// User/MedicalRepresentative queries); no tenant (legacy no-subdomain
+		// mode) -> runAsSystem, with no tenantId condition added to the User
+		// lookup at all (matches today's unscoped-when-no-tenant behavior).
 		const tenantContext = await getTenantContext();
 		const tenantId = tenantContext.tenantId;
-		const userQuery: Record<string, unknown> = { email: sanitizedEmail };
-		if (tenantId) {
-			userQuery.tenantId = tenantId;
-		}
 
-		const user = await User.findOne(userQuery).populate('role');
-		if (!user) {
+		const attempt = async () => {
+			const user = tenantId
+				? await getUserByEmailWithPassword(sanitizedEmail, tenantId)
+				: await getUserByEmailWithPassword(sanitizedEmail);
+			if (!user) {
+				return { status: 401 as const, error: 'Invalid email or password.' };
+			}
+
+			if (!user.password) {
+				return { status: 401 as const, error: 'Invalid email or password.' };
+			}
+
+			if (user.status !== 'active') {
+				return { status: 403 as const, error: 'Your account is not active. Please contact support.', code: 'USER_INACTIVE' };
+			}
+
+			let roleName = user.role ? roleNameToAppRole(user.role.name) : undefined;
+			const roleId = user.roleId;
+			if (!roleName && roleId) {
+				const role = await getRoleById(roleId);
+				roleName = role ? roleNameToAppRole(role.name) : undefined;
+			}
+
+			if (roleName !== 'medical-representative') {
+				return { status: 403 as const, error: 'Forbidden - Medical representative access only.', code: 'ROLE_MISMATCH' };
+			}
+
+			const passwordMatch = await bcrypt.compare(password, user.password);
+			if (!passwordMatch) {
+				return { status: 401 as const, error: 'Invalid email or password.' };
+			}
+
+			const medicalRep = user.medicalRepresentativeProfileId
+				? await prisma.medicalRepresentative.findUnique({ where: { id: user.medicalRepresentativeProfileId } })
+				: await prisma.medicalRepresentative.findFirst({ where: { email: sanitizedEmail } });
+
+			if (!medicalRep) {
+				return { status: 404 as const, error: 'Medical representative profile not found.' };
+			}
+
+			if (!medicalRep.isActivated || medicalRep.status !== 'active') {
+				return { status: 403 as const, error: 'Your account is not activated. Please complete payment or contact support.', code: 'MEDREP_INACTIVE' };
+			}
+
+			resetRateLimit(sanitizedEmail);
+
+			// Update last login timestamps
+			await Promise.all([
+				prisma.medicalRepresentative.update({ where: { id: medicalRep.id }, data: { lastLogin: new Date() } }),
+				prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } }),
+			]);
+
+			return { status: 200 as const, user, roleId, medicalRep };
+		};
+
+		const result = tenantId ? await runWithTenant(tenantId, attempt) : await runAsSystem(attempt);
+
+		if (result.status !== 200) {
 			return NextResponse.json(
-				{ success: false, error: 'Invalid email or password.' },
-				{ status: 401 }
+				{ success: false, error: result.error, ...('code' in result ? { code: result.code } : {}) },
+				{ status: result.status }
 			);
 		}
 
-		if (!user.password) {
-			return NextResponse.json(
-				{ success: false, error: 'Invalid email or password.' },
-				{ status: 401 }
-			);
-		}
-
-		if (user.status !== 'active') {
-			return NextResponse.json(
-				{ success: false, error: 'Your account is not active. Please contact support.', code: 'USER_INACTIVE' },
-				{ status: 403 }
-			);
-		}
-
-		const roleNameFromPopulate = typeof user.role === 'object' && user.role && 'name' in user.role
-			? (user.role as any).name
-			: undefined;
-		const roleId = typeof user.role === 'object' && user.role && '_id' in user.role
-			? (user.role as any)._id?.toString()
-			: user.role?.toString();
-
-		let roleName = roleNameFromPopulate;
-		if (!roleName && roleId) {
-			const role = await Role.findById(roleId)
-				.select('name')
-				.lean<{ name?: string } | null>();
-			roleName = role?.name;
-		}
-
-		if (roleName !== 'medical-representative') {
-			return NextResponse.json(
-				{ success: false, error: 'Forbidden - Medical representative access only.', code: 'ROLE_MISMATCH' },
-				{ status: 403 }
-			);
-		}
-
-		const passwordMatch = await bcrypt.compare(password, user.password);
-		if (!passwordMatch) {
-			return NextResponse.json(
-				{ success: false, error: 'Invalid email or password.' },
-				{ status: 401 }
-			);
-		}
-
-		const medicalRep = user.medicalRepresentativeProfile
-			? await MedicalRepresentative.findById(user.medicalRepresentativeProfile)
-			: await MedicalRepresentative.findOne({ email: sanitizedEmail });
-
-		if (!medicalRep) {
-			return NextResponse.json(
-				{ success: false, error: 'Medical representative profile not found.' },
-				{ status: 404 }
-			);
-		}
-
-		if (!medicalRep.isActivated || medicalRep.status !== 'active') {
-			return NextResponse.json(
-				{ success: false, error: 'Your account is not activated. Please complete payment or contact support.', code: 'MEDREP_INACTIVE' },
-				{ status: 403 }
-			);
-		}
-
-		resetRateLimit(sanitizedEmail);
-
-		// Update last login timestamps
-		await Promise.all([
-			MedicalRepresentative.updateOne({ _id: medicalRep._id }, { lastLogin: new Date() }),
-			User.updateOne({ _id: user._id }, { lastLogin: new Date() })
-		]);
+		const { user, roleId, medicalRep } = result;
 
 		try {
 			await createSession(
-				user._id.toString(),
+				user.id,
 				user.email,
 				'medical-representative',
 				roleId,
@@ -152,7 +145,7 @@ export async function POST(request: NextRequest) {
 			success: true,
 			message: 'Login successful',
 			medicalRepresentative: {
-				id: medicalRep._id,
+				id: medicalRep.id,
 				name: `${medicalRep.firstName} ${medicalRep.lastName}`.trim(),
 				company: medicalRep.company,
 				email: medicalRep.email,

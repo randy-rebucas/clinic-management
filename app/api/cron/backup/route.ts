@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import { createAuditLog } from '@/lib/audit';
+import { runAsSystem } from '@/lib/tenant-context';
 
 /**
  * Daily backup cron job
@@ -69,20 +70,25 @@ export async function GET(request: NextRequest) {
 
     // In production, save backup to cloud storage (S3, Azure Blob, etc.)
 
-    // Log backup action (system user)
-    await createAuditLog({
-      userId: 'system' as any,
-      userEmail: 'system@clinic.local',
-      userRole: 'system',
-      action: 'backup',
-      resource: 'system',
-      description: 'Daily automated backup',
-      metadata: {
-        collections: backup.collections,
-        totalDocuments: backup.totalDocuments,
-        automated: true,
-      },
-    });
+    // Log backup action (system user). lib/audit.ts writes through Prisma
+    // now (Batch 6) — AuditLog is tenant-scoped, so this cross-tenant
+    // system write needs runAsSystem() to satisfy the tenant-scoping
+    // extension (see lib/prisma-tenant-extension.ts).
+    await runAsSystem(() =>
+      createAuditLog({
+        userId: 'system' as any,
+        userEmail: 'system@clinic.local',
+        userRole: 'system',
+        action: 'backup',
+        resource: 'system',
+        description: 'Daily automated backup',
+        metadata: {
+          collections: backup.collections,
+          totalDocuments: backup.totalDocuments,
+          automated: true,
+        },
+      })
+    );
 
     return NextResponse.json({
       success: true,

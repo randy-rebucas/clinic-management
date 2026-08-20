@@ -1,22 +1,19 @@
 // Periodic Reports Automation (Weekly/Monthly)
 // Generates and sends weekly and monthly analytics reports
 
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
-import Invoice from '@/models/Invoice';
-import Prescription from '@/models/Prescription';
-import LabResult from '@/models/LabResult';
-import Doctor from '@/models/Doctor';
-import User from '@/models/User';
-import { getSettings } from '@/lib/settings';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getAutomationSettings } from '@/lib/data/settings';
+import { listActiveUsersByRoleNames } from '@/lib/data/user';
 import { sendEmail } from '@/lib/email';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export interface PeriodicReportOptions {
   period: 'weekly' | 'monthly';
-  tenantId?: string | Types.ObjectId;
+  tenantId?: string;
   sendEmail?: boolean;
   recipients?: string[];
 }
@@ -30,231 +27,169 @@ export async function generatePeriodicReport(options: PeriodicReportOptions): Pr
   error?: string;
 }> {
   try {
-    await connectDB();
+    const tenantId = options.tenantId ?? null;
 
-    const settings = await getSettings();
-    const autoPeriodicReports = (settings.automationSettings as any)?.autoPeriodicReports !== false;
-
-    if (!autoPeriodicReports) {
+    const automationSettings = await run(tenantId, () => getAutomationSettings(tenantId));
+    if (!automationSettings.autoPeriodicReports) {
       return { success: true };
     }
 
     const { period } = options;
     const now = new Date();
-    
+
     // Calculate date range
     let startDate: Date;
     const endDate: Date = new Date(now);
     endDate.setHours(23, 59, 59, 999);
 
     if (period === 'weekly') {
-      // Start of week (Monday)
       startDate = new Date(now);
       const dayOfWeek = now.getDay();
       const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust to Monday
       startDate.setDate(diff);
       startDate.setHours(0, 0, 0, 0);
     } else {
-      // Start of month
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       startDate.setHours(0, 0, 0, 0);
     }
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : undefined;
+    const report = await run(tenantId, async () => {
+      const [
+        totalPatients,
+        newPatients,
+        totalAppointments,
+        completedAppointments,
+        cancelledAppointments,
+        noShowAppointments,
+        totalVisits,
+        completedVisits,
+        totalInvoices,
+        invoices,
+        totalPrescriptions,
+        totalLabResults,
+        doctors,
+      ] = await Promise.all([
+        prisma.patient.count(),
+        prisma.patient.count({ where: { createdAt: { gte: startDate, lte: endDate } } }),
+        prisma.appointment.count({ where: { appointmentDate: { gte: startDate, lte: endDate } } }),
+        prisma.appointment.count({ where: { appointmentDate: { gte: startDate, lte: endDate }, status: 'completed' } }),
+        prisma.appointment.count({ where: { appointmentDate: { gte: startDate, lte: endDate }, status: 'cancelled' } }),
+        prisma.appointment.count({ where: { appointmentDate: { gte: startDate, lte: endDate }, status: 'no_show' } }),
+        prisma.visit.count({ where: { date: { gte: startDate, lte: endDate } } }),
+        prisma.visit.count({ where: { date: { gte: startDate, lte: endDate }, status: 'closed' } }),
+        prisma.invoice.count({ where: { createdAt: { gte: startDate, lte: endDate } } }),
+        prisma.invoice.findMany({ where: { createdAt: { gte: startDate, lte: endDate } }, include: { payments: true } }),
+        prisma.prescription.count({ where: { issuedAt: { gte: startDate, lte: endDate } } }),
+        prisma.labResult.count({ where: { createdAt: { gte: startDate, lte: endDate } } }),
+        prisma.doctor.findMany({ where: { status: 'active' } }),
+      ]);
 
-    // Build tenant filter
-    const tenantFilter: any = {};
-    if (tenantId) {
-      tenantFilter.tenantId = tenantId;
-    } else {
-      tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+      // Calculate revenue metrics
+      const totalBilled = invoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
+      const totalPaid = invoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
+      const totalDiscounts = invoices.reduce((sum, inv) => sum + 0, 0); // discounts child table not loaded here
+      const totalTax = invoices.reduce((sum, inv) => sum + (inv.tax || 0), 0);
 
-    // Fetch all data in parallel
-    const [
-      totalPatients,
-      newPatients,
-      totalAppointments,
-      completedAppointments,
-      cancelledAppointments,
-      noShowAppointments,
-      totalVisits,
-      completedVisits,
-      totalInvoices,
-      invoices,
-      totalPrescriptions,
-      totalLabResults,
-      doctors,
-    ] = await Promise.all([
-      Patient.countDocuments(tenantFilter),
-      Patient.countDocuments({
-        ...tenantFilter,
-        createdAt: { $gte: startDate, $lte: endDate },
-      }),
-      Appointment.countDocuments({
-        ...tenantFilter,
-        appointmentDate: { $gte: startDate, $lte: endDate },
-      }),
-      Appointment.countDocuments({
-        ...tenantFilter,
-        appointmentDate: { $gte: startDate, $lte: endDate },
-        status: 'completed',
-      }),
-      Appointment.countDocuments({
-        ...tenantFilter,
-        appointmentDate: { $gte: startDate, $lte: endDate },
-        status: 'cancelled',
-      }),
-      Appointment.countDocuments({
-        ...tenantFilter,
-        appointmentDate: { $gte: startDate, $lte: endDate },
-        status: 'no-show',
-      }),
-      Visit.countDocuments({
-        ...tenantFilter,
-        date: { $gte: startDate, $lte: endDate },
-      }),
-      Visit.countDocuments({
-        ...tenantFilter,
-        date: { $gte: startDate, $lte: endDate },
-        status: 'closed',
-      }),
-      Invoice.countDocuments({
-        ...tenantFilter,
-        createdAt: { $gte: startDate, $lte: endDate },
-      }),
-      Invoice.find({
-        ...tenantFilter,
-        createdAt: { $gte: startDate, $lte: endDate },
-      }),
-      Prescription.countDocuments({
-        ...tenantFilter,
-        issuedAt: { $gte: startDate, $lte: endDate },
-      }),
-      LabResult.countDocuments({
-        ...tenantFilter,
-        createdAt: { $gte: startDate, $lte: endDate },
-      }),
-      Doctor.find({ ...tenantFilter, status: 'active' }),
-    ]);
-
-    // Calculate revenue metrics
-    const totalBilled = invoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
-    const totalPaid = invoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
-    const totalDiscounts = invoices.reduce((sum: number, inv: any) => sum + (inv.totalDiscount || 0), 0);
-    const totalTax = invoices.reduce((sum: number, inv: any) => sum + (inv.tax || 0), 0);
-
-    // Outstanding balance (all unpaid invoices)
-    const outstandingInvoices = await Invoice.find({
-      ...tenantFilter,
-      status: { $in: ['unpaid', 'partial'] },
-    });
-    const totalOutstanding = outstandingInvoices.reduce(
-      (sum: number, inv: any) => sum + (inv.outstandingBalance || 0),
-      0
-    );
-
-    // Revenue by payment method
-    const revenueByMethod: Record<string, number> = {};
-    invoices.forEach((inv: any) => {
-      inv.payments?.forEach((payment: any) => {
-        const method = payment.method || 'unknown';
-        revenueByMethod[method] = (revenueByMethod[method] || 0) + (payment.amount || 0);
+      // Outstanding balance (all unpaid invoices)
+      const outstandingInvoices = await prisma.invoice.findMany({
+        where: { status: { in: ['unpaid', 'partial'] } },
+        select: { outstandingBalance: true },
       });
-    });
+      const totalOutstanding = outstandingInvoices.reduce((sum, inv) => sum + (inv.outstandingBalance || 0), 0);
 
-    // Revenue by doctor
-    const revenueByDoctor: Record<string, number> = {};
-    const visitsWithDoctors = await Visit.find({
-      ...tenantFilter,
-      date: { $gte: startDate, $lte: endDate },
-      status: 'closed',
-    })
-      .populate('provider', 'firstName lastName')
-      .populate('doctor', 'firstName lastName');
-
-    visitsWithDoctors.forEach((visit: any) => {
-      const doctor = visit.provider || visit.doctor;
-      if (doctor) {
-        const doctorName = `${doctor.firstName} ${doctor.lastName}`;
-        const visitInvoices = invoices.filter((inv: any) => 
-          inv.visit?.toString() === visit._id.toString()
-        );
-        const visitRevenue = visitInvoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
-        revenueByDoctor[doctorName] = (revenueByDoctor[doctorName] || 0) + visitRevenue;
+      // Revenue by payment method
+      const revenueByMethod: Record<string, number> = {};
+      for (const inv of invoices) {
+        for (const payment of inv.payments) {
+          const method = payment.method || 'unknown';
+          revenueByMethod[method] = (revenueByMethod[method] || 0) + (payment.amount || 0);
+        }
       }
+
+      // Revenue by doctor (visits with a provider in range, matched to invoices for that visit)
+      const revenueByDoctor: Record<string, number> = {};
+      const visitsWithDoctors = await prisma.visit.findMany({
+        where: { date: { gte: startDate, lte: endDate }, status: 'closed' },
+        include: { provider: { select: { name: true } } },
+      });
+      for (const visit of visitsWithDoctors) {
+        const doctorName = visit.provider?.name;
+        if (doctorName) {
+          const visitInvoices = invoices.filter((inv) => inv.visitId === visit.id);
+          const visitRevenue = visitInvoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
+          revenueByDoctor[doctorName] = (revenueByDoctor[doctorName] || 0) + visitRevenue;
+        }
+      }
+
+      // Appointment completion rate
+      const completionRate = totalAppointments > 0
+        ? ((completedAppointments / totalAppointments) * 100).toFixed(1)
+        : '0';
+
+      // No-show rate
+      const noShowRate = totalAppointments > 0
+        ? ((noShowAppointments / totalAppointments) * 100).toFixed(1)
+        : '0';
+
+      // Average revenue per visit
+      const avgRevenuePerVisit = completedVisits > 0
+        ? (totalPaid / completedVisits).toFixed(2)
+        : '0';
+
+      return {
+        period,
+        dateRange: {
+          start: startDate.toISOString(),
+          end: endDate.toISOString(),
+        },
+        summary: {
+          patients: {
+            total: totalPatients,
+            new: newPatients,
+          },
+          appointments: {
+            total: totalAppointments,
+            completed: completedAppointments,
+            cancelled: cancelledAppointments,
+            noShow: noShowAppointments,
+            completionRate: `${completionRate}%`,
+            noShowRate: `${noShowRate}%`,
+          },
+          visits: {
+            total: totalVisits,
+            completed: completedVisits,
+          },
+          revenue: {
+            totalBilled,
+            totalPaid,
+            totalDiscounts,
+            totalTax,
+            outstandingBalance: totalOutstanding,
+            avgRevenuePerVisit: parseFloat(avgRevenuePerVisit),
+            byPaymentMethod: revenueByMethod,
+            byDoctor: revenueByDoctor,
+          },
+          prescriptions: {
+            total: totalPrescriptions,
+          },
+          labResults: {
+            total: totalLabResults,
+          },
+          doctors: {
+            active: doctors.length,
+          },
+        },
+        generatedAt: new Date().toISOString(),
+      };
     });
-
-    // Appointment completion rate
-    const completionRate = totalAppointments > 0 
-      ? ((completedAppointments / totalAppointments) * 100).toFixed(1)
-      : '0';
-
-    // No-show rate
-    const noShowRate = totalAppointments > 0
-      ? ((noShowAppointments / totalAppointments) * 100).toFixed(1)
-      : '0';
-
-    // Average revenue per visit
-    const avgRevenuePerVisit = completedVisits > 0
-      ? (totalPaid / completedVisits).toFixed(2)
-      : '0';
-
-    // Build report
-    const report = {
-      period,
-      dateRange: {
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-      },
-      summary: {
-        patients: {
-          total: totalPatients,
-          new: newPatients,
-        },
-        appointments: {
-          total: totalAppointments,
-          completed: completedAppointments,
-          cancelled: cancelledAppointments,
-          noShow: noShowAppointments,
-          completionRate: `${completionRate}%`,
-          noShowRate: `${noShowRate}%`,
-        },
-        visits: {
-          total: totalVisits,
-          completed: completedVisits,
-        },
-        revenue: {
-          totalBilled,
-          totalPaid,
-          totalDiscounts,
-          totalTax,
-          outstandingBalance: totalOutstanding,
-          avgRevenuePerVisit: parseFloat(avgRevenuePerVisit),
-          byPaymentMethod: revenueByMethod,
-          byDoctor: revenueByDoctor,
-        },
-        prescriptions: {
-          total: totalPrescriptions,
-        },
-        labResults: {
-          total: totalLabResults,
-        },
-        doctors: {
-          active: doctors.length,
-        },
-      },
-      generatedAt: new Date().toISOString(),
-    };
 
     // Send email if enabled
     if (options.sendEmail !== false) {
-      const recipients = options.recipients || await getReportRecipients(tenantId);
-      
+      const recipients = options.recipients || (await run(tenantId, () => getReportRecipients()));
+
       for (const recipient of recipients) {
         try {
+          const settings = await run(tenantId, () => import('@/lib/data/settings').then((m) => m.getOrCreateSettings(tenantId)));
           const emailContent = generatePeriodicReportEmail(report, period, settings);
           await sendEmail({
             to: recipient,
@@ -280,21 +215,10 @@ export async function generatePeriodicReport(options: PeriodicReportOptions): Pr
 /**
  * Get report recipients (admins and accountants)
  */
-async function getReportRecipients(tenantId?: Types.ObjectId): Promise<string[]> {
+async function getReportRecipients(): Promise<string[]> {
   try {
-    const query: any = {
-      role: { $in: ['admin', 'accountant'] },
-      active: true,
-    };
-
-    if (tenantId) {
-      query.tenantId = tenantId;
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    const users = await User.find(query).select('email');
-    return users.map((user: any) => user.email).filter(Boolean);
+    const users = await listActiveUsersByRoleNames(['admin', 'accountant']);
+    return users.map((u) => u.email).filter(Boolean);
   } catch (error) {
     console.error('Error getting report recipients:', error);
     return [];
@@ -443,7 +367,7 @@ function generatePeriodicReportEmail(
 /**
  * Process weekly reports
  */
-export async function processWeeklyReports(tenantId?: string | Types.ObjectId): Promise<{
+export async function processWeeklyReports(tenantId?: string): Promise<{
   success: boolean;
   processed: boolean;
   error?: string;
@@ -473,7 +397,7 @@ export async function processWeeklyReports(tenantId?: string | Types.ObjectId): 
 /**
  * Process monthly reports
  */
-export async function processMonthlyReports(tenantId?: string | Types.ObjectId): Promise<{
+export async function processMonthlyReports(tenantId?: string): Promise<{
   success: boolean;
   processed: boolean;
   error?: string;
@@ -499,4 +423,3 @@ export async function processMonthlyReports(tenantId?: string | Types.ObjectId):
     };
   }
 }
-

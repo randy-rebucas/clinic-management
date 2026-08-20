@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { sendSMS } from '@/lib/sms';
-import { Types } from 'mongoose';
+import { runAsSystem } from '@/lib/tenant-context';
+import { findPatientAcrossTenants, setPatientOtp } from '@/lib/data/patient';
 
 const OTP_EXPIRY_MINUTES = 5;
 const OTP_LENGTH = 6;
@@ -33,39 +32,22 @@ export async function POST(request: NextRequest) {
   if (rateLimitResponse) return rateLimitResponse;
 
   try {
-    await connectDB();
-
     let body: { phone?: string; tenantId?: string };
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
-        { success: false, error: 'Invalid request format' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
     }
 
     const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
     const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : undefined;
 
     if (!phone) {
-      return NextResponse.json(
-        { success: false, error: 'Phone number is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Phone number is required' }, { status: 400 });
     }
 
-    // Build tenant-scoped query — search both phone and contacts.phone
-    const query: any = {
-      $or: [{ phone }, { 'contacts.phone': phone }],
-    };
-    if (tenantId) {
-      query.tenantIds = new Types.ObjectId(tenantId);
-    }
+    const patient = await runAsSystem(() => findPatientAcrossTenants({ phone, tenantId }));
 
-    const patient = await Patient.findOne(query);
-
-    // Always respond with success to avoid phone number enumeration
     const genericResponse = NextResponse.json({
       success: true,
       message: `If a matching account is found, an OTP will be sent to your phone within ${OTP_EXPIRY_MINUTES} minutes.`,
@@ -77,12 +59,7 @@ export async function POST(request: NextRequest) {
     const otpHash = await bcrypt.hash(otp, 10);
     const otpExpiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    await Patient.updateOne(
-      { _id: patient._id },
-      {
-        $set: { otp: otpHash, otpExpiry, otpAttempts: 0 },
-      }
-    );
+    await runAsSystem(() => setPatientOtp(patient.id, otpHash, otpExpiry));
 
     const normalizedPhone = normalizePhone(phone);
     const smsResult = await sendSMS({
@@ -91,22 +68,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (!smsResult.success && smsResult.error && !smsResult.error.includes('logged only')) {
-      logger.error('Failed to send OTP SMS', new Error(smsResult.error), {
-        patientId: patient._id.toString(),
-      });
+      logger.error('Failed to send OTP SMS', new Error(smsResult.error), { patientId: patient.id });
     }
 
-    logger.info('Patient OTP requested', {
-      patientId: patient._id.toString(),
-      phone: normalizedPhone,
-    });
+    logger.info('Patient OTP requested', { patientId: patient.id, phone: normalizedPhone });
 
     return genericResponse;
   } catch (error: any) {
     logger.error('Error in patient OTP request', error as Error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to send OTP. Please try again.' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to send OTP. Please try again.' }, { status: 500 });
   }
 }

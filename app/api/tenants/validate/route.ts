@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Tenant from '@/models/Tenant';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { runAsSystem } from '@/lib/tenant-context';
+import { getTenantBySubdomain } from '@/lib/data/tenant';
 
 /**
  * Reason codes returned when a tenant fails validation.
@@ -45,6 +45,9 @@ const REASON_MESSAGES: Record<InvalidReason, string> = {
  * The endpoint always returns HTTP 200 so the third-party app can
  * inspect `valid` and `reason` without treating 4xx as a hard error.
  * Rate-limited to 20 req/min per IP (public limiter).
+ *
+ * Cross-tenant public lookup by subdomain — wrapped in runAsSystem() per
+ * the tenant branch policy.
  */
 export async function GET(request: NextRequest) {
   const rateLimitResponse = await applyRateLimit(request, rateLimiters.public);
@@ -61,12 +64,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-
-    // Load tenant + subscription — no staff auth required (public endpoint)
-    const tenant = await Tenant.findOne({ subdomain: rawSubdomain })
-      .select('name displayName subdomain status settings address subscription')
-      .lean() as any;
+    // Load tenant — no staff auth required (public endpoint)
+    const tenant = await runAsSystem(() => getTenantBySubdomain(rawSubdomain));
 
     // ── 1. Existence check ──────────────────────────────────────────────────
     if (!tenant) {
@@ -79,20 +78,21 @@ export async function GET(request: NextRequest) {
     }
 
     // ── 3. Subscription presence check ─────────────────────────────────────
-    if (!tenant.subscription) {
+    const hasSubscription = Boolean(
+      tenant.subscriptionPlan || tenant.subscriptionStatus || tenant.subscriptionExpiresAt
+    );
+    if (!hasSubscription) {
       return NextResponse.json(buildInvalid('no_subscription'));
     }
 
-    const sub = tenant.subscription;
-
     // ── 4. Subscription status check ───────────────────────────────────────
-    if (sub.status === 'cancelled') {
+    if (tenant.subscriptionStatus === 'cancelled') {
       return NextResponse.json(buildInvalid('subscription_cancelled'));
     }
 
     // ── 5. Expiry check ─────────────────────────────────────────────────────
     const now = new Date();
-    const expiresAt: Date | null = sub.expiresAt ? new Date(sub.expiresAt) : null;
+    const expiresAt: Date | null = tenant.subscriptionExpiresAt ?? null;
     const isExpired = expiresAt !== null && expiresAt < now;
 
     if (isExpired) {
@@ -109,22 +109,26 @@ export async function GET(request: NextRequest) {
       success: true,
       valid: true,
       tenant: {
-        id: String(tenant._id),
+        id: tenant.id,
         name: tenant.name,
         displayName: tenant.displayName || tenant.name,
         subdomain: tenant.subdomain,
         status: tenant.status,
-        city: tenant.address?.city ?? null,
-        state: tenant.address?.state ?? null,
-        country: tenant.address?.country ?? null,
-        logo: tenant.settings?.logo ?? null,
+        city: tenant.addressCity ?? null,
+        state: tenant.addressState ?? null,
+        country: tenant.addressCountry ?? null,
+        logo: tenant.settingsLogo ?? null,
       },
       subscription: {
-        plan: sub.plan ?? null,
-        status: sub.status ?? null,
-        billingCycle: sub.billingCycle ?? null,
+        plan: tenant.subscriptionPlan ?? null,
+        status: tenant.subscriptionStatus ?? null,
+        // billingCycle exists as subscriptionBillingCycle on the Prisma
+        // Tenant model — unlike the old Mongoose `.lean() as any` read, this
+        // is a real typed column, so no `?? null` fallback for "field may
+        // not exist" is needed, only for "value not set".
+        billingCycle: tenant.subscriptionBillingCycle ?? null,
         isActive: true,
-        isTrial: sub.plan === 'trial',
+        isTrial: tenant.subscriptionPlan === 'trial',
         isExpired: false,
         expiresAt: expiresAt ? expiresAt.toISOString() : null,
         daysRemaining,

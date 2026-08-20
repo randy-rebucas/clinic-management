@@ -1,21 +1,16 @@
 // Trial Expiration Automation
 // Handles trial expiration and enforces limitations
 
-import connectDB from '@/lib/mongodb';
-import Tenant from '@/models/Tenant';
-import Patient from '@/models/Patient';
-import User from '@/models/User';
-import Doctor from '@/models/Doctor';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
-import { getSettings } from '@/lib/settings';
+import { runWithTenant } from '@/lib/tenant-context';
+import { getTenantById, updateTenant, listTenants } from '@/lib/data/tenant';
+import { listActiveUsersByRoleNames } from '@/lib/data/user';
+import { createNotification } from '@/lib/data/notification';
+import { getOrCreateSettings } from '@/lib/data/settings';
 import { sendEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
-import { createNotification } from '@/lib/notifications';
-import { Types } from 'mongoose';
 
 export interface TrialExpirationOptions {
-  tenantId: string | Types.ObjectId;
+  tenantId: string;
   sendNotifications?: boolean;
   enforceLimitations?: boolean;
 }
@@ -30,27 +25,20 @@ export async function handleTrialExpiration(options: TrialExpirationOptions): Pr
   error?: string;
 }> {
   try {
-    await connectDB();
-
-    const tenantId = typeof options.tenantId === 'string' 
-      ? new Types.ObjectId(options.tenantId) 
-      : options.tenantId;
-
-    const tenant = await Tenant.findById(tenantId);
+    const tenantId = options.tenantId;
+    const tenant = await getTenantById(tenantId);
 
     if (!tenant) {
       return { success: false, handled: false, actions: [], error: 'Tenant not found' };
     }
 
     // Check if subscription is trial and expired
-    if (!tenant.subscription || tenant.subscription.plan !== 'trial') {
+    if (tenant.subscriptionPlan !== 'trial') {
       return { success: true, handled: false, actions: [] };
     }
 
     const now = new Date();
-    const expiresAt = tenant.subscription.expiresAt 
-      ? new Date(tenant.subscription.expiresAt) 
-      : null;
+    const expiresAt = tenant.subscriptionExpiresAt ? new Date(tenant.subscriptionExpiresAt) : null;
 
     if (!expiresAt || expiresAt > now) {
       return { success: true, handled: false, actions: [] };
@@ -60,8 +48,7 @@ export async function handleTrialExpiration(options: TrialExpirationOptions): Pr
     const actions: string[] = [];
 
     // 1. Update subscription status
-    tenant.subscription.status = 'expired';
-    await tenant.save();
+    await updateTenant(tenantId, { subscriptionStatus: 'expired' });
     actions.push('Subscription status updated to expired');
 
     // 2. Send expiration notifications
@@ -91,70 +78,60 @@ export async function handleTrialExpiration(options: TrialExpirationOptions): Pr
 /**
  * Send trial expiration notifications
  */
-async function sendTrialExpirationNotifications(tenant: any): Promise<void> {
+async function sendTrialExpirationNotifications(tenant: { id: string; name: string }): Promise<void> {
   try {
-    // Get admin users
-    const adminUsers = await User.find({
-      tenantId: tenant._id,
-      role: 'admin',
-      active: true,
-    }).select('email phone firstName lastName');
+    await runWithTenant(tenant.id, async () => {
+      const adminUsers = await listActiveUsersByRoleNames(['admin']);
 
-    const settings = await getSettings(tenant._id.toString());
-    const clinicName = settings?.clinicName || tenant.name || 'Clinic';
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
-    const subscriptionUrl = `${baseUrl}/subscription`;
+      const settings = await getOrCreateSettings(tenant.id);
+      const clinicName = settings?.clinicName || tenant.name || 'Clinic';
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
+      const subscriptionUrl = `${baseUrl}/subscription`;
 
-    // Send notifications to all admins
-    for (const admin of adminUsers) {
-      // Send email
-      if (admin.email) {
-        try {
-          const emailContent = generateTrialExpirationEmail(tenant, clinicName, subscriptionUrl);
-          await sendEmail({
-            to: admin.email,
-            subject: emailContent.subject,
-            html: emailContent.html,
-          });
-        } catch (error) {
-          console.error(`Error sending trial expiration email to ${admin.email}:`, error);
-        }
-      }
-
-      // Send SMS
-      if (admin.phone) {
-        try {
-          let phoneNumber = admin.phone.trim();
-          if (!phoneNumber.startsWith('+')) {
-            phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
+      for (const admin of adminUsers) {
+        if (admin.email) {
+          try {
+            const emailContent = generateTrialExpirationEmail(tenant, clinicName, subscriptionUrl);
+            await sendEmail({
+              to: admin.email,
+              subject: emailContent.subject,
+              html: emailContent.html,
+            });
+          } catch (error) {
+            console.error(`Error sending trial expiration email to ${admin.email}:`, error);
           }
+        }
 
-          const message = `Your ${clinicName} trial period has expired. Please subscribe to continue using the service. Visit ${subscriptionUrl}`;
+        const phone = (admin as any).phone as string | undefined;
+        if (phone) {
+          try {
+            let phoneNumber = phone.trim();
+            if (!phoneNumber.startsWith('+')) {
+              phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
+            }
 
-          await sendSMS({
-            to: phoneNumber,
-            message,
+            const message = `Your ${clinicName} trial period has expired. Please subscribe to continue using the service. Visit ${subscriptionUrl}`;
+
+            await sendSMS({ to: phoneNumber, message });
+          } catch (error) {
+            console.error(`Error sending trial expiration SMS to ${phone}:`, error);
+          }
+        }
+
+        try {
+          await createNotification({
+            userId: admin.id,
+            type: 'system',
+            priority: 'high',
+            title: 'Trial Period Expired',
+            message: 'Your trial period has expired. Please subscribe to continue using the service.',
+            actionUrl: subscriptionUrl,
           });
         } catch (error) {
-          console.error(`Error sending trial expiration SMS to ${admin.phone}:`, error);
+          console.error(`Error creating trial expiration notification for ${admin.id}:`, error);
         }
       }
-
-      // Send in-app notification
-      try {
-        await createNotification({
-          userId: admin._id,
-          tenantId: tenant._id,
-          type: 'system',
-          priority: 'high',
-          title: 'Trial Period Expired',
-          message: 'Your trial period has expired. Please subscribe to continue using the service.',
-          actionUrl: subscriptionUrl,
-        });
-      } catch (error) {
-        console.error(`Error creating trial expiration notification for ${admin._id}:`, error);
-      }
-    }
+    });
   } catch (error) {
     console.error('Error sending trial expiration notifications:', error);
   }
@@ -163,14 +140,12 @@ async function sendTrialExpirationNotifications(tenant: any): Promise<void> {
 /**
  * Enforce trial limitations (restrict access)
  */
-async function enforceTrialLimitations(tenantId: Types.ObjectId): Promise<void> {
+async function enforceTrialLimitations(tenantId: string): Promise<void> {
   try {
-    // The actual enforcement happens via middleware and API checks
-    // This function can be used to mark tenant as restricted
-    // or perform any cleanup actions
-    
-    // For now, the subscription status being 'expired' is enough
-    // The middleware will handle redirects and API will enforce limits
+    // The actual enforcement happens via middleware and API checks.
+    // The subscription status being 'expired' (set above) is enough — the
+    // middleware will handle redirects and the API will enforce limits.
+    void tenantId;
   } catch (error) {
     console.error('Error enforcing trial limitations:', error);
   }
@@ -188,17 +163,12 @@ export async function processExpiredTrials(): Promise<{
   results: Array<{ tenantId: string; success: boolean; error?: string }>;
 }> {
   try {
-    await connectDB();
-
-    // Find all tenants with expired trial subscriptions
     const now = new Date();
-    const query = {
-      'subscription.plan': 'trial',
-      'subscription.status': 'active',
-      'subscription.expiresAt': { $lte: now },
-    };
-
-    const expiredTenants = await Tenant.find(query);
+    const expiredTenants = await listTenants({
+      subscriptionPlan: 'trial',
+      subscriptionStatus: 'active',
+      subscriptionExpiresAt: { lte: now },
+    });
 
     const results: Array<{ tenantId: string; success: boolean; error?: string }> = [];
     let expired = 0;
@@ -206,13 +176,13 @@ export async function processExpiredTrials(): Promise<{
 
     for (const tenant of expiredTenants) {
       const result = await handleTrialExpiration({
-        tenantId: tenant._id,
+        tenantId: tenant.id,
         sendNotifications: true,
         enforceLimitations: true,
       });
 
       results.push({
-        tenantId: tenant._id.toString(),
+        tenantId: tenant.id,
         success: result.success,
         error: result.error,
       });
@@ -252,82 +222,65 @@ export async function sendTrialExpirationWarnings(): Promise<{
   errors: number;
 }> {
   try {
-    await connectDB();
-
-    // Find tenants with trials expiring in 3 days or less
     const now = new Date();
     const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
-    const query = {
-      'subscription.plan': 'trial',
-      'subscription.status': 'active',
-      'subscription.expiresAt': {
-        $gte: now,
-        $lte: threeDaysFromNow,
-      },
-    };
-
-    const expiringTenants = await Tenant.find(query);
+    const expiringTenants = await listTenants({
+      subscriptionPlan: 'trial',
+      subscriptionStatus: 'active',
+      subscriptionExpiresAt: { gte: now, lte: threeDaysFromNow },
+    });
 
     let warningsSent = 0;
     let errors = 0;
 
     for (const tenant of expiringTenants) {
       try {
-        // Get admin users
-        const adminUsers = await User.find({
-          tenantId: tenant._id,
-          role: 'admin',
-          active: true,
-        }).select('email phone firstName lastName');
-
-        const expiresAt = tenant.subscription?.expiresAt 
-          ? new Date(tenant.subscription.expiresAt) 
-          : null;
-        
+        const expiresAt = tenant.subscriptionExpiresAt ? new Date(tenant.subscriptionExpiresAt) : null;
         if (!expiresAt) continue;
 
         const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-        const settings = await getSettings(tenant._id.toString());
-        const clinicName = settings?.clinicName || tenant.name || 'Clinic';
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
-        const subscriptionUrl = `${baseUrl}/subscription`;
+        await runWithTenant(tenant.id, async () => {
+          const adminUsers = await listActiveUsersByRoleNames(['admin']);
 
-        for (const admin of adminUsers) {
-          // Send email warning
-          if (admin.email) {
+          const settings = await getOrCreateSettings(tenant.id);
+          const clinicName = settings?.clinicName || tenant.name || 'Clinic';
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
+          const subscriptionUrl = `${baseUrl}/subscription`;
+
+          for (const admin of adminUsers) {
+            if (admin.email) {
+              try {
+                const emailContent = generateTrialWarningEmail(tenant, daysRemaining, clinicName, subscriptionUrl);
+                await sendEmail({
+                  to: admin.email,
+                  subject: emailContent.subject,
+                  html: emailContent.html,
+                });
+              } catch (error) {
+                console.error(`Error sending trial warning email:`, error);
+              }
+            }
+
             try {
-              const emailContent = generateTrialWarningEmail(tenant, daysRemaining, clinicName, subscriptionUrl);
-              await sendEmail({
-                to: admin.email,
-                subject: emailContent.subject,
-                html: emailContent.html,
+              await createNotification({
+                userId: admin.id,
+                type: 'system',
+                priority: 'high',
+                title: `Trial Expiring in ${daysRemaining} Day${daysRemaining !== 1 ? 's' : ''}`,
+                message: `Your trial period expires in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}. Please subscribe to continue.`,
+                actionUrl: subscriptionUrl,
               });
             } catch (error) {
-              console.error(`Error sending trial warning email:`, error);
+              console.error(`Error creating trial warning notification:`, error);
             }
           }
-
-          // Send in-app notification
-          try {
-            await createNotification({
-              userId: admin._id,
-              tenantId: tenant._id,
-              type: 'system',
-              priority: 'high',
-              title: `Trial Expiring in ${daysRemaining} Day${daysRemaining !== 1 ? 's' : ''}`,
-              message: `Your trial period expires in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}. Please subscribe to continue.`,
-              actionUrl: subscriptionUrl,
-            });
-          } catch (error) {
-            console.error(`Error creating trial warning notification:`, error);
-          }
-        }
+        });
 
         warningsSent++;
       } catch (error) {
-        console.error(`Error sending warning for tenant ${tenant._id}:`, error);
+        console.error(`Error sending warning for tenant ${tenant.id}:`, error);
         errors++;
       }
     }
@@ -342,7 +295,7 @@ export async function sendTrialExpirationWarnings(): Promise<{
 /**
  * Generate trial expiration email
  */
-function generateTrialExpirationEmail(tenant: any, clinicName: string, subscriptionUrl: string): { subject: string; html: string } {
+function generateTrialExpirationEmail(tenant: { name: string }, clinicName: string, subscriptionUrl: string): { subject: string; html: string } {
   const subject = 'Trial Period Expired - Action Required';
 
   const html = `
@@ -396,7 +349,7 @@ function generateTrialExpirationEmail(tenant: any, clinicName: string, subscript
  * Generate trial warning email
  */
 function generateTrialWarningEmail(
-  tenant: any,
+  tenant: { name: string },
   daysRemaining: number,
   clinicName: string,
   subscriptionUrl: string
@@ -451,4 +404,3 @@ function generateTrialWarningEmail(
 
   return { subject, html };
 }
-

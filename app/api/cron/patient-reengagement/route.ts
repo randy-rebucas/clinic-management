@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processPatientReengagement } from '@/lib/automations/patient-reengagement';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
 
 /**
  * Patient Re-engagement Cron Job
@@ -24,12 +23,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    let tenantId: Types.ObjectId | undefined;
+    let tenantId: string | undefined;
     try {
       const tenantContext = await getTenantContext();
-      if (tenantContext.tenantId) {
-        tenantId = new Types.ObjectId(tenantContext.tenantId as string);
-      }
+      tenantId = tenantContext.tenantId || undefined;
     } catch {
       // single-tenant mode
     }

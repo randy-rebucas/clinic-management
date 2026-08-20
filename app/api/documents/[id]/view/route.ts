@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Document from '@/models/Document';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getDocumentRaw } from '@/lib/data/document';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -15,9 +19,8 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    const document = await Document.findById(id);
+    const document = await run(session.tenantId || null, () => getDocumentRaw(id));
 
     if (!document) {
       return NextResponse.json(
@@ -35,7 +38,7 @@ export async function GET(
 
     // Determine the PDF URL to use
     let pdfUrl = document.url;
-    
+
     // If it's a data URL or needs inline viewing, use the stream endpoint
     if (document.url.startsWith('data:') || document.documentType === 'pdf') {
       pdfUrl = `/api/documents/${id}/stream`;
@@ -60,13 +63,13 @@ export async function GET(
           * {
             box-sizing: border-box;
           }
-          body { 
-            margin: 0; 
-            padding: 0; 
+          body {
+            margin: 0;
+            padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
             background-color: #f3f4f6;
           }
-          .header { 
+          .header {
             background: white;
             padding: 16px 20px;
             border-bottom: 1px solid #e5e7eb;
@@ -117,9 +120,9 @@ export async function GET(
           .btn-secondary:hover {
             background-color: #e5e7eb;
           }
-          .viewer { 
-            width: 100%; 
-            height: calc(100vh - 60px); 
+          .viewer {
+            width: 100%;
+            height: calc(100vh - 60px);
             background: #525252;
             display: flex;
             align-items: center;
@@ -127,10 +130,10 @@ export async function GET(
           }
           .viewer iframe,
           .viewer object,
-          .viewer embed { 
-            width: 100%; 
-            height: 100%; 
-            border: none; 
+          .viewer embed {
+            width: 100%;
+            height: 100%;
+            border: none;
             background: white;
           }
           .viewer object {
@@ -199,7 +202,7 @@ export async function GET(
               }, 1000);
             }
           });
-          
+
           function showPdfFallback() {
             const viewer = document.querySelector('.viewer');
             if (viewer) {
@@ -218,7 +221,7 @@ export async function GET(
             </div>
           </div>
           <div class="header-actions">
-            ${document.documentType === 'pdf' 
+            ${document.documentType === 'pdf'
               ? `<a href="/api/documents/${id}/stream" target="_blank" class="btn btn-primary">
                   <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -243,7 +246,7 @@ export async function GET(
           </div>
         </div>
         <div class="viewer">
-          ${document.documentType === 'pdf' 
+          ${document.documentType === 'pdf'
             ? `<object data="${pdfUrl}" type="application/pdf" class="pdf-viewer" style="width: 100%; height: 100%;">
                 <embed src="${pdfUrl}" type="application/pdf" style="width: 100%; height: 100%;" />
                 <div class="error-message">
@@ -276,4 +279,3 @@ export async function GET(
     );
   }
 }
-

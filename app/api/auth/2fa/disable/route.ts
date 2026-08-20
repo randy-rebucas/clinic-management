@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verify as totpVerify } from 'otplib';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getUserTotpSecret, updateUser } from '@/lib/data/user';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 
@@ -22,9 +22,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'TOTP token required to disable 2FA' }, { status: 400 });
     }
 
-    await connectDB();
+    // Explicit tenant branch: a real session.tenantId -> runWithTenant
+    // (auto-scoped read/update); no tenantId (legacy no-subdomain mode) ->
+    // runAsSystem, since there is no tenant to scope by.
+    const tenantId = session.tenantId;
+    const user = tenantId
+      ? await runWithTenant(tenantId, () => getUserTotpSecret(session.userId))
+      : await runAsSystem(() => getUserTotpSecret(session.userId));
 
-    const user = await User.findById(session.userId).select('+totpSecret totpEnabled').lean() as any;
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
@@ -39,10 +44,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid or expired token' }, { status: 401 });
     }
 
-    await User.findByIdAndUpdate(session.userId, {
-      $unset: { totpSecret: '' },
-      totpEnabled: false,
-    });
+    const disable = () => updateUser(session.userId, { totpSecret: null, totpEnabled: false });
+    if (tenantId) {
+      await runWithTenant(tenantId, disable);
+    } else {
+      await runAsSystem(disable);
+    }
 
     return NextResponse.json({ success: true, message: '2FA has been disabled.' });
   } catch (error: any) {

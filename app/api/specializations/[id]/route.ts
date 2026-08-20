@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Specialization from '@/models/Specialization';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { Types } from 'mongoose';
+import { runAsSystem } from '@/lib/tenant-context';
+import {
+  getSpecializationById,
+  findSpecializationNameConflict,
+  updateSpecialization,
+  deleteSpecialization,
+  countDoctorsUsingSpecialization,
+} from '@/lib/data/specialization';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * GET /api/specializations/[id]
- * 
+ *
  * Fetch a single specialization by ID.
  */
 export async function GET(
@@ -21,17 +28,16 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
 
-    if (!Types.ObjectId.isValid(id)) {
+    if (!UUID_RE.test(id)) {
       return NextResponse.json(
         { success: false, error: 'Invalid specialization ID' },
         { status: 400 }
       );
     }
 
-    const specialization = await Specialization.findById(id).lean();
+    const specialization = await runAsSystem(() => getSpecializationById(id));
 
     if (!specialization) {
       return NextResponse.json(
@@ -52,7 +58,7 @@ export async function GET(
 
 /**
  * PUT /api/specializations/[id]
- * 
+ *
  * Update a specialization.
  * Requires admin privileges.
  */
@@ -75,10 +81,9 @@ export async function PUT(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
 
-    if (!Types.ObjectId.isValid(id)) {
+    if (!UUID_RE.test(id)) {
       return NextResponse.json(
         { success: false, error: 'Invalid specialization ID' },
         { status: 400 }
@@ -94,34 +99,41 @@ export async function PUT(
     if (category !== undefined) updateData.category = category?.trim();
     if (active !== undefined) updateData.active = active;
 
-    // Check if name is being changed and if it conflicts with existing
-    if (name) {
-      const existing = await Specialization.findOne({
-        name: name.trim(),
-        _id: { $ne: id },
-      });
-      if (existing) {
-        return NextResponse.json(
-          { success: false, error: 'A specialization with this name already exists' },
-          { status: 400 }
-        );
+    const result = await runAsSystem(async () => {
+      // Check if name is being changed and if it conflicts with existing
+      if (name) {
+        const existing = await findSpecializationNameConflict(name.trim(), id);
+        if (existing) {
+          return { conflict: true as const };
+        }
       }
+
+      try {
+        const specialization = await updateSpecialization(id, updateData);
+        return { conflict: false as const, specialization };
+      } catch (error: any) {
+        if (error.code === 'P2025') {
+          return { conflict: false as const, specialization: null };
+        }
+        throw error;
+      }
+    });
+
+    if (result.conflict) {
+      return NextResponse.json(
+        { success: false, error: 'A specialization with this name already exists' },
+        { status: 400 }
+      );
     }
 
-    const specialization = await Specialization.findByIdAndUpdate(
-      id,
-      updateData,
-      { new: true, runValidators: true }
-    );
-
-    if (!specialization) {
+    if (!result.specialization) {
       return NextResponse.json(
         { success: false, error: 'Specialization not found' },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({ success: true, data: specialization });
+    return NextResponse.json({ success: true, data: result.specialization });
   } catch (error: any) {
     console.error('Error updating specialization:', error);
     return NextResponse.json(
@@ -133,7 +145,7 @@ export async function PUT(
 
 /**
  * DELETE /api/specializations/[id]
- * 
+ *
  * Delete a specialization.
  * Requires admin privileges.
  * Note: This will fail if doctors are using this specialization.
@@ -157,33 +169,45 @@ export async function DELETE(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
 
-    if (!Types.ObjectId.isValid(id)) {
+    if (!UUID_RE.test(id)) {
       return NextResponse.json(
         { success: false, error: 'Invalid specialization ID' },
         { status: 400 }
       );
     }
 
-    // Check if any doctors are using this specialization
-    const Doctor = (await import('@/models/Doctor')).default;
-    const doctorCount = await Doctor.countDocuments({ specializationId: id });
+    const result = await runAsSystem(async () => {
+      // Check if any doctors (across all tenants — Specialization is global)
+      // are using this specialization.
+      const doctorCount = await countDoctorsUsingSpecialization(id);
+      if (doctorCount > 0) {
+        return { doctorCount };
+      }
 
-    if (doctorCount > 0) {
+      try {
+        await deleteSpecialization(id);
+        return { deleted: true as const };
+      } catch (error: any) {
+        if (error.code === 'P2025') {
+          return { deleted: false as const };
+        }
+        throw error;
+      }
+    });
+
+    if ('doctorCount' in result) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: `Cannot delete specialization. ${doctorCount} doctor(s) are currently using it.` 
+        {
+          success: false,
+          error: `Cannot delete specialization. ${result.doctorCount} doctor(s) are currently using it.`
         },
         { status: 400 }
       );
     }
 
-    const specialization = await Specialization.findByIdAndDelete(id);
-
-    if (!specialization) {
+    if (!result.deleted) {
       return NextResponse.json(
         { success: false, error: 'Specialization not found' },
         { status: 404 }

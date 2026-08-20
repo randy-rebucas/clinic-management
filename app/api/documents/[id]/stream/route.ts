@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Document from '@/models/Document';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getCloudinaryFileUrl, extractPublicIdFromUrl, isCloudinaryConfigured } from '@/lib/cloudinary';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getDocumentRaw } from '@/lib/data/document';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -16,9 +20,8 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    const document = await Document.findById(id);
+    const document = await run(session.tenantId || null, () => getDocumentRaw(id));
 
     if (!document) {
       return NextResponse.json(
@@ -38,7 +41,7 @@ export async function GET(
     if (isCloudinaryConfigured() && document.url.startsWith('http')) {
       // File is in Cloudinary - redirect to Cloudinary URL
       const publicId = (document.metadata as any)?.cloudinaryPublicId || extractPublicIdFromUrl(document.url);
-      
+
       if (publicId) {
         // Get direct URL from Cloudinary for inline viewing
         const viewUrl = getCloudinaryFileUrl(publicId);
@@ -46,7 +49,7 @@ export async function GET(
       }
     }
 
-    // Handle data URLs (files stored in MongoDB)
+    // Handle data URLs (files stored inline)
     if (document.url.startsWith('data:')) {
       const base64Data = document.url.split(',')[1];
       const buffer = Buffer.from(base64Data, 'base64');
@@ -73,4 +76,3 @@ export async function GET(
     );
   }
 }
-

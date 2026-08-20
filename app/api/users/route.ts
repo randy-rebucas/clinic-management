@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import { User, Role } from '@/models';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listUsers, countUsers, getUserByEmail, createUser } from '@/lib/data/user';
+import { getRoleById, appRoleToRoleName } from '@/lib/data/role';
 import { verifySession } from '@/app/lib/dal';
 import { isAdmin } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
 import { sanitizeSearch } from '@/lib/utils';
+import type { Prisma } from '@prisma/client';
 
 // GET /api/users - Get all users
 export async function GET(request: NextRequest) {
@@ -20,12 +20,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
     }
 
-    await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const role = searchParams.get('role');
@@ -34,53 +28,38 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '50')));
     const skip = (page - 1) * limit;
 
-    // Build query
-    const query: any = {};
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    if (status) query.status = status;
-    if (role) query.role = role;
+    // Build query filters (tenantId itself is injected by runWithTenant's
+    // Prisma extension when a tenant is active; the explicit branch below
+    // only decides which context wrapper runs the query).
+    const where: Prisma.UserWhereInput = {};
+    if (status) where.status = status as Prisma.UserWhereInput['status'];
+    if (role) where.role = { name: appRoleToRoleName(role) };
     if (search) {
       const safeSearch = sanitizeSearch(search);
-      const searchConditions = [
-        { name: { $regex: safeSearch, $options: 'i' } },
-        { email: { $regex: safeSearch, $options: 'i' } },
-      ];
-      
-      // Combine tenant filter with search conditions
-      const tenantFilter: any = {};
-      if (tenantId) {
-        tenantFilter.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      query.$and = [
-        tenantFilter,
-        { $or: searchConditions }
+      where.OR = [
+        { name: { contains: safeSearch, mode: 'insensitive' } },
+        { email: { contains: safeSearch, mode: 'insensitive' } },
       ];
     }
 
-    const [users, total] = await Promise.all([
-      User.find(query)
-        .populate('role', 'name displayName level')
-        .select('-password')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      User.countDocuments(query),
-    ]);
+    // Explicit tenant branch: a resolved session.tenantId -> runWithTenant
+    // (the extension auto-scopes the User query); no tenantId (legacy
+    // no-subdomain mode) -> runAsSystem, with no tenantId condition added to
+    // `where` at all — matching today's Mongoose `$or` legacy-mode
+    // semantics as closely as Postgres's nullable-column model allows.
+    const tenantId = session.tenantId;
+    const load = async () => {
+      const [paged, total] = await Promise.all([
+        listUsers(where, { skip, take: limit }),
+        countUsers(where),
+      ]);
+      return { paged, total };
+    };
+    const { paged, total } = tenantId ? await runWithTenant(tenantId, load) : await runAsSystem(load);
 
     return NextResponse.json({
       success: true,
-      data: users,
+      data: paged,
       pagination: {
         page,
         limit,
@@ -106,8 +85,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
     }
 
-    await connectDB();
-
     const body = await request.json();
     const { name, email, password, role, status } = body;
 
@@ -115,61 +92,56 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Name, email, password, and role are required' }, { status: 400 });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
-    if (existingUser) {
-      return NextResponse.json({ success: false, error: 'User with this email already exists' }, { status: 400 });
-    }
+    // Explicit tenant branch: a resolved session.tenantId -> runWithTenant
+    // (auto-scoped User/Role queries+create); no tenantId (legacy
+    // no-subdomain mode) -> runAsSystem, with tenantId-less filters passed
+    // explicitly (see GET handler above for the same rationale).
+    const tenantId = session.tenantId;
+    const create = async () => {
+      // Check if user already exists
+      const existingUser = tenantId ? await getUserByEmail(email, tenantId) : await getUserByEmail(email);
+      if (existingUser) {
+        return { error: 'User with this email already exists' as const };
+      }
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Verify role exists (tenant-scoped)
-    const roleQuery: any = { _id: role };
-    if (tenantId) {
-      roleQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      roleQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    const roleDoc = await Role.findOne(roleQuery);
-    if (!roleDoc) {
-      return NextResponse.json({ success: false, error: 'Invalid role' }, { status: 400 });
-    }
+      // Verify role exists (tenant-scoped by the active context)
+      const roleDoc = await getRoleById(role);
+      if (!roleDoc) {
+        return { error: 'Invalid role' as const };
+      }
 
-    // Hash password
-    const bcrypt = await import('bcryptjs');
-    const hashedPassword = await bcrypt.hash(password, 10);
+      // Hash password
+      const bcrypt = await import('bcryptjs');
+      const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Ensure user is created with tenantId
-    const userData: any = {
-      name,
-      email: email.toLowerCase().trim(),
-      password: hashedPassword,
-      role,
-      status: status || 'active',
+      const user = await createUser({
+        name,
+        email: email.toLowerCase().trim(),
+        password: hashedPassword,
+        role: { connect: { id: role } },
+        status: status || 'active',
+        ...(tenantId ? { tenant: { connect: { id: tenantId } } } : {}),
+      } as Prisma.UserCreateInput);
+
+      return { user };
     };
-    if (tenantId && !userData.tenantId) {
-      userData.tenantId = new Types.ObjectId(tenantId);
+
+    const result = tenantId ? await runWithTenant(tenantId, create) : await runAsSystem(create);
+
+    if ('error' in result) {
+      return NextResponse.json({ success: false, error: result.error }, { status: 400 });
     }
-
-    const user = await User.create(userData);
-
-    // Return user without password
-    const userObj = user.toObject();
-    delete userObj.password;
 
     return NextResponse.json({
       success: true,
-      data: userObj,
+      data: result.user,
       message: 'User created successfully',
     }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating user:', error);
-    if (error.code === 11000) {
+    if (error.code === 'P2002') {
       return NextResponse.json({ success: false, error: 'User with this email already exists' }, { status: 400 });
     }
     return NextResponse.json({ success: false, error: error.message || 'Failed to create user' }, { status: 500 });
   }
 }
-

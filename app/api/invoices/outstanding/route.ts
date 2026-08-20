@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getOutstandingBalanceForPatient } from '@/lib/data/invoice';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -12,42 +16,30 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
+    const tenantId = session.tenantId || null;
 
-    const query: any = {
-      status: { $in: ['unpaid', 'partial'] },
-    };
-
-    if (patientId) {
-      query.patient = patientId;
-    }
-
-    const invoices = await Invoice.find(query)
-      .populate('patient', 'firstName lastName patientCode email phone')
-      .populate('visit', 'visitCode date')
-      .sort({ createdAt: -1 });
-
-    const totalOutstanding = invoices.reduce(
-      (sum, invoice) => sum + (invoice.outstandingBalance || 0),
-      0
+    // Shared aggregation (also used by app/api/patients/[id]/outstanding-balance/route.ts)
+    const { invoices, totalOutstanding } = await run(tenantId, () =>
+      getOutstandingBalanceForPatient(patientId || undefined)
     );
 
     // Group by patient
     const byPatient = invoices.reduce((acc: any, invoice: any) => {
-      const patientId = invoice.patient._id.toString();
-      if (!acc[patientId]) {
-        acc[patientId] = {
+      const pid = invoice.patient?.id ?? invoice.patient?._id;
+      if (!pid) return acc;
+      if (!acc[pid]) {
+        acc[pid] = {
           patient: invoice.patient,
           totalOutstanding: 0,
           invoiceCount: 0,
           invoices: [],
         };
       }
-      acc[patientId].totalOutstanding += invoice.outstandingBalance || 0;
-      acc[patientId].invoiceCount += 1;
-      acc[patientId].invoices.push(invoice);
+      acc[pid].totalOutstanding += invoice.outstandingBalance || 0;
+      acc[pid].invoiceCount += 1;
+      acc[pid].invoices.push(invoice);
       return acc;
     }, {});
 
@@ -68,4 +60,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

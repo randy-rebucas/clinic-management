@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import LabResult from '@/models/LabResult';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { findLabResultRawById, addLabResultAttachment, updateLabResult } from '@/lib/data/lab-result';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function POST(
   request: NextRequest,
@@ -15,32 +20,25 @@ export async function POST(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const notes = formData.get('notes') as string | null;
 
     if (!file) {
-      return NextResponse.json(
-        { success: false, error: 'No file provided' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'No file provided' }, { status: 400 });
     }
 
-    // Get tenant context
-    const { getTenantContext } = await import('@/lib/tenant');
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
-    // Check storage limit before uploading
     if (tenantId) {
       const { checkStorageLimit } = await import('@/lib/storage-tracking');
       const storageCheck = await checkStorageLimit(tenantId, file.size);
       if (!storageCheck.allowed) {
         return NextResponse.json(
-          { 
-            success: false, 
+          {
+            success: false,
             error: storageCheck.reason || 'Storage limit exceeded',
             storageUsage: storageCheck.currentUsage,
           },
@@ -49,52 +47,44 @@ export async function POST(
       }
     }
 
-    const labResult = await LabResult.findById(id);
-    if (!labResult) {
-      return NextResponse.json(
-        { success: false, error: 'Lab result not found' },
-        { status: 404 }
-      );
-    }
-
-    // Convert file to base64 (in production, use S3/Cloudinary)
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const base64 = buffer.toString('base64');
     const dataUrl = `data:${file.type};base64,${base64}`;
 
-    const attachment = {
-      filename: file.name,
-      contentType: file.type,
-      size: file.size,
-      url: dataUrl,
-      uploadDate: new Date(),
-      notes: notes || undefined,
-      uploadedBy: session.userId,
-    };
+    const labResult = await run(tenantId, async () => {
+      const existing = await findLabResultRawById(id);
+      if (!existing) return null;
 
-    labResult.attachments.push(attachment);
-
-    // Update status to completed if results are uploaded
-    if (labResult.status === 'ordered' || labResult.status === 'in-progress') {
-      labResult.status = 'completed';
-      if (!labResult.resultDate) {
-        labResult.resultDate = new Date();
+      // Update status to completed if results are uploaded
+      const statusUpdate: Record<string, any> = {};
+      if (existing.status === 'ordered' || existing.status === 'in_progress') {
+        statusUpdate.status = 'completed';
+        if (!existing.resultDate) {
+          statusUpdate.resultDate = new Date();
+        }
       }
-    }
+      if (Object.keys(statusUpdate).length > 0) {
+        await updateLabResult(id, statusUpdate as any);
+      }
 
-    await labResult.save();
-    await labResult.populate('patient', 'firstName lastName patientCode email phone');
-    await labResult.populate('visit', 'visitCode date');
-    await labResult.populate('orderedBy', 'name email');
+      return addLabResultAttachment(id, {
+        filename: file.name,
+        contentType: file.type,
+        size: file.size,
+        url: dataUrl,
+        notes: notes || undefined,
+        uploadedById: session.userId,
+      });
+    });
+
+    if (!labResult) {
+      return NextResponse.json({ success: false, error: 'Lab result not found' }, { status: 404 });
+    }
 
     return NextResponse.json({ success: true, data: labResult });
   } catch (error: any) {
     console.error('Error uploading lab result file:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to upload file' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to upload file' }, { status: 500 });
   }
 }
-

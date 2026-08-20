@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import LabResult from '@/models/LabResult';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { sendSMS } from '@/lib/sms';
 import { sendEmail, generateLabResultEmail } from '@/lib/email';
 import { createLabResultNotification } from '@/lib/notifications';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getLabResultById, updateLabResult } from '@/lib/data/lab-result';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function POST(
   request: NextRequest,
@@ -18,29 +23,23 @@ export async function POST(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
     const body = await request.json();
     const notificationMethod = body.method || 'email'; // 'email', 'sms', or 'both'
 
-    const labResult = await LabResult.findById(id)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('visit', 'visitCode date');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
+    const labResult = await run(tenantId, () => getLabResultById(id));
 
     if (!labResult) {
-      return NextResponse.json(
-        { success: false, error: 'Lab result not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Lab result not found' }, { status: 404 });
     }
 
     const patient = labResult.patient as any;
 
     if (!patient.email && !patient.phone) {
-      return NextResponse.json(
-        { success: false, error: 'Patient contact information not available' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Patient contact information not available' }, { status: 400 });
     }
 
     const results = {
@@ -49,7 +48,6 @@ export async function POST(
       errors: [] as string[],
     };
 
-    // Send email notification
     if (notificationMethod === 'email' || notificationMethod === 'both') {
       if (patient.email) {
         try {
@@ -73,7 +71,6 @@ export async function POST(
       }
     }
 
-    // Send SMS notification
     if (notificationMethod === 'sms' || notificationMethod === 'both') {
       if (patient.phone) {
         try {
@@ -84,10 +81,7 @@ export async function POST(
             phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
           }
 
-          const smsResult = await sendSMS({
-            to: phoneNumber,
-            message,
-          });
+          const smsResult = await sendSMS({ to: phoneNumber, message });
 
           if (smsResult.success) {
             results.smsSent = true;
@@ -102,14 +96,23 @@ export async function POST(
       }
     }
 
-    // Update notification status
-    labResult.notificationSent = results.emailSent || results.smsSent;
-    labResult.notificationSentAt = new Date();
-    labResult.notificationMethod = notificationMethod as any;
-    await labResult.save();
+    // Update notification status on LabResult (in scope for this batch)
+    await run(tenantId, () =>
+      updateLabResult(id, {
+        notificationSent: results.emailSent || results.smsSent,
+        notificationSentAt: new Date(),
+        notificationMethod: notificationMethod as any,
+      })
+    );
 
-    // Create in-app notification if patient has a user account
+    // Create in-app notification if patient has a user account.
+    // NOTE: Notification is out of scope for this batch (owned by the later
+    // "supporting models"/Notification batch) — the User lookup + Mongoose
+    // createLabResultNotification() call stays on Mongoose exactly as
+    // before.
     try {
+      const connectDB = (await import('@/lib/mongodb')).default;
+      await connectDB();
       const User = (await import('@/models/User')).default;
       const user = await User.findOne({ email: patient.email }).select('_id');
       if (user) {
@@ -117,7 +120,6 @@ export async function POST(
       }
     } catch (error: any) {
       console.error('Error creating in-app notification:', error);
-      // Don't fail the whole request if notification creation fails
     }
 
     return NextResponse.json({
@@ -126,10 +128,6 @@ export async function POST(
     });
   } catch (error: any) {
     console.error('Error sending lab result notification:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to send notification' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to send notification' }, { status: 500 });
   }
 }
-

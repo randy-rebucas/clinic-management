@@ -1,19 +1,49 @@
 /**
  * Medical Representative Payment Verification Utility
  * Handles payment processing and verification for medical representative activation
+ *
+ * Migrated off Mongoose. MedicalRepresentative has no dedicated lib/data/*.ts
+ * module yet (same precedent as app/api/medical-representatives/login/route.ts
+ * from Phase 5 Batch 1 — calls prisma.medicalRepresentative directly, wrapped
+ * in runWithTenant/runAsSystem, rather than a full data-access module for one
+ * caller). Audit logging now goes through lib/data/audit-log.ts (Prisma) —
+ * resource 'system' is used since AuditResource has no
+ * 'medical_representative' member (see prisma/schema.prisma).
  */
 
-import connectDB from '@/lib/mongodb';
-import MedicalRepresentative from '@/models/MedicalRepresentative';
-import AuditLog from '@/models/AuditLog';
-import { Types } from 'mongoose';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { createAuditLogEntry, createSystemAuditLogEntry } from '@/lib/data/audit-log';
+
+function run<T>(tenantId: string | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
+
+async function logAudit(tenantId: string | undefined, description: string, metadata: Record<string, unknown>) {
+  const input = {
+    userId: 'system',
+    userEmail: 'system@clinic.local',
+    userRole: 'system',
+    action: 'update' as const,
+    resource: 'system' as const,
+    description,
+    metadata,
+    timestamp: new Date(),
+  };
+  if (tenantId) {
+    await createAuditLogEntry({ ...input, tenantId });
+  } else {
+    await createSystemAuditLogEntry(input);
+  }
+}
 
 export interface PaymentVerificationRequest {
   paymentReference: string;
   paymentMethod: string;
   paymentAmount: number;
-  medicalRepresentativeId?: string | Types.ObjectId;
+  medicalRepresentativeId?: string;
   email?: string;
+  tenantId?: string;
 }
 
 export interface PaymentVerificationResponse {
@@ -33,11 +63,8 @@ export async function verifyPayment(
   request: PaymentVerificationRequest
 ): Promise<PaymentVerificationResponse> {
   try {
-    await connectDB();
+    const { paymentReference, paymentMethod, paymentAmount, medicalRepresentativeId, email, tenantId } = request;
 
-    const { paymentReference, paymentMethod, paymentAmount, medicalRepresentativeId, email } = request;
-
-    // Validate payment details
     if (!paymentReference || !paymentMethod || !paymentAmount) {
       return {
         success: false,
@@ -47,13 +74,14 @@ export async function verifyPayment(
       };
     }
 
-    // Find the medical representative
-    let medicalRep;
-    if (medicalRepresentativeId) {
-      medicalRep = await MedicalRepresentative.findById(medicalRepresentativeId);
-    } else if (email) {
-      medicalRep = await MedicalRepresentative.findOne({ email: email.toLowerCase().trim() });
-    }
+    const medicalRep = await run(tenantId, async () => {
+      if (medicalRepresentativeId) {
+        return prisma.medicalRepresentative.findUnique({ where: { id: medicalRepresentativeId } });
+      } else if (email) {
+        return prisma.medicalRepresentative.findFirst({ where: { email: email.toLowerCase().trim() } });
+      }
+      return null;
+    });
 
     if (!medicalRep) {
       return {
@@ -65,84 +93,69 @@ export async function verifyPayment(
     }
 
     // TODO: Integrate with actual payment gateway (Stripe, PayMongo, etc.)
-    // For now, we'll use basic validation
     const isPaymentValid = await validatePaymentWithGateway(paymentReference, paymentMethod, paymentAmount);
 
     if (!isPaymentValid) {
-      // Update payment status to failed
-      medicalRep.paymentStatus = 'failed';
-      await medicalRep.save();
+      await run(tenantId, () =>
+        prisma.medicalRepresentative.update({
+          where: { id: medicalRep.id },
+          data: { paymentStatus: 'failed' },
+        })
+      );
 
-      // Log the failed payment attempt
-      await AuditLog.create({
-        action: 'UPDATE',
+      await logAudit(tenantId, `Payment verification failed for medical representative ${medicalRep.id}`, {
         entityType: 'MedicalRepresentative',
-        entityId: medicalRep._id,
-        changes: {
-          paymentStatus: {
-            from: 'pending',
-            to: 'failed',
-          },
-        },
-        metadata: {
-          reason: 'Payment verification failed',
-          paymentReference,
-        },
+        entityId: medicalRep.id,
+        changes: { paymentStatus: { from: 'pending', to: 'failed' } },
+        reason: 'Payment verification failed',
+        paymentReference,
       });
 
       return {
         success: false,
         isValid: false,
         message: 'Payment verification failed',
-        medicalRepresentativeId: medicalRep._id.toString(),
+        medicalRepresentativeId: medicalRep.id,
         error: 'Payment could not be verified. Please try again.',
       };
     }
 
-    // Payment is valid - activate the medical representative
-    medicalRep.isActivated = true;
-    medicalRep.paymentStatus = 'completed';
-    medicalRep.paymentDate = new Date();
-    medicalRep.activationDate = new Date();
-    medicalRep.paymentReference = paymentReference;
-    medicalRep.paymentMethod = paymentMethod;
-    medicalRep.paymentAmount = paymentAmount;
-    medicalRep.status = 'active';
+    const previousStatus = medicalRep.status;
 
-    const previousStatus = 'inactive';
-    await medicalRep.save();
+    await run(tenantId, () =>
+      prisma.medicalRepresentative.update({
+        where: { id: medicalRep.id },
+        data: {
+          isActivated: true,
+          paymentStatus: 'completed',
+          paymentDate: new Date(),
+          activationDate: new Date(),
+          paymentReference,
+          paymentMethod,
+          paymentAmount,
+          status: 'active',
+        },
+      })
+    );
 
-    // Log the successful payment and activation
-    await AuditLog.create({
-      action: 'UPDATE',
+    await logAudit(tenantId, `Medical representative ${medicalRep.id} activated after payment verification`, {
       entityType: 'MedicalRepresentative',
-      entityId: medicalRep._id,
+      entityId: medicalRep.id,
       changes: {
-        isActivated: {
-          from: false,
-          to: true,
-        },
-        paymentStatus: {
-          from: 'pending',
-          to: 'completed',
-        },
-        status: {
-          from: previousStatus,
-          to: 'active',
-        },
+        isActivated: { from: false, to: true },
+        paymentStatus: { from: 'pending', to: 'completed' },
+        status: { from: previousStatus, to: 'active' },
       },
-      metadata: {
-        paymentReference,
-        paymentMethod,
-        paymentAmount,
-      },
+      paymentReference,
+      paymentMethod,
+      paymentAmount,
     });
 
     return {
       success: true,
       isValid: true,
       message: 'Payment verified successfully. Medical representative account activated.',
-      medicalRepresentativeId: medicalRep._id.toString(),
+      medicalRepresentativeId: medicalRep.id,
       activationStatus: 'active',
     };
   } catch (error: any) {
@@ -166,20 +179,10 @@ async function validatePaymentWithGateway(
   amount: number
 ): Promise<boolean> {
   try {
-    // TODO: Integrate with actual payment gateway like:
-    // - Stripe: https://stripe.com/docs/api
-    // - PayMongo: https://developers.paymongo.com
-    // - GCash/PayMaya: Payment provider APIs
-    // - Bank transfer verification: Bank API integration
-
-    // For now, basic validation
-    // In production, this would call the actual payment provider's API
     const isValid = !!(paymentReference && paymentReference.length > 3 && amount > 0);
-
     if (!isValid) {
       console.warn(`Invalid payment details: reference=${paymentReference}, amount=${amount}`);
     }
-
     return isValid;
   } catch (error: any) {
     console.error('Payment gateway validation error:', error);
@@ -190,10 +193,11 @@ async function validatePaymentWithGateway(
 /**
  * Check if a medical representative is activated
  */
-export async function isMedicalRepActivated(medicalRepresentativeId: string | Types.ObjectId): Promise<boolean> {
+export async function isMedicalRepActivated(medicalRepresentativeId: string, tenantId?: string): Promise<boolean> {
   try {
-    await connectDB();
-    const medicalRep = await MedicalRepresentative.findById(medicalRepresentativeId);
+    const medicalRep = await run(tenantId, () =>
+      prisma.medicalRepresentative.findUnique({ where: { id: medicalRepresentativeId } })
+    );
     return medicalRep?.isActivated || false;
   } catch (error) {
     console.error('Error checking medical rep activation status:', error);
@@ -205,7 +209,8 @@ export async function isMedicalRepActivated(medicalRepresentativeId: string | Ty
  * Get activation status and details for a medical representative
  */
 export async function getActivationStatus(
-  medicalRepresentativeId: string | Types.ObjectId
+  medicalRepresentativeId: string,
+  tenantId?: string
 ): Promise<{
   isActivated: boolean;
   status: string;
@@ -214,8 +219,9 @@ export async function getActivationStatus(
   paymentDate?: Date;
 }> {
   try {
-    await connectDB();
-    const medicalRep = await MedicalRepresentative.findById(medicalRepresentativeId);
+    const medicalRep = await run(tenantId, () =>
+      prisma.medicalRepresentative.findUnique({ where: { id: medicalRepresentativeId } })
+    );
 
     if (!medicalRep) {
       return {
@@ -229,8 +235,8 @@ export async function getActivationStatus(
       isActivated: medicalRep.isActivated,
       status: medicalRep.status,
       paymentStatus: medicalRep.paymentStatus,
-      activationDate: medicalRep.activationDate,
-      paymentDate: medicalRep.paymentDate,
+      activationDate: medicalRep.activationDate ?? undefined,
+      paymentDate: medicalRep.paymentDate ?? undefined,
     };
   } catch (error) {
     console.error('Error getting activation status:', error);
@@ -245,11 +251,15 @@ export async function getActivationStatus(
 /**
  * Refund a payment and deactivate the medical representative
  */
-export async function refundPayment(medicalRepresentativeId: string | Types.ObjectId, reason: string): Promise<PaymentVerificationResponse> {
+export async function refundPayment(
+  medicalRepresentativeId: string,
+  reason: string,
+  tenantId?: string
+): Promise<PaymentVerificationResponse> {
   try {
-    await connectDB();
-
-    const medicalRep = await MedicalRepresentative.findById(medicalRepresentativeId);
+    const medicalRep = await run(tenantId, () =>
+      prisma.medicalRepresentative.findUnique({ where: { id: medicalRepresentativeId } })
+    );
 
     if (!medicalRep) {
       return {
@@ -267,41 +277,34 @@ export async function refundPayment(medicalRepresentativeId: string | Types.Obje
       };
     }
 
-    // TODO: Call payment gateway to refund
-    // For now, just update the status
-
     const oldPaymentStatus = medicalRep.paymentStatus;
-    medicalRep.paymentStatus = 'refunded';
-    medicalRep.isActivated = false;
-    medicalRep.status = 'inactive';
 
-    await medicalRep.save();
+    await run(tenantId, () =>
+      prisma.medicalRepresentative.update({
+        where: { id: medicalRep.id },
+        data: {
+          paymentStatus: 'refunded',
+          isActivated: false,
+          status: 'inactive',
+        },
+      })
+    );
 
-    // Log the refund
-    await AuditLog.create({
-      action: 'UPDATE',
+    await logAudit(tenantId, `Refunded payment for medical representative ${medicalRep.id}`, {
       entityType: 'MedicalRepresentative',
-      entityId: medicalRep._id,
+      entityId: medicalRep.id,
       changes: {
-        paymentStatus: {
-          from: oldPaymentStatus,
-          to: 'refunded',
-        },
-        isActivated: {
-          from: true,
-          to: false,
-        },
+        paymentStatus: { from: oldPaymentStatus, to: 'refunded' },
+        isActivated: { from: true, to: false },
       },
-      metadata: {
-        refundReason: reason,
-      },
+      refundReason: reason,
     });
 
     return {
       success: true,
       isValid: true,
       message: 'Payment refunded successfully',
-      medicalRepresentativeId: medicalRep._id.toString(),
+      medicalRepresentativeId: medicalRep.id,
       activationStatus: 'inactive',
     };
   } catch (error: any) {

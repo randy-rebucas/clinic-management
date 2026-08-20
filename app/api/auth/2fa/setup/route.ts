@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateSecret, generateURI } from 'otplib';
 import QRCode from 'qrcode';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { updateUser } from '@/lib/data/user';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 
@@ -21,17 +21,20 @@ export async function POST(_request: NextRequest) {
   if (!session) return unauthorizedResponse();
 
   try {
-    await connectDB();
-
     const secret = generateSecret();
     const appName = process.env.NEXT_PUBLIC_APP_NAME || 'MyClinicsoftware';
     const otpauthUrl = generateURI({ secret, label: session.email, issuer: appName });
 
-    // Save the secret (not yet enabled)
-    await User.findByIdAndUpdate(session.userId, {
-      totpSecret: secret,
-      totpEnabled: false,
-    });
+    // Explicit tenant branch: a real session.tenantId -> runWithTenant
+    // (auto-scoped update); no tenantId (legacy no-subdomain mode) ->
+    // runAsSystem, since there is no tenant to scope by.
+    const tenantId = session.tenantId;
+    const update = () => updateUser(session.userId, { totpSecret: secret, totpEnabled: false });
+    if (tenantId) {
+      await runWithTenant(tenantId, update);
+    } else {
+      await runAsSystem(update);
+    }
 
     const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
 

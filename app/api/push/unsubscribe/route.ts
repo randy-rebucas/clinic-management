@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import PushSubscription from '@/models/PushSubscription';
 import { verifySession } from '@/app/lib/dal';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { deletePushSubscriptionByEndpoint, listPushSubscriptionsForUser } from '@/lib/data/push-subscription';
+import prisma from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   const session = await verifySession();
@@ -14,18 +14,22 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { endpoint } = body;
 
-    await connectDB();
+    const run = <T,>(fn: () => T | Promise<T>) =>
+      session.tenantId ? runWithTenant(session.tenantId, fn) : runAsSystem(fn);
 
     if (endpoint) {
-      // Remove a specific subscription by endpoint
-      await PushSubscription.deleteOne({
-        endpoint,
-        userId: new Types.ObjectId(session.userId),
+      // Remove a specific subscription by endpoint (scoped to this user)
+      await run(async () => {
+        const existing = await prisma.pushSubscription.findUnique({ where: { endpoint } });
+        if (existing && existing.userId === session.userId) {
+          await deletePushSubscriptionByEndpoint(endpoint);
+        }
       });
     } else {
       // Remove all subscriptions for this user
-      await PushSubscription.deleteMany({
-        userId: new Types.ObjectId(session.userId),
+      await run(async () => {
+        const subs = await listPushSubscriptionsForUser(session.userId);
+        await Promise.all(subs.map((s) => deletePushSubscriptionByEndpoint(s.endpoint)));
       });
     }
 

@@ -1,18 +1,20 @@
 // Welcome Message Automation
 // Sends welcome messages to new patients
 
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { getAutomationSettings, getOrCreateSettings } from '@/lib/data/settings';
 import { sendEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export interface WelcomeMessageOptions {
-  patientId: string | Types.ObjectId;
-  tenantId?: string | Types.ObjectId; // legacy, for backward compatibility
-  tenantIds?: (string | Types.ObjectId)[]; // multi-tenant support
+  patientId: string;
+  tenantId?: string; // legacy, for backward compatibility
+  tenantIds?: string[]; // multi-tenant support
   sendSMS?: boolean;
   sendEmail?: boolean;
   sendNotification?: boolean;
@@ -27,42 +29,27 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
   error?: string;
 }> {
   try {
-    await connectDB();
+    // Multi-tenant support: use tenantIds if provided, fallback to tenantId
+    const tenantId = options.tenantIds && options.tenantIds.length > 0
+      ? options.tenantIds[0]
+      : options.tenantId ?? null;
 
-    const settings = await getSettings();
-    const autoWelcomeMessages = (settings.automationSettings as any)?.autoWelcomeMessages !== false;
-
-    if (!autoWelcomeMessages) {
+    const automationSettings = await run(tenantId, () => getAutomationSettings(tenantId));
+    if (!automationSettings.autoWelcomeMessages) {
       return { success: true, sent: false };
     }
 
-    const patientId = typeof options.patientId === 'string' 
-      ? new Types.ObjectId(options.patientId) 
-      : options.patientId;
-
-    const patient = await Patient.findById(patientId);
+    const patient = await run(tenantId, () => getPatientById(options.patientId));
 
     if (!patient) {
       return { success: false, sent: false, error: 'Patient not found' };
     }
 
-    // Multi-tenant support: use tenantIds if provided, fallback to tenantId or patient.tenantIds
-    let tenantId: Types.ObjectId | undefined = undefined;
-    if (options.tenantIds && options.tenantIds.length > 0) {
-      tenantId = typeof options.tenantIds[0] === 'string' ? new Types.ObjectId(options.tenantIds[0]) : options.tenantIds[0];
-    } else if (options.tenantId) {
-      tenantId = typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId;
-    } else if (Array.isArray(patient.tenantIds) && patient.tenantIds.length > 0) {
-      tenantId = patient.tenantIds[0];
-    } else if (patient.tenantId) {
-      tenantId = patient.tenantId;
-    }
+    const settings = await run(tenantId, () => getOrCreateSettings(tenantId));
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
 
     const clinicName = settings.clinicName || 'Our Clinic';
     const clinicPhone = settings.clinicPhone || '';
-    const clinicEmail = settings.clinicEmail || '';
-    const clinicWebsite = settings.clinicWebsite || '';
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
 
     const welcomeMessage = generateWelcomeSMS(patient, clinicName, clinicPhone);
     const emailContent = generateWelcomeEmail(patient, settings, baseUrl);
@@ -70,9 +57,10 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
     let sent = false;
 
     // Send SMS if enabled and phone available
-    if (options.sendSMS !== false && patient.phone) {
+    const phone = patient.phone || patient.contacts?.phone;
+    if (options.sendSMS !== false && phone) {
       try {
-        let phoneNumber = patient.phone.trim();
+        let phoneNumber = String(phone).trim();
         if (!phoneNumber.startsWith('+')) {
           phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
         }
@@ -91,10 +79,11 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
     }
 
     // Send email if enabled and email available
-    if (options.sendEmail !== false && patient.email) {
+    const email = patient.email || patient.contacts?.email;
+    if (options.sendEmail !== false && email) {
       try {
         const emailResult = await sendEmail({
-          to: patient.email,
+          to: email,
           subject: emailContent.subject,
           html: emailContent.html,
         });
@@ -109,17 +98,18 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
 
     // Send in-app notification
     if (options.sendNotification !== false) {
-      // Note: Patient might not have a user account, so we'll skip in-app notification
-      // This could be sent to clinic staff instead if needed
+      // Note: Patient records have no linked User account (Notification.userId
+      // is a hard FK to User), so we skip in-app notification here — this
+      // could be sent to clinic staff instead if needed.
     }
 
     return { success: true, sent };
   } catch (error: any) {
     console.error('Error sending welcome message:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send welcome message' 
+      error: error.message || 'Failed to send welcome message',
     };
   }
 }
@@ -200,4 +190,3 @@ function generateWelcomeEmail(patient: any, settings: any, baseUrl: string): { s
 
   return { subject, html };
 }
-

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Notification from '@/models/Notification';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { countUnreadNotifications } from '@/lib/data/notification';
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -13,22 +12,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-    
     // Use tenantId from session directly; avoid extra DB lookup via getTenantContext()
     const tenantId = session.tenantId;
-    
-    const unreadQuery: any = {
-      user: session.userId,
-      read: false,
-    };
-    if (tenantId) {
-      unreadQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      unreadQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const unreadCount = await Notification.countDocuments(unreadQuery);
+
+    const unreadCount = tenantId
+      ? await runWithTenant(tenantId, () => countUnreadNotifications(session.userId))
+      : await runAsSystem(() => countUnreadNotifications(session.userId));
 
     return NextResponse.json({
       success: true,
@@ -42,4 +31,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

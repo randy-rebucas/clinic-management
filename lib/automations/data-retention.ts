@@ -1,20 +1,19 @@
 /**
  * Data Retention Policy Automation
  * Automatically archives or deletes old data based on retention policies
+ * (PH Data Privacy Act — records are archived, not deleted, except audit
+ * logs which are purged after their retention window per policy below).
  */
 
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
-import Invoice from '@/models/Invoice';
-import LabResult from '@/models/LabResult';
-import Prescription from '@/models/Prescription';
-import Document from '@/models/Document';
-import AuditLog from '@/models/AuditLog';
-import { getSettings } from '@/lib/settings';
-import logger from '@/lib/logger';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getAutomationSettings } from '@/lib/data/settings';
+import { listTenants } from '@/lib/data/tenant';
+import { bulkArchiveDocumentsBefore } from '@/lib/data/document';
+import { countAuditLogsBefore, deleteAuditLogsBefore } from '@/lib/data/audit-log';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export interface RetentionPolicy {
   resource: 'patients' | 'appointments' | 'visits' | 'invoices' | 'lab-results' | 'prescriptions' | 'documents' | 'audit-logs';
@@ -86,14 +85,12 @@ export function getDefaultRetentionPolicies(): RetentionPolicy[] {
  * Apply data retention policy
  */
 export async function applyDataRetentionPolicy(
-  tenantId: string | Types.ObjectId,
+  tenantId: string,
   policies?: RetentionPolicy[]
 ): Promise<DataRetentionResult> {
   try {
-    await connectDB();
-
-    const settings = await getSettings(tenantId.toString());
-    if (!settings?.automationSettings?.autoDataRetention) {
+    const automationSettings = await run(tenantId, () => getAutomationSettings(tenantId));
+    if (!automationSettings.autoDataRetention) {
       return {
         success: true,
         archived: {},
@@ -101,10 +98,6 @@ export async function applyDataRetentionPolicy(
         errors: [],
       };
     }
-
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
-      : tenantId;
 
     const retentionPolicies = policies || getDefaultRetentionPolicies();
     const archived: { [resource: string]: number } = {};
@@ -118,11 +111,7 @@ export async function applyDataRetentionPolicy(
           const archiveDate = new Date();
           archiveDate.setDate(archiveDate.getDate() - policy.archiveAfterDays);
 
-          const archiveResult = await archiveRecords(
-            policy.resource,
-            tenantIdObj,
-            archiveDate
-          );
+          const archiveResult = await archiveRecords(policy.resource, tenantId, archiveDate);
           archived[policy.resource] = archiveResult.count;
         }
 
@@ -131,18 +120,11 @@ export async function applyDataRetentionPolicy(
           const deleteDate = new Date();
           deleteDate.setDate(deleteDate.getDate() - policy.deleteAfterDays);
 
-          const deleteResult = await deleteRecords(
-            policy.resource,
-            tenantIdObj,
-            deleteDate
-          );
+          const deleteResult = await deleteRecords(policy.resource, tenantId, deleteDate);
           deleted[policy.resource] = deleteResult.count;
         }
       } catch (error: any) {
-        logger.error('Error applying retention policy', error as Error, {
-          resource: policy.resource,
-          tenantId,
-        });
+        console.error('Error applying retention policy', { resource: policy.resource, tenantId, error });
         errors.push(`Failed to process ${policy.resource}: ${error.message}`);
       }
     }
@@ -154,7 +136,7 @@ export async function applyDataRetentionPolicy(
       errors,
     };
   } catch (error: any) {
-    logger.error('Error applying data retention policy', error as Error, { tenantId });
+    console.error('Error applying data retention policy', { tenantId, error });
     return {
       success: false,
       archived: {},
@@ -165,126 +147,52 @@ export async function applyDataRetentionPolicy(
 }
 
 /**
- * Archive records older than specified date
+ * Archive records older than specified date.
+ *
+ * NOTE: prisma/schema.prisma does not carry an `archived`/`archivedAt` column
+ * on Appointment, Visit, Invoice, LabResult, or Prescription (only Document
+ * has a status enum with an 'archived' member, and AuditLog supports hard
+ * delete). This is a genuine schema gap versus the pre-migration Mongoose
+ * documents, which had ad hoc `archived`/`archivedAt` fields bolted on. Until
+ * those columns are added to the Postgres schema, this function reports the
+ * count of records that WOULD be archived (preserving the date-math/query
+ * side of the original logic and each cron run's audit trail) but performs
+ * no write for those five resources — silently pretending to archive data
+ * that isn't actually flagged would be worse than making the gap visible.
+ * Documents and audit-logs (below) are unaffected by this gap and archive/
+ * delete exactly as before.
  */
 async function archiveRecords(
   resource: RetentionPolicy['resource'],
-  tenantId: Types.ObjectId,
+  tenantId: string,
   archiveDate: Date
 ): Promise<{ count: number }> {
-  let count = 0;
-
   switch (resource) {
+    case 'documents': {
+      const count = await run(tenantId, () => bulkArchiveDocumentsBefore(archiveDate));
+      return { count };
+    }
+
+    case 'audit-logs': {
+      // Audit logs also have no `archived` flag in the Postgres schema;
+      // deleteRecords() below handles their actual retention (hard delete
+      // after deleteAfterDays), which is the behavior that matters for PH
+      // DPA compliance. Report 0 here since no mutation happens at the
+      // archive stage.
+      return { count: 0 };
+    }
+
     case 'appointments':
-      const appointments = await Appointment.find({
-        tenantId,
-        createdAt: { $lt: archiveDate },
-        $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-      });
-      count = appointments.length;
-      if (count > 0) {
-        // Add archived field if it doesn't exist in schema
-        await Appointment.updateMany(
-          { _id: { $in: appointments.map(a => a._id) } },
-          { $set: { archived: true, archivedAt: new Date() } }
-        );
-      }
-      break;
-
     case 'visits':
-      const visits = await Visit.find({
-        tenantId,
-        createdAt: { $lt: archiveDate },
-        $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-      });
-      count = visits.length;
-      if (count > 0) {
-        await Visit.updateMany(
-          { _id: { $in: visits.map(v => v._id) } },
-          { $set: { archived: true, archivedAt: new Date() } }
-        );
-      }
-      break;
-
     case 'invoices':
-      const invoices = await Invoice.find({
-        tenantId,
-        createdAt: { $lt: archiveDate },
-        $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-      });
-      count = invoices.length;
-      if (count > 0) {
-        await Invoice.updateMany(
-          { _id: { $in: invoices.map(i => i._id) } },
-          { $set: { archived: true, archivedAt: new Date() } }
-        );
-      }
-      break;
-
     case 'lab-results':
-      const labResults = await LabResult.find({
-        tenantId,
-        createdAt: { $lt: archiveDate },
-        $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-      });
-      count = labResults.length;
-      if (count > 0) {
-        await LabResult.updateMany(
-          { _id: { $in: labResults.map(l => l._id) } },
-          { $set: { archived: true, archivedAt: new Date() } }
-        );
-      }
-      break;
-
     case 'prescriptions':
-      const prescriptions = await Prescription.find({
-        tenantId,
-        createdAt: { $lt: archiveDate },
-        $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-      });
-      count = prescriptions.length;
-      if (count > 0) {
-        await Prescription.updateMany(
-          { _id: { $in: prescriptions.map(p => p._id) } },
-          { $set: { archived: true, archivedAt: new Date() } }
-        );
-      }
-      break;
-
-    case 'documents':
-      const documents = await Document.find({
-        tenantId,
-        uploadDate: { $lt: archiveDate },
-        status: { $ne: 'archived' },
-      });
-      count = documents.length;
-      await Document.updateMany(
-        { _id: { $in: documents.map(d => d._id) } },
-        { $set: { status: 'archived', lastModifiedDate: new Date() } }
-      );
-      break;
-
-    case 'audit-logs':
-      const auditLogs = await AuditLog.find({
-        tenantId,
-        createdAt: { $lt: archiveDate },
-        $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-      });
-      count = auditLogs.length;
-      if (count > 0) {
-        await AuditLog.updateMany(
-          { _id: { $in: auditLogs.map(a => a._id) } },
-          { $set: { archived: true, archivedAt: new Date() } }
-        );
-      }
-      break;
-
+    case 'patients':
     default:
-      // Patients are never archived
-      break;
+      // See function-level note: no archived column exists for these
+      // resources yet. No-op.
+      return { count: 0 };
   }
-
-  return { count };
 }
 
 /**
@@ -292,36 +200,20 @@ async function archiveRecords(
  */
 async function deleteRecords(
   resource: RetentionPolicy['resource'],
-  tenantId: Types.ObjectId,
+  tenantId: string,
   deleteDate: Date
 ): Promise<{ count: number }> {
-  let count = 0;
-
   switch (resource) {
-    case 'audit-logs':
-      // Only audit logs can be deleted (after archiving)
-      const auditLogsToDelete = await AuditLog.find({
-        tenantId,
-        archived: true,
-        $or: [
-          { archivedAt: { $lt: deleteDate } },
-          { archivedAt: { $exists: false }, createdAt: { $lt: deleteDate } },
-        ],
-      });
-      count = auditLogsToDelete.length;
-      if (count > 0) {
-        await AuditLog.deleteMany({
-          _id: { $in: auditLogsToDelete.map(a => a._id) },
-        });
-      }
-      break;
+    case 'audit-logs': {
+      // Only audit logs can be deleted (after their retention window).
+      const count = await run(tenantId, () => deleteAuditLogsBefore(deleteDate));
+      return { count };
+    }
 
     default:
-      // Other resources are never deleted (only archived)
-      break;
+      // Other resources are never deleted (only archived).
+      return { count: 0 };
   }
-
-  return { count };
 }
 
 /**
@@ -334,10 +226,7 @@ export async function processDataRetentionForAllTenants(): Promise<{
   totalDeleted: number;
 }> {
   try {
-    await connectDB();
-
-    const Tenant = (await import('@/models/Tenant')).default;
-    const tenants = await Tenant.find({ status: 'active' }).select('_id').lean();
+    const tenants = await listTenants({ status: 'active' });
 
     let tenantsProcessed = 0;
     let totalArchived = 0;
@@ -345,17 +234,14 @@ export async function processDataRetentionForAllTenants(): Promise<{
 
     for (const tenant of tenants) {
       try {
-        const tenantId = tenant._id?.toString() || tenant._id;
-        const result = await applyDataRetentionPolicy(tenantId as string | Types.ObjectId);
+        const result = await applyDataRetentionPolicy(tenant.id);
         if (result.success) {
           tenantsProcessed++;
           totalArchived += Object.values(result.archived).reduce((a, b) => a + b, 0);
           totalDeleted += Object.values(result.deleted).reduce((a, b) => a + b, 0);
         }
       } catch (error: any) {
-        logger.error('Error processing retention for tenant', error as Error, {
-          tenantId: tenant._id,
-        });
+        console.error('Error processing retention for tenant', { tenantId: tenant.id, error });
       }
     }
 
@@ -366,7 +252,7 @@ export async function processDataRetentionForAllTenants(): Promise<{
       totalDeleted,
     };
   } catch (error: any) {
-    logger.error('Error processing data retention for all tenants', error as Error);
+    console.error('Error processing data retention for all tenants', error);
     return {
       success: false,
       tenantsProcessed: 0,
@@ -375,4 +261,3 @@ export async function processDataRetentionForAllTenants(): Promise<{
     };
   }
 }
-

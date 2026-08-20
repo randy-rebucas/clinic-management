@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { recordPayment } from '@/lib/data/invoice';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function POST(
   request: NextRequest,
@@ -16,68 +19,38 @@ export async function POST(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
     const body = await request.json();
 
-    // Scope lookup to the session's tenant to prevent cross-tenant access
-    const invoiceQuery: any = { _id: id };
-    if (session.tenantId) {
-      invoiceQuery.tenantId = new Types.ObjectId(session.tenantId);
-    }
-    const invoice = await Invoice.findOne(invoiceQuery);
-    if (!invoice) {
-      return NextResponse.json(
-        { success: false, error: 'Invoice not found' },
-        { status: 404 }
-      );
-    }
+    const tenantId = session.tenantId || null;
 
-    // Add payment
-    const payment = {
-      method: body.method || 'cash',
-      amount: body.amount,
-      date: body.date ? new Date(body.date) : new Date(),
-      receiptNo: body.receiptNo,
-      referenceNo: body.referenceNo,
-      processedBy: session.userId,
-      notes: body.notes,
-    };
+    // Payment atomicity: recordPayment() reads the invoice's existing
+    // payments, computes the new totalPaid/outstandingBalance/status, and
+    // writes the new InvoicePayment row + those aggregate scalars in one
+    // prisma.invoice.update() call (lib/data/invoice.ts).
+    const invoice = await run(tenantId, () =>
+      recordPayment(id, {
+        method: body.method || 'cash',
+        amount: body.amount,
+        date: body.date ? new Date(body.date) : new Date(),
+        receiptNo: body.receiptNo,
+        referenceNo: body.referenceNo,
+        processedById: session.userId,
+        notes: body.notes,
+      })
+    );
 
-    if (!invoice.payments) {
-      invoice.payments = [];
-    }
-    invoice.payments.push(payment);
-
-    // Calculate totals
-    const totalPaid = invoice.payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-    const total = invoice.total || 0;
-    const outstandingBalance = total - totalPaid;
-
-    invoice.totalPaid = totalPaid;
-    invoice.outstandingBalance = outstandingBalance;
-
-    // Update status
-    if (outstandingBalance <= 0) {
-      invoice.status = 'paid';
-    } else if (totalPaid > 0) {
-      invoice.status = 'partial';
-    } else {
-      invoice.status = 'unpaid';
-    }
-
-    await invoice.save();
-    await invoice.populate('patient', 'firstName lastName patientCode email phone');
-    await invoice.populate('visit', 'visitCode date');
-    await invoice.populate('createdBy', 'name email');
+    // NOTE: payment-received notifications are OUT OF SCOPE for this batch
+    // (Notification model — later batch). The Mongoose-era route did not
+    // send one either, so no behavior is lost here.
 
     return NextResponse.json({ success: true, data: invoice });
   } catch (error: any) {
     console.error('Error recording payment:', error);
-    if (error.name === 'ValidationError') {
+    if (error.code === 'P2025') {
       return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
+        { success: false, error: 'Invoice not found' },
+        { status: 404 }
       );
     }
     return NextResponse.json(
@@ -86,4 +59,3 @@ export async function POST(
     );
   }
 }
-

@@ -1,23 +1,22 @@
 // Staff Performance Reports Automation
 // Tracks and reports staff performance metrics
 
-import connectDB from '@/lib/mongodb';
-import Doctor from '@/models/Doctor';
-import User from '@/models/User';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
-import Invoice from '@/models/Invoice';
-import Prescription from '@/models/Prescription';
-import { getSettings } from '@/lib/settings';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getAutomationSettings, getOrCreateSettings } from '@/lib/data/settings';
+import { listActiveUsersByRoleNames } from '@/lib/data/user';
 import { sendEmail } from '@/lib/email';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export interface StaffPerformanceReportOptions {
   period: 'weekly' | 'monthly';
-  tenantId?: string | Types.ObjectId;
+  tenantId?: string;
   sendEmail?: boolean;
   recipients?: string[];
-  doctorId?: string | Types.ObjectId; // Optional: specific doctor
+  doctorId?: string; // Optional: specific doctor
 }
 
 /**
@@ -31,19 +30,16 @@ export async function generateStaffPerformanceReport(
   error?: string;
 }> {
   try {
-    await connectDB();
+    const tenantId = options.tenantId ?? null;
 
-    const settings = await getSettings();
-    const autoStaffPerformanceReports = (settings.automationSettings as any)?.autoStaffPerformanceReports !== false;
-
-    if (!autoStaffPerformanceReports) {
+    const automationSettings = await run(tenantId, () => getAutomationSettings(tenantId));
+    if (!automationSettings.autoStaffPerformanceReports) {
       return { success: true };
     }
 
     const { period } = options;
     const now = new Date();
-    
-    // Calculate date range
+
     let startDate: Date;
     const endDate: Date = new Date(now);
     endDate.setHours(23, 59, 59, 999);
@@ -59,148 +55,122 @@ export async function generateStaffPerformanceReport(
       startDate.setHours(0, 0, 0, 0);
     }
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : undefined;
+    const report = await run(tenantId, async () => {
+      const doctorWhere: any = { status: 'active' };
+      if (options.doctorId) doctorWhere.id = options.doctorId;
 
-    // Build tenant filter
-    const tenantFilter: any = {};
-    if (tenantId) {
-      tenantFilter.tenantId = tenantId;
-    } else {
-      tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+      const doctors = await prisma.doctor.findMany({ where: doctorWhere });
 
-    // Get all doctors
-    const doctorQuery: any = { ...tenantFilter, status: 'active' };
-    if (options.doctorId) {
-      doctorQuery._id = typeof options.doctorId === 'string' 
-        ? new Types.ObjectId(options.doctorId) 
-        : options.doctorId;
-    }
+      const performanceData: any[] = [];
 
-    const doctors = await Doctor.find(doctorQuery);
-
-    const performanceData = [];
-
-    for (const doctor of doctors) {
-      // Get appointments
-      const appointments = await Appointment.find({
-        ...tenantFilter,
-        $or: [
-          { doctor: doctor._id },
-          { provider: doctor._id },
-        ],
-        appointmentDate: { $gte: startDate, $lte: endDate },
-      });
-
-      const totalAppointments = appointments.length;
-      const completedAppointments = appointments.filter(a => a.status === 'completed').length;
-      const cancelledAppointments = appointments.filter(a => a.status === 'cancelled').length;
-      const noShowAppointments = appointments.filter(a => a.status === 'no-show').length;
-
-      // Get visits
-      const visits = await Visit.find({
-        ...tenantFilter,
-        $or: [
-          { doctor: doctor._id },
-          { provider: doctor._id },
-        ],
-        date: { $gte: startDate, $lte: endDate },
-      });
-
-      const completedVisits = visits.filter(v => v.status === 'closed').length;
-
-      // Get revenue from visits
-      const visitIds = visits.map(v => v._id);
-      const invoices = await Invoice.find({
-        ...tenantFilter,
-        visit: { $in: visitIds },
-      });
-
-      const totalRevenue = invoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
-      const totalBilled = invoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
-
-      // Get prescriptions
-      const prescriptions = await Prescription.find({
-        ...tenantFilter,
-        prescribedBy: doctor._id,
-        issuedAt: { $gte: startDate, $lte: endDate },
-      });
-
-      // Calculate metrics
-      const completionRate = totalAppointments > 0
-        ? ((completedAppointments / totalAppointments) * 100).toFixed(1)
-        : '0';
-
-      const noShowRate = totalAppointments > 0
-        ? ((noShowAppointments / totalAppointments) * 100).toFixed(1)
-        : '0';
-
-      const cancellationRate = totalAppointments > 0
-        ? ((cancelledAppointments / totalAppointments) * 100).toFixed(1)
-        : '0';
-
-      const avgRevenuePerVisit = completedVisits > 0
-        ? (totalRevenue / completedVisits).toFixed(2)
-        : '0';
-
-      performanceData.push({
-        doctorId: doctor._id,
-        doctorName: `${doctor.firstName} ${doctor.lastName}`,
-        specialization: doctor.specialization || 'General',
-        metrics: {
-          appointments: {
-            total: totalAppointments,
-            completed: completedAppointments,
-            cancelled: cancelledAppointments,
-            noShow: noShowAppointments,
-            completionRate: `${completionRate}%`,
-            noShowRate: `${noShowRate}%`,
-            cancellationRate: `${cancellationRate}%`,
+      for (const doctor of doctors) {
+        const appointments = await prisma.appointment.findMany({
+          where: {
+            OR: [{ doctorId: doctor.id }, { providerId: doctor.id }],
+            appointmentDate: { gte: startDate, lte: endDate },
           },
-          visits: {
-            total: visits.length,
-            completed: completedVisits,
+        });
+
+        const totalAppointments = appointments.length;
+        const completedAppointments = appointments.filter((a) => a.status === 'completed').length;
+        const cancelledAppointments = appointments.filter((a) => a.status === 'cancelled').length;
+        const noShowAppointments = appointments.filter((a) => a.status === 'no_show').length;
+
+        const visits = await prisma.visit.findMany({
+          where: {
+            providerId: doctor.id,
+            date: { gte: startDate, lte: endDate },
           },
-          revenue: {
-            totalBilled,
-            totalPaid: totalRevenue,
-            avgPerVisit: parseFloat(avgRevenuePerVisit),
+        });
+
+        const completedVisits = visits.filter((v) => v.status === 'closed').length;
+
+        const visitIds = visits.map((v) => v.id);
+        const invoices = visitIds.length
+          ? await prisma.invoice.findMany({ where: { visitId: { in: visitIds } } })
+          : [];
+
+        const totalRevenue = invoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
+        const totalBilled = invoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
+
+        const prescriptions = await prisma.prescription.findMany({
+          where: { prescribedById: doctor.id, issuedAt: { gte: startDate, lte: endDate } },
+        });
+
+        const completionRate = totalAppointments > 0
+          ? ((completedAppointments / totalAppointments) * 100).toFixed(1)
+          : '0';
+
+        const noShowRate = totalAppointments > 0
+          ? ((noShowAppointments / totalAppointments) * 100).toFixed(1)
+          : '0';
+
+        const cancellationRate = totalAppointments > 0
+          ? ((cancelledAppointments / totalAppointments) * 100).toFixed(1)
+          : '0';
+
+        const avgRevenuePerVisit = completedVisits > 0
+          ? (totalRevenue / completedVisits).toFixed(2)
+          : '0';
+
+        performanceData.push({
+          doctorId: doctor.id,
+          doctorName: `${doctor.firstName} ${doctor.lastName}`,
+          specialization: (doctor as any).specialization || 'General',
+          metrics: {
+            appointments: {
+              total: totalAppointments,
+              completed: completedAppointments,
+              cancelled: cancelledAppointments,
+              noShow: noShowAppointments,
+              completionRate: `${completionRate}%`,
+              noShowRate: `${noShowRate}%`,
+              cancellationRate: `${cancellationRate}%`,
+            },
+            visits: {
+              total: visits.length,
+              completed: completedVisits,
+            },
+            revenue: {
+              totalBilled,
+              totalPaid: totalRevenue,
+              avgPerVisit: parseFloat(avgRevenuePerVisit),
+            },
+            prescriptions: {
+              total: prescriptions.length,
+            },
           },
-          prescriptions: {
-            total: prescriptions.length,
-          },
+        });
+      }
+
+      // Sort by revenue (descending)
+      performanceData.sort((a, b) => b.metrics.revenue.totalPaid - a.metrics.revenue.totalPaid);
+
+      return {
+        period,
+        dateRange: {
+          start: startDate.toISOString(),
+          end: endDate.toISOString(),
         },
-      });
-    }
-
-    // Sort by revenue (descending)
-    performanceData.sort((a, b) => b.metrics.revenue.totalPaid - a.metrics.revenue.totalPaid);
-
-    const report = {
-      period,
-      dateRange: {
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-      },
-      staffPerformance: performanceData,
-      summary: {
-        totalDoctors: performanceData.length,
-        totalAppointments: performanceData.reduce((sum, d) => sum + d.metrics.appointments.total, 0),
-        totalRevenue: performanceData.reduce((sum, d) => sum + d.metrics.revenue.totalPaid, 0),
-        avgCompletionRate: performanceData.length > 0
-          ? (performanceData.reduce((sum, d) => 
-              sum + parseFloat(d.metrics.appointments.completionRate), 0) / performanceData.length).toFixed(1)
-          : '0',
-      },
-      generatedAt: new Date().toISOString(),
-    };
+        staffPerformance: performanceData,
+        summary: {
+          totalDoctors: performanceData.length,
+          totalAppointments: performanceData.reduce((sum, d) => sum + d.metrics.appointments.total, 0),
+          totalRevenue: performanceData.reduce((sum, d) => sum + d.metrics.revenue.totalPaid, 0),
+          avgCompletionRate: performanceData.length > 0
+            ? (performanceData.reduce((sum, d) =>
+                sum + parseFloat(d.metrics.appointments.completionRate), 0) / performanceData.length).toFixed(1)
+            : '0',
+        },
+        generatedAt: new Date().toISOString(),
+      };
+    });
 
     // Send email if enabled
     if (options.sendEmail !== false) {
-      const recipients = options.recipients || await getReportRecipients(tenantId);
-      
+      const recipients = options.recipients || (await run(tenantId, () => getReportRecipients()));
+      const settings = await run(tenantId, () => getOrCreateSettings(tenantId));
+
       for (const recipient of recipients) {
         try {
           const emailContent = generateStaffPerformanceEmail(report, period, settings);
@@ -228,21 +198,10 @@ export async function generateStaffPerformanceReport(
 /**
  * Get report recipients (admins only)
  */
-async function getReportRecipients(tenantId?: Types.ObjectId): Promise<string[]> {
+async function getReportRecipients(): Promise<string[]> {
   try {
-    const query: any = {
-      role: 'admin',
-      active: true,
-    };
-
-    if (tenantId) {
-      query.tenantId = tenantId;
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    const users = await User.find(query).select('email');
-    return users.map((user: any) => user.email).filter(Boolean);
+    const users = await listActiveUsersByRoleNames(['admin']);
+    return users.map((u) => u.email).filter(Boolean);
   } catch (error) {
     console.error('Error getting report recipients:', error);
     return [];
@@ -339,7 +298,7 @@ function generateStaffPerformanceEmail(
 /**
  * Process weekly staff performance reports
  */
-export async function processWeeklyStaffPerformance(tenantId?: string | Types.ObjectId): Promise<{
+export async function processWeeklyStaffPerformance(tenantId?: string): Promise<{
   success: boolean;
   processed: boolean;
   error?: string;
@@ -369,7 +328,7 @@ export async function processWeeklyStaffPerformance(tenantId?: string | Types.Ob
 /**
  * Process monthly staff performance reports
  */
-export async function processMonthlyStaffPerformance(tenantId?: string | Types.ObjectId): Promise<{
+export async function processMonthlyStaffPerformance(tenantId?: string): Promise<{
   success: boolean;
   processed: boolean;
   error?: string;
@@ -395,4 +354,3 @@ export async function processMonthlyStaffPerformance(tenantId?: string | Types.O
     };
   }
 }
-

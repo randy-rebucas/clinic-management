@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getOutstandingBalanceForPatient } from '@/lib/data/invoice';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -15,20 +19,12 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
+    const tenantId = session.tenantId || null;
 
-    // Get all unpaid and partially paid invoices for this patient
-    const invoices = await Invoice.find({
-      patient: id,
-      status: { $in: ['unpaid', 'partial'] },
-    })
-      .populate('visit', 'visitCode date')
-      .sort({ createdAt: -1 });
-
-    const totalOutstanding = invoices.reduce(
-      (sum, invoice) => sum + (invoice.outstandingBalance || 0),
-      0
+    // Shared aggregation (also used by app/api/invoices/outstanding/route.ts)
+    const { invoices, totalOutstanding } = await run(tenantId, () =>
+      getOutstandingBalanceForPatient(id)
     );
 
     return NextResponse.json({
@@ -36,8 +32,8 @@ export async function GET(
       data: {
         totalOutstanding,
         invoiceCount: invoices.length,
-        invoices: invoices.map((inv) => ({
-          _id: inv._id,
+        invoices: invoices.map((inv: any) => ({
+          _id: inv.id,
           invoiceNumber: inv.invoiceNumber,
           total: inv.total,
           outstandingBalance: inv.outstandingBalance,
@@ -55,4 +51,3 @@ export async function GET(
     );
   }
 }
-

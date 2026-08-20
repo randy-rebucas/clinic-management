@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Tenant from '@/models/Tenant';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { runAsSystem } from '@/lib/tenant-context';
+import { listTenantDirectory } from '@/lib/data/tenant';
 
 /**
  * GET /api/tenants/directory
@@ -16,14 +16,15 @@ import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
  *  city    – filter by address.city (case-insensitive)
  *  page    – page number, default 1
  *  limit   – results per page, default 20, max 50
+ *
+ * Cross-tenant public directory — wrapped in runAsSystem() per the tenant
+ * branch policy.
  */
 export async function GET(request: NextRequest) {
   const rateLimitResponse = await applyRateLimit(request, rateLimiters.api);
   if (rateLimitResponse) return rateLimitResponse;
 
   try {
-    await connectDB();
-
     const { searchParams } = request.nextUrl;
     const search = searchParams.get('search')?.trim() ?? '';
     const city = searchParams.get('city')?.trim() ?? '';
@@ -31,45 +32,21 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)));
     const skip = (page - 1) * limit;
 
-    const query: Record<string, any> = { status: 'active' };
-
-    if (search) {
-      const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      query.$or = [
-        { name: regex },
-        { displayName: regex },
-        { subdomain: regex },
-      ];
-    }
-
-    if (city) {
-      query['address.city'] = new RegExp(
-        city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-        'i'
-      );
-    }
-
-    const [tenants, total] = await Promise.all([
-      Tenant.find(query)
-        .select('name displayName subdomain address settings.logo')
-        .sort({ name: 1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Tenant.countDocuments(query),
-    ]);
+    const [tenants, total] = await runAsSystem(() =>
+      listTenantDirectory({ search, city, skip, take: limit })
+    );
 
     return NextResponse.json({
       success: true,
-      data: tenants.map((t: any) => ({
-        id: String(t._id),
+      data: tenants.map((t) => ({
+        id: t.id,
         name: t.name,
         displayName: t.displayName || t.name,
         subdomain: t.subdomain,
-        city: t.address?.city ?? null,
-        state: t.address?.state ?? null,
-        country: t.address?.country ?? null,
-        logo: t.settings?.logo ?? null,
+        city: t.addressCity ?? null,
+        state: t.addressState ?? null,
+        country: t.addressCountry ?? null,
+        logo: t.settingsLogo ?? null,
       })),
       pagination: {
         total,

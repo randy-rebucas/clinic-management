@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession } from '@/app/lib/dal';
 import { capturePayPalOrder } from '@/lib/paypal';
-import connectDB from '@/lib/mongodb';
-import Tenant from '@/models/Tenant';
-import PaypalOrder from '@/models/PaypalOrder';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { claimPendingPaypalOrder, getPaypalOrderByOrderId, updatePaypalOrderStatus } from '@/lib/data/paypal-order';
+import { getTenantById, activateTenantSubscription } from '@/lib/data/tenant';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,29 +24,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Order ID is required' }, { status: 400 });
     }
 
-    await connectDB();
+    if (!session.tenantId) {
+      return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+    }
+    const tenantId = session.tenantId;
 
     // ── Verify order belongs to this tenant ──────────────────────────────────
     // Atomically claim the order: transition pending → processing.
     // If another request already claimed it (webhook or duplicate client call),
-    // findOneAndUpdate returns null and we bail — preventing double-processing.
-    const pendingOrder = await PaypalOrder.findOneAndUpdate(
-      {
-        orderId,
-        tenantId: new Types.ObjectId(session.tenantId),
-        status: 'pending',
-      },
-      { $set: { status: 'processing' } },
-      { new: true }
-    );
+    // this returns null and we bail — preventing double-processing.
+    const pendingOrder = await runWithTenant(tenantId, () => claimPendingPaypalOrder(orderId, tenantId));
 
     if (!pendingOrder) {
       // Could be: wrong tenant, already processing, already completed, or unknown orderId
-      const existing = await PaypalOrder.findOne({ orderId }).lean();
+      const existing = await runAsSystem(() => getPaypalOrderByOrderId(orderId));
       if (!existing) {
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
       }
-      if ((existing as any).status === 'completed') {
+      if (existing.status === 'completed') {
         return NextResponse.json({ error: 'Order already processed' }, { status: 409 });
       }
       return NextResponse.json({ error: 'Order cannot be processed' }, { status: 409 });
@@ -59,12 +53,12 @@ export async function POST(request: NextRequest) {
       captureResult = await capturePayPalOrder(orderId);
     } catch (err: any) {
       // Roll back the lock so the order can be retried
-      await PaypalOrder.findOneAndUpdate({ orderId }, { $set: { status: 'pending' } });
+      await runWithTenant(tenantId, () => updatePaypalOrderStatus(orderId, 'pending'));
       throw err;
     }
 
     if (!captureResult.success) {
-      await PaypalOrder.findOneAndUpdate({ orderId }, { $set: { status: 'failed' } });
+      await runWithTenant(tenantId, () => updatePaypalOrderStatus(orderId, 'failed'));
       return NextResponse.json(
         { error: captureResult.error || 'Payment capture failed' },
         { status: 400 }
@@ -72,9 +66,9 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Update tenant subscription ───────────────────────────────────────────
-    const tenant = await Tenant.findById(pendingOrder.tenantId);
+    const tenant = await runAsSystem(() => getTenantById(tenantId));
     if (!tenant) {
-      await PaypalOrder.findOneAndUpdate({ orderId }, { $set: { status: 'failed' } });
+      await runWithTenant(tenantId, () => updatePaypalOrderStatus(orderId, 'failed'));
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
     }
 
@@ -87,43 +81,39 @@ export async function POST(request: NextRequest) {
       expiresAt.setMonth(expiresAt.getMonth() + 1);
     }
 
-    const paymentEntry = {
-      transactionId: captureResult.transactionId || orderId,
-      orderId,
-      amount: captureResult.amount || pendingOrder.amount,
-      currency: captureResult.currency || pendingOrder.currency,
-      payerEmail: captureResult.payerEmail,
-      plan: pendingOrder.plan,
-      billingCycle: pendingOrder.billingCycle,
-      status: 'completed' as const,
-      paidAt: now,
-    };
-
-    if (!tenant.subscription) tenant.subscription = {} as any;
-    tenant.subscription.plan = pendingOrder.plan;
-    tenant.subscription.status = 'active';
-    tenant.subscription.billingCycle = pendingOrder.billingCycle;
-    tenant.subscription.expiresAt = expiresAt;
-    tenant.subscription.renewalAt = expiresAt;
-    tenant.subscription.paypalOrderId = orderId;
-
-    if (!tenant.subscription.paymentHistory) tenant.subscription.paymentHistory = [];
-    tenant.subscription.paymentHistory.push(paymentEntry);
-
-    await tenant.save();
+    const updatedTenant = await runAsSystem(() =>
+      activateTenantSubscription({
+        tenantId,
+        plan: pendingOrder.plan,
+        billingCycle: pendingOrder.billingCycle,
+        expiresAt,
+        renewalAt: expiresAt,
+        paypalOrderId: orderId,
+        paymentHistory: {
+          transactionId: captureResult.transactionId || orderId,
+          orderId,
+          amount: captureResult.amount || pendingOrder.amount,
+          currency: captureResult.currency || pendingOrder.currency,
+          payerEmail: captureResult.payerEmail,
+          plan: pendingOrder.plan,
+          billingCycle: pendingOrder.billingCycle,
+          paidAt: now,
+        },
+      })
+    );
 
     // Mark the pending order record as completed
-    await PaypalOrder.findOneAndUpdate({ orderId }, { $set: { status: 'completed' } });
+    await runWithTenant(tenantId, () => updatePaypalOrderStatus(orderId, 'completed'));
 
     return NextResponse.json({
       success: true,
       message: 'Subscription activated successfully',
       subscription: {
-        plan: tenant.subscription.plan,
-        status: tenant.subscription.status,
-        billingCycle: tenant.subscription.billingCycle,
-        expiresAt: tenant.subscription.expiresAt,
-        renewalAt: tenant.subscription.renewalAt,
+        plan: updatedTenant.subscriptionPlan,
+        status: updatedTenant.subscriptionStatus,
+        billingCycle: updatedTenant.subscriptionBillingCycle,
+        expiresAt: updatedTenant.subscriptionExpiresAt,
+        renewalAt: updatedTenant.subscriptionRenewalAt,
       },
       transactionId: captureResult.transactionId,
     });

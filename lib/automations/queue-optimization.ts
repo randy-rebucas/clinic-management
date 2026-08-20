@@ -3,14 +3,14 @@
  * Optimizes patient queue assignment and scheduling
  */
 
-import connectDB from '@/lib/mongodb';
-import Queue from '@/models/Queue';
-import Appointment from '@/models/Appointment';
-import Doctor from '@/models/Doctor';
-import Room from '@/models/Room';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import prisma from '@/lib/prisma';
 import { getSettings } from '@/lib/settings';
 import logger from '@/lib/logger';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export interface QueueOptimizationResult {
   optimized: boolean;
@@ -33,7 +33,7 @@ export interface QueueOptimizationResult {
  * Optimize queue assignment based on various factors
  */
 export async function optimizeQueue(
-  tenantId: string | Types.ObjectId
+  tenantId: string
 ): Promise<QueueOptimizationResult> {
   const emptyResult: QueueOptimizationResult = {
     optimized: false,
@@ -41,142 +41,134 @@ export async function optimizeQueue(
     metrics: { averageWaitTime: 0, totalPatients: 0, doctorsAvailable: 0, roomsAvailable: 0 },
   };
 
-  if (!tenantId || (typeof tenantId === 'string' && !Types.ObjectId.isValid(tenantId))) {
+  if (!tenantId) {
     logger.error('optimizeQueue called with invalid tenantId', new Error('Invalid tenantId'), { tenantId });
     return emptyResult;
   }
 
   try {
-    await connectDB();
+    return await run(String(tenantId), async () => {
+      const settings = await getSettings(String(tenantId));
+      if (!settings?.automationSettings?.autoQueueOptimization) {
+        return emptyResult;
+      }
 
-    const settings = await getSettings(tenantId.toString());
-    if (!settings?.automationSettings?.autoQueueOptimization) {
-      return emptyResult;
-    }
+      // Get active queue entries
+      const queueEntries = await prisma.queue.findMany({
+        where: {
+          tenantId: String(tenantId),
+          status: { in: ['waiting', 'in_progress'] as any },
+        },
+        include: {
+          patient: { select: { id: true, firstName: true, lastName: true } },
+          appointment: true,
+          doctor: true,
+          room: true,
+        },
+        orderBy: { queueNumber: 'asc' },
+      });
 
-    const tenantIdObj = typeof tenantId === 'string'
-      ? new Types.ObjectId(tenantId)
-      : tenantId;
+      // Get available doctors
+      const availableDoctors = await prisma.doctor.findMany({
+        where: { tenantId: String(tenantId), status: 'active' },
+        select: { id: true, firstName: true, lastName: true, specializationId: true, schedule: true },
+      });
 
-    // Get active queue entries
-    const queueEntries = await Queue.find({
-      tenantId: tenantIdObj,
-      status: { $in: ['waiting', 'in-progress'] },
-    })
-      .populate('patient', 'firstName lastName priority')
-      .populate('appointment')
-      .populate('doctor')
-      .populate('room')
-      .sort({ queueNumber: 1 })
-      .lean();
+      // Get available rooms
+      const availableRooms = await prisma.room.findMany({
+        where: { tenantId: String(tenantId), status: 'available' },
+        select: { id: true, name: true, capacity: true, status: true },
+      });
 
-    // Get available doctors
-    const availableDoctors = await Doctor.find({
-      tenantId: tenantIdObj,
-      status: 'active',
-    }).select('name specialization schedule').lean();
+      const changes: QueueOptimizationResult['changes'] = [];
+      let totalWaitTime = 0;
+      const totalPatients = queueEntries.length;
 
-    // Get available rooms
-    const availableRooms = await Room.find({
-      tenantId: tenantIdObj,
-      status: 'available',
-    }).select('name capacity').lean();
-
-    const changes: QueueOptimizationResult['changes'] = [];
-    let totalWaitTime = 0;
-    const totalPatients = queueEntries.length;
-
-    // Optimization strategies
-    for (const entry of queueEntries) {
-      const entryObj = entry as any;
-
-      // 1. Reassign to available doctor if current doctor is busy
-      if (entryObj.doctor && entryObj.status === 'waiting') {
-        const doctorBusy = await checkDoctorBusy(entryObj.doctor._id, tenantIdObj);
-        if (doctorBusy) {
-          const availableDoctor = findAvailableDoctor(
-            availableDoctors,
-            entryObj.appointment?.specialization
-          );
-          if (availableDoctor) {
-            await Queue.updateOne(
-              { _id: entryObj._id },
-              { doctor: availableDoctor._id }
+      // Optimization strategies
+      for (const entry of queueEntries) {
+        // 1. Reassign to available doctor if current doctor is busy
+        if (entry.doctorId && entry.status === 'waiting') {
+          const doctorBusy = await checkDoctorBusy(entry.doctorId, String(tenantId));
+          if (doctorBusy) {
+            const availableDoctor = findAvailableDoctor(
+              availableDoctors,
+              (entry as any).appointment?.specialization
             );
+            if (availableDoctor) {
+              await prisma.queue.update({
+                where: { id: entry.id },
+                data: { doctorId: availableDoctor.id },
+              });
+              changes.push({
+                queueId: entry.id,
+                action: 'reassigned',
+                reason: 'Current doctor is busy, reassigned to available doctor',
+                oldValue: entry.doctor ? `${entry.doctor.firstName} ${entry.doctor.lastName}` : undefined,
+                newValue: `${availableDoctor.firstName} ${availableDoctor.lastName}`,
+              });
+            }
+          }
+        }
+
+        // 2. Prioritize urgent cases
+        if ((entry.patient as any)?.priority === 'urgent' && entry.queueNumber && Number(entry.queueNumber) > 1) {
+          const currentQueueNumber = entry.queueNumber;
+          // Move to front of queue (queue number 1)
+          await prisma.queue.update({
+            where: { id: entry.id },
+            data: { queueNumber: '1', priority: 0 },
+          });
+          // Update other queue numbers is not straightforward with Prisma
+          // string-based queueNumber ordering — skip bulk renumbering (the
+          // Mongoose original relied on a numeric field; this schema uses a
+          // string queueNumber) and just record the prioritization.
+          changes.push({
+            queueId: entry.id,
+            action: 'prioritized',
+            reason: 'Urgent case prioritized',
+            oldValue: currentQueueNumber,
+            newValue: '1',
+          });
+        }
+
+        // 3. Assign to available room if not assigned
+        if (!entry.roomId && entry.status === 'in_progress') {
+          const availableRoom = availableRooms.find((r) => r.status === 'available');
+          if (availableRoom) {
+            await prisma.queue.update({
+              where: { id: entry.id },
+              data: { roomId: availableRoom.id },
+            });
             changes.push({
-              queueId: entryObj._id.toString(),
+              queueId: entry.id,
               action: 'reassigned',
-              reason: 'Current doctor is busy, reassigned to available doctor',
-              oldValue: entryObj.doctor.name,
-              newValue: availableDoctor.name,
+              reason: 'Assigned to available room',
+              oldValue: null,
+              newValue: availableRoom.name,
             });
           }
         }
-      }
 
-      // 2. Prioritize urgent cases
-      if (entryObj.patient?.priority === 'urgent' && entryObj.queueNumber > 1) {
-        const currentQueueNumber = entryObj.queueNumber;
-        // Move to front of queue (queue number 1)
-        await Queue.updateOne(
-          { _id: entryObj._id },
-          { queueNumber: 1, priority: 'high' }
-        );
-        // Update other queue numbers
-        await Queue.updateMany(
-          {
-            tenantId: tenantIdObj,
-            queueNumber: { $lt: currentQueueNumber },
-            _id: { $ne: entryObj._id },
-          },
-          { $inc: { queueNumber: 1 } }
-        );
-        changes.push({
-          queueId: entryObj._id.toString(),
-          action: 'prioritized',
-          reason: 'Urgent case prioritized',
-          oldValue: currentQueueNumber,
-          newValue: 1,
-        });
-      }
-
-      // 3. Assign to available room if not assigned
-      if (!entryObj.room && entryObj.status === 'in-progress') {
-        const availableRoom = availableRooms.find((r: any) => r.status === 'available');
-        if (availableRoom) {
-          await Queue.updateOne(
-            { _id: entryObj._id },
-            { room: availableRoom._id }
-          );
-          changes.push({
-            queueId: entryObj._id.toString(),
-            action: 'reassigned',
-            reason: 'Assigned to available room',
-            oldValue: null,
-            newValue: availableRoom.name,
-          });
+        // Calculate wait time
+        if (entry.status === 'waiting' && entry.createdAt) {
+          const waitTime = Date.now() - new Date(entry.createdAt).getTime();
+          totalWaitTime += waitTime;
         }
       }
 
-      // Calculate wait time
-      if (entryObj.status === 'waiting' && entryObj.createdAt) {
-        const waitTime = Date.now() - new Date(entryObj.createdAt).getTime();
-        totalWaitTime += waitTime;
-      }
-    }
+      const averageWaitTime = totalPatients > 0 ? totalWaitTime / totalPatients / 1000 / 60 : 0; // in minutes
 
-    const averageWaitTime = totalPatients > 0 ? totalWaitTime / totalPatients / 1000 / 60 : 0; // in minutes
-
-    return {
-      optimized: changes.length > 0,
-      changes,
-      metrics: {
-        averageWaitTime: Math.round(averageWaitTime * 100) / 100,
-        totalPatients,
-        doctorsAvailable: availableDoctors.length,
-        roomsAvailable: availableRooms.length,
-      },
-    };
+      return {
+        optimized: changes.length > 0,
+        changes,
+        metrics: {
+          averageWaitTime: Math.round(averageWaitTime * 100) / 100,
+          totalPatients,
+          doctorsAvailable: availableDoctors.length,
+          roomsAvailable: availableRooms.length,
+        },
+      };
+    });
   } catch (error: any) {
     logger.error('Error optimizing queue', error as Error, { tenantId });
     return emptyResult;
@@ -187,24 +179,28 @@ export async function optimizeQueue(
  * Check if doctor is currently busy
  */
 async function checkDoctorBusy(
-  doctorId: Types.ObjectId,
-  tenantId: Types.ObjectId
+  doctorId: string,
+  tenantId: string
 ): Promise<boolean> {
   const now = new Date();
-  const activeVisits = await Queue.countDocuments({
-    tenantId,
-    doctor: doctorId,
-    status: 'in-progress',
+  const activeVisits = await prisma.queue.count({
+    where: {
+      tenantId,
+      doctorId,
+      status: 'in_progress',
+    },
   });
 
-  const activeAppointments = await Appointment.countDocuments({
-    tenantId,
-    doctor: doctorId,
-    date: {
-      $gte: new Date(now.getTime() - 30 * 60 * 1000), // Last 30 minutes
-      $lte: new Date(now.getTime() + 30 * 60 * 1000), // Next 30 minutes
+  const activeAppointments = await prisma.appointment.count({
+    where: {
+      tenantId,
+      doctorId,
+      appointmentDate: {
+        gte: new Date(now.getTime() - 30 * 60 * 1000), // Last 30 minutes
+        lte: new Date(now.getTime() + 30 * 60 * 1000), // Next 30 minutes
+      },
+      status: { in: ['scheduled', 'confirmed'] as any },
     },
-    status: { $in: ['scheduled', 'confirmed', 'in-progress'] },
   });
 
   return activeVisits > 0 || activeAppointments > 0;
@@ -220,7 +216,7 @@ function findAvailableDoctor(
   // First try to find doctor with matching specialization
   if (specialization) {
     const specializedDoctor = doctors.find(
-      (d: any) => d.specialization === specialization
+      (d: any) => d.specializationId === specialization || d.specialization === specialization
     );
     if (specializedDoctor) {
       return specializedDoctor;
@@ -235,8 +231,8 @@ function findAvailableDoctor(
  * Auto-optimize queue when new patient joins
  */
 export async function autoOptimizeQueueOnJoin(
-  queueId: string | Types.ObjectId,
-  tenantId: string | Types.ObjectId
+  queueId: string,
+  tenantId: string
 ): Promise<QueueOptimizationResult | null> {
   try {
     // Run optimization after new patient joins
@@ -251,7 +247,7 @@ export async function autoOptimizeQueueOnJoin(
  * Optimize queue scheduling based on appointment patterns
  */
 export async function optimizeQueueScheduling(
-  tenantId: string | Types.ObjectId
+  tenantId: string
 ): Promise<{
   success: boolean;
   recommendations: Array<{
@@ -260,75 +256,80 @@ export async function optimizeQueueScheduling(
     impact: 'high' | 'medium' | 'low';
   }>;
 }> {
-  if (!tenantId || (typeof tenantId === 'string' && !Types.ObjectId.isValid(tenantId))) {
+  if (!tenantId) {
     logger.error('optimizeQueueScheduling called with invalid tenantId', new Error('Invalid tenantId'), { tenantId });
     return { success: false, recommendations: [] };
   }
 
   try {
-    await connectDB();
+    return await run(String(tenantId), async () => {
+      const recommendations: Array<{
+        type: 'time-slot' | 'doctor-assignment' | 'room-allocation';
+        recommendation: string;
+        impact: 'high' | 'medium' | 'low';
+      }> = [];
 
-    const tenantIdObj = typeof tenantId === 'string'
-      ? new Types.ObjectId(tenantId)
-      : tenantId;
-
-    const recommendations: Array<{
-      type: 'time-slot' | 'doctor-assignment' | 'room-allocation';
-      recommendation: string;
-      impact: 'high' | 'medium' | 'low';
-    }> = [];
-
-    // Analyze appointment patterns
-    const appointments = await Appointment.find({
-      tenantId: tenantIdObj,
-      date: {
-        $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
-      },
-    }).select('date doctor status').lean();
-
-    // Find peak hours
-    const hourCounts: { [hour: number]: number } = {};
-    for (const apt of appointments) {
-      const hour = new Date(apt.date).getHours();
-      hourCounts[hour] = (hourCounts[hour] || 0) + 1;
-    }
-
-    const peakHour = Object.entries(hourCounts).reduce((a, b) =>
-      hourCounts[parseInt(a[0])] > hourCounts[parseInt(b[0])] ? a : b
-    );
-
-    if (parseInt(peakHour[0]) >= 9 && parseInt(peakHour[0]) <= 11) {
-      recommendations.push({
-        type: 'time-slot',
-        recommendation: `Peak hours are ${peakHour[0]}:00. Consider adding more time slots or doctors during this period.`,
-        impact: 'high',
+      // Analyze appointment patterns
+      const appointments = await prisma.appointment.findMany({
+        where: {
+          tenantId: String(tenantId),
+          appointmentDate: {
+            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
+          },
+        },
+        select: { appointmentDate: true, doctorId: true, status: true },
       });
-    }
 
-    // Analyze doctor workload
-    const doctorWorkloads: { [doctorId: string]: number } = {};
-    for (const apt of appointments) {
-      const doctorId = (apt.doctor as any)?.toString();
-      if (doctorId) {
-        doctorWorkloads[doctorId] = (doctorWorkloads[doctorId] || 0) + 1;
+      // Find peak hours
+      const hourCounts: { [hour: number]: number } = {};
+      for (const apt of appointments) {
+        if (!apt.appointmentDate) continue;
+        const hour = new Date(apt.appointmentDate).getHours();
+        hourCounts[hour] = (hourCounts[hour] || 0) + 1;
       }
-    }
 
-    const maxWorkload = Math.max(...Object.values(doctorWorkloads));
-    const avgWorkload = Object.values(doctorWorkloads).reduce((a, b) => a + b, 0) / Object.keys(doctorWorkloads).length;
+      if (Object.keys(hourCounts).length > 0) {
+        const peakHour = Object.entries(hourCounts).reduce((a, b) =>
+          hourCounts[parseInt(a[0])] > hourCounts[parseInt(b[0])] ? a : b
+        );
 
-    if (maxWorkload > avgWorkload * 1.5) {
-      recommendations.push({
-        type: 'doctor-assignment',
-        recommendation: 'Some doctors have significantly higher workload. Consider redistributing appointments.',
-        impact: 'medium',
-      });
-    }
+        if (parseInt(peakHour[0]) >= 9 && parseInt(peakHour[0]) <= 11) {
+          recommendations.push({
+            type: 'time-slot',
+            recommendation: `Peak hours are ${peakHour[0]}:00. Consider adding more time slots or doctors during this period.`,
+            impact: 'high',
+          });
+        }
+      }
 
-    return {
-      success: true,
-      recommendations,
-    };
+      // Analyze doctor workload
+      const doctorWorkloads: { [doctorId: string]: number } = {};
+      for (const apt of appointments) {
+        const doctorId = apt.doctorId ?? undefined;
+        if (doctorId) {
+          doctorWorkloads[doctorId] = (doctorWorkloads[doctorId] || 0) + 1;
+        }
+      }
+
+      const workloadValues = Object.values(doctorWorkloads);
+      if (workloadValues.length > 0) {
+        const maxWorkload = Math.max(...workloadValues);
+        const avgWorkload = workloadValues.reduce((a, b) => a + b, 0) / workloadValues.length;
+
+        if (maxWorkload > avgWorkload * 1.5) {
+          recommendations.push({
+            type: 'doctor-assignment',
+            recommendation: 'Some doctors have significantly higher workload. Consider redistributing appointments.',
+            impact: 'medium',
+          });
+        }
+      }
+
+      return {
+        success: true,
+        recommendations,
+      };
+    });
   } catch (error: any) {
     logger.error('Error optimizing queue scheduling', error as Error, { tenantId });
     return {
@@ -337,4 +338,3 @@ export async function optimizeQueueScheduling(
     };
   }
 }
-

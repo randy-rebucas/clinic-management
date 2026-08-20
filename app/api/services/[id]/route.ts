@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Service from '@/models/Service';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getServiceById, updateService, deactivateService } from '@/lib/data/service';
+
+async function resolveTenantId(session: { tenantId?: string | null }) {
+  const tenantContext = await getTenantContext();
+  return session.tenantId || tenantContext.tenantId;
+}
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -17,22 +25,10 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const service = await Service.findOne(query);
+    const tenantId = await resolveTenantId(session);
+
+    const service = await run(tenantId, () => getServiceById(id));
 
     if (!service) {
       return NextResponse.json(
@@ -41,8 +37,8 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: service,
       message: 'Service updated successfully'
     });
@@ -73,26 +69,20 @@ export async function PUT(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
     const body = await request.json();
+    const tenantId = await resolveTenantId(session);
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    let service;
+    try {
+      service = await run(tenantId, () => updateService(id, body));
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        service = null;
+      } else {
+        throw error;
+      }
     }
-
-    const service = await Service.findOneAndUpdate(query, body, {
-      new: true,
-      runValidators: true,
-    });
 
     if (!service) {
       return NextResponse.json(
@@ -101,19 +91,13 @@ export async function PUT(
       );
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: service,
       message: 'Service updated successfully'
     });
   } catch (error: any) {
     console.error('Error updating service:', error);
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
     return NextResponse.json(
       { success: false, error: 'Failed to update service' },
       { status: 500 }
@@ -139,25 +123,19 @@ export async function DELETE(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    const tenantId = await resolveTenantId(session);
 
-    const service = await Service.findOneAndUpdate(
-      query,
-      { active: false },
-      { new: true }
-    );
+    let service;
+    try {
+      service = await run(tenantId, () => deactivateService(id));
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        service = null;
+      } else {
+        throw error;
+      }
+    }
 
     if (!service) {
       return NextResponse.json(
@@ -166,8 +144,8 @@ export async function DELETE(
       );
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: service,
       message: 'Service updated successfully'
     });
@@ -179,4 +157,3 @@ export async function DELETE(
     );
   }
 }
-

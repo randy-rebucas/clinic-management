@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import LabResult from '@/models/LabResult';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getLabResultById } from '@/lib/data/lab-result';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -15,12 +20,10 @@ export async function GET(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    const labResult = await LabResult.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth sex')
-      .populate('visit', 'visitCode date visitType diagnoses chiefComplaint soapNotes')
-      .populate('orderedBy', 'name email');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+    const labResult = await run(tenantId, () => getLabResultById(id));
 
     if (!labResult) {
       return NextResponse.json(
@@ -256,8 +259,8 @@ function generateLabRequestFormHTML(labResult: any): string {
     ${visit.chiefComplaint ? `
       <p><strong>Chief Complaint:</strong> ${visit.chiefComplaint}</p>
     ` : ''}
-    ${visit.soapNotes?.assessment ? `
-      <p><strong>Clinical Assessment:</strong> ${visit.soapNotes.assessment}</p>
+    ${visit.soapAssessment ? `
+      <p><strong>Clinical Assessment:</strong> ${visit.soapAssessment}</p>
     ` : ''}
   </div>
   ` : ''}

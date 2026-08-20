@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Queue from '@/models/Queue';
 import QRCode from 'qrcode';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getQueueEntryRaw } from '@/lib/data/queue';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * Generate QR code for queue check-in
@@ -12,9 +17,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await connectDB();
     const { id } = await params;
-    const queue = await Queue.findById(id);
+
+    const tenantContext = await getTenantContext();
+    const tenantId = tenantContext.tenantId;
+
+    const queue = await run(tenantId, () => getQueueEntryRaw(id));
 
     if (!queue) {
       return NextResponse.json(
@@ -113,4 +121,3 @@ export async function GET(
     );
   }
 }
-

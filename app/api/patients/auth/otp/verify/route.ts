@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SignJWT } from 'jose';
 import bcrypt from 'bcryptjs';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { Types } from 'mongoose';
+import { runAsSystem } from '@/lib/tenant-context';
+import {
+  findPatientAcrossTenantsWithAuthFields,
+  clearPatientOtp,
+  incrementPatientOtpAttempts,
+} from '@/lib/data/patient';
 
 const MAX_OTP_ATTEMPTS = 5;
 
@@ -19,16 +22,11 @@ export async function POST(request: NextRequest) {
   if (rateLimitResponse) return rateLimitResponse;
 
   try {
-    await connectDB();
-
     let body: { phone?: string; otp?: string; tenantId?: string };
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
-        { success: false, error: 'Invalid request format' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
     }
 
     const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
@@ -36,72 +34,37 @@ export async function POST(request: NextRequest) {
     const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : undefined;
 
     if (!phone || !otp) {
-      return NextResponse.json(
-        { success: false, error: 'Phone number and OTP are required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Phone number and OTP are required' }, { status: 400 });
     }
 
-    const query: any = {
-      $or: [{ phone }, { 'contacts.phone': phone }],
-    };
-    if (tenantId) {
-      query.tenantIds = new Types.ObjectId(tenantId);
-    }
+    const patient = await runAsSystem(() => findPatientAcrossTenantsWithAuthFields({ phone, tenantId }));
 
-    // Select OTP fields which have select: false in schema
-    const patient = await Patient.findOne(query).select('+otp +otpExpiry +otpAttempts');
-
-    const invalidError = NextResponse.json(
-      { success: false, error: 'Invalid or expired OTP' },
-      { status: 401 }
-    );
+    const invalidError = NextResponse.json({ success: false, error: 'Invalid or expired OTP' }, { status: 401 });
 
     if (!patient || patient.active === false) return invalidError;
     if (!patient.otp || !patient.otpExpiry) return invalidError;
 
-    // Check expiry
     if (new Date() > patient.otpExpiry) {
-      await Patient.updateOne(
-        { _id: patient._id },
-        { $unset: { otp: 1, otpExpiry: 1 }, $set: { otpAttempts: 0 } }
-      );
-      return NextResponse.json(
-        { success: false, error: 'OTP has expired. Please request a new one.' },
-        { status: 401 }
-      );
+      await runAsSystem(() => clearPatientOtp(patient.id));
+      return NextResponse.json({ success: false, error: 'OTP has expired. Please request a new one.' }, { status: 401 });
     }
 
-    // Check attempt count
     const attempts = patient.otpAttempts ?? 0;
     if (attempts >= MAX_OTP_ATTEMPTS) {
-      await Patient.updateOne(
-        { _id: patient._id },
-        { $unset: { otp: 1, otpExpiry: 1 }, $set: { otpAttempts: 0 } }
-      );
+      await runAsSystem(() => clearPatientOtp(patient.id));
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Too many incorrect attempts. Please request a new OTP.',
-        },
+        { success: false, error: 'Too many incorrect attempts. Please request a new OTP.' },
         { status: 429 }
       );
     }
 
     const otpMatch = await bcrypt.compare(otp, patient.otp);
     if (!otpMatch) {
-      await Patient.updateOne(
-        { _id: patient._id },
-        { $inc: { otpAttempts: 1 } }
-      );
+      await runAsSystem(() => incrementPatientOtpAttempts(patient.id));
       return invalidError;
     }
 
-    // OTP is valid — clear OTP fields
-    await Patient.updateOne(
-      { _id: patient._id },
-      { $unset: { otp: 1, otpExpiry: 1 }, $set: { otpAttempts: 0 } }
-    );
+    await runAsSystem(() => clearPatientOtp(patient.id));
 
     const secretKey = process.env.SESSION_SECRET;
     if (!secretKey) {
@@ -112,7 +75,7 @@ export async function POST(request: NextRequest) {
     const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     const patientJwt = await new SignJWT({
-      patientId: patient._id.toString(),
+      patientId: patient.id,
       patientCode: patient.patientCode,
       type: 'patient',
       email: patient.email || `patient-${patient.patientCode}@clinic.local`,
@@ -125,7 +88,7 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({
       success: true,
       data: {
-        patientId: patient._id.toString(),
+        patientId: patient.id,
         patientCode: patient.patientCode,
         firstName: patient.firstName,
         lastName: patient.lastName,
@@ -142,17 +105,11 @@ export async function POST(request: NextRequest) {
       path: '/',
     });
 
-    logger.info('Patient OTP login successful', {
-      patientId: patient._id.toString(),
-      patientCode: patient.patientCode,
-    });
+    logger.info('Patient OTP login successful', { patientId: patient.id, patientCode: patient.patientCode });
 
     return response;
   } catch (error: any) {
     logger.error('Error in patient OTP verification', error as Error);
-    return NextResponse.json(
-      { success: false, error: 'Verification failed. Please try again.' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Verification failed. Please try again.' }, { status: 500 });
   }
 }

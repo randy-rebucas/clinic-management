@@ -1,67 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Appointment from '@/models/Appointment';
-import Patient from '@/models/Patient';
-import Doctor from '@/models/Doctor';
 import { sendSMS } from '@/lib/sms';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listDoctors } from '@/lib/data/doctor';
+import {
+  findConflictingAppointment,
+  getMaxAppointmentCodeNumber,
+  createAppointment,
+} from '@/lib/data/appointment';
+import { findPatientAcrossTenants, createPatient, updatePatient, addPatientToTenant } from '@/lib/data/patient';
+import prisma from '@/lib/prisma';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 // Public endpoint for patient online booking (no authentication required)
 export async function GET(request: NextRequest) {
   try {
-    await connectDB();
     const searchParams = request.nextUrl.searchParams;
     const date = searchParams.get('date');
     const doctorId = searchParams.get('doctorId');
     const tenantIdParam = searchParams.get('tenantId');
 
-    // Get tenant context from subdomain or query param
     const tenantContext = await getTenantContext();
     const tenantId = tenantIdParam || tenantContext.tenantId;
 
-    // Build doctor query with tenant filter
-    const doctorQuery: any = { status: 'active' };
-    if (tenantId) {
-      doctorQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      // If no tenant, get doctors without tenantId (backward compatibility)
-      doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    const doctors = await run(tenantId, () => listDoctors({ status: 'active' }));
 
-    // Get available doctors
-    const doctors = await Doctor.find(doctorQuery)
-      .select('firstName lastName specialization schedule')
-      .lean();
-
-    // Get available time slots for a specific date and doctor
     if (date && doctorId) {
       const startOfDay = new Date(date);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(date);
       endOfDay.setHours(23, 59, 59, 999);
 
-      // Build appointment query with tenant filter
-      const appointmentQuery: any = {
-        doctor: doctorId,
-        appointmentDate: { $gte: startOfDay, $lte: endOfDay },
-        status: { $in: ['scheduled', 'confirmed'] },
-      };
-      if (tenantId) {
-        appointmentQuery.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        appointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
+      const existingAppointments = await run(tenantId, () =>
+        prisma.appointment.findMany({
+          where: {
+            doctorId,
+            appointmentDate: { gte: startOfDay, lte: endOfDay },
+            status: { in: ['scheduled', 'confirmed'] },
+          },
+          select: { appointmentTime: true, duration: true },
+        })
+      );
 
-      const existingAppointments = await Appointment.find(appointmentQuery)
-        .select('appointmentTime duration')
-        .lean();
-
-      // Generate available time slots (9 AM to 5 PM, 30-minute intervals)
       const availableSlots: string[] = [];
       const bookedSlots = new Set(
-        existingAppointments.map((apt: any) => {
-          const [hours, minutes] = apt.appointmentTime.split(':').map(Number);
+        existingAppointments.map((apt) => {
+          const [hours, minutes] = (apt.appointmentTime ?? '0:0').split(':').map(Number);
           return `${hours}:${minutes}`;
         })
       );
@@ -75,20 +62,10 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      return NextResponse.json({
-        success: true,
-        data: {
-          availableSlots,
-          doctors,
-        },
-      });
+      return NextResponse.json({ success: true, data: { availableSlots, doctors } });
     }
 
-    // Return just doctors if no date/doctor specified
-    return NextResponse.json({
-      success: true,
-      data: { doctors },
-    });
+    return NextResponse.json({ success: true, data: { doctors } });
   } catch (error: any) {
     console.error('Error fetching public appointment data:', error);
     return NextResponse.json(
@@ -101,158 +78,104 @@ export async function GET(request: NextRequest) {
 // Public endpoint for patient booking (no authentication required)
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
     const body = await request.json();
     const { patientEmail, patientPhone, patientFirstName, patientLastName, doctorId, appointmentDate, appointmentTime, reason, room, tenantId: bodyTenantId } = body;
 
-    // Validate required fields
     if (!patientEmail || !patientPhone || !patientFirstName || !patientLastName || !doctorId || !appointmentDate || !appointmentTime) {
-      return NextResponse.json(
-        { success: false, error: 'Missing required fields' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Get tenant context from subdomain or body
     const tenantContext = await getTenantContext();
     const tenantId = bodyTenantId || tenantContext.tenantId;
 
-    // Validate that the doctor belongs to the tenant
-    if (tenantId) {
-      const doctorQuery: any = {
-        _id: doctorId,
-        status: 'active',
-        tenantId: new Types.ObjectId(tenantId),
-      };
-      const doctor = await Doctor.findOne(doctorQuery);
-      if (!doctor) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid doctor selected. Please select a doctor from this clinic.' },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Find or create patient (tenant-scoped)
-    const patientQuery: any = { email: patientEmail };
-    if (tenantId) {
-      patientQuery.tenantIds = new Types.ObjectId(tenantId);
-    } else {
-      patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-    }
-
-    let patient = await Patient.findOne(patientQuery);
-    if (!patient) {
-      // Create new patient with tenantId
-      const patientData: any = {
-        firstName: patientFirstName,
-        lastName: patientLastName,
-        email: patientEmail,
-        phone: patientPhone,
-        patientCode: `PAT-${Date.now()}`,
-      };
+    const result = await run(tenantId, async () => {
+      // Validate that the doctor belongs to the tenant
       if (tenantId) {
-        patientData.tenantIds = [new Types.ObjectId(tenantId)];
+        const doctor = await prisma.doctor.findFirst({ where: { id: doctorId, status: 'active' } });
+        if (!doctor) {
+          throw new ValidationError('Invalid doctor selected. Please select a doctor from this clinic.');
+        }
       }
-      patient = await Patient.create(patientData);
-    } else {
-      // Update patient info if needed
-      patient.firstName = patientFirstName;
-      patient.lastName = patientLastName;
-      patient.phone = patientPhone;
-      await patient.save();
-    }
 
-    // Check for conflicts
-    const appointmentDateTime = new Date(appointmentDate);
-    const [hours, minutes] = appointmentTime.split(':').map(Number);
-    appointmentDateTime.setHours(hours, minutes, 0, 0);
-
-    // Check for conflicts (tenant-scoped)
-    const conflictQuery: any = {
-      doctor: doctorId,
-      appointmentDate: new Date(appointmentDate),
-      appointmentTime: appointmentTime,
-      status: { $in: ['scheduled', 'confirmed'] },
-    };
-    if (tenantId) {
-      conflictQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      conflictQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    const conflictingAppointment = await Appointment.findOne(conflictQuery);
-
-    if (conflictingAppointment) {
-      return NextResponse.json(
-        { success: false, error: 'This time slot is already booked. Please choose another time.' },
-        { status: 409 }
-      );
-    }
-
-    // Auto-generate appointmentCode (tenant-scoped)
-    const codeQuery: any = { appointmentCode: { $exists: true, $ne: null } };
-    if (tenantId) {
-      codeQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    const lastAppointment = await Appointment.findOne(codeQuery)
-      .sort({ appointmentCode: -1 })
-      .exec();
-
-    let nextNumber = 1;
-    if (lastAppointment?.appointmentCode) {
-      const match = lastAppointment.appointmentCode.match(/(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
+      // Find or create patient (tenant-scoped junction lookup)
+      const existingPatient = await findPatientAcrossTenants({ email: patientEmail, tenantId: tenantId ?? undefined });
+      let patientId: string;
+      if (!existingPatient) {
+        const created = await createPatient(
+          {
+            firstName: patientFirstName,
+            lastName: patientLastName,
+            email: patientEmail,
+            phone: patientPhone,
+            patientCode: `PAT-${Date.now()}`,
+          },
+          { tenantId: tenantId ?? undefined }
+        );
+        patientId = created.id;
+      } else {
+        patientId = existingPatient.id;
+        await updatePatient(patientId, {
+          firstName: patientFirstName,
+          lastName: patientLastName,
+          phone: patientPhone,
+        });
+        if (tenantId) {
+          await addPatientToTenant(patientId, tenantId);
+        }
       }
-    }
 
-    const appointmentCode = `APT-${String(nextNumber).padStart(6, '0')}`;
+      // Check for conflicts
+      const conflictingAppointment = await findConflictingAppointment(doctorId, new Date(appointmentDate), appointmentTime);
+      if (conflictingAppointment) {
+        throw new ConflictError('This time slot is already booked. Please choose another time.');
+      }
 
-    // Create appointment with tenantId
-    const appointmentData: any = {
-      patient: patient._id,
-      doctor: doctorId,
-      appointmentCode,
-      appointmentDate: new Date(appointmentDate),
-      appointmentTime,
-      duration: 30,
-      status: 'pending', // Requires confirmation
-      reason,
-      room,
-      isWalkIn: false,
-    };
-    if (tenantId) {
-      appointmentData.tenantId = new Types.ObjectId(tenantId);
-    }
+      // Auto-generate appointmentCode
+      const nextNumber = (await getMaxAppointmentCodeNumber()) + 1;
+      const appointmentCode = `APT-${String(nextNumber).padStart(6, '0')}`;
 
-    const appointment = await Appointment.create(appointmentData);
-
-    await appointment.populate('patient', 'firstName lastName email phone');
-    await appointment.populate('doctor', 'firstName lastName specialization');
+      return createAppointment({
+        appointmentCode,
+        appointmentDate: new Date(appointmentDate),
+        appointmentTime,
+        duration: 30,
+        status: 'pending',
+        reason: reason ?? undefined,
+        room: room ?? undefined,
+        isWalkIn: false,
+        patient: { connect: { id: patientId } },
+        doctor: { connect: { id: doctorId } },
+      });
+    });
 
     // Send confirmation email/SMS (async)
-    sendBookingConfirmation(appointment).catch(console.error);
+    sendBookingConfirmation(result).catch(console.error);
 
     return NextResponse.json(
       {
         success: true,
-        data: appointment,
+        data: result,
         message: 'Appointment request submitted successfully. You will receive a confirmation shortly.',
       },
       { status: 201 }
     );
   } catch (error: any) {
     console.error('Error creating public appointment:', error);
+    if (error instanceof ValidationError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    }
+    if (error instanceof ConflictError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 409 });
+    }
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to create appointment' },
       { status: 500 }
     );
   }
 }
+
+class ValidationError extends Error {}
+class ConflictError extends Error {}
 
 // Send booking confirmation via SMS
 async function sendBookingConfirmation(appointment: any) {
@@ -261,24 +184,20 @@ async function sendBookingConfirmation(appointment: any) {
   const appointmentDate = new Date(appointment.appointmentDate).toLocaleDateString();
   const appointmentTime = appointment.appointmentTime;
   const [hours, minutes] = appointmentTime.split(':').map(Number);
-  const displayTime = hours >= 12 
+  const displayTime = hours >= 12
     ? `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} PM`
     : `${hours}:${minutes.toString().padStart(2, '0')} AM`;
 
   const message = `Your appointment request (${appointment.appointmentCode}) is pending confirmation. Date: ${appointmentDate} at ${displayTime}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. You will receive a confirmation shortly.`;
 
-  if (patient.phone) {
+  if (patient?.phone) {
     let phoneNumber = patient.phone.trim();
     if (!phoneNumber.startsWith('+')) {
       phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
     }
 
-    await sendSMS({
-      to: phoneNumber,
-      message,
-    }).catch((error) => {
+    await sendSMS({ to: phoneNumber, message }).catch((error) => {
       console.error('Failed to send booking confirmation SMS:', error);
     });
   }
 }
-

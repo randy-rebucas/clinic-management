@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
-import Role from '@/models/Role';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { updateUser } from '@/lib/data/user';
+import { getRoleById } from '@/lib/data/role';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, forbiddenResponse } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
@@ -12,7 +12,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await verifySession();
-  
+
   if (!session) {
     return unauthorizedResponse();
   }
@@ -22,14 +22,6 @@ export async function PUT(
   }
 
   try {
-    await connectDB();
-    
-    // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
-    
     const { id } = await params;
     const body = await request.json();
     const { roleId } = body;
@@ -41,53 +33,27 @@ export async function PUT(
       );
     }
 
-    // Verify role exists (tenant-scoped)
-    const roleQuery: any = { _id: roleId };
-    if (tenantId) {
-      roleQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      roleQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const role = await Role.findOne(roleQuery);
-    if (!role) {
+    // Explicit tenant branch: a resolved session.tenantId -> runWithTenant
+    // (the extension auto-scopes both the Role lookup and the User update);
+    // no tenantId (legacy no-subdomain mode) -> runAsSystem, since there is
+    // no tenant to scope by.
+    const tenantId = session.tenantId;
+    const update = async () => {
+      // Verify role exists (tenant-scoped by the active context)
+      const role = await getRoleById(roleId);
+      if (!role) {
+        return { error: 'not_found_role' as const };
+      }
+
+      const user = await updateUser(id, { role: { connect: { id: roleId } } });
+      return { user, roleName: role.name };
+    };
+
+    const result = tenantId ? await runWithTenant(tenantId, update) : await runAsSystem(update);
+
+    if ('error' in result) {
       return NextResponse.json(
         { success: false, error: 'Role not found' },
-        { status: 404 }
-      );
-    }
-
-    // Update user's role (tenant-scoped)
-    const userQuery: any = { _id: id };
-    if (tenantId) {
-      userQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      userQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    // Build populate options with tenant filter
-    const rolePopulateOptions: any = {
-      path: 'role',
-      select: 'name displayName',
-    };
-    if (tenantId) {
-      rolePopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      rolePopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-    
-    const user = await User.findOneAndUpdate(
-      userQuery,
-      { role: roleId },
-      { new: true }
-    )
-      .select('-password')
-      .populate(rolePopulateOptions)
-      .lean();
-
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
         { status: 404 }
       );
     }
@@ -100,12 +66,21 @@ export async function PUT(
       action: 'permission_change',
       resource: 'user',
       resourceId: id,
-      description: `Changed role for user ${id} to ${role.name}`,
-      changes: [{ field: 'role', newValue: role.name }],
+      description: `Changed role for user ${id} to ${result.roleName}`,
+      changes: [{ field: 'role', newValue: result.roleName }],
     });
 
-    return NextResponse.json({ success: true, data: user });
+    return NextResponse.json({ success: true, data: result.user });
   } catch (error: any) {
+    // Prisma throws P2025 when the update's `where` matches no row, unlike
+    // Mongoose's findOneAndUpdate which returned null — surface it as the
+    // same 404 the old code returned for "user not found".
+    if (error?.code === 'P2025') {
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      );
+    }
     console.error('Error updating user role:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update user role' },
@@ -113,4 +88,3 @@ export async function PUT(
     );
   }
 }
-

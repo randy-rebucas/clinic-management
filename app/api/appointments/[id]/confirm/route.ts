@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processConfirmationResponse } from '@/lib/automations/appointment-confirmation';
-import connectDB from '@/lib/mongodb';
-import Appointment from '@/models/Appointment';
-import { Types } from 'mongoose';
+import { runAsSystem } from '@/lib/tenant-context';
+import { findAppointmentByIdRaw } from '@/lib/data/appointment';
 
 /**
  * Public endpoint for appointment confirmation
@@ -10,8 +9,6 @@ import { Types } from 'mongoose';
  */
 export async function GET(request: NextRequest) {
   try {
-    await connectDB();
-    
     const { searchParams } = new URL(request.url);
     const appointmentId = searchParams.get('id') || searchParams.get('appointmentId');
     const code = searchParams.get('code');
@@ -24,53 +21,43 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Validate action
     if (!['yes', 'no', 'reschedule'].includes(action)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid action' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
     }
 
-    // Get appointment to verify code (if provided)
-    const appointment = await Appointment.findById(appointmentId);
+    // Get appointment to verify code (if provided). This is a pre-session,
+    // cross-tenant lookup — run as system, same as the patient-portal
+    // pre-auth lookups in lib/data/patient.ts.
+    const appointment = await runAsSystem(() => findAppointmentByIdRaw(appointmentId));
     if (!appointment) {
-      return NextResponse.json(
-        { success: false, error: 'Appointment not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
     }
 
-    // Verify confirmation code if provided
     if (code) {
-      const expectedCode = appointment.appointmentCode 
+      const expectedCode = appointment.appointmentCode
         ? appointment.appointmentCode.substring(0, 6).toUpperCase()
-        : appointment._id.toString().substring(0, 6).toUpperCase();
-      
+        : appointment.id.toString().substring(0, 6).toUpperCase();
+
       if (code.toUpperCase() !== expectedCode) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid confirmation code' },
-          { status: 401 }
-        );
+        return NextResponse.json({ success: false, error: 'Invalid confirmation code' }, { status: 401 });
       }
     }
 
-    // Process confirmation
+    // NOTE: lib/automations/appointment-confirmation.ts itself is out of
+    // scope for this batch (automations modules aren't listed among the
+    // routes to migrate) and may still assume Mongoose ObjectIds internally
+    // — flagged here for whichever batch migrates the automations layer.
     const result = await processConfirmationResponse(
       appointmentId,
       action as 'yes' | 'no' | 'reschedule',
-      appointment.tenantId
+      appointment.tenantId ?? undefined
     );
 
     if (!result.success) {
-      return NextResponse.json(
-        { success: false, error: result.error },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: result.error }, { status: 400 });
     }
 
-    // Return success page (HTML)
-    const statusMessage = result.status === 'confirmed' 
+    const statusMessage = result.status === 'confirmed'
       ? 'Your appointment has been confirmed!'
       : result.status === 'cancelled'
       ? 'Your appointment has been cancelled.'
@@ -108,4 +95,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

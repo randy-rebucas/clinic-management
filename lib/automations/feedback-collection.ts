@@ -2,17 +2,19 @@
 // Automatically collects patient feedback after visits
 
 import { randomBytes } from 'crypto';
-import connectDB from '@/lib/mongodb';
-import Visit from '@/models/Visit';
-import Patient from '@/models/Patient';
-import { getSettings } from '@/lib/settings';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getVisitById, findVisitsNeedingFeedbackRequest, setVisitFeedbackToken } from '@/lib/data/visit';
+import { getAutomationSettings, getOrCreateSettings } from '@/lib/data/settings';
 import { sendEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export interface FeedbackCollectionOptions {
-  visitId: string | Types.ObjectId;
-  tenantId?: string | Types.ObjectId;
+  visitId: string;
+  tenantId?: string;
   sendSMS?: boolean;
   sendEmail?: boolean;
 }
@@ -26,22 +28,14 @@ export async function sendFeedbackRequest(options: FeedbackCollectionOptions): P
   error?: string;
 }> {
   try {
-    await connectDB();
+    const tenantId = options.tenantId ?? null;
 
-    const settings = await getSettings();
-    const autoFeedbackCollection = (settings.automationSettings as any)?.autoFeedbackCollection !== false;
-
-    if (!autoFeedbackCollection) {
+    const automationSettings = await run(tenantId, () => getAutomationSettings(tenantId));
+    if (!automationSettings.autoFeedbackCollection) {
       return { success: true, sent: false };
     }
 
-    const visitId = typeof options.visitId === 'string' 
-      ? new Types.ObjectId(options.visitId) 
-      : options.visitId;
-
-    const visit = await Visit.findById(visitId)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('provider', 'name');
+    let visit = await run(tenantId, () => getVisitById(options.visitId));
 
     if (!visit) {
       return { success: false, sent: false, error: 'Visit not found' };
@@ -57,21 +51,18 @@ export async function sendFeedbackRequest(options: FeedbackCollectionOptions): P
       return { success: false, sent: false, error: 'Patient not found' };
     }
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : visit.tenantId;
-
+    const settings = await run(tenantId, () => getOrCreateSettings(tenantId));
     const clinicName = settings.clinicName || 'Our Clinic';
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
 
     // Generate a secure token if not already set
-    if (!(visit as any).feedbackToken) {
-      (visit as any).feedbackToken = randomBytes(24).toString('hex');
-      (visit as any).feedbackRequested = true;
-      await (visit as any).save();
+    if (!visit.feedbackToken) {
+      const token = randomBytes(24).toString('hex');
+      await run(tenantId, () => setVisitFeedbackToken(options.visitId, token));
+      visit = { ...visit, feedbackToken: token, feedbackRequested: true };
     }
 
-    const token = (visit as any).feedbackToken;
+    const token = visit.feedbackToken as string;
     const feedbackUrl = `${baseUrl}/feedback/${token}`;
 
     const feedbackMessage = generateFeedbackSMS(visit, clinicName, feedbackUrl);
@@ -82,7 +73,7 @@ export async function sendFeedbackRequest(options: FeedbackCollectionOptions): P
     // Send SMS if enabled and phone available
     if (options.sendSMS !== false && patient.phone) {
       try {
-        let phoneNumber = patient.phone.trim();
+        let phoneNumber = String(patient.phone).trim();
         if (!phoneNumber.startsWith('+')) {
           phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
         }
@@ -120,10 +111,10 @@ export async function sendFeedbackRequest(options: FeedbackCollectionOptions): P
     return { success: true, sent };
   } catch (error: any) {
     console.error('Error sending feedback request:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send feedback request' 
+      error: error.message || 'Failed to send feedback request',
     };
   }
 }
@@ -132,7 +123,7 @@ export async function sendFeedbackRequest(options: FeedbackCollectionOptions): P
  * Process all completed visits and send feedback requests
  * This should be called by a cron job
  */
-export async function processFeedbackCollection(tenantId?: string | Types.ObjectId): Promise<{
+export async function processFeedbackCollection(tenantId?: string): Promise<{
   success: boolean;
   processed: number;
   requestsSent: number;
@@ -140,12 +131,10 @@ export async function processFeedbackCollection(tenantId?: string | Types.Object
   results: Array<{ visitId: string; success: boolean; error?: string }>;
 }> {
   try {
-    await connectDB();
+    const resolvedTenantId = tenantId ?? null;
 
-    const settings = await getSettings();
-    const autoFeedbackCollection = (settings.automationSettings as any)?.autoFeedbackCollection !== false;
-
-    if (!autoFeedbackCollection) {
+    const automationSettings = await run(resolvedTenantId, () => getAutomationSettings(resolvedTenantId));
+    if (!automationSettings.autoFeedbackCollection) {
       return { success: true, processed: 0, requestsSent: 0, errors: 0, results: [] };
     }
 
@@ -154,20 +143,7 @@ export async function processFeedbackCollection(tenantId?: string | Types.Object
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
-    const query: any = {
-      status: 'closed',
-      date: { $gte: twoDaysAgo, $lte: oneDayAgo }, // Closed 1-2 days ago
-      feedbackRequested: { $ne: true }, // Not already requested
-    };
-
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
-
-    const visits = await Visit.find(query)
-      .populate('patient', 'firstName lastName email phone');
+    const visits = await run(resolvedTenantId, () => findVisitsNeedingFeedbackRequest(twoDaysAgo, oneDayAgo));
 
     const results: Array<{ visitId: string; success: boolean; error?: string }> = [];
     let requestsSent = 0;
@@ -175,16 +151,14 @@ export async function processFeedbackCollection(tenantId?: string | Types.Object
 
     for (const visit of visits) {
       const result = await sendFeedbackRequest({
-        visitId: visit._id,
-        tenantId: visit.tenantId,
+        visitId: visit.id,
+        tenantId: resolvedTenantId ?? undefined,
         sendSMS: true,
         sendEmail: true,
       });
 
-      // feedbackRequested is now set inside sendFeedbackRequest via the token generation step
-
       results.push({
-        visitId: visit._id.toString(),
+        visitId: visit.id,
         success: result.success,
         error: result.error,
       });
@@ -281,4 +255,3 @@ function generateFeedbackEmail(visit: any, settings: any, feedbackUrl: string): 
 
   return { subject, html };
 }
-

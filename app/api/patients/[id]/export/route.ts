@@ -1,3 +1,9 @@
+// NOT MIGRATED (Phase 5 Batch 3): this route joins Patient with Visit and
+// Prescription (both clinical-core, owned by a later batch) by the Mongo
+// ObjectId `patient` reference. Splitting Patient into Postgres here would
+// break that join until Visit/Prescription migrate too, so the whole route
+// stays on Mongoose for now rather than doing a partial migration that can't
+// actually correlate records.
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
