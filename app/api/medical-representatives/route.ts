@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import { MedicalRepresentative, User } from '@/models';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { verifySession } from '@/app/lib/dal';
 import { isAdmin } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
 import { sanitizeSearch } from '@/lib/utils';
+import type { Prisma } from '@prisma/client';
+
+// NOTE: MedicalRepresentative has no dedicated lib/data/*.ts module (same
+// precedent as app/api/medical-representatives/login/route.ts from Phase 5
+// Batch 1) — calls prisma.medicalRepresentative directly, wrapped in
+// runWithTenant/runAsSystem. MedicalRepresentative is junction-scoped (see
+// lib/prisma-tenant-extension.ts), so the tenant extension auto-scopes reads
+// via the `tenants` relation when run inside runWithTenant.
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 // GET /api/medical-representatives - Get all medical representatives
 export async function GET(request: NextRequest) {
@@ -15,9 +25,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
-    
-    // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
@@ -29,50 +36,31 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '50')));
     const skip = (page - 1) * limit;
 
-    // Build query
-    const query: any = {};
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    if (status) query.status = status;
-    if (company) query.company = { $regex: sanitizeSearch(company), $options: 'i' };
+    const where: Prisma.MedicalRepresentativeWhereInput = {};
+    if (status) where.status = status as Prisma.MedicalRepresentativeWhereInput['status'];
+    if (company) where.company = { contains: sanitizeSearch(company), mode: 'insensitive' };
     if (search) {
       const safeSearch = sanitizeSearch(search);
-      const searchConditions = [
-        { firstName: { $regex: safeSearch, $options: 'i' } },
-        { lastName: { $regex: safeSearch, $options: 'i' } },
-        { email: { $regex: safeSearch, $options: 'i' } },
-        { company: { $regex: safeSearch, $options: 'i' } },
-      ];
-      
-      // Combine tenant filter with search conditions
-      const tenantFilter: any = {};
-      if (tenantId) {
-        tenantFilter.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      query.$and = [
-        tenantFilter,
-        { $or: searchConditions }
+      where.OR = [
+        { firstName: { contains: safeSearch, mode: 'insensitive' } },
+        { lastName: { contains: safeSearch, mode: 'insensitive' } },
+        { email: { contains: safeSearch, mode: 'insensitive' } },
+        { company: { contains: safeSearch, mode: 'insensitive' } },
       ];
     }
 
-    const [representatives, total] = await Promise.all([
-      MedicalRepresentative.find(query)
-        .populate('userId', 'name email status')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      MedicalRepresentative.countDocuments(query),
-    ]);
+    const [representatives, total] = await run(tenantId, () =>
+      Promise.all([
+        prisma.medicalRepresentative.findMany({
+          where,
+          include: { user: { select: { id: true, name: true, email: true, status: true } } },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        prisma.medicalRepresentative.count({ where }),
+      ])
+    );
 
     return NextResponse.json({
       success: true,
@@ -103,8 +91,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
     }
 
-    await connectDB();
-
     const body = await request.json();
     const {
       firstName,
@@ -121,60 +107,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'First name, last name, and email are required' }, { status: 400 });
     }
 
-    // Check if medical representative already exists with this email
-    const existingRep = await MedicalRepresentative.findOne({ email: email.toLowerCase().trim() });
-    if (existingRep) {
-      return NextResponse.json({ success: false, error: 'Medical representative with this email already exists' }, { status: 400 });
-    }
-
-    // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Generate rep code (tenant-scoped)
-    const countQuery: any = {};
-    if (tenantId) {
-      countQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      countQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    const count = await MedicalRepresentative.countDocuments(countQuery);
-    const repCode = `MR-${String(count + 1).padStart(4, '0')}`;
 
-    // Create medical representative
-    // The post-save hook will automatically create the User account
-    // Convert company object to string (use name field)
-    const companyString = typeof company === 'object' && company !== null 
-      ? (company.name || '') 
-      : (company || '');
-    
-    // Convert territory array to string (join with comma)
-    const territoryString = Array.isArray(territory) 
-      ? territory.join(', ') 
-      : (territory || '');
-    
-    const repData: any = {
-      repCode,
-      firstName,
-      lastName,
-      email: email.toLowerCase().trim(),
-      phone,
-      company: companyString,
-      territory: territoryString,
-      products: products || [],
-      notes,
-      status: 'active',
-    };
-    
-    // Ensure medical representative is created with tenantId
-    if (tenantId && !repData.tenantId) {
-      repData.tenantId = new Types.ObjectId(tenantId);
-    }
-    
-    const representative = await MedicalRepresentative.create(repData);
+    const representative = await run(tenantId, async () => {
+      // Check if medical representative already exists with this email
+      const existingRep = await prisma.medicalRepresentative.findFirst({
+        where: { email: email.toLowerCase().trim() },
+      });
+      if (existingRep) {
+        throw new DuplicateError('Medical representative with this email already exists');
+      }
 
-    // Populate userId to return the full data
-    await representative.populate('userId', 'name email status');
+      // Generate rep code (tenant-scoped by the extension)
+      const count = await prisma.medicalRepresentative.count();
+      const repCode = `MR-${String(count + 1).padStart(4, '0')}`;
+
+      // Convert company object to string (use name field)
+      const companyString = typeof company === 'object' && company !== null
+        ? (company.name || '')
+        : (company || '');
+
+      // Convert territory array to string (join with comma)
+      const territoryString = Array.isArray(territory)
+        ? territory.join(', ')
+        : (territory || '');
+
+      const createData: Prisma.MedicalRepresentativeCreateInput = {
+        firstName,
+        lastName,
+        email: email.toLowerCase().trim(),
+        phone,
+        company: companyString,
+        territory: territoryString,
+        products: products || [],
+        status: 'active',
+      };
+      // NOTE: the Mongoose schema had no top-level `notes` scalar field (only
+      // `internalNotes` sub-documents), so assigning `repData.notes = notes`
+      // was a silent no-op under strict mode. `notes` is intentionally not
+      // persisted here to preserve that (unused) prior behavior.
+      void notes;
+      if (tenantId) {
+        createData.tenants = { create: { tenantId } };
+      }
+
+      const created = await prisma.medicalRepresentative.create({
+        data: createData,
+        include: { user: { select: { id: true, name: true, email: true, status: true } } },
+      });
+      return created;
+    });
 
     return NextResponse.json({
       success: true,
@@ -183,10 +166,14 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating medical representative:', error);
-    if (error.code === 11000) {
+    if (error instanceof DuplicateError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    }
+    if (error?.code === 'P2002') {
       return NextResponse.json({ success: false, error: 'Medical representative with this email already exists' }, { status: 400 });
     }
     return NextResponse.json({ success: false, error: error.message || 'Failed to create medical representative' }, { status: 500 });
   }
 }
 
+class DuplicateError extends Error {}

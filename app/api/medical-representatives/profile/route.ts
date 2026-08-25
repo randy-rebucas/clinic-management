@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { verifySession } from '@/app/lib/dal';
-import connectDB from '@/lib/mongodb';
-import MedicalRepresentative from '@/models/MedicalRepresentative';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -9,6 +13,10 @@ const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2 MB
 /**
  * PUT /api/medical-representatives/profile
  * Update medical representative profile information
+ *
+ * NOTE: `profileImage` had no corresponding column on the Mongoose schema
+ * either (models/MedicalRepresentative.ts has no `profileImage` field), so
+ * that assignment was already a silent no-op. Preserved as a no-op here.
  */
 export async function PUT(request: NextRequest) {
   try {
@@ -55,39 +63,42 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    await connectDB();
-
-    const medicalRep = await MedicalRepresentative.findOne({
-      userId: session.userId,
-      tenantIds: session.tenantId,
-    });
-
-    if (!medicalRep) {
-      return NextResponse.json({ success: false, error: 'Medical representative not found' }, { status: 404 });
-    }
-
-    // Update allowed fields only
     const stringField = (val: unknown) => (typeof val === 'string' && val.trim() ? val.trim() : undefined);
 
-    if (stringField(body.firstName)) medicalRep.firstName = stringField(body.firstName)!;
-    if (stringField(body.lastName)) medicalRep.lastName = stringField(body.lastName)!;
-    if (stringField(body.phone)) medicalRep.phone = stringField(body.phone)!;
-    if (stringField(body.company)) medicalRep.company = stringField(body.company)!;
-    if (body.bio !== undefined) medicalRep.bio = stringField(body.bio) ?? '';
-    if (body.territory !== undefined) medicalRep.territory = stringField(body.territory) ?? '';
-    if (body.title !== undefined) medicalRep.title = stringField(body.title) ?? '';
-    if (body.profileImage !== undefined) medicalRep.profileImage = body.profileImage as string | null;
+    const result = await run(session.tenantId, async () => {
+      const user = await prisma.user.findUnique({ where: { id: session.userId } });
+      if (!user) return null;
 
-    await medicalRep.save();
+      const medicalRep = user.medicalRepresentativeProfileId
+        ? await prisma.medicalRepresentative.findUnique({ where: { id: user.medicalRepresentativeProfileId } })
+        : await prisma.medicalRepresentative.findFirst({ where: { email: user.email.toLowerCase().trim() } });
 
-    const result = medicalRep.toObject();
-    delete result.internalNotes;
-    delete result.paymentStatus;
-    delete result.paymentDate;
-    delete result.paymentAmount;
-    delete result.paymentMethod;
-    delete result.paymentReference;
-    delete result.password;
+      if (!medicalRep) return null;
+
+      // Update allowed fields only
+      const data: Record<string, unknown> = {};
+      if (stringField(body.firstName)) data.firstName = stringField(body.firstName)!;
+      if (stringField(body.lastName)) data.lastName = stringField(body.lastName)!;
+      if (stringField(body.phone)) data.phone = stringField(body.phone)!;
+      if (stringField(body.company)) data.company = stringField(body.company)!;
+      if (body.bio !== undefined) data.bio = stringField(body.bio) ?? '';
+      if (body.territory !== undefined) data.territory = stringField(body.territory) ?? '';
+      if (body.title !== undefined) data.title = stringField(body.title) ?? '';
+      // NOTE: profileImage intentionally unapplied — see comment above.
+
+      const updated = await prisma.medicalRepresentative.update({
+        where: { id: medicalRep.id },
+        data: data as any,
+      });
+
+      const { internalNotes: _internalNotes, paymentStatus, paymentDate, paymentAmount, paymentMethod, paymentReference, ...rest } = updated as any;
+      void paymentStatus; void paymentDate; void paymentAmount; void paymentMethod; void paymentReference;
+      return rest;
+    });
+
+    if (!result) {
+      return NextResponse.json({ success: false, error: 'Medical representative not found' }, { status: 404 });
+    }
 
     return NextResponse.json({
       success: true,

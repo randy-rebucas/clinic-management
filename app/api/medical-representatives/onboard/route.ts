@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import MedicalRepresentative from '@/models/MedicalRepresentative';
-import User from '@/models/User';
+import prisma from '@/lib/prisma';
+import { runAsSystem } from '@/lib/tenant-context';
 import { sendEmail } from '@/lib/email';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 
@@ -18,13 +17,14 @@ interface OnboardingRequest {
     tenantId?: string;
 }
 
+// Self-registration is tenant-agnostic (matches the Mongoose behavior,
+// which never set tenantId on self-registered reps), so this always runs
+// via runAsSystem rather than resolving a tenant from the request.
 export async function POST(request: NextRequest) {
     const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
     if (rateLimitResponse) return rateLimitResponse;
 
     try {
-        await connectDB();
-
         const rawBody = await request.json();
         // Strip any client-supplied payment/activation fields — activation is admin-only
         const { paymentAmount: _pa, paymentMethod: _pm, paymentReference: _pr, isActivated: _ia, status: _st, ...body } = rawBody as any;
@@ -82,47 +82,39 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Check if medical rep already exists
-        const existingMedRep = await MedicalRepresentative.findOne({ email: body.email.toLowerCase().trim() });
-        if (existingMedRep) {
-            return NextResponse.json(
-                {
-                    success: false,
-                    error: 'Medical representative with this email already exists',
-                },
-                { status: 409 }
-            );
-        }
+        const medicalRep = await runAsSystem(async () => {
+            const normalizedEmail = body.email.toLowerCase().trim();
 
-        // Check if user already exists
-        const existingUser = await User.findOne({ email: body.email.toLowerCase().trim() });
-        if (existingUser) {
-            return NextResponse.json(
-                {
-                    success: false,
-                    error: 'User account with this email already exists',
-                },
-                { status: 409 }
-            );
-        }
+            // Check if medical rep already exists
+            const existingMedRep = await prisma.medicalRepresentative.findFirst({ where: { email: normalizedEmail } });
+            if (existingMedRep) {
+                throw new DuplicateError('Medical representative with this email already exists');
+            }
 
-        // All self-registrations are inactive until an admin or payment webhook activates them
-        const medicalRep = new MedicalRepresentative({
-            firstName: body.firstName.trim(),
-            lastName: body.lastName.trim(),
-            email: body.email.toLowerCase().trim(),
-            phone: body.phone.trim(),
-            company: body.company.trim(),
-            territory: body.territory?.trim(),
-            products: body.products || [],
-            title: body.title?.trim(),
-            bio: body.bio?.trim(),
-            status: 'inactive',
-            isActivated: false,
-            paymentStatus: 'pending',
+            // Check if user already exists
+            const existingUser = await prisma.user.findFirst({ where: { email: normalizedEmail } });
+            if (existingUser) {
+                throw new DuplicateError('User account with this email already exists');
+            }
+
+            // All self-registrations are inactive until an admin or payment webhook activates them
+            return prisma.medicalRepresentative.create({
+                data: {
+                    firstName: body.firstName.trim(),
+                    lastName: body.lastName.trim(),
+                    email: normalizedEmail,
+                    phone: body.phone.trim(),
+                    company: body.company.trim(),
+                    territory: body.territory?.trim(),
+                    products: body.products || [],
+                    title: body.title?.trim(),
+                    bio: body.bio?.trim(),
+                    status: 'inactive',
+                    isActivated: false,
+                    paymentStatus: 'pending',
+                },
+            });
         });
-
-        await medicalRep.save();
 
         // Send confirmation email (escape all user-supplied values)
         if (medicalRep.email) {
@@ -151,7 +143,7 @@ export async function POST(request: NextRequest) {
                 success: true,
                 message: 'Medical representative registered. Awaiting payment verification and admin activation.',
                 medicalRepresentative: {
-                    id: medicalRep._id,
+                    id: medicalRep.id,
                     name: `${medicalRep.firstName} ${medicalRep.lastName}`,
                     email: medicalRep.email,
                     company: medicalRep.company,
@@ -162,6 +154,13 @@ export async function POST(request: NextRequest) {
     } catch (error: any) {
         console.error('Medical representative onboarding error:', error);
 
+        if (error instanceof DuplicateError) {
+            return NextResponse.json(
+                { success: false, error: error.message },
+                { status: 409 }
+            );
+        }
+
         return NextResponse.json(
             { success: false, error: 'Failed to register medical representative' },
             { status: 500 }
@@ -169,10 +168,10 @@ export async function POST(request: NextRequest) {
     }
 }
 
+class DuplicateError extends Error {}
+
 export async function GET(request: NextRequest) {
     try {
-        await connectDB();
-
         // Get onboarding form requirements/schema
         return NextResponse.json({
             success: true,

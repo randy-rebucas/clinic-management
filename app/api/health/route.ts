@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
+import prisma from '@/lib/prisma';
 import { isFeatureEnabled } from '@/lib/env-validation';
 
 /**
  * Enhanced Health Check Endpoint
  * Provides comprehensive system status for monitoring services and load balancers
- * 
+ *
  * Endpoints:
  * - GET /api/health - Full health check
  * - GET /api/health/live - Liveness probe (quick check)
@@ -15,7 +14,7 @@ import { isFeatureEnabled } from '@/lib/env-validation';
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const path = url.pathname;
-  
+
   // Liveness probe - quick check if service is running
   if (path.endsWith('/live')) {
     return NextResponse.json(
@@ -26,12 +25,12 @@ export async function GET(request: Request) {
       { status: 200 }
     );
   }
-  
+
   // Readiness probe - detailed system check
   if (path.endsWith('/ready')) {
     return await getReadinessCheck();
   }
-  
+
   // Full health check (default)
   return await getFullHealthCheck();
 }
@@ -46,9 +45,14 @@ async function getFullHealthCheck() {
   try {
     // Database connection check
     const dbStart = Date.now();
-    await connectDB();
+    let dbConnected = false;
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbConnected = true;
+    } catch {
+      dbConnected = false;
+    }
     const dbTime = Date.now() - dbStart;
-    const dbConnected = mongoose.connection.readyState === 1;
     checks.database = {
       status: dbConnected ? 'healthy' : 'unhealthy',
       connected: dbConnected,
@@ -57,8 +61,8 @@ async function getFullHealthCheck() {
 
     // Service availability — boolean flags only, no internal details
     checks.services = {
-      mongodb: {
-        configured: !!process.env.MONGODB_URI,
+      database: {
+        configured: !!process.env.DATABASE_URL,
         status: dbConnected ? 'available' : 'unavailable',
       },
       session: {
@@ -89,7 +93,7 @@ async function getFullHealthCheck() {
 
     const allHealthy =
       dbConnected &&
-      checks.services.mongodb.status === 'available' &&
+      checks.services.database.status === 'available' &&
       checks.services.session.status === 'available';
 
     const responseTime = Date.now() - startTime;
@@ -132,21 +136,26 @@ async function getFullHealthCheck() {
  */
 async function getReadinessCheck() {
   const startTime = Date.now();
-  
+
   try {
     // Check database connection
-    await connectDB();
-    const dbConnected = mongoose.connection.readyState === 1;
-    
+    let dbConnected = false;
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbConnected = true;
+    } catch {
+      dbConnected = false;
+    }
+
     // Check required services
     const requiredServices = {
-      mongodb: !!process.env.MONGODB_URI && dbConnected,
+      database: !!process.env.DATABASE_URL && dbConnected,
       sessionSecret: !!process.env.SESSION_SECRET,
     };
-    
+
     const allReady = Object.values(requiredServices).every(Boolean);
     const responseTime = Date.now() - startTime;
-    
+
     return NextResponse.json(
       {
         status: allReady ? 'ready' : 'not_ready',
@@ -154,7 +163,7 @@ async function getReadinessCheck() {
         services: requiredServices,
         responseTime: `${responseTime}ms`,
       },
-      { 
+      {
         status: allReady ? 200 : 503,
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -163,7 +172,7 @@ async function getReadinessCheck() {
     );
   } catch (error: any) {
     const responseTime = Date.now() - startTime;
-    
+
     return NextResponse.json(
       {
         status: 'not_ready',
@@ -171,7 +180,7 @@ async function getReadinessCheck() {
         error: error.message || 'Unknown error',
         responseTime: `${responseTime}ms`,
       },
-      { 
+      {
         status: 503,
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -180,18 +189,3 @@ async function getReadinessCheck() {
     );
   }
 }
-
-/**
- * Get human-readable connection state
- */
-function getConnectionState(state: number): string {
-  const states = {
-    0: 'disconnected',
-    1: 'connected',
-    2: 'connecting',
-    3: 'disconnecting',
-    99: 'uninitialized',
-  };
-  return states[state as keyof typeof states] || 'unknown';
-}
-

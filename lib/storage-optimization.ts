@@ -1,14 +1,23 @@
 /**
  * Storage Optimization Utilities
  * Automatic cleanup, compression, and bulk delete functionality
+ *
+ * Migrated off Mongoose. Every exported function receives an explicit
+ * tenantId and self-wraps its Prisma calls in runWithTenant(tenantId, fn) —
+ * same self-managing convention as lib/storage-tracking.ts — since callers
+ * (app/api/storage/analytics, app/api/storage/cleanup) may not have already
+ * established tenant context.
+ *
+ * NOTE (matches lib/storage-tracking.ts's precedent): PatientAttachment/
+ * VisitAttachment/LabResultAttachment are pure child tables with no direct
+ * tenantId column (see lib/prisma-tenant-extension.ts's DIRECTLY_SCOPED_MODELS
+ * comment) — querying them directly is not tenant-scoped by the Prisma
+ * extension. getStorageAnalytics() below reproduces that same limitation
+ * rather than inventing a different, inconsistent join-based scoping scheme.
  */
 
-import connectDB from '@/lib/mongodb';
-import Document from '@/models/Document';
-import Patient from '@/models/Patient';
-import Visit from '@/models/Visit';
-import LabResult from '@/models/LabResult';
-import { Types } from 'mongoose';
+import prisma from '@/lib/prisma';
+import { runWithTenant } from '@/lib/tenant-context';
 import { deleteFromCloudinary, extractPublicIdFromUrl } from '@/lib/cloudinary';
 
 export interface StorageCleanupResult {
@@ -47,20 +56,24 @@ export interface StorageAnalytics {
  * Removes files older than specified days and deleted documents
  */
 export async function cleanupOldFiles(
-  tenantId: string | Types.ObjectId,
+  tenantId: string,
   options: {
     deleteOlderThanDays?: number; // Delete files older than X days (default: 365)
     includeDeleted?: boolean; // Include files with status 'deleted' (default: true)
     dryRun?: boolean; // If true, don't actually delete, just report (default: false)
   } = {}
 ): Promise<StorageCleanupResult> {
+  return runWithTenant(tenantId, () => cleanupOldFilesImpl(options));
+}
+
+async function cleanupOldFilesImpl(
+  options: {
+    deleteOlderThanDays?: number;
+    includeDeleted?: boolean;
+    dryRun?: boolean;
+  } = {}
+): Promise<StorageCleanupResult> {
   try {
-    await connectDB();
-
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
-      : tenantId;
-
     const {
       deleteOlderThanDays = 365,
       includeDeleted = true,
@@ -76,24 +89,26 @@ export async function cleanupOldFiles(
     const errors: string[] = [];
 
     // Find old or deleted documents
-    const query: any = {
-      tenantId: tenantIdObj,
-      $or: [
-        { uploadDate: { $lt: cutoffDate } },
-        ...(includeDeleted ? [{ status: 'deleted' }] : []),
-      ],
-    };
-
-    const documentsToDelete = await Document.find(query).select('_id url metadata size');
+    const documentsToDelete = await prisma.document.findMany({
+      where: {
+        OR: [
+          { uploadDate: { lt: cutoffDate } },
+          ...(includeDeleted ? [{ status: 'deleted' as const }] : []),
+        ],
+      },
+      select: { id: true, url: true, metadata: true, size: true },
+    });
 
     for (const doc of documentsToDelete) {
       try {
+        const metadata = doc.metadata as { cloudinaryPublicId?: string } | null;
+
         // Delete from Cloudinary if applicable
-        if (doc.metadata?.cloudinaryPublicId) {
+        if (metadata?.cloudinaryPublicId) {
           if (!dryRun) {
-            const deleteResult = await deleteFromCloudinary(doc.metadata.cloudinaryPublicId);
+            const deleteResult = await deleteFromCloudinary(metadata.cloudinaryPublicId);
             if (!deleteResult.success) {
-              errors.push(`Failed to delete Cloudinary file: ${doc.metadata.cloudinaryPublicId}`);
+              errors.push(`Failed to delete Cloudinary file: ${metadata.cloudinaryPublicId}`);
             }
           }
         } else if (doc.url && doc.url.includes('cloudinary.com')) {
@@ -109,19 +124,19 @@ export async function cleanupOldFiles(
 
         // Delete document from database
         if (!dryRun) {
-          await Document.deleteOne({ _id: doc._id });
+          await prisma.document.delete({ where: { id: doc.id } });
         }
 
         deletedDocuments++;
         freedBytes += doc.size || 0;
       } catch (error: any) {
-        errors.push(`Error deleting document ${doc._id}: ${error.message}`);
+        errors.push(`Error deleting document ${doc.id}: ${error.message}`);
       }
     }
 
-    // Clean up old attachments (this is more complex as they're embedded)
-    // For now, we'll focus on documents. Attachments cleanup would require
-    // updating parent documents, which is more complex.
+    // Clean up old attachments (this is more complex as they're separate child
+    // tables). For now, we'll focus on documents. Attachments cleanup would
+    // require deleting the child rows individually, which is more complex.
 
     const freedGB = freedBytes / (1024 * 1024 * 1024);
 
@@ -150,38 +165,43 @@ export async function cleanupOldFiles(
  * Bulk delete files by IDs
  */
 export async function bulkDeleteFiles(
-  tenantId: string | Types.ObjectId,
+  tenantId: string,
   documentIds: string[],
   options: {
     deleteFromCloudinary?: boolean; // Delete from Cloudinary too (default: true)
   } = {}
 ): Promise<StorageCleanupResult> {
+  return runWithTenant(tenantId, () => bulkDeleteFilesImpl(documentIds, options));
+}
+
+async function bulkDeleteFilesImpl(
+  documentIds: string[],
+  options: {
+    deleteFromCloudinary?: boolean;
+  } = {}
+): Promise<StorageCleanupResult> {
   try {
-    await connectDB();
-
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
-      : tenantId;
-
     const { deleteFromCloudinary: deleteFromCloud = true } = options;
 
     let deletedDocuments = 0;
     let freedBytes = 0;
     const errors: string[] = [];
 
-    const documents = await Document.find({
-      _id: { $in: documentIds.map(id => new Types.ObjectId(id)) },
-      tenantId: tenantIdObj,
-    }).select('_id url metadata size');
+    const documents = await prisma.document.findMany({
+      where: { id: { in: documentIds } },
+      select: { id: true, url: true, metadata: true, size: true },
+    });
 
     for (const doc of documents) {
       try {
+        const metadata = doc.metadata as { cloudinaryPublicId?: string } | null;
+
         // Delete from Cloudinary if applicable
         if (deleteFromCloud) {
-          if (doc.metadata?.cloudinaryPublicId) {
-            const deleteResult = await deleteFromCloudinary(doc.metadata.cloudinaryPublicId);
+          if (metadata?.cloudinaryPublicId) {
+            const deleteResult = await deleteFromCloudinary(metadata.cloudinaryPublicId);
             if (!deleteResult.success) {
-              errors.push(`Failed to delete Cloudinary file: ${doc.metadata.cloudinaryPublicId}`);
+              errors.push(`Failed to delete Cloudinary file: ${metadata.cloudinaryPublicId}`);
             }
           } else if (doc.url && doc.url.includes('cloudinary.com')) {
             const publicId = extractPublicIdFromUrl(doc.url);
@@ -195,12 +215,12 @@ export async function bulkDeleteFiles(
         }
 
         // Delete document from database
-        await Document.deleteOne({ _id: doc._id });
+        await prisma.document.delete({ where: { id: doc.id } });
 
         deletedDocuments++;
         freedBytes += doc.size || 0;
       } catch (error: any) {
-        errors.push(`Error deleting document ${doc._id}: ${error.message}`);
+        errors.push(`Error deleting document ${doc.id}: ${error.message}`);
       }
     }
 
@@ -230,32 +250,29 @@ export async function bulkDeleteFiles(
 /**
  * Get storage analytics and trends
  */
-export async function getStorageAnalytics(
-  tenantId: string | Types.ObjectId
-): Promise<StorageAnalytics> {
+export async function getStorageAnalytics(tenantId: string): Promise<StorageAnalytics> {
+  return runWithTenant(tenantId, () => getStorageAnalyticsImpl());
+}
+
+async function getStorageAnalyticsImpl(): Promise<StorageAnalytics> {
   try {
-    await connectDB();
-
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
-      : tenantId;
-
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
-    // Get all documents
-    const documents = await Document.find({
-      tenantId: tenantIdObj,
-    }).select('size uploadDate status').lean();
+    // Get all documents (tenant-scoped by the Prisma extension)
+    const documents = await prisma.document.findMany({
+      select: { size: true, uploadDate: true, status: true },
+    });
 
-    // Get attachments from other models
-    const patients = await Patient.find({ tenantId: tenantIdObj })
-      .select('attachments').lean();
-    const visits = await Visit.find({ tenantId: tenantIdObj })
-      .select('attachments').lean();
-    const labResults = await LabResult.find({ tenantId: tenantIdObj })
-      .select('attachments').lean();
+    // Get attachments from other models (see file-header note: these child
+    // tables have no direct tenantId column, so this is not tenant-scoped —
+    // matches lib/storage-tracking.ts's calculateStorageUsage precedent)
+    const [patientAttachments, visitAttachments, labResultAttachments] = await Promise.all([
+      prisma.patientAttachment.findMany({ select: { size: true } }),
+      prisma.visitAttachment.findMany({ select: { size: true } }),
+      prisma.labResultAttachment.findMany({ select: { size: true } }),
+    ]);
 
     // Calculate totals
     let totalFiles = 0;
@@ -267,62 +284,38 @@ export async function getStorageAnalytics(
     totalBytes += documentsBytes;
 
     // Patient attachments
-    let patientAttachmentsBytes = 0;
-    let patientAttachmentsCount = 0;
-    for (const patient of patients) {
-      if (patient.attachments && Array.isArray(patient.attachments)) {
-        for (const attachment of patient.attachments) {
-          patientAttachmentsBytes += attachment.size || 0;
-          patientAttachmentsCount++;
-        }
-      }
-    }
+    const patientAttachmentsBytes = patientAttachments.reduce((sum, a) => sum + (a.size || 0), 0);
+    const patientAttachmentsCount = patientAttachments.length;
     totalFiles += patientAttachmentsCount;
     totalBytes += patientAttachmentsBytes;
 
     // Visit attachments
-    let visitAttachmentsBytes = 0;
-    let visitAttachmentsCount = 0;
-    for (const visit of visits) {
-      if (visit.attachments && Array.isArray(visit.attachments)) {
-        for (const attachment of visit.attachments) {
-          visitAttachmentsBytes += attachment.size || 0;
-          visitAttachmentsCount++;
-        }
-      }
-    }
+    const visitAttachmentsBytes = visitAttachments.reduce((sum, a) => sum + (a.size || 0), 0);
+    const visitAttachmentsCount = visitAttachments.length;
     totalFiles += visitAttachmentsCount;
     totalBytes += visitAttachmentsBytes;
 
     // LabResult attachments
-    let labResultAttachmentsBytes = 0;
-    let labResultAttachmentsCount = 0;
-    for (const labResult of labResults) {
-      if (labResult.attachments && Array.isArray(labResult.attachments)) {
-        for (const attachment of labResult.attachments) {
-          labResultAttachmentsBytes += attachment.size || 0;
-          labResultAttachmentsCount++;
-        }
-      }
-    }
+    const labResultAttachmentsBytes = labResultAttachments.reduce((sum, a) => sum + (a.size || 0), 0);
+    const labResultAttachmentsCount = labResultAttachments.length;
     totalFiles += labResultAttachmentsCount;
     totalBytes += labResultAttachmentsBytes;
 
     // Calculate by age
-    const recent = documents.filter(d => d.uploadDate && new Date(d.uploadDate) >= thirtyDaysAgo);
-    const old = documents.filter(d => {
+    const recent = documents.filter((d) => d.uploadDate && new Date(d.uploadDate) >= thirtyDaysAgo);
+    const old = documents.filter((d) => {
       const uploadDate = d.uploadDate ? new Date(d.uploadDate) : null;
       return uploadDate && uploadDate >= ninetyDaysAgo && uploadDate < thirtyDaysAgo;
     });
-    const veryOld = documents.filter(d => {
+    const veryOld = documents.filter((d) => {
       const uploadDate = d.uploadDate ? new Date(d.uploadDate) : null;
       return uploadDate && uploadDate < ninetyDaysAgo;
     });
 
     // Calculate by status
-    const active = documents.filter(d => d.status === 'active');
-    const archived = documents.filter(d => d.status === 'archived');
-    const deleted = documents.filter(d => d.status === 'deleted');
+    const active = documents.filter((d) => d.status === 'active');
+    const archived = documents.filter((d) => d.status === 'archived');
+    const deleted = documents.filter((d) => d.status === 'deleted');
 
     return {
       totalFiles,
@@ -380,4 +373,3 @@ export async function getStorageAnalytics(
     throw error;
   }
 }
-

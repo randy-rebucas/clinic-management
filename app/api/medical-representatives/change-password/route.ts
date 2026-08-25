@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
 import bcrypt from 'bcryptjs';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { verifySession } from '@/app/lib/dal';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * POST /api/medical-representatives/change-password
@@ -56,29 +60,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await connectDB();
+    const result = await run(session.tenantId, async () => {
+      const user = await prisma.user.findUnique({ where: { id: session.userId } });
+      if (!user) {
+        return { status: 404 as const, error: 'User not found' };
+      }
 
-    const user = await User.findById(session.userId);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
+      // Verify current password
+      const passwordMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!passwordMatch) {
+        return { status: 401 as const, error: 'Current password is incorrect' };
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+      await prisma.user.update({ where: { id: user.id }, data: { password: hashedPassword } });
+
+      return { status: 200 as const };
+    });
+
+    if (result.status !== 200) {
+      return NextResponse.json({ success: false, error: result.error }, { status: result.status });
     }
-
-    // Verify current password
-    const passwordMatch = await bcrypt.compare(currentPassword, user.password);
-    if (!passwordMatch) {
-      return NextResponse.json(
-        { success: false, error: 'Current password is incorrect' },
-        { status: 401 }
-      );
-    }
-
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 12);
-    user.password = hashedPassword;
-    await user.save();
 
     return NextResponse.json({
       success: true,

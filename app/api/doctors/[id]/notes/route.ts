@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Doctor from '@/models/Doctor';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { findDoctorRawById, addDoctorInternalNote, deleteDoctorInternalNoteByIndex } from '@/lib/data/doctor';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function POST(
   request: NextRequest,
@@ -17,35 +20,21 @@ export async function POST(
   }
 
   try {
-    await connectDB();
-    
-    // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     const { id } = await params;
     const body = await request.json();
-    
-    const note = {
-      note: body.note,
-      createdBy: session.userId,
-      createdAt: new Date(),
-      isImportant: body.isImportant || false,
-    };
 
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    const doctor = await Doctor.findOneAndUpdate(
-      query,
-      { $push: { internalNotes: note } },
-      { new: true }
-    ).populate('specializationId', 'name description category');
+    const doctor = await run(tenantId, async () => {
+      const existing = await findDoctorRawById(id);
+      if (!existing) return null;
+      return addDoctorInternalNote(id, {
+        note: body.note,
+        createdById: session.userId,
+        isImportant: body.isImportant || false,
+      });
+    });
 
     if (!doctor) {
       return NextResponse.json(
@@ -75,12 +64,9 @@ export async function DELETE(
   }
 
   try {
-    await connectDB();
-    
-    // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     const { id } = await params;
     const searchParams = request.nextUrl.searchParams;
     const noteIndex = searchParams.get('index');
@@ -92,25 +78,17 @@ export async function DELETE(
       );
     }
 
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    const doctor = await run(tenantId, async () => {
+      const existing = await findDoctorRawById(id);
+      if (!existing) return null;
+      return deleteDoctorInternalNoteByIndex(id, parseInt(noteIndex));
+    });
 
-    const doctor = await Doctor.findOne(query);
     if (!doctor) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },
         { status: 404 }
       );
-    }
-
-    if (doctor.internalNotes && doctor.internalNotes.length > parseInt(noteIndex)) {
-      doctor.internalNotes.splice(parseInt(noteIndex), 1);
-      await doctor.save();
     }
 
     return NextResponse.json({ success: true, data: doctor });
@@ -122,4 +100,3 @@ export async function DELETE(
     );
   }
 }
-

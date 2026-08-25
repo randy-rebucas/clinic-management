@@ -30,7 +30,7 @@
  * those routes without stripping password/otp first.
  */
 import prisma from '../prisma';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 const omitSensitive = { password: true, otp: true } satisfies Prisma.PatientOmit;
 
@@ -479,6 +479,28 @@ export async function listPatientsByIdsForAutomation(ids: string[]): Promise<Pat
   });
 }
 
+/**
+ * All patient ids (across every tenant) whose `phone`/`contactsPhone` column
+ * matches either the raw or whitespace-stripped form of `phone`. Call within
+ * runAsSystem() — used by the unauthenticated Twilio inbound-SMS webhook,
+ * which has no session-derived tenant to scope by.
+ */
+export async function findPatientIdsByPhone(phone: string): Promise<string[]> {
+  const normalised = phone.replace(/\s+/g, '');
+  const patients = await prisma.patient.findMany({
+    where: {
+      OR: [
+        { phone: normalised },
+        { phone },
+        { contactsPhone: normalised },
+        { contactsPhone: phone },
+      ],
+    },
+    select: { id: true },
+  });
+  return patients.map((p) => p.id);
+}
+
 // ── Tenant-membership junction (the [id]/tenants route) ─────────────────────
 
 /** All tenants a patient belongs to (join through PatientTenant). Call within runAsSystem() since it must work regardless of caller's own tenant. */
@@ -562,4 +584,46 @@ export async function addPatientAttachment(patientId: string, attachment: AddAtt
 export async function removePatientAttachment(patientId: string, attachmentId: string) {
   await prisma.patientAttachment.deleteMany({ where: { id: attachmentId, patientId } });
   return getPatientById(patientId);
+}
+
+/** Total patient count in the active tenant (junction-scoped by the extension). */
+export async function countPatients(): Promise<number> {
+  return prisma.patient.count({});
+}
+
+// ── PH Data Privacy Act compliance support (app/api/compliance/*) ───────────
+
+/**
+ * Scrub PII on a patient's own row in place ("anonymize" deletion mode) —
+ * keeps the row (and its FK'd clinical history) for legal/medical retention
+ * requirements while removing identifying details. Explicit nulls (not the
+ * `?? undefined` semantics flattenPatientInput/updatePatient use for partial
+ * updates) so every PII column actually clears rather than being skipped.
+ */
+export async function anonymizePatient(id: string) {
+  const patient = await prisma.patient.update({
+    where: { id },
+    data: {
+      firstName: '[ANONYMIZED]',
+      lastName: '[ANONYMIZED]',
+      email: `anonymized-${id}@deleted.local`,
+      phone: '[ANONYMIZED]',
+      addressStreet: '[ANONYMIZED]',
+      addressCity: '[ANONYMIZED]',
+      addressState: '[ANONYMIZED]',
+      addressZipCode: '[ANONYMIZED]',
+      // dateOfBirth is a required (non-nullable) column in the Postgres schema
+      // (Mongoose allowed clearing it to null; Prisma does not) — left as-is.
+      identifierPhilHealth: null,
+      identifierGovId: null,
+      identifierOther: Prisma.JsonNull,
+      emergencyContactName: null,
+      emergencyContactPhone: null,
+      emergencyContactRelationship: null,
+      emergencyContactRelation: null,
+    },
+    omit: omitSensitive,
+    include: fullInclude,
+  });
+  return toPatientDTO(patient as PatientWithRelations);
 }

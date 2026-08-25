@@ -199,6 +199,12 @@ export function countLabResultsInRange(start: Date, end: Date) {
   return prisma.labResult.count({ where: { createdAt: { gte: start, lte: end } } });
 }
 
+/** Hard-delete every lab result for a patient — PH DPA "delete" compliance mode (app/api/compliance/data-deletion). */
+export async function deleteLabResultsByPatient(patientId: string): Promise<number> {
+  const result = await prisma.labResult.deleteMany({ where: { patientId } });
+  return result.count;
+}
+
 export async function addLabResultAttachment(
   labResultId: string,
   attachment: {

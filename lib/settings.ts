@@ -1,5 +1,10 @@
-import connectDB from './mongodb';
-import Settings from '@/models/Settings';
+// Migrated off Mongoose: getSettings() now calls lib/data/settings.ts
+// (Prisma) instead of models/Settings.ts. This function is called throughout
+// the app (billing, patient alerts, invoices, etc.) — several routes already
+// reported as "migrated" were silently still touching Mongo through this
+// shared helper before this fix. getDefaultSettings()/clearSettingsCache()
+// below are pure logic, unchanged.
+import { runWithTenant, runAsSystem } from './tenant-context';
 
 let cachedSettings: any = null;
 let cacheTimestamp: number = 0;
@@ -19,46 +24,23 @@ export async function getSettings(tenantId?: string | null) {
   }
 
   try {
-    await connectDB();
-    
-    // Get tenant-specific settings if tenantId provided
-    let settings;
-    if (tenantId) {
-      const { Types } = await import('mongoose');
-      settings = await Settings.findOne({ tenantId: new Types.ObjectId(tenantId) });
-    } else {
-      // Get settings without tenant (for backward compatibility)
-      settings = await Settings.findOne({ 
-        $or: [{ tenantId: { $exists: false } }, { tenantId: null }] 
-      });
-    }
-    
-    if (!settings) {
-      // Create default settings if none exist - use full default values
-      const defaultSettingsData = getDefaultSettings();
-      const settingsData: any = {
-        ...defaultSettingsData,
-      };
-      if (tenantId) {
-        const { Types } = await import('mongoose');
-        settingsData.tenantId = new Types.ObjectId(tenantId);
-      }
-      settings = await Settings.create(settingsData);
-    }
-    
+    const { getOrCreateSettings } = await import('./data/settings');
+    const settingsObj = tenantId
+      ? await runWithTenant(tenantId, () => getOrCreateSettings(tenantId))
+      : await runAsSystem(() => getOrCreateSettings(null));
+
     // Merge with defaults to ensure all fields are present (in case schema changed)
     const defaultSettingsData = getDefaultSettings();
-    const settingsObj = {
+    const merged = {
       ...defaultSettingsData,
-      ...settings.toObject(),
+      ...settingsObj,
     };
-    
+
     // Cache the merged settings with tenant key
-    cachedSettings = { ...settingsObj, _cacheKey: cacheKey };
+    cachedSettings = { ...merged, _cacheKey: cacheKey };
     cacheTimestamp = now;
-    
-    // Return a Mongoose-like object with the merged data
-    return settingsObj as any;
+
+    return merged as any;
   } catch (error) {
     console.error('Error fetching settings:', error);
     // Return default settings if database fails

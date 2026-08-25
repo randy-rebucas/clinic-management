@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
 import { addToWaitlist, removeFromWaitlist } from '@/lib/automations/waitlist-management';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
 
 /**
  * Add patient to waitlist
@@ -23,7 +21,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const body = await request.json();
 
     const tenantContext = await getTenantContext();
@@ -37,7 +34,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await addToWaitlist(body.patientId, {
-      tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+      tenantId: tenantId || undefined,
       doctorId: body.doctorId,
       preferredDate: body.preferredDate ? new Date(body.preferredDate) : undefined,
       preferredTime: body.preferredTime,
@@ -82,7 +79,6 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
 
@@ -96,7 +92,7 @@ export async function DELETE(request: NextRequest) {
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
-    const result = await removeFromWaitlist(patientId, tenantId ? new Types.ObjectId(tenantId) : undefined);
+    const result = await removeFromWaitlist(patientId, tenantId || undefined);
 
     if (!result.success) {
       return NextResponse.json(

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Visit from '@/models/Visit';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listVisits } from '@/lib/data/visit';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -12,7 +17,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get('period') || 'monthly'; // daily, weekly, monthly
     const startDate = searchParams.get('startDate');
@@ -57,13 +64,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Get consultations (visits) in date range
-    const visits = await Visit.find({
-      date: { $gte: dateRange.start, $lte: dateRange.end },
-      status: { $ne: 'cancelled' },
-    })
-      .populate('patient', 'firstName lastName patientCode')
-      .populate('provider', 'name')
-      .sort({ date: -1 });
+    const visits = await run(tenantId, () =>
+      listVisits({
+        date: { gte: dateRange.start, lte: dateRange.end },
+        status: { not: 'cancelled' },
+      })
+    );
 
     // Group by date
     const byDate: Record<string, any[]> = {};
@@ -133,4 +139,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

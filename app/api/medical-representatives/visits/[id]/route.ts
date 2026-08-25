@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { verifySession } from '@/app/lib/dal';
-import connectDB from '@/lib/mongodb';
-import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 interface VisitData {
   clinicName: string;
@@ -48,24 +52,25 @@ export async function PUT(
       );
     }
 
-    await connectDB();
-
     const { id: visitId } = await params;
 
-    const updatedVisit = await MedicalRepresentativeVisit.findOneAndUpdate(
-      { _id: visitId, userId: session.userId },
-      {
-        clinicName: body.clinicName,
-        clinicLocation: body.clinicLocation,
-        purpose: body.purpose,
-        date: new Date(body.date),
-        time: body.time,
-        duration: body.duration || 60,
-        status: body.status || 'scheduled',
-        notes: body.notes || '',
-      },
-      { new: true }
-    ).lean();
+    const updatedVisit = await run(session.tenantId, async () => {
+      const existing = await prisma.medicalRepresentativeVisit.findFirst({ where: { id: visitId, userId: session.userId } });
+      if (!existing) return null;
+      return prisma.medicalRepresentativeVisit.update({
+        where: { id: visitId },
+        data: {
+          clinicName: body.clinicName,
+          clinicLocation: body.clinicLocation,
+          purpose: body.purpose,
+          date: new Date(body.date),
+          time: body.time,
+          duration: body.duration || 60,
+          status: body.status || 'scheduled',
+          notes: body.notes || '',
+        },
+      });
+    });
 
     if (!updatedVisit) {
       return NextResponse.json(
@@ -112,13 +117,13 @@ export async function DELETE(
       );
     }
 
-    await connectDB();
-
     const { id: visitId } = await params;
-    const deletedVisit = await MedicalRepresentativeVisit.findOneAndDelete({
-      _id: visitId,
-      userId: session.userId,
-    }).lean();
+
+    const deletedVisit = await run(session.tenantId, async () => {
+      const existing = await prisma.medicalRepresentativeVisit.findFirst({ where: { id: visitId, userId: session.userId } });
+      if (!existing) return null;
+      return prisma.medicalRepresentativeVisit.delete({ where: { id: visitId } });
+    });
 
     if (!deletedVisit) {
       return NextResponse.json(

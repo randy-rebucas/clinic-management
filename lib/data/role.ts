@@ -73,6 +73,36 @@ export function createRole(data: Prisma.RoleCreateInput) {
   });
 }
 
+export function updateRole(id: string, data: Prisma.RoleUpdateInput) {
+  return prisma.role.update({
+    where: { id },
+    data,
+    include: withPermissions,
+  });
+}
+
+export function deleteRole(id: string) {
+  return prisma.role.delete({ where: { id } });
+}
+
+/** Replace a role's permission-reference set (many-to-many `permissions`) — used by PUT /api/roles/[id]/permissions. */
+export function setRolePermissions(id: string, permissionIds: string[]) {
+  return prisma.role.update({
+    where: { id },
+    data: { permissions: { set: permissionIds.map((pid) => ({ id: pid })) } },
+    include: withPermissions,
+  });
+}
+
+/** Replace a role's defaultPermissions child rows — used by PUT /api/roles/[id]/permissions. */
+export function setRoleDefaultPermissions(id: string, defaultPermissions: { resource: string; actions: string[] }[]) {
+  return prisma.role.update({
+    where: { id },
+    data: { defaultPermissions: { deleteMany: {}, create: defaultPermissions } },
+    include: withPermissions,
+  });
+}
+
 /**
  * Upsert a tenant's role by (tenantId, name) and replace its permission set
  * atomically — used by the tenant-onboarding flow (app/api/tenants/onboard)

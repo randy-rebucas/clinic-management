@@ -222,6 +222,15 @@ export async function softDeleteDocument(id: string, lastModifiedById: string) {
   return toDocumentDTO(doc);
 }
 
+/** Bulk-mark all of a patient's documents as deleted — PH DPA "delete" compliance mode (app/api/compliance/data-deletion). */
+export async function markDocumentsDeletedByPatient(patientId: string): Promise<number> {
+  const result = await prisma.document.updateMany({
+    where: { patientId },
+    data: { status: 'deleted', lastModifiedDate: new Date() },
+  });
+  return result.count;
+}
+
 // ── Automation support (lib/automations/document-expiry-tracking.ts) ────────
 
 /** Bulk-archive (status -> 'archived') documents uploaded before `before` that aren't already archived (data-retention cron). */

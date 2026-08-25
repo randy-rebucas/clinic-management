@@ -1,11 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { verifySession } from '@/app/lib/dal';
-import connectDB from '@/lib/mongodb';
-import MedicalRepresentative from '@/models/MedicalRepresentative';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * PUT /api/medical-representatives/notifications
  * Update notification preferences for medical representative
+ *
+ * NOTE: the Mongoose MedicalRepresentative schema had no
+ * `notificationsEnabled`/`emailNotifications` fields either (not present in
+ * models/MedicalRepresentative.ts), so this route's updates were already a
+ * silent no-op prior to this migration. Preserved as a no-op here — the
+ * lookup/auth/response shape is kept intact in case a future schema change
+ * adds these fields.
  */
 export async function PUT(request: NextRequest) {
   try {
@@ -34,11 +45,14 @@ export async function PUT(request: NextRequest) {
         { status: 400 }
       );
     }
+    void body;
 
-    await connectDB();
-
-    const medicalRep = await MedicalRepresentative.findOne({
-      userId: session.userId,
+    const medicalRep = await run(session.tenantId, async () => {
+      const user = await prisma.user.findUnique({ where: { id: session.userId } });
+      if (!user) return null;
+      return user.medicalRepresentativeProfileId
+        ? prisma.medicalRepresentative.findUnique({ where: { id: user.medicalRepresentativeProfileId } })
+        : prisma.medicalRepresentative.findFirst({ where: { email: user.email.toLowerCase().trim() } });
     });
 
     if (!medicalRep) {
@@ -47,16 +61,6 @@ export async function PUT(request: NextRequest) {
         { status: 404 }
       );
     }
-
-    // Update notification preferences
-    if (typeof body.notificationsEnabled === 'boolean') {
-      medicalRep.notificationsEnabled = body.notificationsEnabled;
-    }
-    if (typeof body.emailNotifications === 'boolean') {
-      medicalRep.emailNotifications = body.emailNotifications;
-    }
-
-    await medicalRep.save();
 
     return NextResponse.json({
       success: true,

@@ -1,27 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import { Nurse, Receptionist, Accountant, User } from '@/models';
 import { verifySession } from '@/app/lib/dal';
-import mongoose from 'mongoose';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import {
+  findStaffById,
+  getUserForStaff,
+  updateStaffProfile,
+  updateUserForStaff,
+  deleteStaffProfile,
+  deleteUserForStaff,
+  StaffType,
+} from '@/lib/data/staff';
 
-// Helper to get model by staff type
-function getModelByType(staffType: string) {
-  switch (staffType) {
-    case 'nurse': return Nurse;
-    case 'receptionist': return Receptionist;
-    case 'accountant': return Accountant;
-    default: return null;
-  }
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
 }
 
-// Helper to get profile field name
-function getProfileField(staffType: string) {
-  switch (staffType) {
-    case 'nurse': return 'nurseProfile';
-    case 'receptionist': return 'receptionistProfile';
-    case 'accountant': return 'accountantProfile';
-    default: return null;
-  }
+function isValidUuid(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }
 
 // GET /api/staff/[id] - Get a specific staff member
@@ -35,53 +31,32 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const { id } = await params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!isValidUuid(id)) {
       return NextResponse.json({ error: 'Invalid staff ID' }, { status: 400 });
     }
 
     const { searchParams } = new URL(request.url);
-    const staffType = searchParams.get('type');
+    const staffType = searchParams.get('type') as StaffType | null;
 
-    let staff = null;
-    let foundType = staffType;
+    const result = await run(tenantId, async () => {
+      const found = await findStaffById(id, staffType);
+      if (!found) return null;
+      const user = await getUserForStaff(id, found.staffType);
+      return { staff: found.staff, staffType: found.staffType, user };
+    });
 
-    if (staffType) {
-      const Model = getModelByType(staffType);
-      if (Model) {
-        staff = await Model.findById(id).lean();
-      }
-    } else {
-      // Search all models
-      staff = await Nurse.findById(id).lean();
-      if (staff) {
-        foundType = 'nurse';
-      } else {
-        staff = await Receptionist.findById(id).lean();
-        if (staff) {
-          foundType = 'receptionist';
-        } else {
-          staff = await Accountant.findById(id).lean();
-          if (staff) {
-            foundType = 'accountant';
-          }
-        }
-      }
-    }
-
-    if (!staff) {
+    if (!result) {
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
-    // Get associated user
-    const profileField = getProfileField(foundType!);
-    const user = profileField ? await User.findOne({ [profileField]: id }).select('email name status lastLogin').lean() : null;
-
     return NextResponse.json({
-      staff: { ...staff, staffType: foundType },
-      user,
+      staff: { ...result.staff, staffType: result.staffType },
+      user: result.user,
     });
   } catch (error: any) {
     console.error('Error fetching staff:', error);
@@ -105,10 +80,12 @@ export async function PUT(
       return NextResponse.json({ error: 'Only admins can update staff' }, { status: 403 });
     }
 
-    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const { id } = await params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!isValidUuid(id)) {
       return NextResponse.json({ error: 'Invalid staff ID' }, { status: 400 });
     }
 
@@ -119,50 +96,55 @@ export async function PUT(
       return NextResponse.json({ error: 'Staff type is required' }, { status: 400 });
     }
 
-    const Model = getModelByType(staffType);
-    if (!Model) {
+    if (!['nurse', 'receptionist', 'accountant'].includes(staffType)) {
       return NextResponse.json({ error: 'Invalid staff type' }, { status: 400 });
     }
 
     // Remove fields that shouldn't be updated directly
     delete updateData._id;
+    delete updateData.id;
     delete updateData.createdAt;
     delete updateData.updatedAt;
 
-    const staff = await Model.findByIdAndUpdate(
-      id,
-      { $set: updateData },
-      { new: true, runValidators: true }
-    ).lean();
+    const result = await run(tenantId, async () => {
+      let staff;
+      try {
+        staff = await updateStaffProfile(staffType, id, updateData);
+      } catch (err: any) {
+        if (err.code === 'P2025') return { notFound: true as const };
+        throw err;
+      }
 
-    if (!staff) {
+      // Update associated user if email or name changed
+      if (updateData.email || updateData.firstName || updateData.lastName || updateData.status) {
+        const userUpdate: Record<string, any> = {};
+        if (updateData.email) userUpdate.email = updateData.email.toLowerCase().trim();
+        if (updateData.firstName || updateData.lastName) {
+          userUpdate.name = `${updateData.firstName || staff.firstName} ${updateData.lastName || staff.lastName}`.trim();
+        }
+        if (updateData.status) {
+          userUpdate.status = updateData.status === 'active' ? 'active' : 'inactive';
+        }
+
+        if (Object.keys(userUpdate).length > 0) {
+          await updateUserForStaff(id, staffType, userUpdate);
+        }
+      }
+
+      return { staff };
+    });
+
+    if ('notFound' in result) {
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
-    }
-
-    // Update associated user if email or name changed
-    const profileField = getProfileField(staffType);
-    if (profileField && (updateData.email || updateData.firstName || updateData.lastName)) {
-      const userUpdate: any = {};
-      if (updateData.email) userUpdate.email = updateData.email.toLowerCase().trim();
-      if (updateData.firstName || updateData.lastName) {
-        userUpdate.name = `${updateData.firstName || (staff as any).firstName} ${updateData.lastName || (staff as any).lastName}`.trim();
-      }
-      if (updateData.status) {
-        userUpdate.status = updateData.status === 'active' ? 'active' : 'inactive';
-      }
-      
-      if (Object.keys(userUpdate).length > 0) {
-        await User.findOneAndUpdate({ [profileField]: id }, { $set: userUpdate });
-      }
     }
 
     return NextResponse.json({
       message: 'Staff member updated successfully',
-      staff: { ...staff, staffType },
+      staff: { ...result.staff, staffType },
     });
   } catch (error: any) {
     console.error('Error updating staff:', error);
-    if (error.code === 11000) {
+    if (error.code === 'P2002') {
       return NextResponse.json({ error: 'A staff member with this email already exists' }, { status: 400 });
     }
     return NextResponse.json({ error: error.message || 'Failed to update staff' }, { status: 500 });
@@ -185,35 +167,41 @@ export async function DELETE(
       return NextResponse.json({ error: 'Only admins can delete staff' }, { status: 403 });
     }
 
-    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const { id } = await params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!isValidUuid(id)) {
       return NextResponse.json({ error: 'Invalid staff ID' }, { status: 400 });
     }
 
     const { searchParams } = new URL(request.url);
-    const staffType = searchParams.get('type');
+    const staffType = searchParams.get('type') as StaffType | null;
 
     if (!staffType) {
       return NextResponse.json({ error: 'Staff type is required' }, { status: 400 });
     }
 
-    const Model = getModelByType(staffType);
-    if (!Model) {
+    if (!['nurse', 'receptionist', 'accountant'].includes(staffType)) {
       return NextResponse.json({ error: 'Invalid staff type' }, { status: 400 });
     }
 
-    const staff = await Model.findByIdAndDelete(id);
+    const result = await run(tenantId, async () => {
+      try {
+        await deleteStaffProfile(staffType, id);
+      } catch (err: any) {
+        if (err.code === 'P2025') return { notFound: true as const };
+        throw err;
+      }
 
-    if (!staff) {
+      // Also delete associated user
+      await deleteUserForStaff(id, staffType);
+      return { deleted: true as const };
+    });
+
+    if ('notFound' in result) {
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
-    }
-
-    // Also delete associated user
-    const profileField = getProfileField(staffType);
-    if (profileField) {
-      await User.findOneAndDelete({ [profileField]: id });
     }
 
     return NextResponse.json({

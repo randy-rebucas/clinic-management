@@ -1,10 +1,14 @@
 /**
  * Subscription utilities for checking tenant subscription status
+ *
+ * Migrated off Mongoose: now calls lib/data/tenant.ts (Prisma) instead of
+ * models/Tenant.ts. Tenant is not tenant-scoped (it's the root), so these
+ * calls run under runAsSystem() for consistency with other Tenant-touching
+ * code, though the extension itself doesn't require it for this model.
  */
 
-import connectDB from '@/lib/mongodb';
-import Tenant from '@/models/Tenant';
-import { Types } from 'mongoose';
+import { getTenantById } from '@/lib/data/tenant';
+import { runAsSystem } from '@/lib/tenant-context';
 
 export interface SubscriptionStatus {
   isActive: boolean;
@@ -19,13 +23,11 @@ export interface SubscriptionStatus {
 /**
  * Check if tenant subscription is active and not expired
  */
-export async function checkSubscriptionStatus(tenantId: string | Types.ObjectId): Promise<SubscriptionStatus> {
+export async function checkSubscriptionStatus(tenantId: string): Promise<SubscriptionStatus> {
   try {
-    await connectDB();
-    
-    const tenant = await Tenant.findById(tenantId).select('subscription').lean() as any;
-    
-    if (!tenant || !tenant.subscription) {
+    const tenant = await runAsSystem(() => getTenantById(tenantId));
+
+    if (!tenant || !tenant.subscriptionPlan) {
       return {
         isActive: false,
         isExpired: true,
@@ -36,13 +38,12 @@ export async function checkSubscriptionStatus(tenantId: string | Types.ObjectId)
       };
     }
 
-    const subscription = tenant.subscription;
     const now = new Date();
-    const expiresAt = subscription.expiresAt ? new Date(subscription.expiresAt) : null;
+    const expiresAt = tenant.subscriptionExpiresAt ? new Date(tenant.subscriptionExpiresAt) : null;
     const isExpired = expiresAt ? expiresAt < now : false;
-    const isActive = subscription.status === 'active' && !isExpired;
-    const isTrial = subscription.plan === 'trial';
-    
+    const isActive = tenant.subscriptionStatus === 'active' && !isExpired;
+    const isTrial = tenant.subscriptionPlan === 'trial';
+
     let daysRemaining: number | null = null;
     if (expiresAt && !isExpired) {
       const diffTime = expiresAt.getTime() - now.getTime();
@@ -54,9 +55,9 @@ export async function checkSubscriptionStatus(tenantId: string | Types.ObjectId)
       isExpired,
       isTrial,
       expiresAt,
-      plan: subscription.plan || null,
+      plan: tenant.subscriptionPlan || null,
       daysRemaining,
-      status: subscription.status || 'expired',
+      status: (tenant.subscriptionStatus as 'active' | 'cancelled' | 'expired') || 'expired',
     };
   } catch (error) {
     console.error('Error checking subscription status:', error);
@@ -74,17 +75,17 @@ export async function checkSubscriptionStatus(tenantId: string | Types.ObjectId)
 /**
  * Check if subscription requires redirect to subscription page
  */
-export async function requiresSubscriptionRedirect(tenantId: string | Types.ObjectId): Promise<boolean> {
+export async function requiresSubscriptionRedirect(tenantId: string): Promise<boolean> {
   const status = await checkSubscriptionStatus(tenantId);
-  
+
   // Check grace period
   const { checkGracePeriod } = await import('@/lib/subscription-grace-period');
   const gracePeriod = await checkGracePeriod(tenantId);
-  
+
   // Don't redirect if in grace period (read-only access allowed)
   if (gracePeriod.isInGracePeriod) {
     return false;
   }
-  
+
   return status.isExpired || (!status.isActive && status.plan === 'trial');
 }

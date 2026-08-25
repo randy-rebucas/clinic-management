@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Appointment from '@/models/Appointment';
-import LabResult from '@/models/LabResult';
-import Invoice from '@/models/Invoice';
-import Prescription from '@/models/Prescription';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { runAsSystem } from '@/lib/tenant-context';
+import prisma from '@/lib/prisma';
+import { getPatientById } from '@/lib/data/patient';
+import { listAppointments } from '@/lib/data/appointment';
+import { listLabResults } from '@/lib/data/lab-result';
+import { listInvoices } from '@/lib/data/invoice';
+import { listPrescriptions } from '@/lib/data/prescription';
+import type { Prisma } from '@prisma/client';
 
 /**
  * Patient notification types derived from clinical activity
@@ -42,11 +44,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-
-    const patient = await Patient.findById(session.patientId)
-      .select('active tenantIds readNotificationIds')
-      .lean();
+    const patient = await runAsSystem(() => getPatientById(session.patientId));
 
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
@@ -60,65 +58,69 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)));
     const unreadOnly = searchParams.get('unreadOnly') === 'true';
 
-    const patientTenantIds = (patient as any).tenantIds ?? [];
+    const patientTenantIds: string[] = (patient as any).tenantIds ?? [];
     const readIds: string[] = (patient as any).readNotificationIds ?? [];
 
-    const tenantFilter = patientTenantIds.length > 0
-      ? { tenantId: { $in: patientTenantIds } }
-      : {};
+    const tenantFilter: { tenantId?: Prisma.StringFilter | string } =
+      patientTenantIds.length > 0 ? { tenantId: { in: patientTenantIds } } : {};
 
     const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000); // last 90 days
 
     // Fetch recent clinical events in parallel
-    const [appointments, labResults, unpaidInvoices, recentPrescriptions] = await Promise.all([
-      Appointment.find({
-        patient: session.patientId,
-        ...tenantFilter,
-        updatedAt: { $gte: since },
-        status: { $in: ['confirmed', 'cancelled', 'pending', 'scheduled'] },
-      })
-        .select('appointmentCode appointmentDate appointmentTime status reason updatedAt')
-        .sort({ updatedAt: -1 })
-        .limit(20)
-        .lean(),
+    const [appointments, labResults, unpaidInvoices, recentPrescriptions] = await runAsSystem(() =>
+      Promise.all([
+        listAppointments({
+          patientId: session.patientId,
+          ...tenantFilter,
+          updatedAt: { gte: since },
+          status: { in: ['confirmed', 'cancelled', 'pending', 'scheduled'] },
+        }),
+        // Prisma's LabResultStatus enum ('ordered'/'in_progress'/'completed'/
+        // 'reviewed'/'cancelled') replaced the Mongoose-era
+        // 'available'/'abnormal'/'critical' values — abnormal/critical is
+        // now conveyed via the `interpretation`/`abnormalFlags` fields
+        // instead of status. 'completed'/'reviewed' is the closest analog
+        // to "result available".
+        listLabResults({
+          patientId: session.patientId,
+          ...tenantFilter,
+          updatedAt: { gte: since },
+          status: { in: ['completed', 'reviewed'] },
+        }),
+        listInvoices({
+          patientId: session.patientId,
+          ...tenantFilter,
+          status: { in: ['unpaid', 'partial'] },
+        }),
+        listPrescriptions({
+          patientId: session.patientId,
+          ...tenantFilter,
+          createdAt: { gte: since },
+        }),
+      ])
+    );
 
-      LabResult.find({
-        patient: session.patientId,
-        ...tenantFilter,
-        updatedAt: { $gte: since },
-        status: { $in: ['available', 'abnormal', 'critical'] },
-      })
-        .select('testName status orderDate updatedAt')
-        .sort({ updatedAt: -1 })
-        .limit(10)
-        .lean(),
-
-      Invoice.find({
-        patient: session.patientId,
-        ...tenantFilter,
-        status: { $in: ['unpaid', 'partial'] },
-      })
-        .select('invoiceNumber total status createdAt')
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean(),
-
-      Prescription.find({
-        patient: session.patientId,
-        ...tenantFilter,
-        createdAt: { $gte: since },
-      })
-        .select('medications status issuedAt createdAt')
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean(),
-    ]);
+    // listAppointments/listLabResults/etc already sort by their own default
+    // orderBy; re-sort/trim here to mirror the original updatedAt/-1 + limit
+    // semantics per event type.
+    const sortedAppointments = [...appointments]
+      .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 20);
+    const sortedLabResults = [...labResults]
+      .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 10);
+    const sortedInvoices = [...unpaidInvoices]
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 10);
+    const sortedPrescriptions = [...recentPrescriptions]
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 10);
 
     const notifications: PatientNotification[] = [];
 
     // Map appointments to notifications
-    for (const apt of appointments) {
-      const id = `apt-${(apt as any)._id.toString()}`;
+    for (const apt of sortedAppointments as any[]) {
+      const id = `apt-${apt._id.toString()}`;
       const dateStr = apt.appointmentDate
         ? new Date(apt.appointmentDate).toLocaleDateString('en-US', {
             weekday: 'short',
@@ -161,26 +163,26 @@ export async function GET(request: NextRequest) {
     }
 
     // Map lab results to notifications
-    for (const lr of labResults) {
-      const id = `lab-${(lr as any)._id.toString()}`;
-      const isAbnormal = lr.status === 'abnormal' || lr.status === 'critical';
+    for (const lr of sortedLabResults as any[]) {
+      const id = `lab-${lr._id.toString()}`;
+      const isAbnormal = /abnormal|critical/i.test(lr.interpretation ?? '');
       notifications.push({
         id,
         type: 'lab_result',
         title: isAbnormal ? 'Lab Result Requires Attention' : 'Lab Result Available',
         message: isAbnormal
-          ? `Your ${lr.testName ?? 'lab'} result is ${lr.status}. Please contact your doctor.`
-          : `Your ${lr.testName ?? 'lab'} result is now available.`,
+          ? `Your ${lr.request?.testType ?? 'lab'} result is ${lr.interpretation}. Please contact your doctor.`
+          : `Your ${lr.request?.testType ?? 'lab'} result is now available.`,
         date: lr.updatedAt as Date,
         read: readIds.includes(id),
         actionUrl: '/patient/portal?tab=lab-results',
-        metadata: { testName: lr.testName, status: lr.status },
+        metadata: { testName: lr.request?.testType, status: lr.status },
       });
     }
 
     // Map unpaid invoices to notifications
-    for (const inv of unpaidInvoices) {
-      const id = `inv-${(inv as any)._id.toString()}`;
+    for (const inv of sortedInvoices as any[]) {
+      const id = `inv-${inv._id.toString()}`;
       notifications.push({
         id,
         type: 'invoice',
@@ -194,8 +196,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Map recent prescriptions to notifications
-    for (const rx of recentPrescriptions) {
-      const id = `rx-${(rx as any)._id.toString()}`;
+    for (const rx of sortedPrescriptions as any[]) {
+      const id = `rx-${rx._id.toString()}`;
       notifications.push({
         id,
         type: 'prescription',
@@ -252,8 +254,6 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-
     let body: { ids?: string[]; markAllRead?: boolean };
     try {
       body = await request.json();
@@ -264,23 +264,28 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const patient = await Patient.findById(session.patientId)
-      .select('active readNotificationIds')
-      .lean();
+    const patient = await runAsSystem(() =>
+      prisma.patient.findUnique({
+        where: { id: session.patientId },
+        select: { active: true, readNotificationIds: true },
+      })
+    );
 
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
-    if ((patient as any).active === false) {
+    if (patient.active === false) {
       return NextResponse.json({ success: false, error: 'Account is inactive.' }, { status: 403 });
     }
 
     if (body.markAllRead) {
       // Client already knows the current IDs; we clear the read list so new ones start fresh.
       // The GET endpoint will re-derive the full list on next load.
-      await Patient.updateOne(
-        { _id: session.patientId },
-        { $set: { readNotificationIds: [] } }
+      await runAsSystem(() =>
+        prisma.patient.update({
+          where: { id: session.patientId },
+          data: { readNotificationIds: [] },
+        })
       );
       return NextResponse.json({ success: true, message: 'All notifications marked as read' });
     }
@@ -297,10 +302,13 @@ export async function PATCH(request: NextRequest) {
       .map((id) => id.trim())
       .slice(0, 200);
 
-    // Add to read set (addToSet prevents duplicates)
-    await Patient.updateOne(
-      { _id: session.patientId },
-      { $addToSet: { readNotificationIds: { $each: sanitizedIds } } }
+    // Add to read set (dedupe, matching Mongoose's $addToSet semantics)
+    const merged = Array.from(new Set([...(patient.readNotificationIds ?? []), ...sanitizedIds]));
+    await runAsSystem(() =>
+      prisma.patient.update({
+        where: { id: session.patientId },
+        data: { readNotificationIds: merged },
+      })
     );
 
     return NextResponse.json({

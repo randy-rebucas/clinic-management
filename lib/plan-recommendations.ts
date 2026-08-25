@@ -7,7 +7,7 @@ import { getSubscriptionUsage } from '@/lib/subscription-limits';
 import { getStorageUsageSummary } from '@/lib/storage-tracking';
 import { checkSubscriptionStatus } from '@/lib/subscription';
 import { getSubscriptionLimitations, SUBSCRIPTION_PACKAGES } from '@/lib/subscription-packages';
-import { Types } from 'mongoose';
+
 
 export interface PlanRecommendation {
   recommendedPlan: 'basic' | 'professional' | 'enterprise';
@@ -32,7 +32,7 @@ export interface PlanRecommendation {
  * Get plan recommendations based on current usage
  */
 export async function getPlanRecommendations(
-  tenantId: string | Types.ObjectId
+  tenantId: string
 ): Promise<PlanRecommendation[]> {
   try {
     const subscriptionStatus = await checkSubscriptionStatus(tenantId);
@@ -186,7 +186,7 @@ export async function getPlanRecommendations(
  * Get the best recommended plan (highest urgency)
  */
 export async function getBestPlanRecommendation(
-  tenantId: string | Types.ObjectId
+  tenantId: string
 ): Promise<PlanRecommendation | null> {
   const recommendations = await getPlanRecommendations(tenantId);
   return recommendations.length > 0 ? recommendations[0] : null;

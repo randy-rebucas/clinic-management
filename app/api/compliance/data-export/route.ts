@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { createAuditLog, logDataExport } from '@/lib/audit';
+import { logDataExport } from '@/lib/audit';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { buildVisitWhere, listVisits } from '@/lib/data/visit';
+import { buildAppointmentWhere, listAppointments } from '@/lib/data/appointment';
+import { buildPrescriptionWhere, listPrescriptions } from '@/lib/data/prescription';
+import { buildLabResultWhere, listLabResults } from '@/lib/data/lab-result';
+import { buildInvoiceWhere, listInvoices } from '@/lib/data/invoice';
+import { buildDocumentWhere, listDocuments } from '@/lib/data/document';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * Export patient data (PH DPA - Right to Data Portability)
@@ -16,7 +27,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
+
     const body = await request.json();
     const { patientId } = body;
 
@@ -28,10 +41,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get patient data
-    const patient = await Patient.findById(patientId)
-      .populate('visits')
-      .populate('appointments')
-      .lean();
+    const patient = await run(tenantId ?? null, () => getPatientById(patientId));
 
     if (!patient) {
       return NextResponse.json(
@@ -41,21 +51,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Get related data
-    const Visit = (await import('@/models/Visit')).default;
-    const Appointment = (await import('@/models/Appointment')).default;
-    const Prescription = (await import('@/models/Prescription')).default;
-    const LabResult = (await import('@/models/LabResult')).default;
-    const Invoice = (await import('@/models/Invoice')).default;
-    const Document = (await import('@/models/Document')).default;
-
-    const [visits, appointments, prescriptions, labResults, invoices, documents] = await Promise.all([
-      Visit.find({ patient: patientId }).lean(),
-      Appointment.find({ patient: patientId }).lean(),
-      Prescription.find({ patient: patientId }).lean(),
-      LabResult.find({ patient: patientId }).lean(),
-      Invoice.find({ patient: patientId }).lean(),
-      Document.find({ patient: patientId, status: 'active' }).lean(),
-    ]);
+    const [visits, appointments, prescriptions, labResults, invoices, documentsResult] = await run(
+      tenantId ?? null,
+      () =>
+        Promise.all([
+          listVisits(buildVisitWhere({ patientId })),
+          listAppointments(buildAppointmentWhere({ patientId })),
+          listPrescriptions(buildPrescriptionWhere({ patientId })),
+          listLabResults(buildLabResultWhere({ patientId })),
+          listInvoices(buildInvoiceWhere({ patientId })),
+          listDocuments(buildDocumentWhere({ patientId, status: 'active' })),
+        ])
+    );
+    const documents = documentsResult.items;
 
     // Compile export data
     const exportData = {
@@ -69,7 +77,7 @@ export async function POST(request: NextRequest) {
       prescriptions,
       labResults,
       invoices,
-      documents: documents.map(doc => ({
+      documents: documents.map((doc: any) => ({
         ...doc,
         url: undefined, // Don't include file URLs in export
       })),
@@ -114,4 +122,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

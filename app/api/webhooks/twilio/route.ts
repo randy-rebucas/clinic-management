@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac } from 'crypto';
-import connectDB from '@/lib/mongodb';
-import Appointment from '@/models/Appointment';
-import Patient from '@/models/Patient';
-import { sendSMS } from '@/lib/sms';
+import { runAsSystem } from '@/lib/tenant-context';
+import { findPatientIdsByPhone } from '@/lib/data/patient';
+import { findUpcomingAppointmentForPatients, updateAppointment } from '@/lib/data/appointment';
 import { createNotification } from '@/lib/notifications';
-import { Types } from 'mongoose';
 
 /**
  * POST /api/webhooks/twilio
@@ -44,30 +42,19 @@ function validateTwilioSignature(
 
 /**
  * Find the most recent pending/confirmed appointment for a phone number
- * within the next 7 days.
+ * within the next 7 days. Runs cross-tenant (runAsSystem) since this
+ * unauthenticated webhook has no session-derived tenant to scope by.
  */
 async function findUpcomingAppointmentByPhone(phone: string) {
-  const normalised = phone.replace(/\s+/g, '');
-  const patients = await Patient.find({
-    $or: [{ phone: normalised }, { phone: phone }],
-  })
-    .select('_id')
-    .lean();
+  return runAsSystem(async () => {
+    const patientIds = await findPatientIdsByPhone(phone);
+    if (!patientIds.length) return null;
 
-  if (!patients.length) return null;
+    const now = new Date();
+    const sevenDaysAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const patientIds = patients.map((p) => p._id);
-  const now = new Date();
-  const sevenDaysAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-  return Appointment.findOne({
-    patient: { $in: patientIds },
-    status: { $in: ['pending', 'scheduled', 'confirmed'] },
-    appointmentDate: { $gte: now, $lte: sevenDaysAhead },
-  })
-    .sort({ appointmentDate: 1 })
-    .populate('patient', 'firstName lastName phone')
-    .lean() as any;
+    return findUpcomingAppointmentForPatients(patientIds, now, sevenDaysAhead);
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -103,8 +90,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await connectDB();
-
     const appointment = await findUpcomingAppointmentByPhone(fromPhone);
 
     if (!appointment) {
@@ -124,17 +109,17 @@ export async function POST(request: NextRequest) {
     const apptTime = appointment.appointmentTime ?? '';
 
     if (isConfirm) {
-      await Appointment.findByIdAndUpdate(appointment._id, { status: 'confirmed' });
+      await runAsSystem(() => updateAppointment(appointment.id, { status: 'confirmed' }));
 
       // Notify staff via in-app notification
       if (appointment.tenantId) {
         await createNotification({
-          tenantId: new Types.ObjectId(appointment.tenantId.toString()),
+          tenantId: appointment.tenantId,
           type: 'appointment',
           priority: 'normal',
           title: 'Appointment Confirmed via SMS',
           message: `${patient?.firstName ?? 'Patient'} ${patient?.lastName ?? ''} confirmed their appointment on ${apptDate}${apptTime ? ` at ${apptTime}` : ''}.`,
-          actionUrl: `/appointments/${appointment._id}`,
+          actionUrl: `/appointments/${appointment.id}`,
         } as any);
       }
 
@@ -142,16 +127,16 @@ export async function POST(request: NextRequest) {
         `Thank you! Your appointment on ${apptDate}${apptTime ? ` at ${apptTime}` : ''} has been confirmed. We look forward to seeing you.`
       );
     } else {
-      await Appointment.findByIdAndUpdate(appointment._id, { status: 'cancelled' });
+      await runAsSystem(() => updateAppointment(appointment.id, { status: 'cancelled' }));
 
       if (appointment.tenantId) {
         await createNotification({
-          tenantId: new Types.ObjectId(appointment.tenantId.toString()),
+          tenantId: appointment.tenantId,
           type: 'appointment',
           priority: 'high',
           title: 'Appointment Cancelled via SMS',
           message: `${patient?.firstName ?? 'Patient'} ${patient?.lastName ?? ''} cancelled their appointment on ${apptDate}${apptTime ? ` at ${apptTime}` : ''}.`,
-          actionUrl: `/appointments/${appointment._id}`,
+          actionUrl: `/appointments/${appointment.id}`,
         } as any);
       }
 

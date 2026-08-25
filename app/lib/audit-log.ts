@@ -1,11 +1,16 @@
+// Migrated off Mongoose: now calls lib/data/audit-log.ts (Prisma) instead
+// of models/AuditLog.ts directly. This was a second, independent audit-log
+// writer distinct from lib/audit.ts — same class of gap, found during the
+// full-codebase audit after the automations-layer migration.
 
-import AuditLog from '@/models/AuditLog';
-import { Types } from 'mongoose';
+import { createAuditLogEntry, createSystemAuditLogEntry } from '@/lib/data/audit-log';
+import { runWithTenant } from '@/lib/tenant-context';
 
 interface LogAuditArgs {
   userId: string;
   userEmail?: string;
   userRole?: string;
+  tenantId?: string;
   action: string;
   resource: string;
   resourceId?: string;
@@ -23,6 +28,7 @@ export async function logAudit({
   userId,
   userEmail,
   userRole,
+  tenantId,
   action,
   resource,
   resourceId,
@@ -36,13 +42,13 @@ export async function logAudit({
   metadata,
 }: LogAuditArgs) {
   try {
-    await AuditLog.create({
-      userId: new Types.ObjectId(userId),
+    const input = {
+      userId,
       userEmail,
       userRole,
-      action,
-      resource,
-      resourceId: resourceId ? new Types.ObjectId(resourceId) : undefined,
+      action: action as any,
+      resource: resource as any,
+      resourceId,
       changes,
       description,
       success,
@@ -52,7 +58,13 @@ export async function logAudit({
       userAgent,
       metadata,
       timestamp: new Date(),
-    });
+    };
+
+    if (tenantId) {
+      await runWithTenant(tenantId, () => createAuditLogEntry({ ...input, tenantId }));
+    } else {
+      await createSystemAuditLogEntry(input);
+    }
   } catch (err) {
     // Optionally log error elsewhere
     console.error('Audit log error:', err);

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { verifySession } from '@/app/lib/dal';
-import connectDB from '@/lib/mongodb';
-import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 const VALID_VISIT_STATUSES = ['scheduled', 'completed', 'cancelled'] as const;
 
@@ -26,14 +30,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    await connectDB();
-
-    const visits = await MedicalRepresentativeVisit.find({
-      tenantId: session.tenantId,
-      userId: session.userId,
-    })
-      .sort({ date: -1, createdAt: -1 })
-      .lean();
+    const visits = await run(session.tenantId, () =>
+      prisma.medicalRepresentativeVisit.findMany({
+        where: { userId: session.userId },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      })
+    );
 
     return NextResponse.json({
       success: true,
@@ -113,20 +115,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Time must be in HH:mm format.' }, { status: 400 });
     }
 
-    await connectDB();
-
-    const visit = await MedicalRepresentativeVisit.create({
-      tenantId: session.tenantId,
-      userId: session.userId,
-      clinicName,
-      clinicLocation,
-      purpose,
-      date: parsedDate,
-      time,
-      duration,
-      status,
-      notes,
-    });
+    const visit = await run(session.tenantId, () =>
+      prisma.medicalRepresentativeVisit.create({
+        data: {
+          user: { connect: { id: session.userId } },
+          clinicName,
+          clinicLocation,
+          purpose,
+          date: parsedDate,
+          time,
+          duration,
+          status: status as typeof VALID_VISIT_STATUSES[number],
+          notes,
+        },
+      })
+    );
 
     return NextResponse.json({
       success: true,

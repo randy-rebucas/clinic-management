@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { verifySession } from '@/app/lib/dal';
-import connectDB from '@/lib/mongodb';
-import Product from '@/models/Product';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 const VALID_PRODUCT_STATUSES = ['active', 'discontinued', 'inactive'] as const;
 
@@ -26,14 +30,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    await connectDB();
-
-    const products = await Product.find({
-      tenantId: session.tenantId,
-      userId: session.userId,
-    })
-      .sort({ createdAt: -1 })
-      .lean();
+    const products = await run(session.tenantId, () =>
+      prisma.product.findMany({
+        where: { userId: session.userId },
+        orderBy: { createdAt: 'desc' },
+      })
+    );
 
     return NextResponse.json({
       success: true,
@@ -110,22 +112,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid expiry date.' }, { status: 400 });
     }
 
-    await connectDB();
-
-    const product = await Product.create({
-      tenantId: session.tenantId,
-      userId: session.userId,
-      name,
-      category,
-      manufacturer,
-      description,
-      dosage: dosage || undefined,
-      strength: strength || undefined,
-      packaging,
-      expiryDate: parsedExpiry,
-      status,
-      specifications: [],
-    });
+    const product = await run(session.tenantId, () =>
+      prisma.product.create({
+        data: {
+          user: { connect: { id: session.userId } },
+          name,
+          category,
+          manufacturer,
+          description,
+          dosage: dosage || undefined,
+          strength: strength || undefined,
+          packaging,
+          expiryDate: parsedExpiry,
+          status: status as typeof VALID_PRODUCT_STATUSES[number],
+          specifications: [],
+        },
+      })
+    );
 
     return NextResponse.json({
       success: true,

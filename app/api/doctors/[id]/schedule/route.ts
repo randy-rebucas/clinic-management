@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Doctor from '@/models/Doctor';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getDoctorScheduleData, replaceDoctorSchedule } from '@/lib/data/doctor';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -15,13 +20,15 @@ export async function GET(
   }
 
   try {
-    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const { id } = await params;
     const searchParams = request.nextUrl.searchParams;
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
-    const doctor = await Doctor.findById(id).select('schedule availabilityOverrides status');
+    const doctor = await run(tenantId, () => getDoctorScheduleData(id));
 
     if (!doctor) {
       return NextResponse.json(
@@ -31,7 +38,7 @@ export async function GET(
     }
 
     // Get schedule for specific date range if provided
-    const scheduleData = {
+    const scheduleData: { weeklySchedule: any[]; availabilityOverrides: any[] } = {
       weeklySchedule: doctor.schedule || [],
       availabilityOverrides: doctor.availabilityOverrides || [],
     };
@@ -39,7 +46,7 @@ export async function GET(
     if (startDate && endDate) {
       const start = new Date(startDate);
       const end = new Date(endDate);
-      
+
       // Filter overrides for the date range
       scheduleData.availabilityOverrides = (doctor.availabilityOverrides || []).filter(
         (override: any) => {
@@ -78,18 +85,22 @@ export async function PUT(
   }
 
   try {
-    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const { id } = await params;
     const body = await request.json();
 
-    const doctor = await Doctor.findByIdAndUpdate(
-      id,
-      {
-        schedule: body.schedule,
-        availabilityOverrides: body.availabilityOverrides,
-      },
-      { new: true, runValidators: true }
-    ).select('schedule availabilityOverrides status');
+    const doctor = await run(tenantId, async () => {
+      try {
+        return await replaceDoctorSchedule(id, body.schedule, body.availabilityOverrides);
+      } catch (err: any) {
+        if (err.code === 'P2025') {
+          return null;
+        }
+        throw err;
+      }
+    });
 
     if (!doctor) {
       return NextResponse.json(
@@ -101,16 +112,9 @@ export async function PUT(
     return NextResponse.json({ success: true, data: doctor });
   } catch (error: any) {
     console.error('Error updating doctor schedule:', error);
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
     return NextResponse.json(
       { success: false, error: 'Failed to update doctor schedule' },
       { status: 500 }
     );
   }
 }
-

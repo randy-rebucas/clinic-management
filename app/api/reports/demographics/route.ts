@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listPatients } from '@/lib/data/patient';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -20,8 +25,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-    const patients = await Patient.find({}).lean();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
+    const { patients } = await run(tenantId, () => listPatients(undefined));
 
     // Age groups
     const ageGroups: Record<string, number> = {
@@ -83,17 +90,17 @@ export async function GET(request: NextRequest) {
     }, {});
 
     // Patients with pre-existing conditions
-    const withConditions = patients.filter((p: any) => 
+    const withConditions = patients.filter((p: any) =>
       p.preExistingConditions && p.preExistingConditions.length > 0
     ).length;
 
     // Patients with allergies
-    const withAllergies = patients.filter((p: any) => 
+    const withAllergies = patients.filter((p: any) =>
       p.allergies && (Array.isArray(p.allergies) ? p.allergies.length > 0 : true)
     ).length;
 
     // Patients with insurance
-    const withInsurance = patients.filter((p: any) => 
+    const withInsurance = patients.filter((p: any) =>
       p.identifiers?.philHealth || p.identifiers?.other
     ).length;
 
@@ -149,4 +156,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

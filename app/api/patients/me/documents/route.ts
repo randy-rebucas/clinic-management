@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Document from '@/models/Document';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { listDocuments } from '@/lib/data/document';
+import type { Prisma } from '@prisma/client';
 
 /**
  * GET /api/patients/me/documents
@@ -21,9 +22,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-
-    const patient = await Patient.findById(session.patientId).lean();
+    const patient = await runAsSystem(() => getPatientById(session.patientId));
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
@@ -37,33 +36,36 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
     const categoryFilter = searchParams.get('category');
     const tenantIdParam = searchParams.get('tenantId');
-    const patientTenantIds = (patient as any).tenantIds ?? [];
+    const patientTenantIds: string[] = (patient as any).tenantIds ?? [];
 
-    const query: any = {
-      patient: session.patientId,
+    const where: Prisma.DocumentWhereInput = {
+      patientId: session.patientId,
       status: 'active',
-      isConfidential: { $ne: true },
+      isConfidential: { not: true },
     };
 
     if (tenantIdParam) {
-      query.tenantId = tenantIdParam;
+      where.tenantId = tenantIdParam;
     } else if (patientTenantIds.length > 0) {
-      query.tenantId = { $in: patientTenantIds };
+      where.tenantId = { in: patientTenantIds };
     }
 
     if (categoryFilter) {
-      query.category = categoryFilter;
+      where.category = categoryFilter as Prisma.EnumDocumentCategoryFilter['equals'];
     }
 
-    const [documents, total] = await Promise.all([
-      Document.find(query)
-        .select('documentCode title description category documentType filename size uploadDate')
-        .sort({ uploadDate: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Document.countDocuments(query),
-    ]);
+    const { items: allItems, total } = await runAsSystem(() => listDocuments(where));
+    const documents = allItems.slice(skip, skip + limit).map((d: any) => ({
+      _id: d._id,
+      documentCode: d.documentCode,
+      title: d.title,
+      description: d.description,
+      category: d.category,
+      documentType: d.documentType,
+      filename: d.filename,
+      size: d.size,
+      uploadDate: d.uploadDate,
+    }));
 
     return NextResponse.json({
       success: true,

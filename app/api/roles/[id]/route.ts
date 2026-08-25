@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
-import Role from '@/models/Role';
-import Permission from '@/models/Permission'; // Import to register model for populate
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getTenantContext } from '@/lib/tenant';
+import { getRoleById, updateRole, deleteRole, appRoleToRoleName } from '@/lib/data/role';
+import { countUsers } from '@/lib/data/user';
 import { createAuditLog } from '@/lib/audit';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 // GET single role - admin only
 export async function GET(
@@ -13,7 +17,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await verifySession();
-  
+
   if (!session) {
     return unauthorizedResponse();
   }
@@ -23,17 +27,11 @@ export async function GET(
   }
 
   try {
-    await connectDB();
-    
-    // Ensure Permission model is registered on mongoose before populate
-    if (!mongoose.models.Permission) {
-      const _ = Permission;
-    }
-    
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const { id } = await params;
-    const role = await Role.findById(id)
-      .populate('permissions', 'resource actions')
-      .lean();
+    const role = await run(tenantId, () => getRoleById(id));
 
     if (!role) {
       return NextResponse.json(
@@ -58,7 +56,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await verifySession();
-  
+
   if (!session) {
     return unauthorizedResponse();
   }
@@ -68,24 +66,11 @@ export async function PUT(
   }
 
   try {
-    await connectDB();
-    
-    // Ensure Permission model is registered on mongoose before populate
-    if (!mongoose.models.Permission) {
-      const _ = Permission;
-    }
-    
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const { id } = await params;
     const body = await request.json();
-
-    // Don't allow changing role name if it's a system role
-    const role = await Role.findById(id);
-    if (!role) {
-      return NextResponse.json(
-        { success: false, error: 'Role not found' },
-        { status: 404 }
-      );
-    }
 
     // Validate role name if provided
     const validRoleNames = ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'];
@@ -96,11 +81,28 @@ export async function PUT(
       );
     }
 
-    const updatedRole = await Role.findByIdAndUpdate(id, body, {
-      new: true,
-      runValidators: true,
-    })
-      .populate('permissions', 'resource actions');
+    const result = await run(tenantId, async () => {
+      // Don't allow changing role name if it's a system role
+      const role = await getRoleById(id);
+      if (!role) {
+        return { notFound: true as const };
+      }
+
+      const { id: _id, defaultPermissions, permissions, ...rest } = body;
+      const updated = await updateRole(id, {
+        ...rest,
+        ...(body.name ? { name: appRoleToRoleName(body.name) } : {}),
+      });
+
+      return { role, updated };
+    });
+
+    if ('notFound' in result) {
+      return NextResponse.json(
+        { success: false, error: 'Role not found' },
+        { status: 404 }
+      );
+    }
 
     await createAuditLog({
       userId: session.userId,
@@ -110,19 +112,13 @@ export async function PUT(
       action: 'update',
       resource: 'user',
       resourceId: id,
-      description: `Updated role: ${role.name}`,
+      description: `Updated role: ${result.role.name}`,
       changes: Object.keys(body).map((field) => ({ field, newValue: body[field] })),
     });
 
-    return NextResponse.json({ success: true, data: updatedRole });
+    return NextResponse.json({ success: true, data: result.updated });
   } catch (error: any) {
     console.error('Error updating role:', error);
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
     return NextResponse.json(
       { success: false, error: 'Failed to update role' },
       { status: 500 }
@@ -136,7 +132,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await verifySession();
-  
+
   if (!session) {
     return unauthorizedResponse();
   }
@@ -146,37 +142,53 @@ export async function DELETE(
   }
 
   try {
-    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const { id } = await params;
-    
-    const role = await Role.findById(id);
-    if (!role) {
+
+    const result = await run(tenantId, async () => {
+      const role = await getRoleById(id);
+      if (!role) {
+        return { notFound: true as const };
+      }
+
+      // Prevent deletion of admin role
+      if (role.name === 'admin') {
+        return { cannotDeleteSystemRole: true as const };
+      }
+
+      // Check if any users have this role
+      const usersWithRole = await countUsers({ roleId: id });
+
+      if (usersWithRole > 0) {
+        return { usersAssigned: usersWithRole };
+      }
+
+      await deleteRole(id);
+      return { role };
+    });
+
+    if ('notFound' in result) {
       return NextResponse.json(
         { success: false, error: 'Role not found' },
         { status: 404 }
       );
     }
 
-    // Prevent deletion of admin role
-    if (role.name === 'admin') {
+    if ('cannotDeleteSystemRole' in result) {
       return NextResponse.json(
         { success: false, error: 'Cannot delete system role (admin)' },
         { status: 400 }
       );
     }
 
-    // Check if any users have this role
-    const User = (await import('@/models/User')).default;
-    const usersWithRole = await User.countDocuments({ role: id });
-    
-    if (usersWithRole > 0) {
+    if ('usersAssigned' in result) {
       return NextResponse.json(
-        { success: false, error: `Cannot delete role: ${usersWithRole} user(s) are assigned this role` },
+        { success: false, error: `Cannot delete role: ${result.usersAssigned} user(s) are assigned this role` },
         { status: 400 }
       );
     }
-
-    await Role.findByIdAndDelete(id);
 
     await createAuditLog({
       userId: session.userId,
@@ -186,7 +198,7 @@ export async function DELETE(
       action: 'delete',
       resource: 'user',
       resourceId: id,
-      description: `Deleted role: ${role.name}`,
+      description: `Deleted role: ${result.role.name}`,
     });
 
     return NextResponse.json({ success: true, data: {} });
@@ -198,4 +210,3 @@ export async function DELETE(
     );
   }
 }
-

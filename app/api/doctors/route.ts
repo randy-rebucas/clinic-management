@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Doctor from '@/models/Doctor';
-import Specialization from '@/models/Specialization';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listDoctorsFull, createDoctor } from '@/lib/data/doctor';
+import prisma from '@/lib/prisma';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET() {
   // User authentication check
@@ -22,24 +25,11 @@ export async function GET() {
   }
 
   try {
-    await connectDB();
-    
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build doctor query with tenant filter
-    const doctorQuery: any = {};
-    if (tenantId) {
-      doctorQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      // If no tenant, get doctors without tenantId (backward compatibility)
-      doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const doctors = await Doctor.find(doctorQuery)
-      .populate('specializationId', 'name description category')
-      .sort({ createdAt: -1 });
+
+    const doctors = await run(tenantId, () => listDoctorsFull());
 
     return NextResponse.json({ success: true, data: doctors });
   } catch (error: any) {
@@ -66,84 +56,108 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const body = await request.json();
-    
+
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
-    // Check subscription limit for creating doctors
-    if (tenantId) {
-      const { checkSubscriptionLimit } = await import('@/lib/subscription-limits');
-      const limitCheck = await checkSubscriptionLimit(tenantId, 'createDoctor');
-      if (!limitCheck.allowed) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: limitCheck.reason || 'Subscription limit exceeded',
+    const doctor = await run(tenantId, async () => {
+      // Check subscription limit for creating doctors
+      if (tenantId) {
+        const { checkSubscriptionLimit } = await import('@/lib/subscription-limits');
+        const limitCheck = await checkSubscriptionLimit(tenantId, 'createDoctor');
+        if (!limitCheck.allowed) {
+          return {
+            limitExceeded: true as const,
+            reason: limitCheck.reason,
             limit: limitCheck.limit,
             current: limitCheck.current,
             remaining: limitCheck.remaining,
-          },
-          { status: 403 }
-        );
+          };
+        }
       }
-    }
-    
-    // Ensure doctor is created with tenantId
-    if (tenantId && !body.tenantId) {
-      body.tenantId = new Types.ObjectId(tenantId);
-    }
-    
-    // Handle specialization: convert specialization string to specializationId
-    if (body.specialization && !body.specializationId) {
-      const specializationName = body.specialization.trim();
-      
-      if (!specializationName) {
-        return NextResponse.json(
-          { success: false, error: 'Specialization is required' },
-          { status: 400 }
-        );
+
+      // Handle specialization: convert specialization string to specializationId
+      if (body.specialization && !body.specializationId) {
+        const specializationName = body.specialization.trim();
+
+        if (!specializationName) {
+          return { validationError: 'Specialization is required' as const };
+        }
+
+        // Find or create specialization globally (not tenant-scoped)
+        let specialization = await prisma.specialization.findUnique({ where: { name: specializationName } });
+
+        if (!specialization) {
+          specialization = await prisma.specialization.create({
+            data: {
+              name: specializationName,
+              active: true,
+              category: 'Specialty', // Default category for custom specializations
+            },
+          });
+        }
+
+        body.specializationId = specialization.id;
+        delete body.specialization;
       }
-      
-      // Find or create specialization globally (not tenant-scoped)
-      let specialization = await Specialization.findOne({ name: specializationName });
-      
-      if (!specialization) {
-        // Create new specialization if it doesn't exist (globally)
-        specialization = await Specialization.create({
-          name: specializationName,
-          active: true,
-          category: 'Specialty', // Default category for custom specializations
-        });
+
+      // Validate that specializationId exists
+      if (!body.specializationId) {
+        return { validationError: 'Specialization is required' as const };
       }
-      
-      // Replace specialization string with specializationId
-      body.specializationId = specialization._id;
-      delete body.specialization;
-    }
-    
-    // Validate that specializationId exists
-    if (!body.specializationId) {
+
+      const created = await createDoctor({
+        firstName: body.firstName,
+        lastName: body.lastName,
+        email: body.email,
+        phone: body.phone,
+        licenseNumber: body.licenseNumber,
+        ptr: body.ptr,
+        title: body.title,
+        qualifications: body.qualifications,
+        bio: body.bio,
+        department: body.department,
+        status: body.status,
+        specialization: { connect: { id: body.specializationId } },
+        ...(Array.isArray(body.schedule)
+          ? {
+              schedule: {
+                create: body.schedule.map((s: any) => ({
+                  dayOfWeek: s.dayOfWeek,
+                  startTime: s.startTime,
+                  endTime: s.endTime,
+                  isAvailable: s.isAvailable ?? true,
+                })),
+              },
+            }
+          : {}),
+      });
+
+      return { created };
+    });
+
+    if ('limitExceeded' in doctor) {
       return NextResponse.json(
-        { success: false, error: 'Specialization is required' },
-        { status: 400 }
+        {
+          success: false,
+          error: doctor.reason || 'Subscription limit exceeded',
+          limit: doctor.limit,
+          current: doctor.current,
+          remaining: doctor.remaining,
+        },
+        { status: 403 }
       );
     }
-    
-    const doctor = await Doctor.create(body);
-    // Populate the specializationId after creation
-    await doctor.populate('specializationId', 'name description category');
-    return NextResponse.json({ success: true, data: doctor }, { status: 201 });
+
+    if ('validationError' in doctor) {
+      return NextResponse.json({ success: false, error: doctor.validationError }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true, data: doctor.created }, { status: 201 });
   } catch (error: any) {
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
-    if (error.code === 11000) {
+    if (error.code === 'P2002') {
       return NextResponse.json(
         { success: false, error: 'Doctor with this email or license number already exists' },
         { status: 409 }
@@ -155,4 +169,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

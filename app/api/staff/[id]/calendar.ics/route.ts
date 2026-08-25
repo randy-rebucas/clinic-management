@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac } from 'crypto';
-import connectDB from '@/lib/mongodb';
-import Appointment from '@/models/Appointment';
-import Doctor from '@/models/Doctor';
 import { buildICalFeed } from '@/lib/ical';
-import { Types } from 'mongoose';
+import { runAsSystem } from '@/lib/tenant-context';
+import prisma from '@/lib/prisma';
 
 /**
  * GET /api/staff/[id]/calendar.ics?token=<hmac>
@@ -35,82 +33,93 @@ export async function GET(
     return new NextResponse('Unauthorized', { status: 401 });
   }
 
-  if (!Types.ObjectId.isValid(id)) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     return new NextResponse('Invalid ID', { status: 400 });
   }
 
   try {
-    await connectDB();
+    // This feed is a public, token-authenticated, cross-tenant lookup by
+    // doctor id (no session/tenant to scope by) — mirrors the pre-Prisma
+    // route, which queried Doctor/Appointment with no tenant filter either.
+    const ical = await runAsSystem(async () => {
+      const doctor = await prisma.doctor.findUnique({
+        where: { id },
+        select: { firstName: true, lastName: true },
+      });
+      if (!doctor) return null;
 
-    const doctor = await Doctor.findById(id).select('firstName lastName').lean() as any;
-    if (!doctor) {
-      return new NextResponse('Doctor not found', { status: 404 });
-    }
+      const doctorName = `Dr. ${doctor.firstName ?? ''} ${doctor.lastName ?? ''}`.trim();
 
-    const doctorName = `Dr. ${doctor.firstName ?? ''} ${doctor.lastName ?? ''}`.trim();
+      // Fetch upcoming + recent appointments (±6 months)
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      const sixMonthsAhead = new Date();
+      sixMonthsAhead.setMonth(sixMonthsAhead.getMonth() + 6);
 
-    // Fetch upcoming + recent appointments (±6 months)
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    const sixMonthsAhead = new Date();
-    sixMonthsAhead.setMonth(sixMonthsAhead.getMonth() + 6);
+      const appointments = await prisma.appointment.findMany({
+        where: {
+          doctorId: id,
+          status: { not: 'cancelled' },
+          appointmentDate: { gte: sixMonthsAgo, lte: sixMonthsAhead },
+        },
+        include: {
+          patient: { select: { firstName: true, lastName: true } },
+        },
+      });
 
-    const appointments = await Appointment.find({
-      doctor: new Types.ObjectId(id),
-      status: { $nin: ['cancelled'] },
-      appointmentDate: { $gte: sixMonthsAgo, $lte: sixMonthsAhead },
-    })
-      .populate('patient', 'firstName lastName')
-      .lean() as any[];
+      const events = appointments.map((appt) => {
+        const patient = appt.patient;
+        const patientName = patient
+          ? `${patient.firstName ?? ''} ${patient.lastName ?? ''}`.trim()
+          : 'Unknown Patient';
 
-    const events = appointments.map((appt: any) => {
-      const patient = appt.patient;
-      const patientName = patient
-        ? `${patient.firstName ?? ''} ${patient.lastName ?? ''}`.trim()
-        : 'Unknown Patient';
+        // Determine start datetime
+        let dtstart: Date;
+        if (appt.scheduledAt) {
+          dtstart = new Date(appt.scheduledAt);
+        } else if (appt.appointmentDate && appt.appointmentTime) {
+          const [h, m] = appt.appointmentTime.split(':').map(Number);
+          dtstart = new Date(appt.appointmentDate);
+          dtstart.setUTCHours(h, m, 0, 0);
+        } else {
+          dtstart = new Date(appt.appointmentDate ?? appt.createdAt);
+        }
 
-      // Determine start datetime
-      let dtstart: Date;
-      if (appt.scheduledAt) {
-        dtstart = new Date(appt.scheduledAt);
-      } else if (appt.appointmentDate && appt.appointmentTime) {
-        const [h, m] = (appt.appointmentTime as string).split(':').map(Number);
-        dtstart = new Date(appt.appointmentDate);
-        dtstart.setUTCHours(h, m, 0, 0);
-      } else {
-        dtstart = new Date(appt.appointmentDate ?? appt.createdAt);
-      }
+        const durationMs = (appt.duration ?? 30) * 60 * 1000;
+        const dtend = new Date(dtstart.getTime() + durationMs);
 
-      const durationMs = (appt.duration ?? 30) * 60 * 1000;
-      const dtend = new Date(dtstart.getTime() + durationMs);
+        const statusMap: Record<string, 'CONFIRMED' | 'TENTATIVE' | 'CANCELLED'> = {
+          confirmed: 'CONFIRMED',
+          scheduled: 'CONFIRMED',
+          pending: 'TENTATIVE',
+          rescheduled: 'TENTATIVE',
+        };
 
-      const statusMap: Record<string, 'CONFIRMED' | 'TENTATIVE' | 'CANCELLED'> = {
-        confirmed: 'CONFIRMED',
-        scheduled: 'CONFIRMED',
-        pending: 'TENTATIVE',
-        rescheduled: 'TENTATIVE',
-      };
+        const descParts = [
+          appt.reason ? `Reason: ${appt.reason}` : '',
+          appt.notes ? `Notes: ${appt.notes}` : '',
+          appt.appointmentCode ? `Code: ${appt.appointmentCode}` : '',
+        ].filter(Boolean);
 
-      const descParts = [
-        appt.reason ? `Reason: ${appt.reason}` : '',
-        appt.notes ? `Notes: ${appt.notes}` : '',
-        appt.appointmentCode ? `Code: ${appt.appointmentCode}` : '',
-      ].filter(Boolean);
+        return {
+          uid: `appt-${appt.id}@myclinicsoftware`,
+          summary: `Appointment — ${patientName}`,
+          description: descParts.join('\n'),
+          dtstart,
+          dtend,
+          status: statusMap[appt.status] ?? 'CONFIRMED',
+          location: appt.room ?? '',
+          organizer: doctorName,
+        };
+      });
 
-      return {
-        uid: `appt-${appt._id}@myclinicsoftware`,
-        summary: `Appointment — ${patientName}`,
-        description: descParts.join('\n'),
-        dtstart,
-        dtend,
-        status: statusMap[appt.status] ?? 'CONFIRMED',
-        location: appt.room ?? '',
-        organizer: doctorName,
-      };
+      const calName = `${doctorName}'s Schedule`;
+      return buildICalFeed(calName, events);
     });
 
-    const calName = `${doctorName}'s Schedule`;
-    const ical = buildICalFeed(calName, events);
+    if (ical === null) {
+      return new NextResponse('Doctor not found', { status: 404 });
+    }
 
     return new NextResponse(ical, {
       status: 200,

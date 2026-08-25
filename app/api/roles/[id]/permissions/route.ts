@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Role from '@/models/Role';
-import Permission from '@/models/Permission';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getRoleById, setRoleDefaultPermissions, setRolePermissions } from '@/lib/data/role';
+import { listPermissions } from '@/lib/data/permission';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 // Update role permissions - admin only
 export async function PUT(
@@ -11,7 +16,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await verifySession();
-  
+
   if (!session) {
     return unauthorizedResponse();
   }
@@ -21,77 +26,55 @@ export async function PUT(
   }
 
   try {
-    await connectDB();
-    
-    // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
-    
+
     const { id } = await params;
     const body = await request.json();
     const { defaultPermissions, permissionIds } = body;
 
-    // Build query with tenant filter
-    const roleQuery: any = { _id: id };
-    if (tenantId) {
-      roleQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      roleQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    const result = await run(tenantId, async () => {
+      const role = await getRoleById(id);
+      if (!role) {
+        return { notFound: true as const };
+      }
 
-    const role = await Role.findOne(roleQuery);
-    if (!role) {
+      // Update default permissions if provided
+      if (defaultPermissions !== undefined) {
+        await setRoleDefaultPermissions(id, defaultPermissions);
+      }
+
+      // Update permission references if provided (tenant-scoped)
+      if (permissionIds !== undefined) {
+        // Validate all permission IDs exist (tenant-scoped)
+        if (permissionIds.length > 0) {
+          const permissions = await listPermissions({ id: { in: permissionIds } });
+          if (permissions.length !== permissionIds.length) {
+            return { invalidPermissionIds: true as const };
+          }
+        }
+        await setRolePermissions(id, permissionIds);
+      }
+
+      const updated = await getRoleById(id, { withDefaultPermissions: true });
+      return { updated };
+    });
+
+    if ('notFound' in result) {
       return NextResponse.json(
         { success: false, error: 'Role not found' },
         { status: 404 }
       );
     }
 
-    // Update default permissions if provided
-    if (defaultPermissions !== undefined) {
-      role.defaultPermissions = defaultPermissions;
+    if ('invalidPermissionIds' in result) {
+      return NextResponse.json(
+        { success: false, error: 'Some permission IDs are invalid' },
+        { status: 400 }
+      );
     }
 
-    // Update permission references if provided (tenant-scoped)
-    if (permissionIds !== undefined) {
-      // Validate all permission IDs exist (tenant-scoped)
-      if (permissionIds.length > 0) {
-        const permissionQuery: any = { _id: { $in: permissionIds } };
-        if (tenantId) {
-          permissionQuery.tenantId = new Types.ObjectId(tenantId);
-        } else {
-          permissionQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-        }
-        
-        const permissions = await Permission.find(permissionQuery);
-        if (permissions.length !== permissionIds.length) {
-          return NextResponse.json(
-            { success: false, error: 'Some permission IDs are invalid' },
-            { status: 400 }
-          );
-        }
-      }
-      role.permissions = permissionIds;
-    }
-
-    await role.save();
-    
-    // Build populate options with tenant filter
-    const permissionPopulateOptions: any = {
-      path: 'permissions',
-      select: 'resource actions',
-    };
-    if (tenantId) {
-      permissionPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      permissionPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-    
-    await role.populate(permissionPopulateOptions);
-
-    return NextResponse.json({ success: true, data: role });
+    return NextResponse.json({ success: true, data: result.updated });
   } catch (error: any) {
     console.error('Error updating role permissions:', error);
     return NextResponse.json(
@@ -100,4 +83,3 @@ export async function PUT(
     );
   }
 }
-

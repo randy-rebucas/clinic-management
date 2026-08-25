@@ -233,3 +233,37 @@ export function findAppointmentsNeedingReminders(now: Date, futureTime: Date) {
     },
   });
 }
+
+/** Count of appointments created within a date range (by createdAt), in the active tenant — used for subscription limit checks. */
+export async function countAppointmentsCreatedInRange(range: { start: Date; end?: Date }): Promise<number> {
+  return prisma.appointment.count({
+    where: { createdAt: { gte: range.start, ...(range.end ? { lte: range.end } : {}) } },
+  });
+}
+
+/**
+ * Most imminent pending/scheduled/confirmed appointment, within [now, futureLimit], for any of the
+ * given patient ids — used by the unauthenticated Twilio inbound-SMS webhook (call within runAsSystem(),
+ * since patients matching a phone number may span multiple tenants).
+ */
+export async function findUpcomingAppointmentForPatients(patientIds: string[], now: Date, futureLimit: Date) {
+  if (patientIds.length === 0) return null;
+  const appointment = await prisma.appointment.findFirst({
+    where: {
+      patientId: { in: patientIds },
+      status: { in: ['pending', 'scheduled', 'confirmed'] },
+      appointmentDate: { gte: now, lte: futureLimit },
+    },
+    orderBy: { appointmentDate: 'asc' },
+    include: {
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+    },
+  });
+  return appointment;
+}
+
+/** Hard-delete every appointment for a patient — PH DPA "delete" compliance mode (app/api/compliance/data-deletion). */
+export async function deleteAppointmentsByPatient(patientId: string): Promise<number> {
+  const result = await prisma.appointment.deleteMany({ where: { patientId } });
+  return result.count;
+}

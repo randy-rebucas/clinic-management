@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Doctor from '@/models/Doctor';
-import Specialization from '@/models/Specialization';
-import User from '@/models/User';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getDoctorByIdFull, updateDoctor, deleteDoctor } from '@/lib/data/doctor';
+import prisma from '@/lib/prisma';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(
   request: NextRequest,
@@ -25,10 +27,11 @@ export async function GET(
   }
 
   try {
-    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const { id } = await params;
-    const doctor = await Doctor.findById(id)
-      .populate('specializationId', 'name description category');
+    const doctor = await run(tenantId, () => getDoctorByIdFull(id));
     if (!doctor) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },
@@ -61,60 +64,78 @@ export async function PUT(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
     const body = await request.json();
-    
-    // Get tenant context from session or headers
+
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Handle specialization: convert specialization string to specializationId
-    if (body.specialization && !body.specializationId) {
-      const specializationName = body.specialization.trim();
-      
-      if (!specializationName) {
-        return NextResponse.json(
-          { success: false, error: 'Specialization is required' },
-          { status: 400 }
-        );
+
+    const doctor = await run(tenantId, async () => {
+      // Handle specialization: convert specialization string to specializationId
+      if (body.specialization && !body.specializationId) {
+        const specializationName = body.specialization.trim();
+
+        if (!specializationName) {
+          return { validationError: 'Specialization is required' as const };
+        }
+
+        let specialization = await prisma.specialization.findUnique({ where: { name: specializationName } });
+
+        if (!specialization) {
+          specialization = await prisma.specialization.create({
+            data: {
+              name: specializationName,
+              active: true,
+              category: 'Specialty', // Default category for custom specializations
+            },
+          });
+        }
+
+        body.specializationId = specialization.id;
+        delete body.specialization;
       }
-      
-      // Find or create specialization globally (not tenant-scoped)
-      let specialization = await Specialization.findOne({ name: specializationName });
-      
-      if (!specialization) {
-        // Create new specialization if it doesn't exist (globally)
-        specialization = await Specialization.create({
-          name: specializationName,
-          active: true,
-          category: 'Specialty', // Default category for custom specializations
-        });
+
+      const {
+        _id,
+        id: bodyId,
+        tenantId: bodyTenantId,
+        createdAt,
+        updatedAt,
+        schedule,
+        availabilityOverrides,
+        internalNotes,
+        specializationId,
+        ...updateData
+      } = body;
+
+      try {
+        return {
+          updated: await updateDoctor(id, {
+            ...updateData,
+            ...(specializationId ? { specialization: { connect: { id: specializationId } } } : {}),
+          }),
+        };
+      } catch (err: any) {
+        if (err.code === 'P2025') {
+          return { notFound: true as const };
+        }
+        throw err;
       }
-      
-      // Replace specialization string with specializationId
-      body.specializationId = specialization._id;
-      delete body.specialization;
+    });
+
+    if ('validationError' in doctor) {
+      return NextResponse.json({ success: false, error: doctor.validationError }, { status: 400 });
     }
-    
-    const doctor = await Doctor.findByIdAndUpdate(id, body, {
-      new: true,
-      runValidators: true,
-    }).populate('specializationId', 'name description category');
-    if (!doctor) {
+
+    if ('notFound' in doctor) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },
         { status: 404 }
       );
     }
-    return NextResponse.json({ success: true, data: doctor });
+
+    return NextResponse.json({ success: true, data: doctor.updated });
   } catch (error: any) {
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
     return NextResponse.json(
       { success: false, error: 'Failed to update doctor' },
       { status: 500 }
@@ -139,27 +160,36 @@ export async function DELETE(
   }
 
   try {
-    await connectDB();
     const { id } = await params;
-    
-    // Find the doctor first
-    const doctor = await Doctor.findById(id);
-    if (!doctor) {
+
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
+    const result = await run(tenantId, async () => {
+      // Find the doctor first
+      const doctor = await prisma.doctor.findUnique({ where: { id } });
+      if (!doctor) {
+        return { notFound: true as const };
+      }
+
+      // Delete associated User if exists
+      const user = await prisma.user.findUnique({ where: { doctorProfileId: id } });
+      if (user) {
+        await prisma.user.delete({ where: { id: user.id } });
+      }
+
+      // Delete the doctor
+      await deleteDoctor(id);
+      return { deleted: true as const };
+    });
+
+    if ('notFound' in result) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },
         { status: 404 }
       );
     }
 
-    // Delete associated User if exists
-    const user = await User.findOne({ doctorProfile: id });
-    if (user) {
-      await User.findByIdAndDelete(user._id);
-    }
-
-    // Delete the doctor
-    await Doctor.findByIdAndDelete(id);
-    
     return NextResponse.json({ success: true, data: {} });
   } catch (error: any) {
     console.error('Error deleting doctor:', error);
@@ -169,4 +199,3 @@ export async function DELETE(
     );
   }
 }
-

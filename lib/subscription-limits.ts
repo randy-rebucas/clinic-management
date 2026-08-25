@@ -1,18 +1,25 @@
 /**
  * Subscription Limit Enforcement
  * Middleware and utilities to enforce subscription limitations
+ *
+ * Migrated off Mongoose: counts now go through lib/data/*.ts (Prisma).
+ * Both exported functions always receive an explicit tenantId and
+ * self-wrap their entire body in runWithTenant(tenantId, fn) — unlike most
+ * lib/data/*.ts modules, this file doesn't assume the caller already
+ * established context, since several callers (app/api/doctors/route.ts,
+ * app/api/subscription/{dashboard,usage}/route.ts) aren't migrated yet and
+ * would otherwise hit the tenant-scoping extension's "no context" guard.
  */
 
-import connectDB from '@/lib/mongodb';
 import { checkSubscriptionStatus } from '@/lib/subscription';
 import { getSubscriptionLimitations, checkLimit, hasFeature } from '@/lib/subscription-packages';
 import { checkGracePeriod, isActionAllowed } from '@/lib/subscription-grace-period';
-import Patient from '@/models/Patient';
-import User from '@/models/User';
-import Doctor from '@/models/Doctor';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
-import { Types } from 'mongoose';
+import { countPatients } from '@/lib/data/patient';
+import { countUsers } from '@/lib/data/user';
+import { countActiveDoctors } from '@/lib/data/doctor';
+import { countAppointmentsCreatedInRange } from '@/lib/data/appointment';
+import { countVisitsInRange } from '@/lib/data/visit';
+import { runWithTenant } from '@/lib/tenant-context';
 
 export interface LimitCheckResult {
   allowed: boolean;
@@ -27,7 +34,7 @@ export interface LimitCheckResult {
  * Check if tenant can perform an action based on subscription limits
  */
 export async function checkSubscriptionLimit(
-  tenantId: string | Types.ObjectId,
+  tenantId: string,
   action: 'createPatient' | 'createUser' | 'createDoctor' | 'createAppointment' | 'createVisit' | 'useFeature',
   featureName?: string
 ): Promise<{
@@ -38,14 +45,34 @@ export async function checkSubscriptionLimit(
   remaining?: number | null;
 }> {
   try {
-    await connectDB();
+    return await runWithTenant(tenantId, () => checkSubscriptionLimitImpl(tenantId, action, featureName));
+  } catch (error: any) {
+    console.error('Error checking subscription limit:', error);
+    if (process.env.NODE_ENV === 'production') {
+      return { allowed: false, reason: 'Unable to verify subscription limits. Please try again.' };
+    }
+    return { allowed: true };
+  }
+}
 
+async function checkSubscriptionLimitImpl(
+  tenantId: string,
+  action: 'createPatient' | 'createUser' | 'createDoctor' | 'createAppointment' | 'createVisit' | 'useFeature',
+  featureName?: string
+): Promise<{
+  allowed: boolean;
+  reason?: string;
+  limit?: number | null;
+  current?: number;
+  remaining?: number | null;
+}> {
+  {
     // Get subscription status
     const subscriptionStatus = await checkSubscriptionStatus(tenantId);
-    
+
     // Check grace period
     const gracePeriod = await checkGracePeriod(tenantId);
-    
+
     // If in grace period, check if action is allowed
     if (gracePeriod.isInGracePeriod) {
       const actionMap: Record<string, string> = {
@@ -56,10 +83,10 @@ export async function checkSubscriptionLimit(
         'createVisit': 'create:visits',
         'useFeature': 'read:features',
       };
-      
+
       const mappedAction = actionMap[action] || action;
       const allowed = await isActionAllowed(tenantId, mappedAction);
-      
+
       if (!allowed) {
         return {
           allowed: false,
@@ -67,7 +94,7 @@ export async function checkSubscriptionLimit(
         };
       }
     }
-    
+
     // If subscription is expired and not in grace period, deny all actions except subscription page access
     if (subscriptionStatus.isExpired && !gracePeriod.isInGracePeriod) {
       return {
@@ -107,34 +134,27 @@ export async function checkSubscriptionLimit(
     switch (action) {
       case 'createPatient':
         limitType = 'patients';
-        currentCount = await Patient.countDocuments({ tenantId });
+        currentCount = await countPatients();
         break;
-      
+
       case 'createUser':
         limitType = 'users';
-        currentCount = await User.countDocuments({ tenantId, active: { $ne: false } });
+        currentCount = await countUsers({ status: 'active' });
         break;
-      
+
       case 'createDoctor':
         limitType = 'doctors';
-        currentCount = await Doctor.countDocuments({ tenantId, status: 'active' });
+        currentCount = await countActiveDoctors();
         break;
-      
-      case 'createAppointment':
+
+      case 'createAppointment': {
         // Check both monthly and daily limits
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
 
-        const monthlyCount = await Appointment.countDocuments({
-          tenantId,
-          createdAt: { $gte: startOfMonth },
-        });
-
-        const dailyCount = await Appointment.countDocuments({
-          tenantId,
-          createdAt: { $gte: startOfDay, $lte: endOfDay },
-        });
+        const monthlyCount = await countAppointmentsCreatedInRange({ start: startOfMonth });
+        const dailyCount = await countAppointmentsCreatedInRange({ start: startOfDay, end: endOfDay });
 
         // Check monthly limit
         const monthlyLimit = await checkLimit(plan, 'appointmentsPerMonth', monthlyCount);
@@ -161,23 +181,22 @@ export async function checkSubscriptionLimit(
         }
 
         return { allowed: true };
-      
-      case 'createVisit':
+      }
+
+      case 'createVisit': {
         limitType = 'visitsPerMonth';
         const visitStartOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        currentCount = await Visit.countDocuments({
-          tenantId,
-          createdAt: { $gte: visitStartOfMonth },
-        });
+        currentCount = await countVisitsInRange({ start: visitStartOfMonth });
         break;
-      
+      }
+
       default:
         return { allowed: true };
     }
 
     if (limitType) {
       const limitResult = await checkLimit(plan, limitType, currentCount);
-      
+
       if (limitResult.exceeded) {
         return {
           allowed: false,
@@ -197,20 +216,13 @@ export async function checkSubscriptionLimit(
     }
 
     return { allowed: true };
-  } catch (error: any) {
-    console.error('Error checking subscription limit:', error);
-    // Fail closed in production — an outage must not silently grant unlimited access
-    if (process.env.NODE_ENV === 'production') {
-      return { allowed: false, reason: 'Unable to verify subscription limits. Please try again.' };
-    }
-    return { allowed: true };
   }
 }
 
 /**
  * Get current usage statistics for a tenant
  */
-export async function getSubscriptionUsage(tenantId: string | Types.ObjectId): Promise<{
+export async function getSubscriptionUsage(tenantId: string): Promise<{
   patients: { current: number; limit: number | null; remaining: number | null };
   users: { current: number; limit: number | null; remaining: number | null };
   doctors: { current: number; limit: number | null; remaining: number | null };
@@ -219,9 +231,11 @@ export async function getSubscriptionUsage(tenantId: string | Types.ObjectId): P
   visitsThisMonth: { current: number; limit: number | null; remaining: number | null };
   storage: { currentGB: number; limitGB: number | null; remainingGB: number | null; percentageUsed: number; exceeded: boolean };
 }> {
-  try {
-    await connectDB();
+  return runWithTenant(tenantId, () => getSubscriptionUsageImpl(tenantId));
+}
 
+async function getSubscriptionUsageImpl(tenantId: string) {
+  try {
     const subscriptionStatus = await checkSubscriptionStatus(tenantId);
     const plan = subscriptionStatus.plan || 'trial';
     const limitations = getSubscriptionLimitations(plan);
@@ -239,21 +253,12 @@ export async function getSubscriptionUsage(tenantId: string | Types.ObjectId): P
       appointmentsToday,
       visitsThisMonth,
     ] = await Promise.all([
-      Patient.countDocuments({ tenantId }),
-      User.countDocuments({ tenantId, active: { $ne: false } }),
-      Doctor.countDocuments({ tenantId, status: 'active' }),
-      Appointment.countDocuments({
-        tenantId,
-        createdAt: { $gte: startOfMonth },
-      }),
-      Appointment.countDocuments({
-        tenantId,
-        createdAt: { $gte: startOfDay, $lte: endOfDay },
-      }),
-      Visit.countDocuments({
-        tenantId,
-        createdAt: { $gte: startOfMonth },
-      }),
+      countPatients(),
+      countUsers({ status: 'active' }),
+      countActiveDoctors(),
+      countAppointmentsCreatedInRange({ start: startOfMonth }),
+      countAppointmentsCreatedInRange({ start: startOfDay, end: endOfDay }),
+      countVisitsInRange({ start: startOfMonth }),
     ]);
 
     // Get storage usage
@@ -264,42 +269,42 @@ export async function getSubscriptionUsage(tenantId: string | Types.ObjectId): P
       patients: {
         current: patientsCount,
         limit: limitations.maxPatients,
-        remaining: limitations.maxPatients !== null 
+        remaining: limitations.maxPatients !== null
           ? Math.max(0, limitations.maxPatients - patientsCount)
           : null,
       },
       users: {
         current: usersCount,
         limit: limitations.maxUsers,
-        remaining: limitations.maxUsers !== null 
+        remaining: limitations.maxUsers !== null
           ? Math.max(0, limitations.maxUsers - usersCount)
           : null,
       },
       doctors: {
         current: doctorsCount,
         limit: limitations.maxDoctors,
-        remaining: limitations.maxDoctors !== null 
+        remaining: limitations.maxDoctors !== null
           ? Math.max(0, limitations.maxDoctors - doctorsCount)
           : null,
       },
       appointmentsThisMonth: {
         current: appointmentsThisMonth,
         limit: limitations.maxAppointmentsPerMonth,
-        remaining: limitations.maxAppointmentsPerMonth !== null 
+        remaining: limitations.maxAppointmentsPerMonth !== null
           ? Math.max(0, limitations.maxAppointmentsPerMonth - appointmentsThisMonth)
           : null,
       },
       appointmentsToday: {
         current: appointmentsToday,
         limit: limitations.maxAppointmentsPerDay,
-        remaining: limitations.maxAppointmentsPerDay !== null 
+        remaining: limitations.maxAppointmentsPerDay !== null
           ? Math.max(0, limitations.maxAppointmentsPerDay - appointmentsToday)
           : null,
       },
       visitsThisMonth: {
         current: visitsThisMonth,
         limit: limitations.maxVisitsPerMonth,
-        remaining: limitations.maxVisitsPerMonth !== null 
+        remaining: limitations.maxVisitsPerMonth !== null
           ? Math.max(0, limitations.maxVisitsPerMonth - visitsThisMonth)
           : null,
       },
@@ -316,4 +321,3 @@ export async function getSubscriptionUsage(tenantId: string | Types.ObjectId): P
     throw error;
   }
 }
-

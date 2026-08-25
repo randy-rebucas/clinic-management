@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Appointment from '@/models/Appointment';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { findAppointmentByIdRaw, updateAppointment } from '@/lib/data/appointment';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * Cancel an appointment for logged-in patient
@@ -20,10 +25,7 @@ export async function DELETE(
       );
     }
 
-    await connectDB();
-
-    const Patient = (await import('@/models/Patient')).default;
-    const patient = await Patient.findById(sessionData.patientId);
+    const patient = await runAsSystem(() => getPatientById(sessionData.patientId));
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
@@ -31,66 +33,54 @@ export async function DELETE(
       );
     }
 
-    const patientTenantId = patient.tenantIds?.[0];
-    
+    const patientTenantId = (patient as any).tenantIds?.[0];
+
     const { id } = await params;
 
-    // Find the appointment (tenant-scoped)
-    const appointmentQuery: any = { _id: id };
-    if (patientTenantId) {
-      appointmentQuery.tenantId = patientTenantId;
-    } else {
-      appointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const appointment = await Appointment.findOne(appointmentQuery);
+    const result = await run(patientTenantId, async () => {
+      // Find the appointment (tenant-scoped)
+      const appointment = await findAppointmentByIdRaw(id);
 
-    if (!appointment) {
-      return NextResponse.json(
-        { success: false, error: 'Appointment not found' },
-        { status: 404 }
-      );
-    }
+      if (!appointment) {
+        return { error: 'Appointment not found', status: 404 };
+      }
 
-    // Verify the appointment belongs to this patient
-    if (appointment.patient.toString() !== sessionData.patientId) {
-      return NextResponse.json(
-        { success: false, error: 'You can only cancel your own appointments' },
-        { status: 403 }
-      );
-    }
+      // Verify the appointment belongs to this patient
+      if (appointment.patientId !== sessionData.patientId) {
+        return { error: 'You can only cancel your own appointments', status: 403 };
+      }
 
-    // Check if appointment can be cancelled
-    if (['completed', 'cancelled', 'no-show'].includes(appointment.status)) {
-      return NextResponse.json(
-        { success: false, error: `Cannot cancel an appointment that is already ${appointment.status}` },
-        { status: 400 }
-      );
-    }
+      // Check if appointment can be cancelled
+      if (['completed', 'cancelled', 'no-show'].includes(appointment.status)) {
+        return { error: `Cannot cancel an appointment that is already ${appointment.status}`, status: 400 };
+      }
 
-    // Check if appointment is in the past
-    const appointmentDateTime = new Date(appointment.appointmentDate);
-    if (appointment.appointmentTime) {
-      const [hours, minutes] = appointment.appointmentTime.split(':').map(Number);
-      appointmentDateTime.setHours(hours, minutes, 0, 0);
-    }
+      // Check if appointment is in the past
+      const appointmentDateTime = new Date(appointment.appointmentDate ?? Date.now());
+      if (appointment.appointmentTime) {
+        const [hours, minutes] = appointment.appointmentTime.split(':').map(Number);
+        appointmentDateTime.setHours(hours, minutes, 0, 0);
+      }
 
-    if (appointmentDateTime < new Date()) {
-      return NextResponse.json(
-        { success: false, error: 'Cannot cancel past appointments' },
-        { status: 400 }
-      );
-    }
+      if (appointmentDateTime < new Date()) {
+        return { error: 'Cannot cancel past appointments', status: 400 };
+      }
 
-    // Cancel the appointment
-    appointment.status = 'cancelled';
-    appointment.notes = `${appointment.notes ? appointment.notes + '\n' : ''}Cancelled by patient on ${new Date().toISOString()}`;
-    await appointment.save();
+      // Cancel the appointment
+      const notes = `${appointment.notes ? appointment.notes + '\n' : ''}Cancelled by patient on ${new Date().toISOString()}`;
+      await updateAppointment(id, { status: 'cancelled', notes });
+
+      return { appointmentCode: appointment.appointmentCode };
+    });
+
+    if ('error' in result) {
+      return NextResponse.json({ success: false, error: result.error }, { status: result.status });
+    }
 
     logger.info('Patient cancelled appointment', {
       patientId: sessionData.patientId,
       appointmentId: id,
-      appointmentCode: appointment.appointmentCode,
+      appointmentCode: result.appointmentCode,
     });
 
     return NextResponse.json({
@@ -106,4 +96,3 @@ export async function DELETE(
     );
   }
 }
-

@@ -1,37 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
-import Role from '@/models/Role';
-import Permission from '@/models/Permission'; // Import to register model for populate
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requireAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, forbiddenResponse } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listRoles, createRole, appRoleToRoleName } from '@/lib/data/role';
+import { getUserById } from '@/lib/data/user';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 // GET all roles - admin only
 export async function GET(request: NextRequest) {
   const session = await verifySession();
-  
+
   if (!session) {
     return unauthorizedResponse();
   }
 
+  const tenantContextForCheck = await getTenantContext();
+  const tenantIdForCheck = session.tenantId || tenantContextForCheck.tenantId;
+
   // Only admin can view roles
   let isAdmin = session.role === 'admin';
-  
+
   if (!isAdmin) {
     // Double-check against database (handles session role mismatch)
     try {
-      const User = (await import('@/models/User')).default;
-      const user = await User.findById(session.userId)
-        .populate('role', 'name')
-        .lean();
-      
-      if (user && (user as any).role) {
-        const roleName = typeof (user as any).role === 'object' && 'name' in (user as any).role
-          ? (user as any).role.name
-          : null;
-        
+      const user = await run(tenantIdForCheck, () => getUserById(session.userId));
+
+      if (user && user.role) {
+        const roleName = user.role.name === 'admin' ? 'admin' : null;
+
         if (roleName === 'admin') {
           isAdmin = true; // Allow access if user is admin in database
         } else {
@@ -45,39 +45,17 @@ export async function GET(request: NextRequest) {
       return forbiddenResponse('Admin access required');
     }
   }
-  
+
   if (!isAdmin) {
     return forbiddenResponse('Admin access required');
   }
 
   try {
-    await connectDB();
-    
-    // Ensure Permission model is registered on mongoose before populate
-    // Access mongoose.models to ensure the model is registered
-    if (!mongoose.models.Permission) {
-      // Force registration by accessing the imported model
-      const _ = Permission;
-    }
-    
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = {};
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    // Fetch roles with populate
-    const roles = await Role.find(query)
-      .populate('permissions', 'resource actions')
-      .sort({ level: -1, name: 1 })
-      .lean()
-      .exec();
+
+    const roles = await run(tenantId, () => listRoles());
 
     // Ensure we always return an array
     const rolesData = Array.isArray(roles) ? roles : [];
@@ -102,7 +80,7 @@ export async function GET(request: NextRequest) {
 // POST create new role - admin only
 export async function POST(request: NextRequest) {
   const session = await verifySession();
-  
+
   if (!session) {
     return unauthorizedResponse();
   }
@@ -113,9 +91,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const body = await request.json();
-    
+
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
@@ -129,25 +106,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Ensure role is created with tenantId
-    const roleData: any = { ...body };
-    if (tenantId && !roleData.tenantId) {
-      roleData.tenantId = new Types.ObjectId(tenantId);
-    }
-
-    const role = await Role.create(roleData);
-    await role.populate('permissions', 'resource actions');
+    const role = await run(tenantId, () =>
+      createRole({
+        name: appRoleToRoleName(body.name),
+        displayName: body.displayName,
+        description: body.description,
+        level: body.level,
+        isActive: body.isActive ?? true,
+        ...(Array.isArray(body.defaultPermissions) && body.defaultPermissions.length > 0
+          ? { defaultPermissions: { create: body.defaultPermissions } }
+          : {}),
+      })
+    );
 
     return NextResponse.json({ success: true, data: role }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating role:', error);
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
-    if (error.code === 11000) {
+    if (error.code === 'P2002') {
       return NextResponse.json(
         { success: false, error: 'Role with this name already exists' },
         { status: 409 }
@@ -159,4 +134,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

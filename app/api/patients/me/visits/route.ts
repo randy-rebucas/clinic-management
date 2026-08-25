@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Visit from '@/models/Visit';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { listVisits } from '@/lib/data/visit';
+import type { Prisma } from '@prisma/client';
 
 /**
  * GET /api/patients/me/visits
@@ -21,9 +22,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-
-    const patient = await Patient.findById(session.patientId).lean();
+    const patient = await runAsSystem(() => getPatientById(session.patientId));
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
@@ -38,24 +37,18 @@ export async function GET(request: NextRequest) {
 
     // Allow multi-clinic patients to filter by a specific tenant
     const tenantIdParam = searchParams.get('tenantId');
-    const patientTenantIds = (patient as any).tenantIds ?? [];
+    const patientTenantIds: string[] = (patient as any).tenantIds ?? [];
 
-    const visitQuery: any = { patient: session.patientId };
+    const where: Prisma.VisitWhereInput = { patientId: session.patientId };
     if (tenantIdParam) {
-      visitQuery.tenantId = tenantIdParam;
+      where.tenantId = tenantIdParam;
     } else if (patientTenantIds.length > 0) {
-      visitQuery.tenantId = { $in: patientTenantIds };
+      where.tenantId = { in: patientTenantIds };
     }
 
-    const [visits, total] = await Promise.all([
-      Visit.find(visitQuery)
-        .populate({ path: 'provider', select: 'firstName lastName email' })
-        .sort({ date: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Visit.countDocuments(visitQuery),
-    ]);
+    const allVisits = await runAsSystem(() => listVisits(where));
+    const total = allVisits.length;
+    const visits = allVisits.slice(skip, skip + limit);
 
     return NextResponse.json({
       success: true,

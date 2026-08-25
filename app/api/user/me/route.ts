@@ -1,8 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getUserById } from '@/lib/data/user';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET() {
   const session = await verifySession();
@@ -12,29 +17,26 @@ export async function GET() {
   }
 
   try {
-    await connectDB();
-    
-    const user = await User.findById(session.userId)
-      .select('-password')
-      .populate('role', 'name displayName')
-      .lean() as any;
-    
-    if (!user || Array.isArray(user)) {
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
+    const user = await run(tenantId, () => getUserById(session.userId as string));
+
+    if (!user) {
       return NextResponse.json(
         { success: false, error: 'User not found' },
         { status: 404 }
       );
     }
-    
+
     // Format user data
-    const userObj = user as any;
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       user: {
-        ...userObj,
-        _id: userObj._id.toString(),
-        role: userObj.role?.name || userObj.role || 'user',
-      }
+        ...user,
+        _id: user.id,
+        role: user.role?.name || 'user',
+      },
     });
   } catch (error) {
     console.error('Error fetching user:', error);
@@ -44,4 +46,3 @@ export async function GET() {
     );
   }
 }
-

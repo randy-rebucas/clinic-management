@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
-import Invoice from '@/models/Invoice';
-import Doctor from '@/models/Doctor';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { countPatients } from '@/lib/data/patient';
+import { countActiveDoctors } from '@/lib/data/doctor';
+import { countAppointmentsInRange, listAppointments } from '@/lib/data/appointment';
+import { countVisitsByDateInRange } from '@/lib/data/visit';
+import { listInvoicesCreatedInRange, listOutstandingInvoicesRaw } from '@/lib/data/invoice';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -24,19 +27,17 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-    
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get('period') || 'today'; // today, week, month
 
     // Calculate date range
     const now = new Date();
     let dateRange: { start: Date; end: Date };
-    
+
     switch (period) {
       case 'week':
         const weekStart = new Date(now);
@@ -69,15 +70,7 @@ export async function GET(request: NextRequest) {
     const todayEnd = new Date(now);
     todayEnd.setHours(23, 59, 59, 999);
 
-    // Build tenant filter
-    const tenantFilter: any = {};
-    if (tenantId) {
-      tenantFilter.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    // Fetch all data in parallel with tenant filter
+    // Fetch all data in parallel, scoped to the active tenant
     const [
       totalPatients,
       totalDoctors,
@@ -86,60 +79,41 @@ export async function GET(request: NextRequest) {
       periodVisits,
       periodInvoices,
       outstandingInvoices,
-    ] = await Promise.all([
-      Patient.countDocuments(tenantFilter),
-      Doctor.countDocuments({ ...tenantFilter, status: 'active' }),
-      Appointment.countDocuments({
-        ...tenantFilter,
-        appointmentDate: { $gte: todayStart, $lte: todayEnd },
-        status: { $in: ['scheduled', 'confirmed'] },
-      }),
-      Appointment.countDocuments({
-        ...tenantFilter,
-        appointmentDate: { $gte: dateRange.start, $lte: dateRange.end },
-      }),
-      Visit.countDocuments({
-        ...tenantFilter,
-        date: { $gte: dateRange.start, $lte: dateRange.end },
-        status: { $ne: 'cancelled' },
-      }),
-      Invoice.find({
-        ...tenantFilter,
-        createdAt: { $gte: dateRange.start, $lte: dateRange.end },
-      }),
-      Invoice.find({
-        ...tenantFilter,
-        status: { $in: ['unpaid', 'partial'] },
-      }),
-    ]);
+    ] = await run(tenantId, () =>
+      Promise.all([
+        countPatients(),
+        countActiveDoctors(),
+        countAppointmentsInRange({ start: todayStart, end: todayEnd }, { status: { in: ['scheduled', 'confirmed'] } }),
+        countAppointmentsInRange({ start: dateRange.start, end: dateRange.end }),
+        countVisitsByDateInRange({ start: dateRange.start, end: dateRange.end }),
+        listInvoicesCreatedInRange({ start: dateRange.start, end: dateRange.end }),
+        listOutstandingInvoicesRaw(),
+      ])
+    );
 
     // Calculate revenue metrics
     const periodRevenue = periodInvoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
     const periodBilled = periodInvoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
     const totalOutstanding = outstandingInvoices.reduce((sum: number, inv: any) => sum + (inv.outstandingBalance || 0), 0);
 
-    // Recent appointments (today) with tenant filter
-    const recentAppointments = await Appointment.find({
-      ...tenantFilter,
-      appointmentDate: { $gte: todayStart, $lte: todayEnd },
-    })
-      .populate('patient', 'firstName lastName')
-      .populate('doctor', 'firstName lastName')
-      .sort({ appointmentTime: 1 })
-      .limit(10);
-
-    // Upcoming appointments (next 7 days) with tenant filter
+    // Recent appointments (today) and upcoming appointments (next 7 days)
     const nextWeek = new Date(now);
     nextWeek.setDate(now.getDate() + 7);
-    const upcomingAppointments = await Appointment.find({
-      ...tenantFilter,
-      appointmentDate: { $gte: todayEnd, $lte: nextWeek },
-      status: { $in: ['scheduled', 'confirmed'] },
-    })
-      .populate('patient', 'firstName lastName')
-      .populate('doctor', 'firstName lastName')
-      .sort({ appointmentDate: 1, appointmentTime: 1 })
-      .limit(10);
+
+    const [recentAppointmentsAll, upcomingAppointmentsAll] = await run(tenantId, () =>
+      Promise.all([
+        listAppointments({
+          appointmentDate: { gte: todayStart, lte: todayEnd },
+        }),
+        listAppointments({
+          appointmentDate: { gte: todayEnd, lte: nextWeek },
+          status: { in: ['scheduled', 'confirmed'] },
+        }),
+      ])
+    );
+
+    const recentAppointments = recentAppointmentsAll.slice(0, 10);
+    const upcomingAppointments = upcomingAppointmentsAll.slice(0, 10);
 
     // Payment method breakdown for period
     const paymentMethodBreakdown: Record<string, number> = {};
@@ -199,4 +173,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

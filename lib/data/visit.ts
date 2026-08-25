@@ -501,3 +501,34 @@ export function findVisitsNeedingFollowUpReminders(startDate: Date, endDate: Dat
 export async function markFollowUpReminderSent(id: string) {
   return prisma.visit.update({ where: { id }, data: { followUpReminderSent: true } });
 }
+
+/** Count of visits created within a date range, in the active tenant. */
+export async function countVisitsInRange(range: { start: Date; end?: Date }): Promise<number> {
+  return prisma.visit.count({
+    where: { createdAt: { gte: range.start, ...(range.end ? { lte: range.end } : {}) } },
+  });
+}
+
+/** Count of non-cancelled visits by clinical `date` (not createdAt) within a range — used by dashboard/consultations reports. */
+export async function countVisitsByDateInRange(range: { start: Date; end: Date }): Promise<number> {
+  return prisma.visit.count({
+    where: { date: { gte: range.start, lte: range.end }, status: { not: 'cancelled' } },
+  });
+}
+
+// ── PH Data Privacy Act compliance support (app/api/compliance/*) ───────────
+
+/** Set a placeholder `notes` value on every visit for a patient — part of the "anonymize" deletion mode. */
+export async function anonymizeVisitsForPatient(patientId: string): Promise<number> {
+  const result = await prisma.visit.updateMany({
+    where: { patientId },
+    data: { notes: '[Data anonymized]' },
+  });
+  return result.count;
+}
+
+/** Hard-delete every visit for a patient — part of the "delete" deletion mode. */
+export async function deleteVisitsByPatient(patientId: string): Promise<number> {
+  const result = await prisma.visit.deleteMany({ where: { patientId } });
+  return result.count;
+}

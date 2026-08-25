@@ -1,14 +1,10 @@
-// NOT MIGRATED (Phase 5 Batch 3): vitals live on the Visit model, not Patient
-// itself — this route's core query is `Visit.find({ patient, vitals: {$exists:true} })`.
-// Visit is clinical-core and owned by a later batch; left on Mongoose per the
-// batch instructions ("only migrate if vitals genuinely live on the Patient
-// model itself" — they don't).
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Visit from '@/models/Visit';
-import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { listVisits } from '@/lib/data/visit';
+import type { Prisma } from '@prisma/client';
 
 /**
  * GET /api/patients/me/vitals
@@ -25,9 +21,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-
-    const patient = await Patient.findById(session.patientId).lean();
+    const patient = await runAsSystem(() => getPatientById(session.patientId));
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
@@ -38,27 +32,21 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)));
     const tenantIdParam = searchParams.get('tenantId');
-    const patientTenantIds = (patient as any).tenantIds ?? [];
+    const patientTenantIds: string[] = (patient as any).tenantIds ?? [];
 
-    const query: any = {
-      patient: session.patientId,
-      vitals: { $exists: true },
-    };
+    const where: Prisma.VisitWhereInput = { patientId: session.patientId };
     if (tenantIdParam) {
-      query.tenantId = tenantIdParam;
+      where.tenantId = tenantIdParam;
     } else if (patientTenantIds.length > 0) {
-      query.tenantId = { $in: patientTenantIds };
+      where.tenantId = { in: patientTenantIds };
     }
 
-    const visits = await Visit.find(query)
-      .select('date vitals visitType visitCode')
-      .sort({ date: -1 })
-      .limit(limit)
-      .lean();
+    const allVisits = await runAsSystem(() => listVisits(where));
+    const visits = allVisits.slice(0, limit);
 
     const vitalsHistory = visits
-      .filter((v) => v.vitals && Object.values(v.vitals as object).some((val) => val != null))
-      .map((v) => ({
+      .filter((v: any) => v.vitals && Object.values(v.vitals as object).some((val) => val != null))
+      .map((v: any) => ({
         visitId: v._id,
         visitCode: v.visitCode,
         visitType: v.visitType,

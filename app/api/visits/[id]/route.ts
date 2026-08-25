@@ -4,11 +4,7 @@ import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers'
 import { getTenantContext } from '@/lib/tenant';
 import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { getVisitById, findVisitRawById, updateVisit, deleteVisit, getMaxVisitCodeNumber } from '@/lib/data/visit';
-// Queue is out of scope for this batch (Phase 5 "supporting models" batch owns it) —
-// still accessed via the Mongoose model for the queue-status-sync side effect below.
-import connectDB from '@/lib/mongodb';
-import Queue from '@/models/Queue';
-import { Types } from 'mongoose';
+import { listQueueEntries, updateQueueEntry } from '@/lib/data/queue';
 
 function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
   return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
@@ -94,11 +90,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Update queue status based on visit status change.
-    // Queue is out of scope for this batch — kept on Mongoose (see comment
-    // at top of file); the visit's patientId (a Postgres UUID) is passed
-    // through as a plain string filter rather than a Mongoose ObjectId
-    // ref, since Queue.patient in Mongo still stores whatever id format
-    // was written by the still-Mongoose queue-creation flow.
     if (oldStatus && oldStatus !== body.status) {
       const queueStatusMap: Record<string, string> = {
         open: 'in-progress',
@@ -108,21 +99,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       const newQueueStatus = queueStatusMap[body.status];
       if (newQueueStatus) {
         try {
-          await connectDB();
-          const queueQuery: any = {
-            patient: visit.patientId,
-            status: { $in: ['waiting', 'in-progress'] },
-          };
-          if (tenantId) {
-            queueQuery.tenantId = new Types.ObjectId(tenantId);
-          } else {
-            queueQuery.tenantId = { $in: [null, undefined] };
+          const matches = await run(tenantId, () =>
+            listQueueEntries({
+              patientId: visit.patientId,
+              status: { in: ['waiting', 'in_progress'] as any },
+            })
+          );
+          // Mongoose's findOneAndUpdate(..., { sort: { queuedAt: -1 } })
+          // updated the most recently queued matching entry.
+          const target = [...matches].sort(
+            (a: any, b: any) => new Date(b.queuedAt).getTime() - new Date(a.queuedAt).getTime()
+          )[0];
+          if (target) {
+            const updateData: Record<string, any> = { status: newQueueStatus };
+            if (newQueueStatus === 'completed') {
+              updateData.completedAt = new Date();
+            }
+            await run(tenantId, () => updateQueueEntry((target as any)._id, updateData));
           }
-          const updateData: any = { status: newQueueStatus };
-          if (newQueueStatus === 'completed') {
-            updateData.completedAt = new Date();
-          }
-          await Queue.findOneAndUpdate(queueQuery, updateData, { new: true, sort: { queuedAt: -1 } });
         } catch (queueError) {
           console.error('Error updating queue status:', queueError);
         }

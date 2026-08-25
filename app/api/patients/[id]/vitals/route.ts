@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Visit from '@/models/Visit';
-import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { listVisits } from '@/lib/data/visit';
+import type { Prisma } from '@prisma/client';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * GET /api/patients/[id]/vitals
@@ -23,8 +27,6 @@ export async function GET(
   if (permissionCheck) return permissionCheck;
 
   try {
-    await connectDB();
-
     const { id } = await params;
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
@@ -34,27 +36,19 @@ export async function GET(
       Math.max(1, parseInt(request.nextUrl.searchParams.get('limit') ?? '20', 10))
     );
 
-    const patient = await Patient.findById(id).lean();
+    const patient = await runAsSystem(() => getPatientById(id));
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found' }, { status: 404 });
     }
 
-    const query: any = {
-      patient: new Types.ObjectId(id),
-      'vitals': { $exists: true },
-    };
-    if (tenantId) query.tenantId = new Types.ObjectId(tenantId);
+    const where: Prisma.VisitWhereInput = { patientId: id };
 
-    const visits = await Visit.find(query)
-      .select('date vitals visitType visitCode')
-      .sort({ date: -1 })
-      .limit(limit)
-      .lean();
+    const visits = await run(tenantId, () => listVisits(where, limit));
 
     // Only return visits that actually have at least one vital recorded
     const vitalsHistory = visits
-      .filter((v) => v.vitals && Object.values(v.vitals as object).some((val) => val != null))
-      .map((v) => ({
+      .filter((v: any) => v.vitals && Object.values(v.vitals as object).some((val) => val != null))
+      .map((v: any) => ({
         visitId: v._id,
         visitCode: v.visitCode,
         visitType: v.visitType,

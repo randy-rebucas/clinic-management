@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Doctor from '@/models/Doctor';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
-import Prescription from '@/models/Prescription';
-import LabResult from '@/models/LabResult';
-import Invoice from '@/models/Invoice';
-import Document from '@/models/Document';
-import Referral from '@/models/Referral';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { listAppointments } from '@/lib/data/appointment';
+import { listVisits } from '@/lib/data/visit';
+import { listPrescriptions } from '@/lib/data/prescription';
+import { listLabResults } from '@/lib/data/lab-result';
+import { listInvoices } from '@/lib/data/invoice';
+import { listDocuments } from '@/lib/data/document';
+import { listReferrals } from '@/lib/data/referral';
+import type { Prisma } from '@prisma/client';
 
-// Ensure Doctor model is registered for populate calls
-void Doctor;
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * Get patient session data
@@ -30,11 +31,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    await connectDB();
-
     // Get patient data
-    const patient = await Patient.findById(sessionData.patientId);
-    
+    const patient = await runAsSystem(() => getPatientById(sessionData.patientId));
+
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Patient not found.' },
@@ -42,7 +41,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (patient.active === false) {
+    if ((patient as any).active === false) {
       return NextResponse.json(
         { success: false, error: 'Patient account is inactive. Please contact the clinic.' },
         { status: 403 }
@@ -55,192 +54,89 @@ export async function GET(request: NextRequest) {
 
     const responseData: any = {
       patient: {
-        _id: patient._id,
-        patientCode: patient.patientCode,
-        firstName: patient.firstName,
-        middleName: patient.middleName,
-        lastName: patient.lastName,
-        suffix: patient.suffix,
-        dateOfBirth: patient.dateOfBirth,
-        sex: patient.sex,
-        email: patient.email,
-        phone: patient.phone,
-        address: patient.address,
-        emergencyContact: patient.emergencyContact,
-        allergies: patient.allergies,
-        medicalHistory: patient.medicalHistory,
-        preExistingConditions: patient.preExistingConditions,
-        discountEligibility: patient.discountEligibility,
+        _id: (patient as any)._id,
+        patientCode: (patient as any).patientCode,
+        firstName: (patient as any).firstName,
+        middleName: (patient as any).middleName,
+        lastName: (patient as any).lastName,
+        suffix: (patient as any).suffix,
+        dateOfBirth: (patient as any).dateOfBirth,
+        sex: (patient as any).sex,
+        email: (patient as any).email,
+        phone: (patient as any).phone,
+        address: (patient as any).address,
+        emergencyContact: (patient as any).emergencyContact,
+        allergies: (patient as any).allergies,
+        medicalHistory: (patient as any).medicalHistory,
+        preExistingConditions: (patient as any).preExistingConditions,
+        discountEligibility: (patient as any).discountEligibility,
       },
     };
 
     // Get tenantId from patient (Patient schema uses tenantIds array)
-    const patientTenantId = patient.tenantIds?.[0];
+    const patientTenantId: string | undefined = (patient as any).tenantIds?.[0];
 
     // Optionally load related data (tenant-scoped)
     if (include.includes('appointments') || include.includes('all')) {
-      const appointmentQuery: any = { patient: patient._id };
-      if (patientTenantId) {
-        appointmentQuery.tenantId = patientTenantId;
-      } else {
-        appointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const doctorPopulateOptions: any = {
-        path: 'doctor',
-        select: 'firstName lastName',
-      };
-      if (patientTenantId) {
-        doctorPopulateOptions.match = { tenantId: patientTenantId };
-      } else {
-        doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-      }
-      
-      const appointments = await Appointment.find(appointmentQuery)
-        .populate(doctorPopulateOptions)
-        .sort({ appointmentDate: -1 })
-        .limit(10)
-        .lean();
-      responseData.appointments = appointments;
+      const where: Prisma.AppointmentWhereInput = { patientId: (patient as any)._id };
+      const appointments = await run(patientTenantId, () => listAppointments(where));
+      responseData.appointments = appointments
+        .sort((a: any, b: any) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime())
+        .slice(0, 10);
     }
 
     if (include.includes('visits') || include.includes('all')) {
-      const visitQuery: any = { patient: patient._id };
-      if (patientTenantId) {
-        visitQuery.tenantId = patientTenantId;
-      } else {
-        visitQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const providerPopulateOptions: any = {
-        path: 'provider',
-        select: 'name email',
-      };
-      if (patientTenantId) {
-        providerPopulateOptions.match = { tenantId: patientTenantId };
-      } else {
-        providerPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-      }
-      
-      const visits = await Visit.find(visitQuery)
-        .populate(providerPopulateOptions)
-        .sort({ date: -1 })
-        .limit(10)
-        .lean();
+      const where: Prisma.VisitWhereInput = { patientId: (patient as any)._id };
+      const visits = await run(patientTenantId, () => listVisits(where, 10));
       responseData.visits = visits;
     }
 
     if (include.includes('prescriptions') || include.includes('all')) {
-      const prescriptionQuery: any = { patient: patient._id };
-      if (patientTenantId) {
-        prescriptionQuery.tenantId = patientTenantId;
-      } else {
-        prescriptionQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const prescribedByPopulateOptions: any = {
-        path: 'prescribedBy',
-        select: 'name email',
-      };
-      if (patientTenantId) {
-        prescribedByPopulateOptions.match = { tenantId: patientTenantId };
-      } else {
-        prescribedByPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-      }
-      
-      const prescriptions = await Prescription.find(prescriptionQuery)
-        .populate(prescribedByPopulateOptions)
-        .sort({ issuedAt: -1 })
-        .limit(10)
-        .lean();
-      responseData.prescriptions = prescriptions;
+      const where: Prisma.PrescriptionWhereInput = { patientId: (patient as any)._id };
+      const prescriptions = await run(patientTenantId, () => listPrescriptions(where));
+      responseData.prescriptions = prescriptions
+        .sort((a: any, b: any) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())
+        .slice(0, 10);
     }
 
     if (include.includes('labResults') || include.includes('all')) {
-      const labResultQuery: any = { patient: patient._id };
-      if (patientTenantId) {
-        labResultQuery.tenantId = patientTenantId;
-      } else {
-        labResultQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const labResults = await LabResult.find(labResultQuery)
-        .sort({ orderDate: -1 })
-        .limit(10)
-        .lean();
-      responseData.labResults = labResults;
+      const where: Prisma.LabResultWhereInput = { patientId: (patient as any)._id };
+      const labResults = await run(patientTenantId, () => listLabResults(where));
+      responseData.labResults = labResults
+        .sort((a: any, b: any) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+        .slice(0, 10);
     }
 
     if (include.includes('invoices') || include.includes('all')) {
-      const invoiceQuery: any = { patient: patient._id };
-      if (patientTenantId) {
-        invoiceQuery.tenantId = patientTenantId;
-      } else {
-        invoiceQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const invoices = await Invoice.find(invoiceQuery)
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean();
-      responseData.invoices = invoices;
+      const where: Prisma.InvoiceWhereInput = { patientId: (patient as any)._id };
+      const invoices = await run(patientTenantId, () => listInvoices(where));
+      responseData.invoices = invoices.slice(0, 10);
     }
 
     if (include.includes('documents') || include.includes('all')) {
-      const documentQuery: any = { 
-        patient: patient._id,
+      const where: Prisma.DocumentWhereInput = {
+        patientId: (patient as any)._id,
         status: 'active',
-        isConfidential: { $ne: true } // Don't show confidential documents
+        isConfidential: { not: true }, // Don't show confidential documents
       };
-      if (patientTenantId) {
-        documentQuery.tenantId = patientTenantId;
-      } else {
-        documentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const documents = await Document.find(documentQuery)
-        .select('documentCode title description category documentType filename size uploadDate')
-        .sort({ uploadDate: -1 })
-        .limit(20)
-        .lean();
-      responseData.documents = documents;
+      const { items: documents } = await run(patientTenantId, () => listDocuments(where, 20));
+      responseData.documents = documents.map((d: any) => ({
+        _id: d._id,
+        documentCode: d.documentCode,
+        title: d.title,
+        description: d.description,
+        category: d.category,
+        documentType: d.documentType,
+        filename: d.filename,
+        size: d.size,
+        uploadDate: d.uploadDate,
+      }));
     }
 
     if (include.includes('referrals') || include.includes('all')) {
-      const referralQuery: any = { patient: patient._id };
-      if (patientTenantId) {
-        referralQuery.tenantId = patientTenantId;
-      } else {
-        referralQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const referringDoctorPopulateOptions: any = {
-        path: 'referringDoctor',
-        select: 'firstName lastName',
-      };
-      if (patientTenantId) {
-        referringDoctorPopulateOptions.match = { tenantId: patientTenantId };
-      } else {
-        referringDoctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-      }
-      
-      const receivingDoctorPopulateOptions: any = {
-        path: 'receivingDoctor',
-        select: 'firstName lastName',
-      };
-      if (patientTenantId) {
-        receivingDoctorPopulateOptions.match = { tenantId: patientTenantId };
-      } else {
-        receivingDoctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-      }
-      
-      const referrals = await Referral.find(referralQuery)
-        .populate(referringDoctorPopulateOptions)
-        .populate(receivingDoctorPopulateOptions)
-        .sort({ referredDate: -1 })
-        .limit(10)
-        .lean();
-      responseData.referrals = referrals;
+      const where: Prisma.ReferralWhereInput = { patientId: (patient as any)._id };
+      const referrals = await run(patientTenantId, () => listReferrals(where));
+      responseData.referrals = referrals.slice(0, 10);
     }
 
     return NextResponse.json({
@@ -277,4 +173,3 @@ export async function DELETE(request: NextRequest) {
 
   return response;
 }
-

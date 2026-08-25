@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
+import prisma from '@/lib/prisma';
 
 /**
  * Readiness Probe
@@ -9,21 +8,26 @@ import mongoose from 'mongoose';
  */
 export async function GET() {
   const startTime = Date.now();
-  
+
   try {
     // Check database connection
-    await connectDB();
-    const dbConnected = mongoose.connection.readyState === 1;
-    
+    let dbConnected = false;
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbConnected = true;
+    } catch {
+      dbConnected = false;
+    }
+
     // Check required services
     const requiredServices = {
-      mongodb: !!process.env.MONGODB_URI && dbConnected,
+      database: !!process.env.DATABASE_URL && dbConnected,
       sessionSecret: !!process.env.SESSION_SECRET,
     };
-    
+
     const allReady = Object.values(requiredServices).every(Boolean);
     const responseTime = Date.now() - startTime;
-    
+
     return NextResponse.json(
       {
         status: allReady ? 'ready' : 'not_ready',
@@ -31,7 +35,7 @@ export async function GET() {
         services: requiredServices,
         responseTime: `${responseTime}ms`,
       },
-      { 
+      {
         status: allReady ? 200 : 503,
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -40,7 +44,7 @@ export async function GET() {
     );
   } catch (error: any) {
     const responseTime = Date.now() - startTime;
-    
+
     return NextResponse.json(
       {
         status: 'not_ready',
@@ -48,7 +52,7 @@ export async function GET() {
         error: error.message || 'Unknown error',
         responseTime: `${responseTime}ms`,
       },
-      { 
+      {
         status: 503,
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',

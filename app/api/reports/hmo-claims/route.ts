@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { sanitizeSearch } from '@/lib/utils';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listInvoicesWithInsurance } from '@/lib/data/invoice';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -21,28 +25,19 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const searchParams = request.nextUrl.searchParams;
     const provider = searchParams.get('provider');
     const status = searchParams.get('status');
 
-    // Get invoices with insurance/HMO
-    const query: any = {
-      insurance: { $exists: true, $ne: null },
-    };
-
-    if (provider) {
-      query['insurance.provider'] = { $regex: sanitizeSearch(provider), $options: 'i' };
-    }
-
-    if (status) {
-      query['insurance.status'] = status;
-    }
-
-    const invoices = await Invoice.find(query)
-      .populate('patient', 'firstName lastName patientCode')
-      .populate('visit', 'visitCode date')
-      .sort({ createdAt: -1 });
+    const invoices = await run(tenantId, () =>
+      listInvoicesWithInsurance({
+        provider: provider || undefined,
+        status: status || undefined,
+      })
+    );
 
     // Group by provider
     const byProvider: Record<string, any> = {};
@@ -97,17 +92,17 @@ export async function GET(request: NextRequest) {
     // Calculate totals
     const totalClaims = invoices.length;
     const totalClaimAmount = invoices.reduce((sum: number, inv: any) => sum + (inv.insurance?.coverageAmount || inv.total || 0), 0);
-    const pendingClaims = invoices.filter(inv => inv.insurance?.status === 'pending').length;
-    const approvedClaims = invoices.filter(inv => inv.insurance?.status === 'approved').length;
-    const rejectedClaims = invoices.filter(inv => inv.insurance?.status === 'rejected').length;
-    const paidClaims = invoices.filter(inv => inv.insurance?.status === 'paid').length;
+    const pendingClaims = invoices.filter((inv: any) => inv.insurance?.status === 'pending').length;
+    const approvedClaims = invoices.filter((inv: any) => inv.insurance?.status === 'approved').length;
+    const rejectedClaims = invoices.filter((inv: any) => inv.insurance?.status === 'rejected').length;
+    const paidClaims = invoices.filter((inv: any) => inv.insurance?.status === 'paid').length;
 
     // Calculate backlog (pending + approved but not paid)
     const backlogCount = invoices.filter(
-      inv => inv.insurance?.status === 'pending' || inv.insurance?.status === 'approved'
+      (inv: any) => inv.insurance?.status === 'pending' || inv.insurance?.status === 'approved'
     ).length;
     const backlogAmount = invoices
-      .filter(inv => inv.insurance?.status === 'pending' || inv.insurance?.status === 'approved')
+      .filter((inv: any) => inv.insurance?.status === 'pending' || inv.insurance?.status === 'approved')
       .reduce((sum: number, inv: any) => sum + (inv.insurance?.coverageAmount || inv.total || 0), 0);
 
     // Age of claims (days since creation)
@@ -146,7 +141,7 @@ export async function GET(request: NextRequest) {
         },
         byProvider: Object.values(byProvider),
         byStatus,
-        claimsWithAge: claimsWithAge.sort((a, b) => b.daysSinceCreation - a.daysSinceCreation),
+        claimsWithAge: claimsWithAge.sort((a: any, b: any) => b.daysSinceCreation - a.daysSinceCreation),
         generatedAt: new Date().toISOString(),
       },
     });
@@ -158,4 +153,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

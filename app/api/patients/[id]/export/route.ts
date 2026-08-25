@@ -1,17 +1,11 @@
-// NOT MIGRATED (Phase 5 Batch 3): this route joins Patient with Visit and
-// Prescription (both clinical-core, owned by a later batch) by the Mongo
-// ObjectId `patient` reference. Splitting Patient into Postgres here would
-// break that join until Visit/Prescription migrate too, so the whole route
-// stays on Mongoose for now rather than doing a partial migration that can't
-// actually correlate records.
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Visit from '@/models/Visit';
-import Prescription from '@/models/Prescription';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { listVisits } from '@/lib/data/visit';
+import { listPrescriptions } from '@/lib/data/prescription';
 import { logDataExport } from '@/lib/audit';
 import {
   buildFHIRPatient,
@@ -20,7 +14,10 @@ import {
   buildFHIRMedicationRequests,
   buildFHIRBundle,
 } from '@/lib/fhir';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * GET /api/patients/[id]/export?format=fhir|json
@@ -42,30 +39,24 @@ export async function GET(
   if (permissionCheck) return permissionCheck;
 
   const { id } = await params;
-  if (!Types.ObjectId.isValid(id)) {
-    return NextResponse.json({ success: false, error: 'Invalid patient ID' }, { status: 400 });
-  }
 
   const format = request.nextUrl.searchParams.get('format') ?? 'fhir';
 
   try {
-    await connectDB();
-
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
-    const patient = await Patient.findById(id).lean();
+    const patient = await runAsSystem(() => getPatientById(id));
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found' }, { status: 404 });
     }
 
-    const patientQuery: any = { patient: new Types.ObjectId(id) };
-    if (tenantId) patientQuery.tenantId = new Types.ObjectId(tenantId);
-
-    const [visits, prescriptions] = await Promise.all([
-      Visit.find(patientQuery).lean(),
-      Prescription.find(patientQuery).lean(),
-    ]);
+    const [visits, prescriptions] = await run(tenantId, () =>
+      Promise.all([
+        listVisits({ patientId: id }),
+        listPrescriptions({ patientId: id }),
+      ])
+    );
 
     // Audit log
     await logDataExport(

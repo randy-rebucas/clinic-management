@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, isAdmin } from '@/app/lib/auth-helpers';
 import { createAuditLog, logDataDeletion } from '@/lib/audit';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientById, anonymizePatient, deletePatient } from '@/lib/data/patient';
+import { anonymizeVisitsForPatient, deleteVisitsByPatient } from '@/lib/data/visit';
+import { deleteAppointmentsByPatient } from '@/lib/data/appointment';
+import { deletePrescriptionsByPatient } from '@/lib/data/prescription';
+import { deleteLabResultsByPatient } from '@/lib/data/lab-result';
+import { deleteInvoicesByPatient } from '@/lib/data/invoice';
+import { markDocumentsDeletedByPatient } from '@/lib/data/document';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * Delete patient data (PH DPA - Right to be Forgotten)
@@ -27,12 +36,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-    
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId || undefined;
-    
+
     const body = await request.json();
     const { patientId, reason, confirm } = body;
 
@@ -50,29 +57,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build query with tenant filter
-    const patientQuery: any = { _id: patientId };
-    if (tenantId) {
-      patientQuery.tenantIds = new Types.ObjectId(tenantId);
-    } else {
-      patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-    }
-    
-    const patient = await Patient.findOne(patientQuery);
+    const patient = await run(tenantId ?? null, () => getPatientById(patientId));
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
         { status: 404 }
       );
     }
-
-    // Get related models
-    const Visit = (await import('@/models/Visit')).default;
-    const Appointment = (await import('@/models/Appointment')).default;
-    const Prescription = (await import('@/models/Prescription')).default;
-    const LabResult = (await import('@/models/LabResult')).default;
-    const Invoice = (await import('@/models/Invoice')).default;
-    const Document = (await import('@/models/Document')).default;
 
     // Anonymize or delete related data
     // Option 1: Anonymize (recommended for medical records - keep for legal requirements)
@@ -81,39 +72,22 @@ export async function POST(request: NextRequest) {
     const deletionMode = body.mode || 'anonymize'; // 'anonymize' or 'delete'
 
     if (deletionMode === 'anonymize') {
-      // Anonymize patient data
-      await Patient.findByIdAndUpdate(patientId, {
-        firstName: '[ANONYMIZED]',
-        lastName: '[ANONYMIZED]',
-        email: `anonymized-${patientId}@deleted.local`,
-        phone: '[ANONYMIZED]',
-        address: {
-          street: '[ANONYMIZED]',
-          city: '[ANONYMIZED]',
-          province: '[ANONYMIZED]',
-          zipCode: '[ANONYMIZED]',
-        },
-        dateOfBirth: null,
-        identifiers: {},
-        emergencyContact: {},
-        notes: '[Data anonymized per PH DPA request]',
-      });
-
-      // Anonymize related records
-      await Visit.updateMany({ patient: patientId }, {
-        $set: { notes: '[Data anonymized]' },
+      await run(tenantId ?? null, async () => {
+        await anonymizePatient(patientId);
+        await anonymizeVisitsForPatient(patientId);
       });
     } else {
       // Complete deletion (WARNING: This removes all data)
-      await Promise.all([
-        Visit.deleteMany({ patient: patientId }),
-        Appointment.deleteMany({ patient: patientId }),
-        Prescription.deleteMany({ patient: patientId }),
-        LabResult.deleteMany({ patient: patientId }),
-        Invoice.deleteMany({ patient: patientId }),
-        Document.updateMany({ patient: patientId }, { status: 'deleted' }),
-        Patient.findByIdAndDelete(patientId),
-      ]);
+      await run(tenantId ?? null, () =>
+        Promise.all([
+          deleteVisitsByPatient(patientId),
+          deleteAppointmentsByPatient(patientId),
+          deletePrescriptionsByPatient(patientId),
+          deleteLabResultsByPatient(patientId),
+          deleteInvoicesByPatient(patientId),
+          markDocumentsDeletedByPatient(patientId),
+        ]).then(() => deletePatient(patientId))
+      );
     }
 
     // Log data deletion
@@ -159,4 +133,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

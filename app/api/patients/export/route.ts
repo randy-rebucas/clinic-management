@@ -1,17 +1,15 @@
-// NOT MIGRATED (Phase 5 Batch 3): this is a pure Patient bulk-export route,
-// but it is kept on Mongoose alongside app/api/patients/[id]/export/route.ts
-// (which does join to Visit/Prescription) so both export endpoints stay on
-// one datastore rather than splitting patient-record exports mid-migration.
-// Safe to migrate independently in a later pass once the FHIR export route
-// above also migrates.
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listPatients } from '@/lib/data/patient';
 import { logDataExport } from '@/lib/audit';
-import { Types } from 'mongoose';
+import type { Prisma } from '@prisma/client';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * POST /api/patients/export
@@ -39,8 +37,6 @@ export async function POST(request: NextRequest) {
   if (permissionCheck) return permissionCheck;
 
   try {
-    await connectDB();
-
     const body = await request.json();
     const { patientIds = [], format = 'csv', columns } = body;
 
@@ -58,25 +54,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate patient IDs
-    const validIds = patientIds.filter((id) => Types.ObjectId.isValid(id));
-    if (validIds.length !== patientIds.length) {
-      return NextResponse.json(
-        { success: false, error: 'Some patient IDs are invalid' },
-        { status: 400 }
-      );
-    }
-
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
     // Build query
-    const query: any = { _id: { $in: validIds.map((id) => new Types.ObjectId(id)) } };
-    if (tenantId) {
-      query.tenantIds = tenantId;
-    }
+    const where: Prisma.PatientWhereInput = { id: { in: patientIds } };
 
-    const patients = await Patient.find(query).lean();
+    const { patients } = await run(tenantId, () => listPatients(where));
 
     if (patients.length === 0) {
       return NextResponse.json(

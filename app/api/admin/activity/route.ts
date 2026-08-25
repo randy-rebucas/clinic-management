@@ -1,8 +1,8 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { verifySession } from '@/app/lib/dal';
 import { getTenantContext } from '@/lib/tenant';
-import AuditLog from '@/models/AuditLog';
-import connectDB from '@/lib/mongodb';
+import { runWithTenant } from '@/lib/tenant-context';
+import { listAuditLogs } from '@/lib/data/audit-log';
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,15 +27,10 @@ export async function GET(request: NextRequest) {
     // Get limit from query
     const limit = parseInt(request.nextUrl.searchParams.get('limit') || '4');
 
-    await connectDB();
-
     // Fetch recent audit logs
-    const logs = await AuditLog.find({
-      tenantId: tenantContext.tenantId,
-    })
-      .sort({ timestamp: -1 })
-      .limit(limit)
-      .lean();
+    const { items: logs } = await runWithTenant(tenantContext.tenantId as string, () =>
+      listAuditLogs({}, 0, limit)
+    );
 
     // Transform to activity format
     const activities = logs.map((log) => {
@@ -61,8 +56,8 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json(
-      { 
-        success: true, 
+      {
+        success: true,
         data: { activities }
       },
       { status: 200 }

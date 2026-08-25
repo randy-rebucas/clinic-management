@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import InventoryItem from '@/models/Inventory';
-import Medicine from '@/models/Medicine';
-import User from '@/models/User';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { buildInventoryWhere, listInventoryItems } from '@/lib/data/inventory';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -22,65 +25,61 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const searchParams = request.nextUrl.searchParams;
     const category = searchParams.get('category');
     const status = searchParams.get('status');
 
-    const query: any = {};
-    if (category) {
-      query.category = category;
-    }
-    if (status) {
-      query.status = status;
-    }
+    const where = buildInventoryWhere({
+      category: category || undefined,
+      status: status || undefined,
+    });
 
-    const items = await InventoryItem.find(query)
-      .populate('medicineId', 'name genericName')
-      .populate('lastRestockedBy', 'name')
-      .sort({ name: 1 });
+    const items = await run(tenantId, () => listInventoryItems(where));
 
     // Calculate statistics
     const totalItems = items.length;
-    const totalValue = items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
-    
-    const byStatus = items.reduce((acc: any, item) => {
+    const totalValue = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitCost), 0);
+
+    const byStatus = items.reduce((acc: any, item: any) => {
       const status = item.status || 'in-stock';
       acc[status] = (acc[status] || 0) + 1;
       return acc;
     }, {});
 
-    const byCategory = items.reduce((acc: any, item) => {
+    const byCategory = items.reduce((acc: any, item: any) => {
       const category = item.category || 'other';
       acc[category] = (acc[category] || 0) + 1;
       return acc;
     }, {});
 
     // Low stock items
-    const lowStockItems = items.filter(item => item.status === 'low-stock' || item.status === 'out-of-stock');
-    
+    const lowStockItems = items.filter((item: any) => item.status === 'low-stock' || item.status === 'out-of-stock');
+
     // Expired items
-    const expiredItems = items.filter(item => item.status === 'expired');
-    
+    const expiredItems = items.filter((item: any) => item.status === 'expired');
+
     // Items expiring soon (within 30 days)
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-    const expiringSoon = items.filter(item => 
-      item.expiryDate && 
-      item.expiryDate > new Date() && 
+    const expiringSoon = items.filter((item: any) =>
+      item.expiryDate &&
+      item.expiryDate > new Date() &&
       item.expiryDate <= thirtyDaysFromNow
     );
 
     // Category value breakdown
     const categoryValue: Record<string, number> = {};
-    items.forEach((item) => {
+    items.forEach((item: any) => {
       const category = item.category || 'other';
       categoryValue[category] = (categoryValue[category] || 0) + (item.quantity * item.unitCost);
     });
 
     // Top items by value
     const topItemsByValue = items
-      .map(item => ({
+      .map((item: any) => ({
         _id: item._id,
         name: item.name,
         category: item.category,
@@ -89,7 +88,7 @@ export async function GET(request: NextRequest) {
         totalValue: item.quantity * item.unitCost,
         status: item.status,
       }))
-      .sort((a, b) => b.totalValue - a.totalValue)
+      .sort((a: any, b: any) => b.totalValue - a.totalValue)
       .slice(0, 10);
 
     return NextResponse.json({
@@ -104,7 +103,7 @@ export async function GET(request: NextRequest) {
           expiredCount: expiredItems.length,
           expiringSoonCount: expiringSoon.length,
         },
-        items: items.map(item => ({
+        items: items.map((item: any) => ({
           _id: item._id,
           name: item.name,
           category: item.category,
@@ -119,7 +118,7 @@ export async function GET(request: NextRequest) {
           location: item.location,
           supplier: item.supplier,
         })),
-        lowStockItems: lowStockItems.map(item => ({
+        lowStockItems: lowStockItems.map((item: any) => ({
           _id: item._id,
           name: item.name,
           quantity: item.quantity,
@@ -127,13 +126,13 @@ export async function GET(request: NextRequest) {
           reorderQuantity: item.reorderQuantity,
           unit: item.unit,
         })),
-        expiredItems: expiredItems.map(item => ({
+        expiredItems: expiredItems.map((item: any) => ({
           _id: item._id,
           name: item.name,
           expiryDate: item.expiryDate,
           quantity: item.quantity,
         })),
-        expiringSoon: expiringSoon.map(item => ({
+        expiringSoon: expiringSoon.map((item: any) => ({
           _id: item._id,
           name: item.name,
           expiryDate: item.expiryDate,
@@ -155,4 +154,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

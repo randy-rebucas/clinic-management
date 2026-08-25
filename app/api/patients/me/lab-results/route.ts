@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import LabResult from '@/models/LabResult';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { listLabResults } from '@/lib/data/lab-result';
+import type { Prisma } from '@prisma/client';
 
 /**
  * GET /api/patients/me/lab-results
@@ -21,9 +22,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-
-    const patient = await Patient.findById(session.patientId).lean();
+    const patient = await runAsSystem(() => getPatientById(session.patientId));
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
@@ -37,23 +36,18 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     const tenantIdParam = searchParams.get('tenantId');
-    const patientTenantIds = (patient as any).tenantIds ?? [];
+    const patientTenantIds: string[] = (patient as any).tenantIds ?? [];
 
-    const query: any = { patient: session.patientId };
+    const where: Prisma.LabResultWhereInput = { patientId: session.patientId };
     if (tenantIdParam) {
-      query.tenantId = tenantIdParam;
+      where.tenantId = tenantIdParam;
     } else if (patientTenantIds.length > 0) {
-      query.tenantId = { $in: patientTenantIds };
+      where.tenantId = { in: patientTenantIds };
     }
 
-    const [labResults, total] = await Promise.all([
-      LabResult.find(query)
-        .sort({ orderDate: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      LabResult.countDocuments(query),
-    ]);
+    const allResults = await runAsSystem(() => listLabResults(where));
+    const total = allResults.length;
+    const labResults = allResults.slice(skip, skip + limit);
 
     return NextResponse.json({
       success: true,

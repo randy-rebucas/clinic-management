@@ -18,6 +18,17 @@ export function getAdminByEmail(tenantId: string, email: string) {
   return prisma.admin.findFirst({ where: { tenantId, email } });
 }
 
+/** Active-status admin profile lookup by email, optionally tenant-scoped — used by /api/user/is-admin. */
+export function findActiveAdminByEmail(email: string, tenantId?: string | null) {
+  return prisma.admin.findFirst({
+    where: {
+      email,
+      status: 'active',
+      tenantId: tenantId ? tenantId : null,
+    },
+  });
+}
+
 export function createAdmin(data: Prisma.AdminCreateInput) {
   return prisma.admin.create({ data });
 }

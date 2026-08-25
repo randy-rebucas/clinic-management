@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
-import Invoice from '@/models/Invoice';
-import Doctor from '@/models/Doctor';
-import Prescription from '@/models/Prescription';
-import LabResult from '@/models/LabResult';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, hasPermission } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { countPatients } from '@/lib/data/patient';
+import { countActiveDoctors } from '@/lib/data/doctor';
+import { countAppointmentsInRange, listAppointments } from '@/lib/data/appointment';
+import { countVisitsByDateInRange, listVisits } from '@/lib/data/visit';
+import { listInvoicesCreatedInRange, listOutstandingInvoicesRaw } from '@/lib/data/invoice';
+import { getUserById } from '@/lib/data/user';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>): Promise<T> {
+  return Promise.resolve(tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn));
+}
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -18,14 +22,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get('period') || 'today'; // today, week, month
 
     // Calculate date range
     const now = new Date();
     let dateRange: { start: Date; end: Date };
-    
+
     switch (period) {
       case 'week':
         const weekStart = new Date(now);
@@ -89,69 +92,47 @@ export async function GET(request: NextRequest) {
     };
 
     // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
-
-    // Build tenant filter
-    const tenantFilter: any = {};
-    if (tenantId) {
-      tenantFilter.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
 
     // Fetch data based on permissions (tenant-scoped)
     const promises: Promise<any>[] = [];
 
     if (canViewPatients) {
-      promises.push(Patient.countDocuments(tenantFilter).then(count => ({ totalPatients: count })));
+      promises.push(run(tenantId, () => countPatients()).then((count) => ({ totalPatients: count })));
     }
 
     if (canViewDoctors) {
-      const doctorQuery: any = { status: 'active', ...tenantFilter };
-      promises.push(Doctor.countDocuments(doctorQuery).then(count => ({ totalDoctors: count })));
+      promises.push(run(tenantId, () => countActiveDoctors()).then((count) => ({ totalDoctors: count })));
     }
 
     if (canViewAppointments) {
       promises.push(
-        Appointment.countDocuments({
-          ...tenantFilter,
-          appointmentDate: { $gte: todayStart, $lte: todayEnd },
-          status: { $in: ['scheduled', 'confirmed'] },
-        }).then(count => ({ todayAppointments: count })),
-        Appointment.countDocuments({
-          ...tenantFilter,
-          appointmentDate: { $gte: dateRange.start, $lte: dateRange.end },
-        }).then(count => ({ periodAppointments: count }))
+        run(tenantId, () =>
+          countAppointmentsInRange({ start: todayStart, end: todayEnd }, { status: { in: ['scheduled', 'confirmed'] } })
+        ).then((count) => ({ todayAppointments: count })),
+        run(tenantId, () => countAppointmentsInRange({ start: dateRange.start, end: dateRange.end })).then((count) => ({
+          periodAppointments: count,
+        }))
       );
     }
 
     if (canViewVisits) {
       promises.push(
-        Visit.countDocuments({
-          ...tenantFilter,
-          date: { $gte: dateRange.start, $lte: dateRange.end },
-          status: { $ne: 'cancelled' },
-        }).then(count => ({ periodVisits: count }))
+        run(tenantId, () => countVisitsByDateInRange({ start: dateRange.start, end: dateRange.end })).then((count) => ({
+          periodVisits: count,
+        }))
       );
     }
 
     if (canViewInvoices) {
       promises.push(
-        Invoice.find({
-          ...tenantFilter,
-          createdAt: { $gte: dateRange.start, $lte: dateRange.end },
-        }).then(invoices => {
+        run(tenantId, () => listInvoicesCreatedInRange({ start: dateRange.start, end: dateRange.end })).then((invoices) => {
           const periodRevenue = invoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
           const periodBilled = invoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
           return { periodInvoices: invoices, periodRevenue, periodBilled };
         }),
-        Invoice.find({
-          ...tenantFilter,
-          status: { $in: ['unpaid', 'partial'] },
-        }).then(invoices => {
+        run(tenantId, () => listOutstandingInvoicesRaw()).then((invoices) => {
           const totalOutstanding = invoices.reduce((sum: number, inv: any) => sum + (inv.outstandingBalance || 0), 0);
           return { outstandingInvoices: invoices, totalOutstanding, outstandingInvoiceCount: invoices.length };
         })
@@ -160,9 +141,9 @@ export async function GET(request: NextRequest) {
 
     // Wait for all promises
     const results = await Promise.all(promises);
-    
+
     // Merge results into overview
-    results.forEach(result => {
+    results.forEach((result) => {
       Object.assign(overview, result);
     });
 
@@ -179,51 +160,20 @@ export async function GET(request: NextRequest) {
 
     // Fetch appointments if permitted (tenant-scoped)
     if (canViewAppointments) {
-      // Build populate options with tenant filter
-      const patientPopulateOptions: any = {
-        path: 'patient',
-        select: 'firstName lastName',
-      };
-      if (tenantId) {
-        patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-      } else {
-        patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-      }
-      
-      const doctorPopulateOptions: any = {
-        path: 'doctor',
-        select: 'firstName lastName',
-      };
-      if (tenantId) {
-        doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-      } else {
-        doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-      }
-      
-      const recentAppointments = await Appointment.find({
-        ...tenantFilter,
-        appointmentDate: { $gte: todayStart, $lte: todayEnd },
-      })
-        .populate(patientPopulateOptions)
-        .populate(doctorPopulateOptions)
-        .sort({ appointmentTime: 1 })
-        .limit(10)
-        .lean();
-
       const nextWeek = new Date(now);
       nextWeek.setDate(now.getDate() + 7);
-      const upcomingAppointments = await Appointment.find({
-        ...tenantFilter,
-        appointmentDate: { $gte: todayEnd, $lte: nextWeek },
-        status: { $in: ['scheduled', 'confirmed'] },
-      })
-        .populate(patientPopulateOptions)
-        .populate(doctorPopulateOptions)
-        .sort({ appointmentDate: 1, appointmentTime: 1 })
-        .limit(10)
-        .lean();
 
-      data.recentAppointments = recentAppointments.map((apt: any) => ({
+      const [recentAppointments, upcomingAppointments] = await run(tenantId, () =>
+        Promise.all([
+          listAppointments({ appointmentDate: { gte: todayStart, lte: todayEnd } }),
+          listAppointments({
+            appointmentDate: { gte: todayEnd, lte: nextWeek },
+            status: { in: ['scheduled', 'confirmed'] },
+          }),
+        ])
+      );
+
+      data.recentAppointments = recentAppointments.slice(0, 10).map((apt: any) => ({
         _id: apt._id,
         appointmentCode: apt.appointmentCode,
         patient: apt.patient ? `${apt.patient.firstName} ${apt.patient.lastName}` : 'Unknown',
@@ -233,7 +183,7 @@ export async function GET(request: NextRequest) {
         status: apt.status,
       }));
 
-      data.upcomingAppointments = upcomingAppointments.map((apt: any) => ({
+      data.upcomingAppointments = upcomingAppointments.slice(0, 10).map((apt: any) => ({
         _id: apt._id,
         appointmentCode: apt.appointmentCode,
         patient: apt.patient ? `${apt.patient.firstName} ${apt.patient.lastName}` : 'Unknown',
@@ -263,44 +213,25 @@ export async function GET(request: NextRequest) {
 
     // Role-specific data (tenant-scoped)
     if (session.role === 'doctor') {
-      // Doctor-specific: My appointments, my visits, my prescriptions
-      const doctorUser = await import('@/models/User').then(m => m.default);
-      const user = await doctorUser.findById(session.userId).lean();
-      const staffId = (user as any)?.staff?._id;
+      // Doctor-specific: My appointments, my visits
+      const user = await run(tenantId, () => getUserById(session.userId as string));
+      const staffId = (user as any)?.doctorProfile?.id;
 
       if (staffId) {
-        // Build populate options with tenant filter
-        const patientPopulateOptions: any = {
-          path: 'patient',
-          select: 'firstName lastName',
-        };
-        if (tenantId) {
-          patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-        } else {
-          patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-        }
-        
-        const myAppointments = await Appointment.find({
-          ...tenantFilter,
-          doctor: staffId,
-          appointmentDate: { $gte: todayStart, $lte: todayEnd },
-        })
-          .populate(patientPopulateOptions)
-          .sort({ appointmentTime: 1 })
-          .limit(5)
-          .lean();
+        const [myAppointments, myVisits] = await run(tenantId, () =>
+          Promise.all([
+            listAppointments({
+              doctorId: staffId,
+              appointmentDate: { gte: todayStart, lte: todayEnd },
+            }),
+            listVisits({
+              providerId: staffId,
+              date: { gte: dateRange.start, lte: dateRange.end },
+            }),
+          ])
+        );
 
-        const myVisits = await Visit.find({
-          ...tenantFilter,
-          provider: staffId,
-          date: { $gte: dateRange.start, $lte: dateRange.end },
-        })
-          .populate(patientPopulateOptions)
-          .sort({ date: -1 })
-          .limit(5)
-          .lean();
-
-        data.myAppointments = myAppointments.map((apt: any) => ({
+        data.myAppointments = myAppointments.slice(0, 5).map((apt: any) => ({
           _id: apt._id,
           appointmentCode: apt.appointmentCode,
           patient: apt.patient ? `${apt.patient.firstName} ${apt.patient.lastName}` : 'Unknown',
@@ -309,7 +240,7 @@ export async function GET(request: NextRequest) {
           status: apt.status,
         }));
 
-        data.myVisits = myVisits.map((visit: any) => ({
+        data.myVisits = myVisits.slice(0, 5).map((visit: any) => ({
           _id: visit._id,
           patient: visit.patient ? `${visit.patient.firstName} ${visit.patient.lastName}` : 'Unknown',
           date: visit.date,
@@ -325,10 +256,9 @@ export async function GET(request: NextRequest) {
 
     if (session.role === 'accountant') {
       // Accountant-specific: Financial summary (tenant-scoped)
-      const allInvoices = await Invoice.find({
-        ...tenantFilter,
-        createdAt: { $gte: dateRange.start, $lte: dateRange.end },
-      }).lean();
+      const allInvoices = await run(tenantId, () =>
+        listInvoicesCreatedInRange({ start: dateRange.start, end: dateRange.end })
+      );
 
       const paidInvoices = allInvoices.filter((inv: any) => inv.status === 'paid');
       const unpaidInvoices = allInvoices.filter((inv: any) => inv.status === 'unpaid');
@@ -363,4 +293,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

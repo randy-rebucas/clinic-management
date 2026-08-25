@@ -3,10 +3,7 @@
  * Allows limited access after subscription expiration
  */
 
-import connectDB from '@/lib/mongodb';
-import Tenant from '@/models/Tenant';
 import { checkSubscriptionStatus } from '@/lib/subscription';
-import { Types } from 'mongoose';
 
 export interface GracePeriodStatus {
   isInGracePeriod: boolean;
@@ -22,16 +19,12 @@ export interface GracePeriodStatus {
  * Grace period: 7 days after expiration with read-only access
  */
 export async function checkGracePeriod(
-  tenantId: string | Types.ObjectId
+  tenantId: string
 ): Promise<GracePeriodStatus> {
   try {
-    await connectDB();
 
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
-      : tenantId;
 
-    const subscriptionStatus = await checkSubscriptionStatus(tenantIdObj);
+    const subscriptionStatus = await checkSubscriptionStatus(tenantId);
 
     // If subscription is active, no grace period needed
     if (subscriptionStatus.isActive && !subscriptionStatus.isExpired) {
@@ -131,7 +124,7 @@ export async function checkGracePeriod(
  * Check if an action is allowed in grace period
  */
 export async function isActionAllowed(
-  tenantId: string | Types.ObjectId,
+  tenantId: string,
   action: string
 ): Promise<boolean> {
   const gracePeriod = await checkGracePeriod(tenantId);
@@ -152,7 +145,7 @@ export async function isActionAllowed(
  * Get grace period message for UI
  */
 export async function getGracePeriodMessage(
-  tenantId: string | Types.ObjectId
+  tenantId: string
 ): Promise<{
   message: string;
   type: 'info' | 'warning' | 'error';

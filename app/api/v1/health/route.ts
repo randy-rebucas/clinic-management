@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
+import prisma from '@/lib/prisma';
 import { isFeatureEnabled } from '@/lib/env-validation';
 
 /**
@@ -39,24 +38,19 @@ async function getFullHealthCheck() {
   const checks: Record<string, any> = {};
   try {
     const dbStart = Date.now();
-    await connectDB();
+    let dbConnected = false;
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbConnected = true;
+    } catch {
+      dbConnected = false;
+    }
     const dbTime = Date.now() - dbStart;
     checks.database = {
-      status: 'healthy',
-      connected: mongoose.connection.readyState === 1,
+      status: dbConnected ? 'healthy' : 'unhealthy',
+      connected: dbConnected,
       responseTime: `${dbTime}ms`,
-      state: getConnectionState(mongoose.connection.readyState),
     };
-    try {
-      const dbStats = await mongoose.connection.db?.admin().serverStatus();
-      if (dbStats) {
-        checks.database.stats = {
-          version: dbStats.version,
-          uptime: dbStats.uptime,
-          connections: dbStats.connections,
-        };
-      }
-    } catch {}
     const memoryUsage = process.memoryUsage();
     checks.memory = {
       status: 'healthy',
@@ -73,8 +67,8 @@ async function getFullHealthCheck() {
       arch: process.arch,
     };
     checks.services = {
-      mongodb: {
-        configured: !!process.env.MONGODB_URI,
+      database: {
+        configured: !!process.env.DATABASE_URL,
         status: checks.database.connected ? 'available' : 'unavailable',
       },
       session: {
@@ -109,7 +103,7 @@ async function getFullHealthCheck() {
     };
     const allHealthy =
       checks.database.connected &&
-      checks.services.mongodb.status === 'available' &&
+      checks.services.database.status === 'available' &&
       checks.services.session.status === 'available';
     const responseTime = Date.now() - startTime;
     return NextResponse.json(
@@ -158,10 +152,15 @@ async function getFullHealthCheck() {
 async function getReadinessCheck() {
   const startTime = Date.now();
   try {
-    await connectDB();
-    const dbConnected = mongoose.connection.readyState === 1;
+    let dbConnected = false;
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbConnected = true;
+    } catch {
+      dbConnected = false;
+    }
     const requiredServices = {
-      mongodb: !!process.env.MONGODB_URI && dbConnected,
+      database: !!process.env.DATABASE_URL && dbConnected,
       sessionSecret: !!process.env.SESSION_SECRET,
     };
     const allReady = Object.values(requiredServices).every(Boolean);
@@ -199,15 +198,4 @@ async function getReadinessCheck() {
       }
     );
   }
-}
-
-function getConnectionState(state: number): string {
-  const states = {
-    0: 'disconnected',
-    1: 'connected',
-    2: 'connecting',
-    3: 'disconnecting',
-    99: 'uninitialized',
-  };
-  return states[state as keyof typeof states] || 'unknown';
 }

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { listInvoicesCreatedInRangeFull } from '@/lib/data/invoice';
+
+function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -20,7 +25,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get('period') || 'monthly'; // daily, weekly, monthly
     const startDate = searchParams.get('startDate');
@@ -65,12 +72,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Get invoices in date range
-    const invoices = await Invoice.find({
-      createdAt: { $gte: dateRange.start, $lte: dateRange.end },
-    })
-      .populate('patient', 'firstName lastName patientCode')
-      .populate('visit', 'visitCode date')
-      .sort({ createdAt: -1 });
+    const invoices = await run(tenantId, () =>
+      listInvoicesCreatedInRangeFull({ start: dateRange.start, end: dateRange.end })
+    );
 
     // Calculate totals
     const totalBilled = invoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
@@ -92,7 +96,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Group by status
-    const byStatus = invoices.reduce((acc: any, inv) => {
+    const byStatus = invoices.reduce((acc: any, inv: any) => {
       const status = inv.status || 'unpaid';
       acc[status] = (acc[status] || 0) + 1;
       return acc;
@@ -100,7 +104,7 @@ export async function GET(request: NextRequest) {
 
     // Group by service category
     const byCategory: Record<string, number> = {};
-    invoices.forEach((inv) => {
+    invoices.forEach((inv: any) => {
       inv.items?.forEach((item: any) => {
         const category = item.category || 'other';
         byCategory[category] = (byCategory[category] || 0) + (item.total || 0);
@@ -144,7 +148,7 @@ export async function GET(request: NextRequest) {
           totalDiscounts,
           totalTax,
           invoiceCount: invoices.length,
-          paidInvoiceCount: invoices.filter(inv => inv.status === 'paid').length,
+          paidInvoiceCount: invoices.filter((inv: any) => inv.status === 'paid').length,
           avgDailyRevenue: parseFloat(avgDailyRevenue.toFixed(2)),
         },
         breakdowns: {
@@ -164,4 +168,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

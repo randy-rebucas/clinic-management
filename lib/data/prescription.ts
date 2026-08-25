@@ -324,6 +324,12 @@ export function listPrescriptionsForDoctorInRange(prescribedById: string, start:
   return prisma.prescription.findMany({ where: { prescribedById, issuedAt: { gte: start, lte: end } } });
 }
 
+/** Hard-delete every prescription for a patient — PH DPA "delete" compliance mode (app/api/compliance/data-deletion). */
+export async function deletePrescriptionsByPatient(patientId: string): Promise<number> {
+  const result = await prisma.prescription.deleteMany({ where: { patientId } });
+  return result.count;
+}
+
 export async function markPatientCopyPrinted(id: string, printedById: string) {
   const prescription = await prisma.prescription.update({
     where: { id },

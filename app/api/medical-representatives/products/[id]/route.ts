@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { verifySession } from '@/app/lib/dal';
-import connectDB from '@/lib/mongodb';
-import Product from '@/models/Product';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 interface ProductData {
   name: string;
@@ -49,25 +53,26 @@ export async function PUT(
       );
     }
 
-    await connectDB();
-
     const { id: productId } = await params;
 
-    const updatedProduct = await Product.findOneAndUpdate(
-      { _id: productId, userId: session.userId },
-      {
-        name: body.name,
-        category: body.category,
-        manufacturer: body.manufacturer,
-        description: body.description,
-        dosage: body.dosage || undefined,
-        strength: body.strength || undefined,
-        packaging: body.packaging,
-        expiryDate: new Date(body.expiryDate),
-        status: body.status || 'active',
-      },
-      { new: true }
-    ).lean();
+    const updatedProduct = await run(session.tenantId, async () => {
+      const existing = await prisma.product.findFirst({ where: { id: productId, userId: session.userId } });
+      if (!existing) return null;
+      return prisma.product.update({
+        where: { id: productId },
+        data: {
+          name: body.name,
+          category: body.category,
+          manufacturer: body.manufacturer,
+          description: body.description,
+          dosage: body.dosage || undefined,
+          strength: body.strength || undefined,
+          packaging: body.packaging,
+          expiryDate: new Date(body.expiryDate),
+          status: body.status || 'active',
+        },
+      });
+    });
 
     if (!updatedProduct) {
       return NextResponse.json(
@@ -114,13 +119,13 @@ export async function DELETE(
       );
     }
 
-    await connectDB();
-
     const { id: productId } = await params;
-    const deletedProduct = await Product.findOneAndDelete({
-      _id: productId,
-      userId: session.userId,
-    }).lean();
+
+    const deletedProduct = await run(session.tenantId, async () => {
+      const existing = await prisma.product.findFirst({ where: { id: productId, userId: session.userId } });
+      if (!existing) return null;
+      return prisma.product.delete({ where: { id: productId } });
+    });
 
     if (!deletedProduct) {
       return NextResponse.json(

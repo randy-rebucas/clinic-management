@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Visit from '@/models/Visit';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { getVisitById } from '@/lib/data/visit';
 
 /**
  * GET /api/patients/me/visits/[id]
@@ -23,11 +23,9 @@ export async function GET(
   }
 
   try {
-    await connectDB();
-
     const { id } = await params;
 
-    const patient = await Patient.findById(session.patientId).lean();
+    const patient = await runAsSystem(() => getPatientById(session.patientId));
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
@@ -35,19 +33,17 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Account is inactive.' }, { status: 403 });
     }
 
-    const patientTenantIds = (patient as any).tenantIds ?? [];
+    const patientTenantIds: string[] = (patient as any).tenantIds ?? [];
 
-    // Ensure patient owns this visit
-    const visitQuery: any = { _id: id, patient: session.patientId };
-    if (patientTenantIds.length > 0) {
-      visitQuery.tenantId = { $in: patientTenantIds };
-    }
+    const visit = await runAsSystem(() => getVisitById(id));
 
-    const visit = await Visit.findOne(visitQuery)
-      .populate({ path: 'provider', select: 'firstName lastName email' })
-      .lean();
-
-    if (!visit) {
+    // Ensure patient owns this visit (and, if tenant-scoped, that it belongs
+    // to one of the patient's clinics)
+    if (
+      !visit ||
+      (visit as any).patientId !== session.patientId ||
+      (patientTenantIds.length > 0 && !patientTenantIds.includes((visit as any).tenantId))
+    ) {
       return NextResponse.json(
         { success: false, error: 'Visit not found.' },
         { status: 404 }

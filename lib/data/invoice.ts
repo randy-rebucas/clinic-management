@@ -360,10 +360,51 @@ export function countInvoicesCreatedInRange(range: ReportDateRange) {
   return prisma.invoice.count({ where: { createdAt: { gte: range.start, lte: range.end } } });
 }
 
+/** Invoices created within a date range, with full relations (patient/visit/lineItems/payments/etc.) — for the income report. */
+export async function listInvoicesCreatedInRangeFull(range: ReportDateRange) {
+  const invoices = await prisma.invoice.findMany({
+    where: { createdAt: { gte: range.start, lte: range.end } },
+    include: invoiceInclude,
+    orderBy: { createdAt: 'desc' },
+  });
+  return invoices.map(toInvoiceDTO);
+}
+
+export interface InvoiceInsuranceFilter {
+  provider?: string;
+  status?: string;
+}
+
+/** Invoices that carry insurance/HMO info, optionally filtered by provider (case-insensitive contains) and claim status — for the HMO claims report. */
+export async function listInvoicesWithInsurance(filter: InvoiceInsuranceFilter) {
+  const where: Prisma.InvoiceWhereInput = {
+    insuranceProvider: { not: null },
+  };
+  if (filter.provider) {
+    where.insuranceProvider = { contains: filter.provider, mode: 'insensitive' };
+  }
+  if (filter.status) {
+    where.insuranceStatus = filter.status as Prisma.InvoiceWhereInput['insuranceStatus'];
+  }
+
+  const invoices = await prisma.invoice.findMany({
+    where,
+    include: invoiceInclude,
+    orderBy: { createdAt: 'desc' },
+  });
+  return invoices.map(toInvoiceDTO);
+}
+
 /** Invoices tied to a given set of visit ids (staff-performance revenue-by-doctor). */
 export function listInvoicesForVisits(visitIds: string[]) {
   if (visitIds.length === 0) return Promise.resolve([]);
   return prisma.invoice.findMany({ where: { visitId: { in: visitIds } } });
+}
+
+/** Hard-delete every invoice for a patient — PH DPA "delete" compliance mode (app/api/compliance/data-deletion). */
+export async function deleteInvoicesByPatient(patientId: string): Promise<number> {
+  const result = await prisma.invoice.deleteMany({ where: { patientId } });
+  return result.count;
 }
 
 export async function getOutstandingBalanceForPatient(patientId?: string) {

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
-import Invoice from '@/models/Invoice';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import { listInvoices } from '@/lib/data/invoice';
+import type { Prisma } from '@prisma/client';
 
 /**
  * GET /api/patients/me/invoices
@@ -22,9 +23,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-
-    const patient = await Patient.findById(session.patientId).lean();
+    const patient = await runAsSystem(() => getPatientById(session.patientId));
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
@@ -38,32 +37,29 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
     const statusFilter = searchParams.get('status');
     const tenantIdParam = searchParams.get('tenantId');
-    const patientTenantIds = (patient as any).tenantIds ?? [];
+    const patientTenantIds: string[] = (patient as any).tenantIds ?? [];
 
-    const baseQuery: any = { patient: session.patientId };
+    const baseWhere: Prisma.InvoiceWhereInput = { patientId: session.patientId };
     if (tenantIdParam) {
-      baseQuery.tenantId = tenantIdParam;
+      baseWhere.tenantId = tenantIdParam;
     } else if (patientTenantIds.length > 0) {
-      baseQuery.tenantId = { $in: patientTenantIds };
+      baseWhere.tenantId = { in: patientTenantIds };
     }
 
-    const invoiceQuery = { ...baseQuery };
+    const invoiceWhere: Prisma.InvoiceWhereInput = { ...baseWhere };
     if (statusFilter) {
-      invoiceQuery.status = statusFilter;
+      invoiceWhere.status = statusFilter as Prisma.InvoiceWhereInput['status'];
     }
 
-    const [invoices, total, unpaidInvoices] = await Promise.all([
-      Invoice.find(invoiceQuery)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Invoice.countDocuments(invoiceQuery),
-      // Always compute outstanding balance across all unpaid/partial invoices
-      Invoice.find({ ...baseQuery, status: { $in: ['unpaid', 'partial'] } })
-        .select('total payments')
-        .lean(),
-    ]);
+    const [allInvoices, unpaidInvoices] = await runAsSystem(() =>
+      Promise.all([
+        listInvoices(invoiceWhere),
+        listInvoices({ ...baseWhere, status: { in: ['unpaid', 'partial'] } }),
+      ])
+    );
+
+    const total = allInvoices.length;
+    const invoices = allInvoices.slice(skip, skip + limit);
 
     const outstandingBalance = unpaidInvoices.reduce((sum: number, inv: any) => {
       const paid = (inv.payments ?? []).reduce(

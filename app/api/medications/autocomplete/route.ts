@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Visit from '@/models/Visit';
-import Medicine from '@/models/Medicine';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
 import { sanitizeSearch } from '@/lib/utils';
+import type { Prisma } from '@prisma/client';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 export interface MedicineSuggestion {
   name: string;
@@ -22,85 +25,87 @@ export async function GET(request: NextRequest) {
   if (!session) return unauthorizedResponse();
 
   try {
-    await connectDB();
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search') || '';
-
-    const tenantFilter: any = tenantId ? { tenantId: new Types.ObjectId(tenantId) } : {};
     const safeSearch = search ? sanitizeSearch(search) : '';
-    const searchRegex = safeSearch ? { $regex: safeSearch, $options: 'i' } : undefined;
 
-    // 1. Query Medicine catalog — primary source, returns full suggestion objects
-    const medicineFilter: any = { active: true, ...tenantFilter };
-    if (search) {
-      medicineFilter.$or = [
-        { name: searchRegex },
-        { genericName: searchRegex },
-        { brandNames: searchRegex },
-      ];
-    }
-    const medicines = await Medicine.find(medicineFilter)
-      .select('name genericName brandNames standardDosage standardFrequency duration')
-      .limit(50)
-      .lean();
+    const results = await run(tenantId, async () => {
+      // 1. Query Medicine catalog — primary source, returns full suggestion objects
+      const medicineWhere: Prisma.MedicineWhereInput = { active: true };
+      if (search) {
+        medicineWhere.OR = [
+          { name: { contains: safeSearch, mode: 'insensitive' } },
+          { genericName: { contains: safeSearch, mode: 'insensitive' } },
+          { brandNames: { has: safeSearch } },
+        ];
+      }
+      const medicines = await prisma.medicine.findMany({
+        where: medicineWhere,
+        select: { name: true, genericName: true, standardDosage: true, standardFrequency: true, duration: true },
+        take: 50,
+      });
 
-    // Build catalog suggestions (name entry + generic name entry)
-    const catalogMap = new Map<string, MedicineSuggestion>();
-    for (const med of medicines) {
-      const m = med as any;
-      const suggestion: MedicineSuggestion = {
-        name: m.name,
-        dosage: m.standardDosage || '',
-        frequency: m.standardFrequency || '',
-        duration: m.duration || '',
-        source: 'catalog',
-      };
-      catalogMap.set(m.name.toLowerCase(), suggestion);
-
-      if (m.genericName && !catalogMap.has(m.genericName.toLowerCase())) {
-        catalogMap.set(m.genericName.toLowerCase(), {
-          name: m.genericName,
-          dosage: m.standardDosage || '',
-          frequency: m.standardFrequency || '',
-          duration: m.duration || '',
+      // Build catalog suggestions (name entry + generic name entry)
+      const catalogMap = new Map<string, MedicineSuggestion>();
+      for (const med of medicines) {
+        const suggestion: MedicineSuggestion = {
+          name: med.name,
+          dosage: med.standardDosage || '',
+          frequency: med.standardFrequency || '',
+          duration: med.duration || '',
           source: 'catalog',
-        });
-      }
-    }
+        };
+        catalogMap.set(med.name.toLowerCase(), suggestion);
 
-    // 2. Aggregate unique medication names from past visits (as fallback history)
-    const visitMatch: any = { ...tenantFilter };
-    if (search) visitMatch['treatmentPlan.medications.name'] = searchRegex;
-    const visitPipeline: any[] = [
-      { $match: visitMatch },
-      { $unwind: '$treatmentPlan.medications' },
-      ...(search ? [{ $match: { 'treatmentPlan.medications.name': searchRegex } }] : []),
-      { $group: { _id: '$treatmentPlan.medications.name', dosage: { $first: '$treatmentPlan.medications.dosage' }, frequency: { $first: '$treatmentPlan.medications.frequency' }, duration: { $first: '$treatmentPlan.medications.duration' } } },
-    ];
-    const visitResult = await Visit.aggregate(visitPipeline);
-    for (const v of visitResult) {
-      if (!v._id) continue;
-      const key = v._id.toLowerCase();
-      if (!catalogMap.has(key)) {
-        catalogMap.set(key, {
-          name: v._id,
-          dosage: v.dosage || '',
-          frequency: v.frequency || '',
-          duration: v.duration || '',
-          source: 'history',
-        });
+        if (med.genericName && !catalogMap.has(med.genericName.toLowerCase())) {
+          catalogMap.set(med.genericName.toLowerCase(), {
+            name: med.genericName,
+            dosage: med.standardDosage || '',
+            frequency: med.standardFrequency || '',
+            duration: med.duration || '',
+            source: 'catalog',
+          });
+        }
       }
-    }
 
-    // 3. Sort catalog first, then history; alphabetical within each group
-    const results = Array.from(catalogMap.values())
-      .sort((a, b) => {
-        if (a.source !== b.source) return a.source === 'catalog' ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      })
-      .slice(0, 30);
+      // 2. Aggregate unique medication names from past visits (as fallback history)
+      // VisitTreatmentMedication is a child table with no tenantId column of
+      // its own (see lib/prisma-tenant-extension.ts) — the tenant extension
+      // cannot scope it automatically, so the tenant filter is applied
+      // explicitly through the parent Visit relation here.
+      const visitMedicationWhere: Prisma.VisitTreatmentMedicationWhereInput = {
+        visit: tenantId ? { tenantId } : undefined,
+      };
+      if (search) visitMedicationWhere.name = { contains: safeSearch, mode: 'insensitive' };
+      const visitMedications = await prisma.visitTreatmentMedication.findMany({
+        where: visitMedicationWhere,
+        select: { name: true, dosage: true, frequency: true, duration: true },
+        orderBy: { name: 'asc' },
+      });
+      for (const v of visitMedications) {
+        if (!v.name) continue;
+        const key = v.name.toLowerCase();
+        if (!catalogMap.has(key)) {
+          catalogMap.set(key, {
+            name: v.name,
+            dosage: v.dosage || '',
+            frequency: v.frequency || '',
+            duration: v.duration || '',
+            source: 'history',
+          });
+        }
+      }
+
+      // 3. Sort catalog first, then history; alphabetical within each group
+      return Array.from(catalogMap.values())
+        .sort((a, b) => {
+          if (a.source !== b.source) return a.source === 'catalog' ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        })
+        .slice(0, 30);
+    });
 
     return NextResponse.json({ success: true, data: results });
   } catch (error: any) {

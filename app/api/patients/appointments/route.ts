@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Appointment from '@/models/Appointment';
-import Doctor from '@/models/Doctor';
 import { sendSMS } from '@/lib/sms';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getPatientById } from '@/lib/data/patient';
+import {
+  listAppointments,
+  createAppointment,
+  findConflictingAppointment,
+  getMaxAppointmentCodeNumber,
+} from '@/lib/data/appointment';
+import { listDoctors, findActiveDoctorById } from '@/lib/data/doctor';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * Get available doctors and time slots for patient booking
@@ -19,34 +29,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    await connectDB();
-
-    const Patient = (await import('@/models/Patient')).default;
-    const patient = await Patient.findById(sessionData.patientId);
+    const patient = await runAsSystem(() => getPatientById(sessionData.patientId));
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
         { status: 404 }
       );
     }
-    
-    const patientTenantId = patient.tenantIds?.[0];
+
+    const patientTenantId = (patient as any).tenantIds?.[0];
 
     const searchParams = request.nextUrl.searchParams;
     const date = searchParams.get('date');
     const doctorId = searchParams.get('doctorId');
 
     // Get available doctors (tenant-scoped)
-    const doctorQuery: any = { status: 'active' };
-    if (patientTenantId) {
-      doctorQuery.tenantId = patientTenantId;
-    } else {
-      doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const doctors = await Doctor.find(doctorQuery)
-      .select('firstName lastName specialization schedule')
-      .lean();
+    const doctors = await run(patientTenantId, () => listDoctors({ status: 'active' }));
 
     // Get available time slots for a specific date and doctor
     if (date && doctorId) {
@@ -55,20 +53,13 @@ export async function GET(request: NextRequest) {
       const endOfDay = new Date(date);
       endOfDay.setHours(23, 59, 59, 999);
 
-      const appointmentQuery: any = {
-        doctor: doctorId,
-        appointmentDate: { $gte: startOfDay, $lte: endOfDay },
-        status: { $in: ['scheduled', 'confirmed', 'pending'] },
-      };
-      if (patientTenantId) {
-        appointmentQuery.tenantId = patientTenantId;
-      } else {
-        appointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const existingAppointments = await Appointment.find(appointmentQuery)
-        .select('appointmentTime duration')
-        .lean();
+      const existingAppointments = await run(patientTenantId, () =>
+        listAppointments({
+          doctorId,
+          appointmentDate: { gte: startOfDay, lte: endOfDay },
+          status: { in: ['scheduled', 'confirmed', 'pending'] },
+        })
+      );
 
       // Generate available time slots (9 AM to 5 PM, 30-minute intervals)
       const availableSlots: string[] = [];
@@ -121,8 +112,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await connectDB();
-
     const body = await request.json();
     const doctorId = typeof body.doctorId === 'string' ? body.doctorId.trim() : '';
     const appointmentDate = typeof body.appointmentDate === 'string' ? body.appointmentDate.trim() : '';
@@ -147,9 +136,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Get patient info
-    const Patient = (await import('@/models/Patient')).default;
-    const patient = await Patient.findById(sessionData.patientId);
-    
+    const patient = await runAsSystem(() => getPatientById(sessionData.patientId));
+
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
@@ -158,148 +146,68 @@ export async function POST(request: NextRequest) {
     }
 
     // Get tenantId from patient (Patient schema uses tenantIds array)
-    const patientTenantId = patient.tenantIds?.[0];
+    const patientTenantId = (patient as any).tenantIds?.[0];
 
-    // Check for conflicts (tenant-scoped)
-    const startOfDay = new Date(appointmentDateObj);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(appointmentDateObj);
-    endOfDay.setHours(23, 59, 59, 999);
+    const result = await run(patientTenantId, async () => {
+      const startOfDay = new Date(appointmentDateObj);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(appointmentDateObj);
+      endOfDay.setHours(23, 59, 59, 999);
 
-    const conflictQuery: any = {
-      doctor: doctorId,
-      appointmentDate: { $gte: startOfDay, $lte: endOfDay },
-      appointmentTime: appointmentTime,
-      status: { $in: ['scheduled', 'confirmed', 'pending'] },
-    };
-    if (patientTenantId) {
-      conflictQuery.tenantId = patientTenantId;
-    } else {
-      conflictQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    const conflictingAppointment = await Appointment.findOne(conflictQuery);
-
-    if (conflictingAppointment) {
-      return NextResponse.json(
-        { success: false, error: 'This time slot is no longer available. Please choose another time.' },
-        { status: 409 }
-      );
-    }
-
-    // Check if patient already has an appointment at this time (tenant-scoped)
-    const patientConflictQuery: any = {
-      patient: sessionData.patientId,
-      appointmentDate: { $gte: startOfDay, $lte: endOfDay },
-      appointmentTime: appointmentTime,
-      status: { $in: ['scheduled', 'confirmed', 'pending'] },
-    };
-    if (patientTenantId) {
-      patientConflictQuery.tenantId = patientTenantId;
-    } else {
-      patientConflictQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const patientConflict = await Appointment.findOne(patientConflictQuery);
-
-    if (patientConflict) {
-      return NextResponse.json(
-        { success: false, error: 'You already have an appointment at this time.' },
-        { status: 409 }
-      );
-    }
-
-    // Validate that doctor belongs to tenant
-    const doctorQuery: any = { _id: doctorId };
-    if (patientTenantId) {
-      doctorQuery.tenantId = patientTenantId;
-    } else {
-      doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const doctor = await Doctor.findOne(doctorQuery);
-    if (!doctor) {
-      return NextResponse.json(
-        { success: false, error: 'Doctor not found' },
-        { status: 404 }
-      );
-    }
-
-    // Auto-generate appointmentCode (tenant-scoped)
-    const lastAppointmentQuery: any = { appointmentCode: { $exists: true, $ne: null } };
-    if (patientTenantId) {
-      lastAppointmentQuery.tenantId = patientTenantId;
-    } else {
-      lastAppointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const lastAppointment = await Appointment.findOne(lastAppointmentQuery)
-      .sort({ appointmentCode: -1 })
-      .exec();
-
-    let nextNumber = 1;
-    if (lastAppointment?.appointmentCode) {
-      const match = lastAppointment.appointmentCode.match(/(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
+      // Check for conflicts (tenant-scoped)
+      const conflictingAppointment = await findConflictingAppointment(doctorId, appointmentDateObj, appointmentTime);
+      if (conflictingAppointment) {
+        return { error: 'This time slot is no longer available. Please choose another time.', status: 409 };
       }
+
+      // Check if patient already has an appointment at this time (tenant-scoped)
+      const patientConflicts = await listAppointments({
+        patientId: sessionData.patientId,
+        appointmentDate: { gte: startOfDay, lte: endOfDay },
+        appointmentTime,
+        status: { in: ['scheduled', 'confirmed', 'pending'] },
+      });
+      if (patientConflicts.length > 0) {
+        return { error: 'You already have an appointment at this time.', status: 409 };
+      }
+
+      // Validate that doctor belongs to tenant
+      const doctor = await findActiveDoctorById(doctorId);
+      if (!doctor) {
+        return { error: 'Doctor not found', status: 404 };
+      }
+
+      // Auto-generate appointmentCode (tenant-scoped)
+      const nextNumber = (await getMaxAppointmentCodeNumber()) + 1;
+      const appointmentCode = `APT-${String(nextNumber).padStart(6, '0')}`;
+
+      const appointment = await createAppointment({
+        patient: { connect: { id: sessionData.patientId } },
+        doctor: { connect: { id: doctorId } },
+        appointmentCode,
+        appointmentDate: appointmentDateObj,
+        appointmentTime,
+        duration: 30,
+        status: 'pending', // Requires confirmation from clinic
+        reason: reason || 'General Consultation',
+        isWalkIn: false,
+      } as any);
+
+      return { appointment, doctor };
+    });
+
+    if ('error' in result) {
+      return NextResponse.json({ success: false, error: result.error }, { status: result.status });
     }
 
-    const appointmentCode = `APT-${String(nextNumber).padStart(6, '0')}`;
-
-    // Create appointment (tenant-scoped)
-    const appointmentData: any = {
-      patient: sessionData.patientId,
-      doctor: doctorId,
-      appointmentCode,
-      appointmentDate: appointmentDateObj,
-      appointmentTime,
-      duration: 30,
-      status: 'pending', // Requires confirmation from clinic
-      reason: reason || 'General Consultation',
-      isWalkIn: false,
-    };
-    
-    if (patientTenantId) {
-      appointmentData.tenantId = patientTenantId;
-    }
-
-    const appointment = await Appointment.create(appointmentData);
-
-    // Populate with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName email phone patientCode',
-    };
-    if (patientTenantId) {
-      patientPopulateOptions.match = { tenantIds: patientTenantId };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    const doctorPopulateOptions: any = {
-      path: 'doctor',
-      select: 'firstName lastName specializationId',
-      populate: {
-        path: 'specializationId',
-        select: 'name',
-      },
-    };
-    if (patientTenantId) {
-      doctorPopulateOptions.match = { tenantId: patientTenantId };
-    } else {
-      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-    
-    await appointment.populate(patientPopulateOptions);
-    await appointment.populate(doctorPopulateOptions);
+    const { appointment } = result;
 
     // Send confirmation SMS
-    sendBookingConfirmation(appointment).catch(console.error);
+    sendBookingConfirmation(appointment, patient).catch(console.error);
 
     logger.info('Patient booked appointment', {
       patientId: sessionData.patientId,
-      appointmentCode,
+      appointmentCode: appointment.appointmentCode,
       doctorId,
       appointmentDate,
       appointmentTime,
@@ -323,8 +231,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Send booking confirmation via SMS
-async function sendBookingConfirmation(appointment: any) {
-  const patient = appointment.patient;
+async function sendBookingConfirmation(appointment: any, patient: any) {
   const doctor = appointment.doctor;
   const appointmentDate = new Date(appointment.appointmentDate).toLocaleDateString('en-US', {
     weekday: 'long',
@@ -334,7 +241,7 @@ async function sendBookingConfirmation(appointment: any) {
   });
   const appointmentTime = appointment.appointmentTime;
   const [hours, minutes] = appointmentTime.split(':').map(Number);
-  const displayTime = hours >= 12 
+  const displayTime = hours >= 12
     ? `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} PM`
     : `${hours}:${minutes.toString().padStart(2, '0')} AM`;
 
@@ -359,4 +266,3 @@ async function sendBookingConfirmation(appointment: any) {
     });
   }
 }
-

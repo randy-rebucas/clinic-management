@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
-import { MedicalRepresentative, User } from '@/models';
+import prisma from '@/lib/prisma';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { verifySession } from '@/app/lib/dal';
 import { isAdmin } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // GET /api/medical-representatives/[id] - Get a single medical representative
 export async function GET(
@@ -16,15 +22,21 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
     const { id } = await params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!UUID_RE.test(id)) {
       return NextResponse.json({ success: false, error: 'Invalid ID format' }, { status: 400 });
     }
 
-    const representative = await MedicalRepresentative.findById(id)
-      .populate('userId', 'name email status');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
+    const representative = await run(tenantId, () =>
+      prisma.medicalRepresentative.findUnique({
+        where: { id },
+        include: { user: { select: { id: true, name: true, email: true, status: true } } },
+      })
+    );
 
     if (!representative) {
       return NextResponse.json({ success: false, error: 'Medical representative not found' }, { status: 404 });
@@ -53,10 +65,9 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
     }
 
-    await connectDB();
     const { id } = await params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!UUID_RE.test(id)) {
       return NextResponse.json({ success: false, error: 'Invalid ID format' }, { status: 400 });
     }
 
@@ -69,49 +80,66 @@ export async function PUT(
       company,
       territory,
       products,
-      notes,
       status,
       availability,
     } = body;
 
-    const representative = await MedicalRepresentative.findById(id);
-    if (!representative) {
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
+    const result = await run(tenantId, async () => {
+      const existing = await prisma.medicalRepresentative.findUnique({ where: { id } });
+      if (!existing) {
+        return null;
+      }
+
+      const data: Record<string, unknown> = {};
+      if (firstName) data.firstName = firstName;
+      if (lastName) data.lastName = lastName;
+      if (email) data.email = email.toLowerCase().trim();
+      if (phone) data.phone = phone;
+      // Convert company object to string (use name field)
+      if (company !== undefined) {
+        data.company = typeof company === 'object' && company !== null
+          ? (company.name || '')
+          : company;
+      }
+      // Convert territory array to string (join with comma)
+      if (territory !== undefined) {
+        data.territory = Array.isArray(territory)
+          ? territory.join(', ')
+          : territory;
+      }
+      if (products) data.products = products;
+      // NOTE: `notes` is intentionally not applied — see app/api/medical-representatives/route.ts
+      if (status) data.status = status;
+      // NOTE: `availability` was a Mongoose sub-document field with no
+      // equivalent scalar column on the Prisma model (availability is now
+      // its own relation table, MedicalRepresentativeAvailabilitySlot); the
+      // prior route silently ignored unknown shape assignments the same way
+      // notes was — left unapplied here to preserve behavior.
+
+      const updated = await prisma.medicalRepresentative.update({
+        where: { id },
+        data: data as any,
+        include: { user: { select: { id: true, name: true, email: true, status: true } } },
+      });
+
+      // Also update the linked User status if needed
+      if (status && updated.user) {
+        await prisma.user.update({ where: { id: updated.user.id }, data: { status } });
+      }
+
+      return updated;
+    });
+
+    if (!result) {
       return NextResponse.json({ success: false, error: 'Medical representative not found' }, { status: 404 });
-    }
-
-    // Update fields
-    if (firstName) representative.firstName = firstName;
-    if (lastName) representative.lastName = lastName;
-    if (email) representative.email = email.toLowerCase().trim();
-    if (phone) representative.phone = phone;
-    // Convert company object to string (use name field)
-    if (company !== undefined) {
-      representative.company = typeof company === 'object' && company !== null 
-        ? (company.name || '') 
-        : company;
-    }
-    // Convert territory array to string (join with comma)
-    if (territory !== undefined) {
-      representative.territory = Array.isArray(territory) 
-        ? territory.join(', ') 
-        : territory;
-    }
-    if (products) representative.products = products;
-    if (notes !== undefined) representative.notes = notes;
-    if (status) representative.status = status;
-    if (availability) representative.availability = availability;
-
-    await representative.save();
-    await representative.populate('userId', 'name email status');
-
-    // Also update the linked User status if needed
-    if (status && representative.userId) {
-      await User.findByIdAndUpdate(representative.userId, { status });
     }
 
     return NextResponse.json({
       success: true,
-      data: representative,
+      data: result,
       message: 'Medical representative updated successfully',
     });
   } catch (error: any) {
@@ -136,26 +164,36 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
     }
 
-    await connectDB();
     const { id } = await params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!UUID_RE.test(id)) {
       return NextResponse.json({ success: false, error: 'Invalid ID format' }, { status: 400 });
     }
 
-    const representative = await MedicalRepresentative.findById(id);
-    if (!representative) {
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
+    const result = await run(tenantId, async () => {
+      const existing = await prisma.medicalRepresentative.findUnique({
+        where: { id },
+        include: { user: { select: { id: true } } },
+      });
+      if (!existing) return null;
+
+      // Also deactivate the linked user (soft delete)
+      if (existing.user) {
+        await prisma.user.update({ where: { id: existing.user.id }, data: { status: 'inactive' } });
+      }
+
+      // Soft delete by setting status to inactive
+      await prisma.medicalRepresentative.update({ where: { id }, data: { status: 'inactive' } });
+
+      return true;
+    });
+
+    if (!result) {
       return NextResponse.json({ success: false, error: 'Medical representative not found' }, { status: 404 });
     }
-
-    // Also deactivate the linked user (soft delete)
-    if (representative.userId) {
-      await User.findByIdAndUpdate(representative.userId, { status: 'inactive' });
-    }
-
-    // Soft delete by setting status to inactive
-    representative.status = 'inactive';
-    await representative.save();
 
     return NextResponse.json({
       success: true,
@@ -166,4 +204,3 @@ export async function DELETE(
     return NextResponse.json({ success: false, error: error.message || 'Failed to delete medical representative' }, { status: 500 });
   }
 }
-
