@@ -139,6 +139,10 @@
     {
       "path": "/api/cron/patient-reengagement",
       "schedule": "0 10 * * 1"
+    },
+    {
+      "path": "/api/cron/notification-cleanup",
+      "schedule": "0 3 * * *"
     }
   ]
 }
