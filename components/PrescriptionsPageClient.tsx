@@ -47,6 +47,8 @@ interface Patient {
   weight?: number;
 }
 
+const PRESCRIPTIONS_PER_PAGE = 10;
+
 export default function PrescriptionsPageClient() {
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -57,6 +59,7 @@ export default function PrescriptionsPageClient() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const router = useRouter();
 
   useEffect(() => {
@@ -168,6 +171,22 @@ export default function PrescriptionsPageClient() {
     if (filterStatus !== 'all' && prescription.status !== filterStatus) return false;
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredPrescriptions.length / PRESCRIPTIONS_PER_PAGE));
+  const paginatedPrescriptions = filteredPrescriptions.slice(
+    (currentPage - 1) * PRESCRIPTIONS_PER_PAGE,
+    currentPage * PRESCRIPTIONS_PER_PAGE
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterStatus]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   const handlePrint = async (prescriptionId: string) => {
     window.open(`/api/prescriptions/${prescriptionId}/print`, '_blank');
@@ -404,7 +423,7 @@ export default function PrescriptionsPageClient() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredPrescriptions.map((prescription) => {
+                  {paginatedPrescriptions.map((prescription) => {
                     const totalPrescribed = prescription.medications.reduce(
                       (sum, m) => sum + (m.quantity || 0),
                       0
@@ -504,6 +523,32 @@ export default function PrescriptionsPageClient() {
             </div>
           )}
         </div>
+        {filteredPrescriptions.length > 0 && totalPages > 1 && (
+          <div className="px-5 py-4 border-t border-gray-200 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-sm text-gray-600">
+              Showing {(currentPage - 1) * PRESCRIPTIONS_PER_PAGE + 1}–{Math.min(currentPage * PRESCRIPTIONS_PER_PAGE, filteredPrescriptions.length)} of {filteredPrescriptions.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-gray-700 font-medium px-2">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
         </div>
       </div>

@@ -58,11 +58,14 @@ interface QueueItem {
   };
 }
 
+const VISITS_PER_PAGE = 10;
+
 export default function VisitsPageClient() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const router = useRouter();
 
   // State for visits and queue
@@ -157,6 +160,22 @@ export default function VisitsPageClient() {
     if (filterStatus !== 'all' && visit.status !== filterStatus) return false;
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredVisits.length / VISITS_PER_PAGE));
+  const paginatedVisits = filteredVisits.slice(
+    (currentPage - 1) * VISITS_PER_PAGE,
+    currentPage * VISITS_PER_PAGE
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterStatus]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   const getStatusColor = (status: string): 'green' | 'blue' | 'red' | 'gray' => {
     switch (status) {
@@ -460,7 +479,7 @@ export default function VisitsPageClient() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredVisits.map((visit) => (
+                  {paginatedVisits.map((visit) => (
                     <tr key={visit._id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-4">
                         <div className="text-sm font-bold text-gray-900">{visit.visitCode}</div>
@@ -533,6 +552,32 @@ export default function VisitsPageClient() {
             </div>
           )}
         </div>
+        {filteredVisits.length > 0 && totalPages > 1 && (
+          <div className="px-5 py-4 border-t border-gray-200 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-sm text-gray-600">
+              Showing {(currentPage - 1) * VISITS_PER_PAGE + 1}–{Math.min(currentPage * VISITS_PER_PAGE, filteredVisits.length)} of {filteredVisits.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-gray-700 font-medium px-2">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
         </div>
       </div>

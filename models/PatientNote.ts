@@ -88,5 +88,6 @@ const PatientNoteSchema = new Schema<IPatientNote>(
 PatientNoteSchema.index({ patient: 1, createdAt: -1 });
 PatientNoteSchema.index({ patient: 1, visibility: 1 });
 PatientNoteSchema.index({ 'author.userId': 1, createdAt: -1 });
+PatientNoteSchema.index({ tenantId: 1, patient: 1, visibility: 1, createdAt: -1 });
 
 export default mongoose.models.PatientNote || mongoose.model<IPatientNote>('PatientNote', PatientNoteSchema);
