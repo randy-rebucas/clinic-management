@@ -1,13 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
+import prisma from '@/lib/prisma';
+import { runAsSystem, runWithTenant } from '@/lib/tenant-context';
 import { createAuditLog } from '@/lib/audit';
-import { runAsSystem } from '@/lib/tenant-context';
+import { createBackupRecord } from '@/lib/data/backup-record';
+import { getOrderedModelNames } from '@/lib/backup/model-order';
 
 /**
  * Daily backup cron job
  * Configure in vercel.json or your cron service
+ *
+ * Migrated off the raw `mongoose.connection.db` collection dump (see
+ * app/api/backups/route.ts for the same Postgres/Prisma dump approach this
+ * mirrors). Runs per active tenant since `BackupRecord.createdById` is a
+ * required FK to a real User row — each tenant's backup is attributed to
+ * that tenant's first admin/owner user. A tenant with no admin/owner user
+ * is skipped (logged, not fatal to the rest of the run).
  */
+async function dumpAllModels(): Promise<{ data: Record<string, unknown[]>; collections: string[]; totalDocuments: number }> {
+  const modelNames = getOrderedModelNames();
+  const data: Record<string, unknown[]> = {};
+  for (const modelName of modelNames) {
+    const delegate = (prisma as any)[modelName[0].toLowerCase() + modelName.slice(1)];
+    if (!delegate?.findMany) continue;
+    data[modelName] = await delegate.findMany({});
+  }
+  const collections = Object.keys(data);
+  const totalDocuments = Object.values(data).reduce((sum, docs) => sum + docs.length, 0);
+  return { data, collections, totalDocuments };
+}
+
 export async function GET(request: NextRequest) {
   // Authenticate request
   // Vercel Cron sends 'x-vercel-cron' header for internal authentication
@@ -15,7 +36,7 @@ export async function GET(request: NextRequest) {
   const isVercelCron = request.headers.get('x-vercel-cron') === '1';
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
-  
+
   // If CRON_SECRET is set, require authentication (unless it's Vercel Cron)
   if (cronSecret && !isVercelCron) {
     if (authHeader !== `Bearer ${cronSecret}`) {
@@ -25,7 +46,7 @@ export async function GET(request: NextRequest) {
       );
     }
   }
-  
+
   // If no CRON_SECRET is set and it's not Vercel Cron, reject in production
   if (!cronSecret && !isVercelCron && process.env.NODE_ENV === 'production') {
     return NextResponse.json(
@@ -35,67 +56,67 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-    
-    const db = mongoose.connection.db;
-    if (!db) {
-      throw new Error('Database connection not available');
-    }
-
-    const collections = await db.listCollections().toArray();
-    const backupData: { [key: string]: any[] } = {};
-    const timestamp = new Date().toISOString();
-
-    // Export each collection
-    for (const collection of collections) {
-      const collectionName = collection.name;
-      // Skip system collections
-      if (collectionName.startsWith('system.')) {
-        continue;
-      }
-
-      const Model = mongoose.models[collectionName] || mongoose.model(collectionName, new mongoose.Schema({}, { strict: false }));
-      const documents = await Model.find({}).lean();
-      backupData[collectionName] = documents;
-    }
-
-    // Create backup metadata
-    const backup = {
-      timestamp,
-      version: '1.0',
-      collections: Object.keys(backupData),
-      totalDocuments: Object.values(backupData).reduce((sum, docs) => sum + docs.length, 0),
-      data: backupData,
-    };
-
-    // In production, save backup to cloud storage (S3, Azure Blob, etc.)
-
-    // Log backup action (system user). lib/audit.ts writes through Prisma
-    // now (Batch 6) — AuditLog is tenant-scoped, so this cross-tenant
-    // system write needs runAsSystem() to satisfy the tenant-scoping
-    // extension (see lib/prisma-tenant-extension.ts).
-    await runAsSystem(() =>
-      createAuditLog({
-        userId: 'system' as any,
-        userEmail: 'system@clinic.local',
-        userRole: 'system',
-        action: 'backup',
-        resource: 'system',
-        description: 'Daily automated backup',
-        metadata: {
-          collections: backup.collections,
-          totalDocuments: backup.totalDocuments,
-          automated: true,
-        },
-      })
+    const tenants = await runAsSystem(() =>
+      prisma.tenant.findMany({ where: { status: 'active' }, select: { id: true, name: true } })
     );
+
+    const results: Array<{ tenantId: string; success: boolean; skipped?: boolean; reason?: string; totalDocuments?: number }> = [];
+
+    for (const tenant of tenants) {
+      try {
+        const admin = await runAsSystem(() =>
+          prisma.user.findFirst({
+            where: { tenantId: tenant.id, role: { name: { in: ['admin', 'owner'] } } },
+            select: { id: true, email: true },
+          })
+        );
+
+        if (!admin) {
+          results.push({ tenantId: tenant.id, success: false, skipped: true, reason: 'No admin/owner user found for tenant' });
+          continue;
+        }
+
+        const { data, collections, totalDocuments } = await runWithTenant(tenant.id, dumpAllModels);
+        const sizeBytes = Buffer.byteLength(JSON.stringify(data), 'utf8');
+
+        await runWithTenant(tenant.id, () =>
+          createBackupRecord({
+            createdById: admin.id,
+            createdByEmail: admin.email,
+            label: `Automated daily backup — ${new Date().toISOString()}`,
+            status: 'completed',
+            collections,
+            totalDocuments,
+            sizeBytes,
+            version: '2.0',
+            data: data as any,
+          })
+        );
+
+        await runAsSystem(() =>
+          createAuditLog({
+            userId: admin.id,
+            userEmail: admin.email || 'system@clinic.local',
+            userRole: 'system',
+            tenantId: tenant.id,
+            action: 'backup',
+            resource: 'system',
+            description: 'Daily automated backup',
+            metadata: { collections, totalDocuments, automated: true },
+          })
+        );
+
+        results.push({ tenantId: tenant.id, success: true, totalDocuments });
+      } catch (err: any) {
+        console.error(`Error backing up tenant ${tenant.id}:`, err);
+        results.push({ tenantId: tenant.id, success: false, reason: err?.message || 'Unknown error' });
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Daily backup completed',
-      timestamp: backup.timestamp,
-      collections: backup.collections.length,
-      totalDocuments: backup.totalDocuments,
+      message: `Daily backup processed for ${tenants.length} tenant(s)`,
+      data: results,
     });
   } catch (error: any) {
     console.error('Error in daily backup:', error);
@@ -105,4 +126,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

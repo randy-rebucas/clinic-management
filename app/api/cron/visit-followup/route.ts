@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processVisitFollowUpReminders } from '@/lib/automations/visit-followup';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
 
 /**
  * Visit Follow-Up Reminder Cron Job
@@ -23,11 +22,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    let tenantId: Types.ObjectId | undefined;
+    let tenantId: string | undefined;
     try {
       const tenantContext = await getTenantContext();
       if (tenantContext.tenantId) {
-        tenantId = new Types.ObjectId(tenantContext.tenantId as string);
+        tenantId = tenantContext.tenantId as string;
       }
     } catch {
       // single-tenant mode

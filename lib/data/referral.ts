@@ -182,3 +182,22 @@ export async function updateReferral(id: string, body: Record<string, any>) {
 export async function deleteReferral(id: string) {
   return prisma.referral.delete({ where: { id } });
 }
+
+/**
+ * Highest existing `REF-######` code number, for auto-generation
+ * (tenant-scoped by the active context) — mirrors
+ * lib/data/visit.ts's getMaxVisitCodeNumber() pattern. Replaces the
+ * Mongoose `pre('save')` hook that generated `REF-${Date.now()}-${count}`
+ * (see prisma/MIGRATION_NOTES.md's "Referral" section); a sequential
+ * max-number scheme is used instead for consistency with the rest of the
+ * codebase's code-generation (visitCode, prescriptionCode, etc.).
+ */
+export async function getMaxReferralCodeNumber(): Promise<number> {
+  const last = await prisma.referral.findFirst({
+    orderBy: { referralCode: 'desc' },
+    select: { referralCode: true },
+  });
+  if (!last?.referralCode) return 0;
+  const match = last.referralCode.match(/(\d+)$/);
+  return match ? parseInt(match[1], 10) : 0;
+}

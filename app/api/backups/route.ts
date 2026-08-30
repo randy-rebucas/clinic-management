@@ -5,13 +5,8 @@ import { createAuditLog } from '@/lib/audit';
 import { getTenantContext } from '@/lib/tenant';
 import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { listBackupRecords, createBackupRecord } from '@/lib/data/backup-record';
-// NOTE: the raw collection dump below (mongoose.connection.db) is genuine
-// pre-cutover MongoDB backup infrastructure — it snapshots the live Mongo
-// database, which still exists during the migration window. It intentionally
-// stays on the Mongo driver; only the BackupRecord bookkeeping row moves to
-// Prisma/Postgres (lib/data/backup-record.ts).
-import mongoose from 'mongoose';
-import connectDB from '@/lib/mongodb';
+import { getOrderedModelNames } from '@/lib/backup/model-order';
+import prisma from '@/lib/prisma';
 
 function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
   return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
@@ -55,6 +50,32 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/backups — create a new backup and store it in the database
+//
+// Migrated off the raw `mongoose.connection.db` collection dump. The
+// Postgres/Prisma equivalent is a per-model `findMany()` dump: we enumerate
+// every Prisma model (via lib/backup/model-order.ts, itself built from
+// Prisma.dmmf.datamodel.models, excluding BackupRecord) and snapshot each
+// table's rows as JSON, keyed by model name (Prisma-style, e.g. "labResult")
+// rather than the old Mongo collection name (e.g. "labresults").
+//
+// Known limitations of this approach (see prisma/MIGRATION_NOTES.md /
+// lib/prisma-tenant-extension.ts for the scoping rules referenced below):
+//   - Tenant scoping only applies automatically to models listed in
+//     DIRECTLY_SCOPED_MODELS / JUNCTION_SCOPED_MODELS in
+//     lib/prisma-tenant-extension.ts. Pure child/junction tables that hang
+//     off a scoped parent (e.g. VisitDiagnosis, InvoiceLineItem,
+//     DoctorScheduleSlot) have no tenantId column of their own and are NOT
+//     filtered when this backup runs under a specific tenant's
+//     runWithTenant() context — a tenant-scoped backup will still include
+//     every tenant's rows for those tables. Likewise fully global models
+//     (Tenant, Specialization) are always dumped in full. This mirrors a
+//     real gap in the tenant-scoping extension itself (documented there),
+//     not something this route can fix locally without per-model parent
+//     joins. For an admin/system-wide backup (no tenant on the session) this
+//     doesn't matter since everything is dumped anyway.
+//   - This is a full logical dump (every row of every table), not an
+//     incremental/point-in-time backup — large databases will produce a
+//     large `BackupRecord.data` JSON blob.
 export async function POST(request: NextRequest) {
   const session = await verifySession();
   if (!session) return unauthorizedResponse();
@@ -73,21 +94,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const label: string | undefined = body?.label?.trim() || undefined;
 
-    // Genuine pre-cutover Mongo backup: dump every live Mongo collection.
-    await connectDB();
-    const db = mongoose.connection.db;
-    if (!db) throw new Error('Database connection not available');
-
-    const collections = await db.listCollections().toArray();
-    const backupData: Record<string, unknown[]> = {};
-
-    for (const col of collections) {
-      if (col.name.startsWith('system.') || col.name === 'backuprecords') continue;
-
-      const colRef = db.collection(col.name);
-      const docs = await colRef.find({}).toArray();
-      backupData[col.name] = docs;
-    }
+    const backupData: Record<string, unknown[]> = await run(tenantId, async () => {
+      const modelNames = getOrderedModelNames();
+      const dump: Record<string, unknown[]> = {};
+      for (const modelName of modelNames) {
+        const delegate = (prisma as any)[modelName[0].toLowerCase() + modelName.slice(1)];
+        if (!delegate?.findMany) continue;
+        dump[modelName] = await delegate.findMany({});
+      }
+      return dump;
+    });
 
     const collectionNames = Object.keys(backupData);
     const totalDocuments = Object.values(backupData).reduce((s, d) => s + d.length, 0);
@@ -102,7 +118,7 @@ export async function POST(request: NextRequest) {
         collections: collectionNames,
         totalDocuments,
         sizeBytes,
-        version: '1.0',
+        version: '2.0', // v2 = Postgres/Prisma model dump (v1 was raw Mongo collection dump)
         data: backupData as any,
       })
     );

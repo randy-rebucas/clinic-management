@@ -185,8 +185,47 @@ export interface CreateDocumentInput extends Record<string, any> {
   uploadedById: string;
 }
 
+/**
+ * Document has five nullable polymorphic parent FKs (patientId/visitId/
+ * appointmentId/labResultId/invoiceId — see prisma/MIGRATION_NOTES.md's
+ * top-priority items 2 & 3: an earlier `prescriptionId` field was
+ * considered but the schema has no such column/relation, since the source
+ * Mongoose model never had a `prescription` ref). Mongoose enforced "at
+ * most one set" via a pre('validate') hook; Postgres has no partial CHECK
+ * constraint for this in the Prisma schema, so it's enforced here.
+ */
+export class DocumentParentError extends Error {}
+
+export function assertAtMostOneParent(parents: {
+  patientId?: string | null;
+  visitId?: string | null;
+  appointmentId?: string | null;
+  labResultId?: string | null;
+  invoiceId?: string | null;
+}) {
+  const set = [
+    parents.patientId,
+    parents.visitId,
+    parents.appointmentId,
+    parents.labResultId,
+    parents.invoiceId,
+  ].filter((v) => v !== undefined && v !== null && v !== '');
+  if (set.length > 1) {
+    throw new DocumentParentError(
+      'A document may be linked to at most one of patient/visit/appointment/labResult/invoice.'
+    );
+  }
+}
+
 export async function createDocument(input: CreateDocumentInput) {
   const { referral, imaging, medicalCertificate, labResultMetadata, patientId, visitId, uploadedById, ...rest } = input;
+  assertAtMostOneParent({
+    patientId,
+    visitId,
+    appointmentId: (input as any).appointmentId,
+    labResultId: (input as any).labResultId,
+    invoiceId: (input as any).invoiceId,
+  });
   const doc = await prisma.document.create({
     data: {
       ...rest,
@@ -202,6 +241,24 @@ export async function createDocument(input: CreateDocumentInput) {
 
 export async function updateDocument(id: string, body: Record<string, any>) {
   const { referral, imaging, medicalCertificate, labResultMetadata, patient, uploadedBy, lastModifiedBy, visit, appointment, labResult, invoice, patientId, uploadedById, lastModifiedById, visitId, appointmentId, labResultId, invoiceId, _id, id: _bodyId, ...rest } = body;
+
+  // Only validate the "at most one parent" rule if the update actually
+  // touches one of the parent FKs — merge against the current row so a
+  // partial update (e.g. only changing `title`) isn't falsely rejected.
+  const parentFields = { patientId, visitId, appointmentId, labResultId, invoiceId };
+  if (Object.values(parentFields).some((v) => v !== undefined)) {
+    const current = await prisma.document.findUnique({
+      where: { id },
+      select: { patientId: true, visitId: true, appointmentId: true, labResultId: true, invoiceId: true },
+    });
+    assertAtMostOneParent({
+      patientId: patientId !== undefined ? patientId : current?.patientId,
+      visitId: visitId !== undefined ? visitId : current?.visitId,
+      appointmentId: appointmentId !== undefined ? appointmentId : current?.appointmentId,
+      labResultId: labResultId !== undefined ? labResultId : current?.labResultId,
+      invoiceId: invoiceId !== undefined ? invoiceId : current?.invoiceId,
+    });
+  }
 
   const data: Prisma.DocumentUpdateInput = {
     ...rest,

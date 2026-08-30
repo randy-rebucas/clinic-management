@@ -4,7 +4,7 @@ import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers'
 import { createAuditLog } from '@/lib/audit'; // OUT OF SCOPE (still Mongoose) — audit logging left untouched, same precedent as every prior batch
 import { getTenantContext } from '@/lib/tenant';
 import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
-import { listReferrals, buildReferralWhere, createReferral, countReferrals } from '@/lib/data/referral';
+import { listReferrals, buildReferralWhere, createReferral, getMaxReferralCodeNumber } from '@/lib/data/referral';
 import { getPatientById } from '@/lib/data/patient';
 import { getDoctorById } from '@/lib/data/doctor';
 
@@ -99,11 +99,14 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Generate referral code if not provided (tenant-scoped)
+      // Generate referral code if not provided (tenant-scoped), following
+      // the same max-number-based pattern as visitCode (lib/data/visit.ts's
+      // getMaxVisitCodeNumber) rather than the old Mongoose Date.now()-based
+      // scheme, for consistency.
       let referralCode = body.referralCode;
       if (!referralCode) {
-        const count = await countReferrals();
-        referralCode = `REF-${Date.now()}-${count + 1}`;
+        const maxNumber = await getMaxReferralCodeNumber();
+        referralCode = `REF-${String(maxNumber + 1).padStart(6, '0')}`;
       }
 
       return createReferral(

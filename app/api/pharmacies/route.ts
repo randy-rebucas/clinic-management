@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
@@ -43,7 +42,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     
     // Get tenant context from session or headers
     const tenantContext = await getTenantContext();

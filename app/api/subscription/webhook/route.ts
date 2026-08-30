@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Tenant from '@/models/Tenant';
+import prisma from '@/lib/prisma';
+import { runAsSystem } from '@/lib/tenant-context';
 import { verifyPayPalWebhook } from '@/lib/paypal';
+import { getTenantById } from '@/lib/data/tenant';
 
 /**
  * PayPal webhook handler for subscription events
  * Handles PAYMENT.CAPTURE.COMPLETED and PAYMENT.CAPTURE.REFUNDED
+ *
+ * Migrated off Mongoose: Tenant is now a Prisma model (Postgres), and its
+ * `subscription.*` sub-document became flattened `subscription*` columns on
+ * `Tenant` plus a separate `TenantPaymentHistory` table (see
+ * prisma/schema.prisma). Lookups/updates below are wrapped in runAsSystem()
+ * since a webhook has no request-scoped tenant context to run under —
+ * Tenant is the tenant-scoping root anyway (lib/data/tenant.ts), so the
+ * wrapping here is defense-in-depth rather than load-bearing.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -37,18 +46,19 @@ export async function POST(request: NextRequest) {
     // PayPal's unique transmission ID — use as idempotency key
     const transmissionId = headers['paypal-transmission-id'] as string | undefined;
 
-    await connectDB();
-
-    // ── Idempotency: skip events already processed ───────────────────────────
-    if (transmissionId) {
-      const alreadyProcessed = await Tenant.exists({
-        'subscription.processedWebhookIds': transmissionId,
-      });
-      if (alreadyProcessed) {
-        console.log(`Webhook ${transmissionId} already processed — skipping`);
-        return NextResponse.json({ received: true });
-      }
-    }
+    // Find a tenant whose current subscription order, or payment history,
+    // references this PayPal order id.
+    const findTenantByOrderId = (orderId: string) =>
+      runAsSystem(() =>
+        prisma.tenant.findFirst({
+          where: {
+            OR: [
+              { subscriptionPaypalOrderId: orderId },
+              { paymentHistory: { some: { orderId } } },
+            ],
+          },
+        })
+      );
 
     switch (eventType) {
       case 'PAYMENT.CAPTURE.COMPLETED': {
@@ -63,12 +73,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Find the tenant that initiated this payment
-        const tenant = await Tenant.findOne({
-          $or: [
-            { 'subscription.paypalOrderId': orderId },
-            { 'subscription.paymentHistory.orderId': orderId },
-          ],
-        });
+        let tenant = await findTenantByOrderId(orderId);
 
         if (!tenant) {
           // Possibly capture-order route hasn't run yet — try to parse tenantId from reference_id
@@ -80,14 +85,14 @@ export async function POST(request: NextRequest) {
             ? referenceId.match(/^subscription-(.+)-\d+$/)
             : null;
           if (match) {
-            const tenantFromRef = await Tenant.findById(match[1]);
+            const tenantFromRef = await runAsSystem(() => getTenantById(match[1]));
             if (tenantFromRef) {
               console.log(`PAYMENT.CAPTURE.COMPLETED: tenant found via reference_id for order ${orderId}`);
               // capture-order route is the primary activation path; webhook is a safety net
               // Only act if subscription is not yet active for this order
               if (
-                tenantFromRef.subscription?.status !== 'active' ||
-                tenantFromRef.subscription?.paypalOrderId !== orderId
+                tenantFromRef.subscriptionStatus !== 'active' ||
+                tenantFromRef.subscriptionPaypalOrderId !== orderId
               ) {
                 console.warn(
                   `PAYMENT.CAPTURE.COMPLETED: subscription not yet activated for tenant ${match[1]} — capture-order route should handle this`
@@ -100,37 +105,45 @@ export async function POST(request: NextRequest) {
           break;
         }
 
-        // If subscription is already active for this order, skip to avoid double-processing
-        if (
-          tenant.subscription?.status === 'active' &&
-          tenant.subscription?.paypalOrderId === orderId
-        ) {
-          console.log(`PAYMENT.CAPTURE.COMPLETED: already processed for tenant ${tenant._id}`);
+        // ── Idempotency: skip events already processed ─────────────────────
+        if (transmissionId && tenant.subscriptionProcessedWebhookIds.includes(transmissionId)) {
+          console.log(`Webhook ${transmissionId} already processed — skipping`);
           break;
         }
 
-        // Mark subscription active (safety net if capture-order route failed)
-        tenant.subscription = tenant.subscription || ({} as any);
-        tenant.subscription.status = 'active';
-        tenant.subscription.paypalOrderId = orderId;
-
-        // Update corresponding payment history entry if present
-        const histEntry = tenant.subscription.paymentHistory?.find(
-          (p: any) => p.orderId === orderId
-        );
-        if (histEntry) {
-          histEntry.status = 'completed';
+        // If subscription is already active for this order, skip to avoid double-processing
+        if (
+          tenant.subscriptionStatus === 'active' &&
+          tenant.subscriptionPaypalOrderId === orderId
+        ) {
+          console.log(`PAYMENT.CAPTURE.COMPLETED: already processed for tenant ${tenant.id}`);
+          break;
         }
 
         // Stamp the transmissionId so this event is never processed twice
-        if (transmissionId) {
-          tenant.subscription.processedWebhookIds = [
-            ...(tenant.subscription.processedWebhookIds || []),
-            transmissionId,
-          ].slice(-50); // keep last 50 to bound array size
-        }
-        await tenant.save();
-        console.log(`PAYMENT.CAPTURE.COMPLETED: subscription activated for tenant ${tenant._id}`);
+        const processedWebhookIds = transmissionId
+          ? [...tenant.subscriptionProcessedWebhookIds, transmissionId].slice(-50) // keep last 50 to bound array size
+          : tenant.subscriptionProcessedWebhookIds;
+
+        await runAsSystem(() =>
+          prisma.$transaction([
+            // Mark subscription active (safety net if capture-order route failed)
+            prisma.tenant.update({
+              where: { id: tenant!.id },
+              data: {
+                subscriptionStatus: 'active',
+                subscriptionPaypalOrderId: orderId,
+                subscriptionProcessedWebhookIds: processedWebhookIds,
+              },
+            }),
+            // Update corresponding payment history entry if present
+            prisma.tenantPaymentHistory.updateMany({
+              where: { tenantId: tenant!.id, orderId },
+              data: { status: 'completed' },
+            }),
+          ])
+        );
+        console.log(`PAYMENT.CAPTURE.COMPLETED: subscription activated for tenant ${tenant.id}`);
         break;
       }
 
@@ -145,43 +158,44 @@ export async function POST(request: NextRequest) {
           break;
         }
 
-        const tenant = await Tenant.findOne({
-          $or: [
-            { 'subscription.paypalOrderId': relatedOrderId },
-            { 'subscription.paymentHistory.orderId': relatedOrderId },
-          ],
-        });
+        const tenant = await findTenantByOrderId(relatedOrderId);
 
         if (!tenant) {
           console.warn(`PAYMENT.CAPTURE.REFUNDED: no tenant found for orderId ${relatedOrderId}`);
           break;
         }
 
-        tenant.subscription.status = 'cancelled';
-
-        // Mark the payment record as refunded
-        const payment = tenant.subscription.paymentHistory?.find(
-          (p: any) => p.orderId === relatedOrderId
+        await runAsSystem(() =>
+          prisma.$transaction([
+            prisma.tenant.update({
+              where: { id: tenant.id },
+              data: { subscriptionStatus: 'cancelled' },
+            }),
+            // Mark the payment record as refunded
+            prisma.tenantPaymentHistory.updateMany({
+              where: { tenantId: tenant.id, orderId: relatedOrderId },
+              data: { status: 'refunded' },
+            }),
+          ])
         );
-        if (payment) {
-          payment.status = 'refunded';
-        }
-
-        await tenant.save();
-        console.log(`PAYMENT.CAPTURE.REFUNDED: subscription cancelled for tenant ${tenant._id}`);
+        console.log(`PAYMENT.CAPTURE.REFUNDED: subscription cancelled for tenant ${tenant.id}`);
         break;
       }
 
       case 'PAYMENT.CAPTURE.DENIED': {
         const deniedOrderId = resource?.supplementary_data?.related_ids?.order_id;
         if (deniedOrderId) {
-          const tenant = await Tenant.findOne({
-            'subscription.paypalOrderId': deniedOrderId,
-          });
-          if (tenant && tenant.subscription?.status === 'active') {
-            tenant.subscription.status = 'cancelled';
-            await tenant.save();
-            console.log(`PAYMENT.CAPTURE.DENIED: subscription deactivated for tenant ${tenant._id}`);
+          const tenant = await runAsSystem(() =>
+            prisma.tenant.findFirst({ where: { subscriptionPaypalOrderId: deniedOrderId } })
+          );
+          if (tenant && tenant.subscriptionStatus === 'active') {
+            await runAsSystem(() =>
+              prisma.tenant.update({
+                where: { id: tenant.id },
+                data: { subscriptionStatus: 'cancelled' },
+              })
+            );
+            console.log(`PAYMENT.CAPTURE.DENIED: subscription deactivated for tenant ${tenant.id}`);
           }
         }
         break;
@@ -201,4 +215,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

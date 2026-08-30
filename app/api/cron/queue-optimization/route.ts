@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { optimizeQueue, optimizeQueueScheduling } from '@/lib/automations/queue-optimization';
 import { getTenantContext } from '@/lib/tenant';
-import connectDB from '@/lib/mongodb';
-import Tenant from '@/models/Tenant';
+import prisma from '@/lib/prisma';
+import { runAsSystem } from '@/lib/tenant-context';
 
 /**
  * Cron job to optimize queue
@@ -35,12 +35,13 @@ export async function GET(request: NextRequest) {
     }
 
     // No tenant in context — run for all active tenants
-    await connectDB();
-    const tenants = await Tenant.find({ status: 'active' }).select('_id').lean<{ _id: import('mongoose').Types.ObjectId }[]>();
+    const tenants = await runAsSystem(() =>
+      prisma.tenant.findMany({ where: { status: 'active' }, select: { id: true } })
+    );
 
     const results = await Promise.allSettled(
       tenants.map(async (t) => {
-        const id = t._id.toString();
+        const id = t.id;
         const [opt, sched] = await Promise.all([
           optimizeQueue(id),
           optimizeQueueScheduling(id),

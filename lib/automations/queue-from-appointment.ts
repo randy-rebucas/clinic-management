@@ -6,20 +6,12 @@ function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
   return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
 }
 
-/**
- * app/api/appointments/[id]/route.ts has not yet been updated to pass a
- * plain string tenantId and still constructs a Mongoose `Types.ObjectId` —
- * accept anything string-coercible here so this module doesn't depend on
- * a Mongo-style driver library.
- */
-type IdLike = string | { toString(): string };
-
 interface UpdateQueueFromAppointmentParams {
   appointmentId: string;
   patientId: string;
   newAppointmentStatus: string;
   queueId?: string;
-  tenantId?: IdLike;
+  tenantId?: string;
   skipAutomation?: boolean; // Prevent circular automation
 }
 

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
-import connectDB from '@/lib/mongodb';
+import prisma from '@/lib/prisma';
+import { runAsSystem } from '@/lib/tenant-context';
 import { validateEnv } from '@/lib/env-validation';
 
 /**
@@ -76,7 +77,7 @@ export async function GET() {
     // Test database connection if environment is configured
     if (checks.environmentConfigured) {
       try {
-        await connectDB();
+        await prisma.$queryRaw`SELECT 1`;
         checks.databaseConnected = true;
       } catch (error: any) {
         checks.errors.push(`Database connection failed: ${error.message}`);
@@ -87,8 +88,7 @@ export async function GET() {
     // Check if database is reset (no roles exist = reset)
     if (checks.databaseConnected) {
       try {
-        const Role = (await import('@/models/Role')).default;
-        const roleCount = await Role.countDocuments({});
+        const roleCount = await runAsSystem(() => prisma.role.count());
         checks.databaseReset = roleCount === 0;
       } catch (error) {
         // If we can't check, assume not reset

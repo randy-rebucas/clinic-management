@@ -1,104 +1,84 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
-import {
-  AuditLog,
-  Notification,
-  Queue,
-  Membership,
-  Referral,
-  Document,
-  Invoice,
-  Procedure,
-  Imaging,
-  LabResult,
-  Prescription,
-  Visit,
-  Appointment,
-  InventoryItem,
-  Medicine,
-  Service,
-  Room,
-  Patient,
-  MedicalRepresentative,
-  Accountant,
-  Receptionist,
-  Nurse,
-  Doctor,
-  Admin,
-  Staff,
-  User,
-  Permission,
-  Role,
-  Settings,
-} from '@/models';
+import prisma from '@/lib/prisma';
+import { runAsSystem } from '@/lib/tenant-context';
 
 /**
- * Reset database - Delete all collections
+ * Reset database - Delete all data
  * WARNING: This will delete all data in the database
+ *
+ * Gated by middleware.ts (INSTALL_SECRET check in production) — not touched
+ * here, only the DB layer below.
+ *
+ * Migrated off Mongoose: deletes are now Prisma `deleteMany()` calls against
+ * Postgres, run sequentially (not in parallel like the old `Promise.all`)
+ * because Postgres enforces real foreign-key constraints — deleting a
+ * parent row before its children would raise on Mongo happily but the
+ * PG FKs will reject it. The order below is unchanged from the original
+ * (dependents first, base models last); child/subtable rows (e.g.
+ * VisitDiagnosis, PatientAllergy, DoctorScheduleSlot, ...) are not deleted
+ * explicitly — every such table has `onDelete: Cascade` back to its parent
+ * in prisma/schema.prisma, so they're removed automatically when the
+ * parent row above them in this list is deleted.
  */
 export async function POST() {
   try {
-    await connectDB();
+    // Lightweight connectivity check (replaces mongoose.connection.readyState).
+    await prisma.$queryRaw`SELECT 1`;
 
-    // Check if database is connected
-    if (mongoose.connection.readyState !== 1) {
-      return NextResponse.json(
-        { success: false, error: 'Database not connected' },
-        { status: 500 }
-      );
-    }
-
-
-    // Delete all collections in the correct order (respecting dependencies)
     const deletionResults: { [key: string]: number } = {};
 
     try {
-      // Delete in order: dependent models first, then base models
-      const deletions = await Promise.all([
-        // Audit & Notifications
-        AuditLog.deleteMany({}).then(result => { deletionResults['auditlogs'] = result.deletedCount; }),
-        Notification.deleteMany({}).then(result => { deletionResults['notifications'] = result.deletedCount; }),
-        // Queue & Membership
-        Queue.deleteMany({}).then(result => { deletionResults['queues'] = result.deletedCount; }),
-        Membership.deleteMany({}).then(result => { deletionResults['memberships'] = result.deletedCount; }),
-        // Documents & Referrals
-        Referral.deleteMany({}).then(result => { deletionResults['referrals'] = result.deletedCount; }),
-        Document.deleteMany({}).then(result => { deletionResults['documents'] = result.deletedCount; }),
-        // Billing
-        Invoice.deleteMany({}).then(result => { deletionResults['invoices'] = result.deletedCount; }),
-        // Clinical records
-        Procedure.deleteMany({}).then(result => { deletionResults['procedures'] = result.deletedCount; }),
-        Imaging.deleteMany({}).then(result => { deletionResults['imaging'] = result.deletedCount; }),
-        LabResult.deleteMany({}).then(result => { deletionResults['labresults'] = result.deletedCount; }),
-        Prescription.deleteMany({}).then(result => { deletionResults['prescriptions'] = result.deletedCount; }),
-        Visit.deleteMany({}).then(result => { deletionResults['visits'] = result.deletedCount; }),
-        Appointment.deleteMany({}).then(result => { deletionResults['appointments'] = result.deletedCount; }),
-        // Inventory & Catalog
-        InventoryItem.deleteMany({}).then(result => { deletionResults['inventoryitems'] = result.deletedCount; }),
-        Medicine.deleteMany({}).then(result => { deletionResults['medicines'] = result.deletedCount; }),
-        Service.deleteMany({}).then(result => { deletionResults['services'] = result.deletedCount; }),
-        Room.deleteMany({}).then(result => { deletionResults['rooms'] = result.deletedCount; }),
-        // Patient
-        Patient.deleteMany({}).then(result => { deletionResults['patients'] = result.deletedCount; }),
-        // Profile models (these have post-save hooks that create Users)
-        MedicalRepresentative.deleteMany({}).then(result => { deletionResults['medicalrepresentatives'] = result.deletedCount; }),
-        Accountant.deleteMany({}).then(result => { deletionResults['accountants'] = result.deletedCount; }),
-        Receptionist.deleteMany({}).then(result => { deletionResults['receptionists'] = result.deletedCount; }),
-        Nurse.deleteMany({}).then(result => { deletionResults['nurses'] = result.deletedCount; }),
-        Doctor.deleteMany({}).then(result => { deletionResults['doctors'] = result.deletedCount; }),
-        Admin.deleteMany({}).then(result => { deletionResults['admins'] = result.deletedCount; }),
-        Staff.deleteMany({}).then(result => { deletionResults['staff'] = result.deletedCount; }),
-        // Auth (delete users last since profiles reference them)
-        User.deleteMany({}).then(result => { deletionResults['users'] = result.deletedCount; }),
-        Permission.deleteMany({}).then(result => { deletionResults['permissions'] = result.deletedCount; }),
-        Role.deleteMany({}).then(result => { deletionResults['roles'] = result.deletedCount; }),
-        // Settings (optional - might want to keep)
-        Settings.deleteMany({}).then(result => { deletionResults['settings'] = result.deletedCount; }),
-      ]);
+      await runAsSystem(async () => {
+        // Delete in order: dependent models first, then base models.
+        const steps: [string, () => Promise<{ count: number }>][] = [
+          // Audit & Notifications
+          ['auditlogs', () => prisma.auditLog.deleteMany({})],
+          ['notifications', () => prisma.notification.deleteMany({})],
+          // Queue & Membership
+          ['queues', () => prisma.queue.deleteMany({})],
+          ['memberships', () => prisma.membership.deleteMany({})],
+          // Documents & Referrals
+          ['referrals', () => prisma.referral.deleteMany({})],
+          ['documents', () => prisma.document.deleteMany({})],
+          // Billing
+          ['invoices', () => prisma.invoice.deleteMany({})],
+          // Clinical records
+          ['procedures', () => prisma.procedure.deleteMany({})],
+          ['imaging', () => prisma.imaging.deleteMany({})],
+          ['labresults', () => prisma.labResult.deleteMany({})],
+          ['prescriptions', () => prisma.prescription.deleteMany({})],
+          ['visits', () => prisma.visit.deleteMany({})],
+          ['appointments', () => prisma.appointment.deleteMany({})],
+          // Inventory & Catalog
+          ['inventoryitems', () => prisma.inventoryItem.deleteMany({})],
+          ['medicines', () => prisma.medicine.deleteMany({})],
+          ['services', () => prisma.service.deleteMany({})],
+          ['rooms', () => prisma.room.deleteMany({})],
+          // Patient
+          ['patients', () => prisma.patient.deleteMany({})],
+          // Profile models
+          ['medicalrepresentatives', () => prisma.medicalRepresentative.deleteMany({})],
+          ['accountants', () => prisma.accountant.deleteMany({})],
+          ['receptionists', () => prisma.receptionist.deleteMany({})],
+          ['nurses', () => prisma.nurse.deleteMany({})],
+          ['doctors', () => prisma.doctor.deleteMany({})],
+          ['admins', () => prisma.admin.deleteMany({})],
+          ['staff', () => prisma.staff.deleteMany({})],
+          // Auth (delete users last since profiles reference them)
+          ['users', () => prisma.user.deleteMany({})],
+          ['permissions', () => prisma.permission.deleteMany({})],
+          ['roles', () => prisma.role.deleteMany({})],
+          // Settings (optional - might want to keep)
+          ['settings', () => prisma.settings.deleteMany({})],
+        ];
+
+        for (const [key, fn] of steps) {
+          const result = await fn();
+          deletionResults[key] = result.count;
+        }
+      });
 
       const totalDeleted = Object.values(deletionResults).reduce((sum, count) => sum + count, 0);
-
 
       return NextResponse.json({
         success: true,
@@ -127,4 +107,3 @@ export async function POST() {
     );
   }
 }
-

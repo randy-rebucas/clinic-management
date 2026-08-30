@@ -107,13 +107,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const skipAutomation = body._skipAutomation === true;
 
     if (oldStatus !== newStatus && newStatus && !skipAutomation) {
-      Promise.all([import('@/lib/automations/queue-from-appointment'), import('mongoose')])
-        .then(([{ updateQueueFromAppointment }, { Types }]) => {
+      import('@/lib/automations/queue-from-appointment')
+        .then(({ updateQueueFromAppointment }) => {
           updateQueueFromAppointment({
             appointmentId: appointment.id,
             patientId: appointment.patientId,
             newAppointmentStatus: newStatus,
-            tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+            tenantId: tenantId || undefined,
           }).catch((error: any) => {
             console.error('[Appointment API] Error in queue automation:', error);
           });

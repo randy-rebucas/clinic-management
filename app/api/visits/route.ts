@@ -121,16 +121,10 @@ export async function POST(request: NextRequest) {
     let prescriptionId: string | undefined;
     if (body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {
       try {
-        // NOTE: lib/automations/prescription-from-visit.ts is out of scope
-        // for this batch and still queries Mongoose's Visit/Prescription
-        // models directly by ObjectId — flagged for whichever batch
-        // migrates the automations layer, since visit.id is now a Postgres
-        // UUID that won't resolve against the Mongo collection.
         const { createPrescriptionFromVisit } = await import('@/lib/automations/prescription-from-visit');
-        const { Types } = await import('mongoose');
         const prescription = await createPrescriptionFromVisit({
           visitId: visit.id,
-          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          tenantId: tenantId || undefined,
           createdBy: session.userId,
           shouldSendNotification: true,
         });

@@ -5,7 +5,7 @@ import { getDocumentType, inferDocumentCategory, validateFile } from '@/lib/docu
 import { uploadDocumentToCloudinary, getThumbnailUrl, isCloudinaryConfigured } from '@/lib/cloudinary';
 import { getTenantContext } from '@/lib/tenant';
 import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
-import { buildDocumentWhere, listDocuments, createDocument } from '@/lib/data/document';
+import { buildDocumentWhere, listDocuments, createDocument, DocumentParentError } from '@/lib/data/document';
 import { getPatientById } from '@/lib/data/patient';
 
 function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: document }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating document:', error);
-    if (error instanceof ValidationError) {
+    if (error instanceof ValidationError || error instanceof DocumentParentError) {
       return NextResponse.json({ success: false, error: error.message }, { status: 400 });
     }
     if (error.code === 'P2002') {

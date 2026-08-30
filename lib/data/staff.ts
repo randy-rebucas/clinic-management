@@ -17,6 +17,7 @@ import prisma from '../prisma';
 import type { Prisma } from '@prisma/client';
 import { runAsSystem } from '../tenant-context';
 import { getRoleByName } from './role';
+import { updateUser as updateUserRecord, createUser as createUserRecord, UserProfileError } from './user';
 
 export type StaffType = 'nurse' | 'receptionist' | 'accountant';
 
@@ -175,7 +176,19 @@ export async function createUserForStaff(
   if (existingByEmail) {
     const field = profileIdField(staffType);
     if (!(existingByEmail as any)[field]) {
-      await prisma.user.update({ where: { id: existingByEmail.id }, data: { [field]: staff.id } as Prisma.UserUncheckedUpdateInput });
+      // updateUser enforces the "at most one profile type" rule (see
+      // lib/data/user.ts) — if this user already has a different profile
+      // type set, skip linking rather than silently creating a second
+      // profile relation on the same account.
+      try {
+        await updateUserRecord(existingByEmail.id, { [field]: staff.id } as Prisma.UserUncheckedUpdateInput);
+      } catch (err) {
+        if (err instanceof UserProfileError) {
+          console.warn(`createUserForStaff: not linking ${staffType} profile ${staff.id} to existing user ${existingByEmail.id}: ${err.message}`);
+        } else {
+          throw err;
+        }
+      }
     }
     return null;
   }
@@ -192,16 +205,14 @@ export async function createUserForStaff(
   const hashedPassword = await bcrypt.hash(defaultPassword, 10);
   const field = profileIdField(staffType);
 
-  const user = await prisma.user.create({
-    data: {
-      name: `${staff.firstName} ${staff.lastName}`.trim(),
-      email: staff.email.toLowerCase().trim(),
-      password: hashedPassword,
-      role: { connect: { id: role.id } },
-      status: staff.status === 'active' ? 'active' : 'inactive',
-      [field]: staff.id,
-    } as unknown as Prisma.UserUncheckedCreateInput,
-  });
+  const user = await createUserRecord({
+    name: `${staff.firstName} ${staff.lastName}`.trim(),
+    email: staff.email.toLowerCase().trim(),
+    password: hashedPassword,
+    role: { connect: { id: role.id } },
+    status: staff.status === 'active' ? 'active' : 'inactive',
+    [field]: staff.id,
+  } as unknown as Prisma.UserUncheckedCreateInput);
 
   return { user, defaultPassword };
 }

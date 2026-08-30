@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
@@ -23,7 +22,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
 
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;

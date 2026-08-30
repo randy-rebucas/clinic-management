@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import { getTenantContext } from '@/lib/tenant';
+import { findAppointmentsNeedingReminders } from '@/lib/data/appointment';
+import { findVisitsNeedingFollowUpReminders, markFollowUpReminderSent } from '@/lib/data/visit';
 import { sendSMS } from '@/lib/sms';
+import prisma from '@/lib/prisma';
 
 // This endpoint should be called by a cron job service (e.g., Vercel Cron, cron-job.org, etc.)
 // For security, you should add authentication via a secret token
@@ -13,7 +15,7 @@ export async function GET(request: NextRequest) {
   const isVercelCron = request.headers.get('x-vercel-cron') === '1';
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
-  
+
   // If CRON_SECRET is set, require authentication (unless it's Vercel Cron)
   if (cronSecret && !isVercelCron) {
     if (authHeader !== `Bearer ${cronSecret}`) {
@@ -25,16 +27,53 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-    const results = {
-      appointmentReminders: await sendAppointmentReminders(),
-      visitReminders: await sendVisitReminders(),
-    };
+    let tenantId: string | null = null;
+    try {
+      const tenantContext = await getTenantContext();
+      tenantId = tenantContext.tenantId || null;
+    } catch {
+      // single-tenant mode
+    }
+
+    if (tenantId) {
+      // Single-tenant invocation (subdomain-scoped request)
+      const results = await runWithTenant(tenantId, async () => ({
+        appointmentReminders: await sendAppointmentReminders(),
+        visitReminders: await sendVisitReminders(),
+      }));
+
+      return NextResponse.json({
+        success: true,
+        message: 'Reminders processed',
+        data: results,
+      });
+    }
+
+    // No tenant in context — run for all active tenants
+    const tenants = await runAsSystem(() =>
+      prisma.tenant.findMany({ where: { status: 'active' }, select: { id: true } })
+    );
+
+    const results = await Promise.allSettled(
+      tenants.map((t) =>
+        runWithTenant(t.id, async () => ({
+          tenantId: t.id,
+          appointmentReminders: await sendAppointmentReminders(),
+          visitReminders: await sendVisitReminders(),
+        }))
+      )
+    );
+
+    const summary = results.map((r) =>
+      r.status === 'fulfilled'
+        ? { ...r.value, success: true }
+        : { success: false, reason: (r as PromiseRejectedResult).reason?.message }
+    );
 
     return NextResponse.json({
       success: true,
-      message: 'Reminders processed',
-      data: results,
+      message: `Reminders processed for ${tenants.length} tenant(s)`,
+      data: summary,
     });
   } catch (error: any) {
     console.error('Error processing reminders:', error);
@@ -51,27 +90,21 @@ async function sendAppointmentReminders() {
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   const dayAfter = new Date(now.getTime() + 25 * 60 * 60 * 1000);
 
-  // Find appointments tomorrow that haven't been reminded
-  const appointments = await Appointment.find({
-    appointmentDate: { $gte: tomorrow, $lt: dayAfter },
-    status: { $in: ['scheduled', 'confirmed'] },
-  })
-    .populate('patient', 'firstName lastName phone')
-    .populate('doctor', 'firstName lastName');
+  const appointments = await findAppointmentsNeedingReminders(tomorrow, dayAfter);
 
   const results = [];
   for (const appointment of appointments) {
-    const patient = appointment.patient as any;
-    if (patient.phone) {
+    const patient = appointment.patient;
+    if (patient?.phone) {
       try {
-        const appointmentDate = new Date(appointment.appointmentDate);
+        const appointmentDate = new Date(appointment.appointmentDate!);
         const appointmentTime = appointment.appointmentTime || 'TBD';
         const [hours, minutes] = appointmentTime.split(':').map(Number);
-        const displayTime = hours >= 12 
+        const displayTime = hours >= 12
           ? `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} PM`
           : `${hours}:${minutes.toString().padStart(2, '0')} AM`;
 
-        const doctor = appointment.doctor as any;
+        const doctor = appointment.doctor;
         const message = `Reminder: You have an appointment with ${doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : 'your doctor'} tomorrow (${appointmentDate.toLocaleDateString()}) at ${displayTime}. Appointment Code: ${appointment.appointmentCode}. Please arrive 10 minutes early.`;
 
         let phoneNumber = patient.phone.trim();
@@ -85,7 +118,7 @@ async function sendAppointmentReminders() {
         });
 
         results.push({
-          appointmentId: appointment._id,
+          appointmentId: appointment.id,
           appointmentCode: appointment.appointmentCode,
           success: smsResult.success,
           sid: smsResult.sid,
@@ -93,7 +126,7 @@ async function sendAppointmentReminders() {
         });
       } catch (error) {
         results.push({
-          appointmentId: appointment._id,
+          appointmentId: appointment.id,
           success: false,
           error: (error as Error).message,
         });
@@ -110,19 +143,12 @@ async function sendVisitReminders() {
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   const dayAfter = new Date(now.getTime() + 25 * 60 * 60 * 1000);
 
-  // Find visits with follow-up dates tomorrow that haven't been reminded
-  const visits = await Visit.find({
-    followUpDate: { $gte: tomorrow, $lt: dayAfter },
-    followUpReminderSent: { $ne: true },
-    status: { $ne: 'cancelled' },
-  })
-    .populate('patient', 'firstName lastName phone email')
-    .populate('provider', 'name');
+  const visits = await findVisitsNeedingFollowUpReminders(tomorrow, dayAfter);
 
   const results = [];
   for (const visit of visits) {
-    const patient = visit.patient as any;
-    if (patient.phone && visit.followUpDate) {
+    const patient = visit.patient;
+    if (patient?.phone && visit.followUpDate) {
       try {
         const followUpDate = new Date(visit.followUpDate);
         const message = `Reminder: You have a follow-up appointment scheduled for tomorrow (${followUpDate.toLocaleDateString()}). Visit Code: ${visit.visitCode}. Please contact the clinic if you need to reschedule.`;
@@ -138,12 +164,11 @@ async function sendVisitReminders() {
         });
 
         if (smsResult.success) {
-          visit.followUpReminderSent = true;
-          await visit.save();
+          await markFollowUpReminderSent(visit.id);
         }
 
         results.push({
-          visitId: visit._id,
+          visitId: visit.id,
           visitCode: visit.visitCode,
           success: smsResult.success,
           sid: smsResult.sid,
@@ -151,7 +176,7 @@ async function sendVisitReminders() {
         });
       } catch (error) {
         results.push({
-          visitId: visit._id,
+          visitId: visit.id,
           success: false,
           error: (error as Error).message,
         });
@@ -161,4 +186,3 @@ async function sendVisitReminders() {
 
   return results;
 }
-

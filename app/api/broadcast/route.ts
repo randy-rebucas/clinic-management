@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
 import { sendBroadcastMessage } from '@/lib/automations/broadcast-messaging';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
@@ -23,7 +22,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await connectDB();
     const body = await request.json();
 
     if (!body.message) {

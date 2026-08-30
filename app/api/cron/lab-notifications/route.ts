@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendLabResultNotification } from '@/lib/automations/lab-notifications';
-import connectDB from '@/lib/mongodb';
-import LabResult from '@/models/LabResult';
 import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
+import prisma from '@/lib/prisma';
 
 /**
  * Lab Notifications Batch Cron Job
@@ -25,27 +24,30 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-
-    let tenantFilter: Record<string, unknown> = {};
+    let tenantId: string | undefined;
     try {
       const tenantContext = await getTenantContext();
       if (tenantContext.tenantId) {
-        tenantFilter = { tenantId: new Types.ObjectId(tenantContext.tenantId as string) };
+        tenantId = tenantContext.tenantId as string;
       }
     } catch {
       // single-tenant mode
     }
 
     // Find completed / reviewed lab results not yet notified
-    const pendingLabResults = await LabResult.find({
-      ...tenantFilter,
-      status: { $in: ['completed', 'reviewed'] },
-      notificationSent: { $ne: true },
-    })
-      .select('_id')
-      .limit(50) // Process at most 50 per run
-      .lean();
+    const findPending = () =>
+      prisma.labResult.findMany({
+        where: {
+          status: { in: ['completed', 'reviewed'] },
+          notificationSent: { not: true },
+        },
+        select: { id: true },
+        take: 50, // Process at most 50 per run
+      });
+
+    const pendingLabResults = tenantId
+      ? await runWithTenant(tenantId, findPending)
+      : await runAsSystem(findPending);
 
     const results = { processed: 0, sent: 0, failed: 0, errors: [] as string[] };
 
@@ -53,13 +55,13 @@ export async function GET(request: NextRequest) {
       results.processed++;
       try {
         const notifResult = await sendLabResultNotification({
-          labResultId: lr._id as Types.ObjectId,
+          labResultId: lr.id,
         });
         if (notifResult.sent) results.sent++;
       } catch (err: unknown) {
         results.failed++;
         results.errors.push(
-          `LabResult ${lr._id}: ${err instanceof Error ? err.message : String(err)}`
+          `LabResult ${lr.id}: ${err instanceof Error ? err.message : String(err)}`
         );
       }
     }

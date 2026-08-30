@@ -7,6 +7,7 @@ import { createLabResultNotification } from '@/lib/notifications';
 import { getTenantContext } from '@/lib/tenant';
 import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { getLabResultById, updateLabResult } from '@/lib/data/lab-result';
+import { getUserByEmail } from '@/lib/data/user';
 
 function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
   return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
@@ -106,17 +107,12 @@ export async function POST(
     );
 
     // Create in-app notification if patient has a user account.
-    // NOTE: Notification is out of scope for this batch (owned by the later
-    // "supporting models"/Notification batch) — the User lookup + Mongoose
-    // createLabResultNotification() call stays on Mongoose exactly as
-    // before.
     try {
-      const connectDB = (await import('@/lib/mongodb')).default;
-      await connectDB();
-      const User = (await import('@/models/User')).default;
-      const user = await User.findOne({ email: patient.email }).select('_id');
-      if (user) {
-        await createLabResultNotification(user._id, labResult);
+      if (patient.email) {
+        const user = await run(tenantId, () => getUserByEmail(patient.email, tenantId ?? undefined));
+        if (user) {
+          await createLabResultNotification(user.id, labResult);
+        }
       }
     } catch (error: any) {
       console.error('Error creating in-app notification:', error);

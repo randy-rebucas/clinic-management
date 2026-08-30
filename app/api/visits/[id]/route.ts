@@ -115,7 +115,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             if (newQueueStatus === 'completed') {
               updateData.completedAt = new Date();
             }
-            await run(tenantId, () => updateQueueEntry((target as any)._id, updateData));
+            await run(tenantId, () => updateQueueEntry(target.id, updateData));
           }
         } catch (queueError) {
           console.error('Error updating queue status:', queueError);
@@ -127,15 +127,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     let prescriptionId: string | undefined;
     if (body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {
       try {
-        // NOTE: lib/automations/prescription-from-visit.ts is out of scope
-        // for this batch and still queries Mongoose's Visit/Prescription
-        // models directly by ObjectId — flagged for whichever batch
-        // migrates the automations layer.
         const { updatePrescriptionFromVisit } = await import('@/lib/automations/prescription-from-visit');
-        const { Types } = await import('mongoose');
         const prescription = await updatePrescriptionFromVisit({
           visitId: visit.id,
-          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          tenantId: tenantId || undefined,
           createdBy: session.userId,
           shouldSendNotification: false,
         });

@@ -128,21 +128,144 @@ export function getUserTotpSecret(id: string) {
   });
 }
 
-export function createUser(data: Prisma.UserCreateInput) {
+/**
+ * The six "one-of profile" columns, in both their scalar (Unchecked*Input,
+ * used by e.g. lib/data/staff.ts) and relation-object (connect/disconnect)
+ * forms. Mongoose's `pre('save')` validated "cannot have multiple profile
+ * types set simultaneously" and "profile must match role name" — Postgres
+ * enforces neither (see prisma/MIGRATION_NOTES.md's "User" section), so
+ * this module is the enforcement point for every createUser/updateUser call.
+ */
+const PROFILE_ID_FIELDS = [
+  'adminProfileId',
+  'doctorProfileId',
+  'nurseProfileId',
+  'receptionistProfileId',
+  'accountantProfileId',
+  'medicalRepresentativeProfileId',
+] as const;
+const PROFILE_RELATION_FIELDS = [
+  'adminProfile',
+  'doctorProfile',
+  'nurseProfile',
+  'receptionistProfile',
+  'accountantProfile',
+  'medicalRepresentativeProfile',
+] as const;
+
+export class UserProfileError extends Error {}
+
+/** True if a relation-object field value represents "set" (a connect clause), as opposed to undefined/disconnect/null. */
+function relationIsSet(v: any): boolean {
+  return v !== undefined && v !== null && typeof v === 'object' && 'connect' in v && v.connect;
+}
+
+/** True if a relation-object field value represents "explicitly cleared" (disconnect / set null). */
+function relationIsCleared(v: any): boolean {
+  return v !== undefined && typeof v === 'object' && v !== null && ('disconnect' in v || ('set' in v && v.set == null));
+}
+
+/**
+ * Returns the set of profile *Id field names touched by `data` (normalizing
+ * away the scalar-vs-relation-object spelling difference), each mapped to
+ * true (set) or false (explicitly cleared) — fields not mentioned in `data`
+ * at all are omitted so callers can merge against the current DB row.
+ */
+function touchedProfileFields(data: Record<string, any>): Map<string, boolean> {
+  const touched = new Map<string, boolean>();
+  for (const field of PROFILE_ID_FIELDS) {
+    if (data[field] !== undefined) touched.set(field, data[field] !== null && data[field] !== '');
+  }
+  for (const relField of PROFILE_RELATION_FIELDS) {
+    if (data[relField] !== undefined) {
+      const idField = `${relField}Id`;
+      if (relationIsSet(data[relField])) touched.set(idField, true);
+      else if (relationIsCleared(data[relField])) touched.set(idField, false);
+    }
+  }
+  return touched;
+}
+
+/** Throws if more than one profile *Id field would end up set, after merging `touched` onto `currentlySet`. */
+function assertSingleProfile(touched: Map<string, boolean>, currentlySet: Set<string>) {
+  const resulting = new Set(currentlySet);
+  for (const [field, isSet] of touched) {
+    if (isSet) resulting.add(field);
+    else resulting.delete(field);
+  }
+  if (resulting.size > 1) {
+    throw new UserProfileError(
+      `A user may have at most one profile type set (found: ${Array.from(resulting).join(', ')}).`
+    );
+  }
+}
+
+/** Which profile field a given Role.name should correspond to, if any (used for the "profile must match role name" check). */
+const ROLE_TO_PROFILE_FIELD: Record<string, string> = {
+  admin: 'adminProfileId',
+  doctor: 'doctorProfileId',
+  nurse: 'nurseProfileId',
+  receptionist: 'receptionistProfileId',
+  accountant: 'accountantProfileId',
+  'medical-representative': 'medicalRepresentativeProfileId',
+  medical_representative: 'medicalRepresentativeProfileId',
+};
+
+export async function createUser(data: Prisma.UserCreateInput | Prisma.UserUncheckedCreateInput) {
+  const touched = touchedProfileFields(data as Record<string, any>);
+  assertSingleProfile(touched, new Set());
+
+  const setField = Array.from(touched.entries()).find(([, isSet]) => isSet)?.[0];
+  if (setField) {
+    const roleName = await resolveRoleName((data as any).role, (data as any).roleId);
+    if (roleName && ROLE_TO_PROFILE_FIELD[roleName] && ROLE_TO_PROFILE_FIELD[roleName] !== setField) {
+      throw new UserProfileError(`Profile type (${setField}) does not match the user's role (${roleName}).`);
+    }
+  }
+
   return prisma.user.create({
-    data,
+    data: data as Prisma.UserCreateInput,
     omit: omitSensitive,
     include: { role: true },
   });
 }
 
-export function updateUser(id: string, data: Prisma.UserUpdateInput) {
+export async function updateUser(id: string, data: Prisma.UserUpdateInput | Prisma.UserUncheckedUpdateInput) {
+  const touched = touchedProfileFields(data as Record<string, any>);
+  if (touched.size > 0) {
+    const current = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        adminProfileId: true,
+        doctorProfileId: true,
+        nurseProfileId: true,
+        receptionistProfileId: true,
+        accountantProfileId: true,
+        medicalRepresentativeProfileId: true,
+      },
+    });
+    const currentlySet = new Set(
+      current
+        ? PROFILE_ID_FIELDS.filter((f) => (current as any)[f])
+        : []
+    );
+    assertSingleProfile(touched, currentlySet);
+  }
+
   return prisma.user.update({
     where: { id },
-    data,
+    data: data as Prisma.UserUpdateInput,
     omit: omitSensitive,
     include: { role: true },
   });
+}
+
+/** Resolve a Role.name from either a relation-object `role` field or a plain `roleId` scalar, for the profile/role-match check. */
+async function resolveRoleName(role: any, roleId: string | undefined): Promise<string | undefined> {
+  const id = roleId ?? (role && typeof role === 'object' && 'connect' in role ? role.connect?.id : undefined);
+  if (!id) return undefined;
+  const r = await prisma.role.findUnique({ where: { id }, select: { name: true } });
+  return r?.name;
 }
 
 export interface ListUsersOptions {

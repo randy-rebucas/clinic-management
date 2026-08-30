@@ -4,7 +4,7 @@ import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { deleteFromCloudinary, extractPublicIdFromUrl } from '@/lib/cloudinary';
 import { getTenantContext } from '@/lib/tenant';
 import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
-import { getDocumentById, updateDocument, softDeleteDocument } from '@/lib/data/document';
+import { getDocumentById, updateDocument, softDeleteDocument, DocumentParentError } from '@/lib/data/document';
 
 function run<T>(tenantId: string | null, fn: () => T | Promise<T>) {
   return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
@@ -71,6 +71,9 @@ export async function PUT(
     return NextResponse.json({ success: true, data: document });
   } catch (error: any) {
     console.error('Error updating document:', error);
+    if (error instanceof DocumentParentError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    }
     if (error.code === 'P2025') {
       return NextResponse.json(
         { success: false, error: 'Document not found' },

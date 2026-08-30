@@ -1,21 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
+import prisma from '@/lib/prisma';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { getTenantContext } from '@/lib/tenant';
+import { runWithTenant, runAsSystem } from '@/lib/tenant-context';
 import { getDefaultRetentionPolicies } from '@/lib/automations/data-retention';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
-import Invoice from '@/models/Invoice';
-import LabResult from '@/models/LabResult';
-import Prescription from '@/models/Prescription';
-import Document from '@/models/Document';
-import AuditLog from '@/models/AuditLog';
-import { Types } from 'mongoose';
+
+function run<T>(tenantId: string | null | undefined, fn: () => T | Promise<T>) {
+  return tenantId ? runWithTenant(tenantId, fn) : runAsSystem(fn);
+}
 
 /**
  * Get data retention status
  * GET /api/data-retention/status
+ *
+ * NOTE: prisma/schema.prisma does not carry an `archived`/`archivedAt`
+ * column on Appointment, Visit, Invoice, LabResult, Prescription, or
+ * AuditLog (only Document has a `status` enum with an 'archived' member).
+ * This mirrors the same gap already documented and handled in
+ * lib/automations/data-retention.ts (archiveRecords()) — those five
+ * resources report `archived: 0` and `toArchive` counts records that WOULD
+ * be archived by date alone (since none are ever actually flagged archived
+ * yet), rather than pretending a flag exists that isn't in the schema.
  */
 export async function GET(request: NextRequest) {
   const session = await verifySession();
@@ -25,8 +31,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await connectDB();
-
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
 
@@ -37,15 +41,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
-      : tenantId;
-
     const policies = getDefaultRetentionPolicies();
     const status: any = {};
 
     for (const policy of policies) {
-      const now = new Date();
       const archiveDate = new Date();
       archiveDate.setDate(archiveDate.getDate() - policy.archiveAfterDays);
 
@@ -55,67 +54,60 @@ export async function GET(request: NextRequest) {
 
       switch (policy.resource) {
         case 'appointments':
-          totalCount = await Appointment.countDocuments({ tenantId: tenantIdObj });
-          archivedCount = await Appointment.countDocuments({ tenantId: tenantIdObj, archived: true });
-          toArchiveCount = await Appointment.countDocuments({
-            tenantId: tenantIdObj,
-            createdAt: { $lt: archiveDate },
-            archived: { $ne: true },
-          });
+          totalCount = await run(tenantId, () => prisma.appointment.count({ where: {} }));
+          // archived flag doesn't exist in Postgres schema yet — see note above.
+          archivedCount = 0;
+          toArchiveCount = await run(tenantId, () =>
+            prisma.appointment.count({ where: { createdAt: { lt: archiveDate } } })
+          );
           break;
         case 'visits':
-          totalCount = await Visit.countDocuments({ tenantId: tenantIdObj });
-          archivedCount = await Visit.countDocuments({ tenantId: tenantIdObj, archived: true });
-          toArchiveCount = await Visit.countDocuments({
-            tenantId: tenantIdObj,
-            createdAt: { $lt: archiveDate },
-            $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-          });
+          totalCount = await run(tenantId, () => prisma.visit.count({ where: {} }));
+          archivedCount = 0;
+          toArchiveCount = await run(tenantId, () =>
+            prisma.visit.count({ where: { createdAt: { lt: archiveDate } } })
+          );
           break;
         case 'invoices':
-          totalCount = await Invoice.countDocuments({ tenantId: tenantIdObj });
-          archivedCount = await Invoice.countDocuments({ tenantId: tenantIdObj, archived: true });
-          toArchiveCount = await Invoice.countDocuments({
-            tenantId: tenantIdObj,
-            createdAt: { $lt: archiveDate },
-            $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-          });
+          totalCount = await run(tenantId, () => prisma.invoice.count({ where: {} }));
+          archivedCount = 0;
+          toArchiveCount = await run(tenantId, () =>
+            prisma.invoice.count({ where: { createdAt: { lt: archiveDate } } })
+          );
           break;
         case 'lab-results':
-          totalCount = await LabResult.countDocuments({ tenantId: tenantIdObj });
-          archivedCount = await LabResult.countDocuments({ tenantId: tenantIdObj, archived: true });
-          toArchiveCount = await LabResult.countDocuments({
-            tenantId: tenantIdObj,
-            createdAt: { $lt: archiveDate },
-            $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-          });
+          totalCount = await run(tenantId, () => prisma.labResult.count({ where: {} }));
+          archivedCount = 0;
+          toArchiveCount = await run(tenantId, () =>
+            prisma.labResult.count({ where: { createdAt: { lt: archiveDate } } })
+          );
           break;
         case 'prescriptions':
-          totalCount = await Prescription.countDocuments({ tenantId: tenantIdObj });
-          archivedCount = await Prescription.countDocuments({ tenantId: tenantIdObj, archived: true });
-          toArchiveCount = await Prescription.countDocuments({
-            tenantId: tenantIdObj,
-            createdAt: { $lt: archiveDate },
-            $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-          });
+          totalCount = await run(tenantId, () => prisma.prescription.count({ where: {} }));
+          archivedCount = 0;
+          toArchiveCount = await run(tenantId, () =>
+            prisma.prescription.count({ where: { createdAt: { lt: archiveDate } } })
+          );
           break;
         case 'documents':
-          totalCount = await Document.countDocuments({ tenantId: tenantIdObj });
-          archivedCount = await Document.countDocuments({ tenantId: tenantIdObj, status: 'archived' });
-          toArchiveCount = await Document.countDocuments({
-            tenantId: tenantIdObj,
-            uploadDate: { $lt: archiveDate },
-            status: { $ne: 'archived' },
-          });
+          totalCount = await run(tenantId, () => prisma.document.count({ where: {} }));
+          archivedCount = await run(tenantId, () =>
+            prisma.document.count({ where: { status: 'archived' } })
+          );
+          toArchiveCount = await run(tenantId, () =>
+            prisma.document.count({
+              where: { uploadDate: { lt: archiveDate }, status: { not: 'archived' } },
+            })
+          );
           break;
         case 'audit-logs':
-          totalCount = await AuditLog.countDocuments({ tenantId: tenantIdObj });
-          archivedCount = await AuditLog.countDocuments({ tenantId: tenantIdObj, archived: true });
-          toArchiveCount = await AuditLog.countDocuments({
-            tenantId: tenantIdObj,
-            createdAt: { $lt: archiveDate },
-            $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-          });
+          totalCount = await run(tenantId, () => prisma.auditLog.count({ where: {} }));
+          // AuditLog has no archived flag either; only hard-delete (via
+          // deleteAfterDays) applies to it — see archiveRecords() note.
+          archivedCount = 0;
+          toArchiveCount = await run(tenantId, () =>
+            prisma.auditLog.count({ where: { createdAt: { lt: archiveDate } } })
+          );
           break;
       }
 
@@ -145,4 +137,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
