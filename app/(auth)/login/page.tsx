@@ -1,4 +1,5 @@
 import LoginForm from '@/components/LoginForm';
+import BrandLogo from '@/components/BrandLogo';
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
 
@@ -23,9 +24,7 @@ export default async function LoginPage() {
         {/* Logo */}
         <div className="relative z-10">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white/15 backdrop-blur-sm rounded-2xl flex items-center justify-center border border-white/20">
-              <span className="text-white font-extrabold text-lg tracking-tight select-none">MCS</span>
-            </div>
+            <BrandLogo size={48} rounded="rounded-2xl" />
             <span className="text-white font-bold text-lg">My Clinic Software</span>
           </div>
         </div>
@@ -85,9 +84,7 @@ export default async function LoginPage() {
         <div className="w-full max-w-md">
           {/* Mobile logo */}
           <div className="flex lg:hidden items-center justify-center gap-3 mb-10">
-            <div className="w-11 h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <span className="text-white font-extrabold text-base tracking-tight select-none">MCS</span>
-            </div>
+            <BrandLogo size={44} rounded="rounded-2xl" className="shadow-lg" />
             <span className="text-gray-900 font-bold text-lg">My Clinic Software</span>
           </div>
 

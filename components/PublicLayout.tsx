@@ -3,6 +3,7 @@
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Link from "next/link";
 import { useState } from "react";
+import BrandLogo from "@/components/BrandLogo";
 
 interface PublicLayoutProps {
   children: React.ReactNode;
@@ -20,10 +21,8 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
             <div className="flex items-center justify-between h-16 sm:h-20">
               {/* Logo */}
               <Link href="/" className="flex items-center gap-2 sm:gap-3 group">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center flex-shrink-0 group-hover:from-blue-700 group-hover:to-indigo-700 transition-all shadow-lg group-hover:scale-105">
-                  <svg width="16" height="16" className="sm:w-5 sm:h-5" fill="none" stroke="white" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                  </svg>
+                <div className="transition-transform shadow-lg group-hover:scale-105">
+                  <BrandLogo size={36} rounded="rounded-lg sm:rounded-xl" />
                 </div>
                 <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-700 to-indigo-700 bg-clip-text text-transparent">
                   MyClinicSoft

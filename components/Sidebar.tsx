@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { logout } from '@/app/actions/auth';
 import { useEffect, useState } from 'react';
 import { useSidebar } from './SidebarContext';
+import BrandLogo from './BrandLogo';
 
 interface PermissionRequirement {
   resource: string;
@@ -164,11 +165,7 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
           {(!mounted || !isCollapsed) && (
             <Link href="/" className="flex-1 min-w-0">
               <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0">
-                  <svg width="16" height="16" fill="none" stroke="white" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                  </svg>
-                </div>
+                <BrandLogo size={28} rounded="rounded-md" />
                 <span className="text-base font-bold bg-gradient-to-r from-blue-700 to-blue-800 bg-clip-text text-transparent overflow-hidden text-ellipsis whitespace-nowrap">
                   MyClinicSoft
                 </span>
@@ -177,11 +174,7 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
           )}
           {mounted && isCollapsed && (
             <Link href="/" className="w-full flex justify-center">
-              <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0">
-                <svg width="16" height="16" fill="none" stroke="white" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                </svg>
-              </div>
+              <BrandLogo size={28} rounded="rounded-md" />
             </Link>
           )}
           <div className="relative">
