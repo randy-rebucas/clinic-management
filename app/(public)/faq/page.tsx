@@ -109,15 +109,15 @@ export default function FAQPage() {
         },
         {
           q: 'Do you provide training?',
-          a: 'Yes, we provide comprehensive documentation, video tutorials, and knowledge base articles. Enterprise customers receive personalized training sessions.',
+          a: 'Yes, we provide comprehensive documentation and video tutorials. Enterprise customers receive personalized training sessions.',
         },
         {
           q: 'How quickly do you respond to support requests?',
           a: 'Response times vary by plan: Basic (24-48 hours), Professional (4-8 hours), Enterprise (1-2 hours or immediate for critical issues).',
         },
         {
-          q: 'Is there a knowledge base or documentation?',
-          a: 'Yes, we maintain a comprehensive knowledge base with articles, tutorials, and guides. You can access it at any time from your account or our public resources page.',
+          q: 'Is there documentation available?',
+          a: 'Yes, we maintain comprehensive documentation with guides and tutorials. You can access it at any time from our public resources page.',
         },
       ],
     },

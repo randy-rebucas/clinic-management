@@ -157,7 +157,6 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
                   <li><Link href="/resources" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Resources</Link></li>
                   <li><Link href="/support" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Support</Link></li>
                   <li><Link href="/faq" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">FAQ</Link></li>
-                  <li><Link href="/knowledge-base" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Documentation</Link></li>
                 </ul>
               </div>
               <div>

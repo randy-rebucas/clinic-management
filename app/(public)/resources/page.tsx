@@ -11,10 +11,10 @@ export default function ResourcesPage() {
     {
       category: 'Documentation',
       items: [
-        { title: 'Getting Started Guide', description: 'Step-by-step guide to set up your clinic', link: '/knowledge-base' },
-        { title: 'User Manual', description: 'Complete user manual for all features', link: '/knowledge-base' },
-        { title: 'API Documentation', description: 'Technical documentation for API integration', link: '/knowledge-base' },
-        { title: 'Feature Guides', description: 'Detailed guides for each feature', link: '/knowledge-base' },
+        { title: 'Getting Started Guide', description: 'Step-by-step guide to set up your clinic', link: '#' },
+        { title: 'User Manual', description: 'Complete user manual for all features', link: '#' },
+        { title: 'API Documentation', description: 'Technical documentation for API integration', link: '#' },
+        { title: 'Feature Guides', description: 'Detailed guides for each feature', link: '#' },
       ],
     },
     {

@@ -21,7 +21,6 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const isAdmin = (user?.role || '').toLowerCase() === 'admin';
   
-  const isKnowledgeBaseActive = pathname?.startsWith('/knowledge-base');
   const isNotificationsActive = pathname === '/notifications';
 
   useEffect(() => {
@@ -115,36 +114,8 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
           </nav>
         </div>
 
-        {/* Right side - Knowledge base, notifications, user info, logout */}
+        {/* Right side - notifications, user info, logout */}
         <div className="flex items-center gap-2">
-          {/* Knowledge Base Icon */}
-          <Link
-            href="/knowledge-base"
-            className={`relative p-2 rounded-lg transition-all duration-200 ${
-              isKnowledgeBaseActive
-                ? 'text-blue-600 bg-blue-50'
-                : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
-            }`}
-            title="Knowledge Base"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-              />
-            </svg>
-            {isKnowledgeBaseActive && (
-              <span className="absolute bottom-0.5 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-blue-600 rounded-full" />
-            )}
-          </Link>
-
           {/* Notification Icon */}
           <Link
             href="/notifications"
