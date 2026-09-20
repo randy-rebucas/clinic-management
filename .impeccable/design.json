@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-20T00:00:00.000Z",
+  "title": "Design System: Clinic Management System",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Clinic Blue", "canonical": "#3b82f6", "tonalRamp": ["#0b234d", "#123a7a", "#1e4fa3", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#dbeafe"] },
+      "primary-dark": { "role": "primary", "displayName": "Clinic Blue Deep", "canonical": "#2563eb", "tonalRamp": ["#0a1f45", "#0f2f6b", "#1a44a0", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#dbeafe"] },
+      "primary-light": { "role": "primary", "displayName": "Clinic Blue Pale", "canonical": "#dbeafe", "tonalRamp": ["#1e3a8a", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe", "#dbeafe", "#eff6ff"] },
+      "brand-mark-teal": { "role": "brand", "displayName": "Brand Mark Teal", "canonical": "#0EA5A4", "tonalRamp": ["#053f3e", "#0a6664", "#0d8b89", "#0EA5A4", "#2dd4d2", "#5eead4", "#99f6e4", "#ccfbf1"] },
+      "success": { "role": "semantic-success", "displayName": "Success Green", "canonical": "#10b981", "tonalRamp": ["#022c22", "#064e3b", "#065f46", "#047857", "#059669", "#10b981", "#6ee7b7", "#d1fae5"] },
+      "warning": { "role": "semantic-warning", "displayName": "Warning Amber", "canonical": "#f59e0b", "tonalRamp": ["#451a03", "#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fcd34d", "#fef3c7"] },
+      "danger": { "role": "semantic-danger", "displayName": "Danger Red", "canonical": "#ef4444", "tonalRamp": ["#450a0a", "#7f1d1d", "#991b1b", "#b91c1c", "#dc2626", "#ef4444", "#fca5a5", "#fee2e2"] },
+      "accent-purple": { "role": "decorative-accent", "displayName": "Stat Purple", "canonical": "#a855f7", "tonalRamp": ["#3b0764", "#581c87", "#6b21a8", "#7e22ce", "#9333ea", "#a855f7", "#d8b4fe", "#f3e8ff"] },
+      "neutral-bg": { "role": "neutral", "displayName": "Console Background", "canonical": "#f8fafc", "tonalRamp": ["#0f172a", "#1e293b", "#334155", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f8fafc"] },
+      "neutral-fg": { "role": "neutral", "displayName": "Console Ink", "canonical": "#0f172a", "tonalRamp": ["#020617", "#0f172a", "#1e293b", "#334155", "#64748b", "#94a3b8", "#cbd5e1", "#f1f5f9"] },
+      "neutral-surface": { "role": "neutral", "displayName": "Surface White", "canonical": "#ffffff", "tonalRamp": ["#e5e7eb", "#eceef1", "#f3f4f6", "#f9fafb", "#fbfbfc", "#fdfdfd", "#ffffff", "#ffffff"] },
+      "neutral-border": { "role": "neutral", "displayName": "Border Gray", "canonical": "#d1d5db", "tonalRamp": ["#111827", "#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db", "#f3f4f6"] },
+      "neutral-border-subtle": { "role": "neutral", "displayName": "Divider Gray", "canonical": "#e5e7eb", "tonalRamp": ["#111827", "#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af", "#e5e7eb", "#f9fafb"] },
+      "neutral-muted": { "role": "neutral", "displayName": "Muted Gray", "canonical": "#6b7280", "tonalRamp": ["#111827", "#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db", "#f3f4f6"] },
+      "neutral-strong": { "role": "neutral", "displayName": "Strong Gray", "canonical": "#111827", "tonalRamp": ["#020617", "#111827", "#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page-level and hero headings (login welcome, marketing hero, page titles)." },
+      "title": { "displayName": "Title", "purpose": "Section and card headers." },
+      "body": { "displayName": "Body", "purpose": "Default UI copy, form labels' companion text, table content." },
+      "label": { "displayName": "Label", "purpose": "Stat-tile eyebrow labels, sidebar category headers, uppercase micro-labels." }
+    },
+    "shadows": [
+      { "name": "ambient-sm", "value": "0 1px 2px rgba(0,0,0,0.05)", "purpose": "Sticky header and resting cards." },
+      { "name": "hover-md", "value": "0 4px 6px rgba(0,0,0,0.10)", "purpose": "Card and stat-tile hover state." },
+      { "name": "hover-lg", "value": "0 10px 15px rgba(0,0,0,0.12)", "purpose": "Dropdown, tooltip, elevated hover surfaces." },
+      { "name": "prominent-xl", "value": "0 20px 25px rgba(0,0,0,0.15)", "purpose": "Primary CTA hover and hero/login card." }
+    ],
+    "motion": [
+      { "name": "transition-standard", "value": "all 0.2s ease / 0.3s ease-in-out (Tailwind transition-all / transition-colors defaults)", "purpose": "Hover color, shadow, and scale transitions across buttons, cards, and the sidebar collapse." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main call-to-action button (form submit, primary page action).",
+      "html": "<button class=\"ds-btn-primary\"><span>Sign In</span><svg class=\"ds-icon\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1\"/></svg></button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 24px; background: linear-gradient(to right, #2563eb, #4f46e5); color: #ffffff; font-weight: 600; font-size: 1rem; border: none; border-radius: 12px; box-shadow: 0 10px 15px rgba(37,99,235,0.25); cursor: pointer; transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease; } .ds-btn-primary:hover { background: linear-gradient(to right, #1d4ed8, #4338ca); box-shadow: 0 20px 25px rgba(37,99,235,0.3); transform: scale(1.05); } .ds-btn-primary:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; } .ds-icon { width: 20px; height: 20px; }"
+    },
+    {
+      "name": "Secondary/Ghost Nav Link",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Text nav link and low-emphasis action, e.g. public header links.",
+      "html": "<a href=\"#\" class=\"ds-link-ghost\">Features</a>",
+      "css": ".ds-link-ghost { padding: 8px 12px; color: #374151; font-weight: 500; font-size: 0.9375rem; text-decoration: none; border-radius: 8px; transition: color 0.2s ease, background-color 0.2s ease; } .ds-link-ghost:hover { color: #2563eb; background-color: #eff6ff; } .ds-link-ghost:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input with Icon",
+      "kind": "input",
+      "refersTo": "input-default",
+      "description": "Standard labeled form field with left-inset icon, used across login and record forms.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-label\" for=\"ds-email\">Email Address <span class=\"ds-req\">*</span></label><div class=\"ds-input-wrap\"><svg class=\"ds-input-icon\" width=\"18\" height=\"18\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\"><path d=\"M2.5 4C2.5 3.17157 3.17157 2.5 4 2.5H12C12.8284 2.5 13.5 3.17157 13.5 4V12C13.5 12.8284 12.8284 13.5 12 13.5H4C3.17157 13.5 2.5 12.8284 2.5 12V4Z\" stroke-width=\"1.2\"/><path d=\"M2.5 5.5L8 9.5L13.5 5.5\" stroke-width=\"1.2\"/></svg><input id=\"ds-email\" type=\"email\" class=\"ds-input\" placeholder=\"you@example.com\"/></div></div>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 8px; } .ds-label { font-size: 0.9375rem; font-weight: 600; color: #374151; } .ds-req { color: #ef4444; } .ds-input-wrap { position: relative; display: flex; align-items: center; } .ds-input-icon { position: absolute; left: 16px; color: #9ca3af; pointer-events: none; } .ds-input { width: 100%; padding: 12px 16px 12px 48px; border: 2px solid #d1d5db; border-radius: 12px; font-size: 1rem; background: rgba(255,255,255,0.5); transition: border-color 0.2s ease, box-shadow 0.2s ease; } .ds-input:hover { border-color: #93c5fd; } .ds-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.5); }"
+    },
+    {
+      "name": "Sidebar Nav Item",
+      "kind": "nav",
+      "refersTo": "sidebar-nav-item-active",
+      "description": "Left sidebar navigation row, active and inactive states, used in the authenticated app shell.",
+      "html": "<a href=\"#\" class=\"ds-nav-item ds-nav-item--active\"><svg class=\"ds-icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6\"/></svg><span>Dashboard</span><span class=\"ds-nav-dot\"></span></a>",
+      "css": ".ds-nav-item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 8px; text-decoration: none; color: #374151; font-size: 0.875rem; transition: background-color 0.2s ease, color 0.2s ease; } .ds-nav-item:hover { background-color: #f3f4f6; } .ds-nav-item--active { background-color: #dbeafe; color: #1e3a8a; font-weight: 500; } .ds-nav-dot { width: 6px; height: 6px; border-radius: 9999px; background: #1d4ed8; margin-left: auto; } .ds-icon { width: 18px; height: 18px; flex-shrink: 0; }"
+    },
+    {
+      "name": "Stat Card",
+      "kind": "card",
+      "refersTo": "card-surface",
+      "description": "Tinted metric tile used in dashboard/list-page quick-stats panels; color keyed per metric.",
+      "html": "<div class=\"ds-stat-card\"><div class=\"ds-stat-head\"><p class=\"ds-stat-label\">Total Patients</p><div class=\"ds-stat-icon-wrap\"><svg class=\"ds-icon\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#ffffff\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z\"/></svg></div></div><p class=\"ds-stat-value\">128</p></div>",
+      "css": ".ds-stat-card { background: linear-gradient(to bottom right, #eff6ff, #dbeafe); border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; transition: box-shadow 0.2s ease; } .ds-stat-card:hover { box-shadow: 0 4px 6px rgba(0,0,0,0.1); } .ds-stat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; } .ds-stat-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #2563eb; } .ds-stat-icon-wrap { padding: 8px; background: #3b82f6; border-radius: 8px; display: flex; } .ds-stat-value { font-size: 1.875rem; font-weight: 700; color: #1d4ed8; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-pill",
+      "description": "Rounded status/category pill used on patient list rows, subscription status, and tags.",
+      "html": "<span class=\"ds-badge\">Active</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; padding: 4px 10px; background: #dbeafe; color: #1d4ed8; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; border-radius: 9999px; }"
+    },
+    {
+      "name": "Brand Logo Mark",
+      "kind": "custom",
+      "refersTo": "brand-mark",
+      "description": "Fixed brand mark used in the login page, PublicLayout header, and Sidebar; not a themeable token.",
+      "html": "<div class=\"ds-brand-mark\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\"><path d=\"M12 2 L21 6 V12 C21 17 17 21 12 22 C7 21 3 17 3 12 V6 Z\" fill=\"white\" fill-opacity=\"0.18\"/><path d=\"M12 2 L21 6 V12 C21 17 17 21 12 22 C7 21 3 17 3 12 V6 Z\" stroke=\"white\" stroke-width=\"1.4\"/><path d=\"M12 7.5 V16.5 M7.5 12 H16.5\" stroke=\"white\" stroke-width=\"2.2\" stroke-linecap=\"round\"/></svg></div>",
+      "css": ".ds-brand-mark { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 8px; background: linear-gradient(135deg, #0EA5A4 0%, #2563EB 100%); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Operations Console",
+    "overview": "This is a working console for people who spend their whole shift in it: front-desk staff booking patients between phone calls, nurses documenting a visit, billing staff closing an invoice, an admin scanning a dashboard between meetings. The build treats every screen as an instrument panel, not a showcase — dense information, color-coded status at a glance, and one consistent accent (blue-to-indigo) that marks anything interactive or \"yours to act on\" across all seven roles. Nothing in the shipped code performs restraint for its own sake: buttons carry gradients, hover states lift with shadow and scale, and stat cards use tinted color per metric. That liveliness is native to the build and is recorded here as the system, not softened into something it isn't. The public-facing shell (marketing pages, login) shares the same blue/indigo accent and the same rounded, soft-shadow language as the authenticated app, so the transition from marketing to console is not a re-skin — it's the same system at a slightly higher production value (glassmorphism header, gradient hero panel) than the dense internal screens need day to day.",
+    "keyCharacteristics": [
+      "One accent family (blue → indigo) carries all primary actions, active nav state, and links across every role's screens.",
+      "Status and metric color is semantic and role-based (green=success/active, amber=warning, red=danger/error), not decorative.",
+      "Soft, layered elevation (shadow-sm/md/lg/xl) responding to hover and hierarchy — never flat, never hard-offset.",
+      "Generously rounded corners (8–16px) on nearly every surface; pills (full radius) for status and category tags.",
+      "Iconography is exclusively inline stroke-style outline SVG (Heroicons-style, 1.5–2px stroke), never glyph/emoji icons or icon fonts."
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "Only the blue → indigo gradient signals \"primary action\" or \"you are here\" (active nav, primary buttons, focus rings). No other hue is used for calls to action — green/amber/red are reserved for status meaning, never for a generic button.", "section": "colors" },
+      { "name": "The Single-Family Rule", "body": "Every weight and size in the product comes from the Geist Sans ramp. No secondary or accent typeface is introduced for headings, quotes, or numerals.", "section": "typography" },
+      { "name": "The Lift-On-Hover Rule", "body": "Interactive surfaces (cards, primary buttons, clinic-selection tiles) sit at a low shadow at rest and increase shadow + scale on hover; the increase is the affordance that the element is actionable.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use the blue → indigo gradient (`from-blue-600 to-indigo-600`, hover `from-blue-700 to-indigo-700`) for every primary call-to-action button, across every role's screens.",
+      "Do reserve green/amber/red strictly for status meaning (active/warning/error), never as a stylistic alternative to the primary accent.",
+      "Do render the `BrandLogo` mark exactly as implemented (teal-to-blue gradient, shield glyph) wherever the brand appears — it is fixed identity, not a token to reinterpret.",
+      "Do pair every input with a left-inset inline SVG icon and a `focus:ring-2 focus:ring-blue-500` glow, matching the existing form pattern.",
+      "Do use inline outline-style SVG icons (stroke, 1.5–2px) for all iconography; never a glyph icon font or emoji."
+    ],
+    "donts": [
+      "Don't introduce a second display or serif typeface; the entire product runs on Geist Sans.",
+      "Don't apply a hard, offset (\"sticker\") shadow anywhere; the built system uses only soft, diffuse shadows that intensify on hover.",
+      "Don't restyle the `BrandLogo` gradient to match the blue/indigo UI accent, or vice versa — the build keeps them as two intentionally distinct gradients (logo mark vs. functional UI accent) and neither should be collapsed into the other without a deliberate identity decision."
+    ]
+  }
+}

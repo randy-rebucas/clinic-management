@@ -15,43 +15,41 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
   return (
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col">
-        {/* Modern Header with Glassmorphism */}
-        <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16 sm:h-20">
+        {/* Header */}
+        <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-200">
+          <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16 sm:h-18">
               {/* Logo */}
-              <Link href="/" className="flex items-center gap-2 sm:gap-3 group">
-                <div className="transition-transform shadow-lg group-hover:scale-105">
-                  <BrandLogo size={36} rounded="rounded-lg sm:rounded-xl" />
-                </div>
-                <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-700 to-indigo-700 bg-clip-text text-transparent">
+              <Link href="/" className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+                <BrandLogo size={32} rounded="rounded-lg" />
+                <span className="text-base sm:text-lg font-bold text-gray-900 tracking-tight">
                   MyClinicSoft
                 </span>
               </Link>
 
               {/* Desktop Navigation */}
-              <nav className="hidden md:flex items-center gap-2 lg:gap-4">
+              <nav className="hidden md:flex items-center gap-1 lg:gap-2">
                 <Link
                   href="/features"
-                  className="px-3 py-2 text-sm lg:text-base text-gray-700 hover:text-blue-600 font-medium transition-colors rounded-lg hover:bg-blue-50"
+                  className="px-3.5 py-2 text-sm text-gray-600 hover:text-gray-900 font-medium transition-colors rounded-md hover:bg-gray-100"
                 >
                   Features
                 </Link>
                 <Link
                   href="/onboard"
-                  className="px-3 py-2 text-sm lg:text-base text-gray-700 hover:text-blue-600 font-medium transition-colors rounded-lg hover:bg-blue-50"
+                  className="px-3.5 py-2 text-sm text-gray-600 hover:text-gray-900 font-medium transition-colors rounded-md hover:bg-gray-100"
                 >
                   Register
                 </Link>
                 <Link
                   href="/patient/login"
-                  className="px-3 py-2 text-sm lg:text-base text-gray-700 hover:text-blue-600 font-medium transition-colors rounded-lg hover:bg-blue-50"
+                  className="px-3.5 py-2 text-sm text-gray-600 hover:text-gray-900 font-medium transition-colors rounded-md hover:bg-gray-100"
                 >
                   Patient Login
                 </Link>
                 <Link
                   href="/login"
-                  className="px-4 py-2 text-sm lg:text-base bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg transform hover:scale-105"
+                  className="ml-2 px-4 py-2 text-sm bg-brand-teal text-white font-semibold rounded-md hover:bg-brand-teal-dark transition-colors"
                 >
                   Staff Login
                 </Link>
@@ -85,35 +83,35 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
                   <Link
                     href="/features"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="px-4 py-3 text-base text-gray-700 hover:text-blue-600 font-medium transition-colors rounded-lg hover:bg-blue-50"
+                    className="px-4 py-3 text-base text-gray-600 hover:text-gray-900 font-medium transition-colors rounded-lg hover:bg-gray-100"
                   >
                     Features
                   </Link>
                   <Link
                     href="/onboard"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="px-4 py-3 text-base text-gray-700 hover:text-blue-600 font-medium transition-colors rounded-lg hover:bg-blue-50"
+                    className="px-4 py-3 text-base text-gray-600 hover:text-gray-900 font-medium transition-colors rounded-lg hover:bg-gray-100"
                   >
                     Register
                   </Link>
                   <Link
                     href="/book"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="px-4 py-3 text-base text-gray-700 hover:text-blue-600 font-medium transition-colors rounded-lg hover:bg-blue-50"
+                    className="px-4 py-3 text-base text-gray-600 hover:text-gray-900 font-medium transition-colors rounded-lg hover:bg-gray-100"
                   >
                     Book Appointment
                   </Link>
                   <Link
                     href="/patient/login"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="px-4 py-3 text-base text-gray-700 hover:text-blue-600 font-medium transition-colors rounded-lg hover:bg-blue-50"
+                    className="px-4 py-3 text-base text-gray-600 hover:text-gray-900 font-medium transition-colors rounded-lg hover:bg-gray-100"
                   >
                     Patient Login
                   </Link>
                   <Link
                     href="/login"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="px-4 py-3 text-base bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-center"
+                    className="px-4 py-3 text-base bg-brand-teal text-white font-semibold rounded-lg hover:bg-brand-teal-dark transition-colors text-center"
                   >
                     Staff Login
                   </Link>
@@ -128,42 +126,42 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
           {children}
         </main>
 
-        {/* Modern Footer */}
-        <footer className="bg-white/80 backdrop-blur-sm border-t border-gray-200/50 py-8 sm:py-12">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Footer */}
+        <footer className="bg-white border-t border-gray-200 py-8 sm:py-12">
+          <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
               <div>
                 <h3 className="font-semibold text-gray-900 mb-4">Product</h3>
                 <ul className="space-y-2">
-                  <li><Link href="/features" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Features</Link></li>
-                  <li><Link href="/pricing" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Pricing</Link></li>
-                  <li><Link href="/demo" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Demo</Link></li>
-                  <li><Link href="/integrations" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Integrations</Link></li>
-                  <li><Link href="/compare" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Compare</Link></li>
+                  <li><Link href="/features" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Features</Link></li>
+                  <li><Link href="/pricing" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Pricing</Link></li>
+                  <li><Link href="/demo" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Demo</Link></li>
+                  <li><Link href="/integrations" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Integrations</Link></li>
+                  <li><Link href="/compare" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Compare</Link></li>
                 </ul>
               </div>
               <div>
                 <h3 className="font-semibold text-gray-900 mb-4">Company</h3>
                 <ul className="space-y-2">
-                  <li><Link href="/about" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">About Us</Link></li>
-                  <li><Link href="/testimonials" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Testimonials</Link></li>
-                  <li><Link href="/contact" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Contact</Link></li>
-                  <li><Link href="/security" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Security</Link></li>
+                  <li><Link href="/about" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">About Us</Link></li>
+                  <li><Link href="/testimonials" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Testimonials</Link></li>
+                  <li><Link href="/contact" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Contact</Link></li>
+                  <li><Link href="/security" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Security</Link></li>
                 </ul>
               </div>
               <div>
                 <h3 className="font-semibold text-gray-900 mb-4">Resources</h3>
                 <ul className="space-y-2">
-                  <li><Link href="/resources" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Resources</Link></li>
-                  <li><Link href="/support" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Support</Link></li>
-                  <li><Link href="/faq" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">FAQ</Link></li>
+                  <li><Link href="/resources" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Resources</Link></li>
+                  <li><Link href="/support" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Support</Link></li>
+                  <li><Link href="/faq" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">FAQ</Link></li>
                 </ul>
               </div>
               <div>
                 <h3 className="font-semibold text-gray-900 mb-4">Legal</h3>
                 <ul className="space-y-2">
-                  <li><Link href="/privacy" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Privacy Policy</Link></li>
-                  <li><Link href="/terms" className="text-sm text-gray-600 hover:text-blue-600 transition-colors">Terms of Service</Link></li>
+                  <li><Link href="/privacy" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Privacy Policy</Link></li>
+                  <li><Link href="/terms" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Terms of Service</Link></li>
                 </ul>
               </div>
             </div>
@@ -176,7 +174,7 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
               <div className="flex items-center gap-6">
                 <a
                   href="mailto:support@myclinicsoft.com"
-                  className="text-sm text-gray-600 hover:text-blue-600 transition-colors"
+                  className="text-sm text-gray-600 hover:text-brand-teal transition-colors"
                 >
                   Support
                 </a>
