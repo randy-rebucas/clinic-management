@@ -1,0 +1,37 @@
+I'm planning a native mobile app (React Native + Expo) for my clinic-management 
+system. The web app is Next.js 16 (App Router) + MongoDB/Mongoose + Socket.IO, 
+with a REST API already exposed under app/api/**.
+
+Key existing pieces to reuse:
+- Patient Bearer-token auth: app/api/patients/auth/token/route.ts
+- Staff auth fallback: app/lib/auth-helpers.ts (getCurrentUser, Bearer support)
+- Business logic in lib/automations/* and lib/*.ts services
+- Cloudinary uploads: lib/cloudinary.ts
+- Realtime via Socket.IO in server.ts + lib/hooks/use*WebSocket.ts
+
+Known gaps to solve before mobile ships:
+1. Push notifications are Web Push/VAPID only — need FCM (Android) + APNs (iOS), 
+   including a new device-token model and dual-send path.
+2. No CORS configuration on API routes — need explicit allowed-origins for the 
+   native app's requests.
+3. Staff-side Bearer auth needs refresh tokens + revocation, matching the pattern 
+   already used for patients.
+4. Some routes use cookie-only verifySession (app/lib/dal.ts) instead of the 
+   Bearer-aware getCurrentUser — need a route-by-route audit before mobile relies 
+   on them.
+5. Socket.IO requires the custom server.ts long-running process — confirm 
+   deployment target supports persistent connections for native socket clients.
+
+Please:
+1. Propose a phased plan (API hardening → auth parity → push notifications → 
+   Expo app scaffold → feature parity) with rough effort estimates.
+2. Identify which existing API routes are safe to consume as-is vs. which need 
+   changes first.
+3. Recommend an approach for FCM/APNs integration that fits the existing 
+   PushSubscription/notifications.ts pattern rather than replacing it wholesale.
+4. Flag any data model or endpoint design issues that would cause pain in a 
+   mobile client (e.g. inconsistent pagination, missing fields, N+1 patterns) — 
+   check app/api/patients, app/api/appointments, app/api/visits, and 
+   app/api/prescriptions specifically.
+
+Don't write code yet — I want a reviewed plan first.
