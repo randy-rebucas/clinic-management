@@ -158,7 +158,7 @@ export default function IntegrationsPage() {
               </div>
             </div>
             <Link
-              href="/knowledge-base"
+              href="/resources"
               className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl"
             >
               View API Documentation
