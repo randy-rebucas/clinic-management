@@ -19,6 +19,13 @@
   --gray-700: #374151;
   --gray-800: #1f2937;
   --gray-900: #111827;
+
+  /* Public-site brand palette, drawn from the BrandLogo mark (teal -> blue) */
+  --brand-teal: #0ea5a4;
+  --brand-teal-dark: #0a7f7e;
+  --brand-teal-light: #e3f6f5;
+  --brand-blue: #2563eb;
+  --brand-navy: #0b2136;
 }
 
 @theme inline {
@@ -26,6 +33,11 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-brand-teal: var(--brand-teal);
+  --color-brand-teal-dark: var(--brand-teal-dark);
+  --color-brand-teal-light: var(--brand-teal-light);
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-navy: var(--brand-navy);
 }
 
 * {
@@ -64,30 +76,18 @@ html {
   background: var(--gray-400);
 }
 
-/* Animated blob background */
-@keyframes blob {
-  0% {
-    transform: translate(0px, 0px) scale(1);
+/* Hero entrance */
+@keyframes fade-up-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
-  33% {
-    transform: translate(30px, -50px) scale(1.1);
-  }
-  66% {
-    transform: translate(-20px, 20px) scale(0.9);
-  }
-  100% {
-    transform: translate(0px, 0px) scale(1);
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-.animate-blob {
-  animation: blob 7s infinite;
-}
-
-.animation-delay-2000 {
-  animation-delay: 2s;
-}
-
-.animation-delay-4000 {
-  animation-delay: 4s;
+.animate-fade-up-in {
+  animation: fade-up-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
