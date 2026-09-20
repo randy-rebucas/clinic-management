@@ -1,5 +1,6 @@
 import LoginForm from '@/components/LoginForm';
 import BrandLogo from '@/components/BrandLogo';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
 
@@ -11,22 +12,53 @@ export default async function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex bg-white">
       {/* Left branding panel — hidden on mobile */}
-      <div className="hidden lg:flex lg:w-1/2 xl:w-5/12 relative flex-col justify-between p-12 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 overflow-hidden">
-        {/* Background decoration */}
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute -top-24 -left-24 w-96 h-96 bg-white/5 rounded-full"></div>
-          <div className="absolute -bottom-32 -right-16 w-[28rem] h-[28rem] bg-white/5 rounded-full"></div>
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-white/5 rounded-full"></div>
+      <div className="hidden lg:flex lg:w-1/2 xl:w-5/12 relative flex-col justify-between p-12 bg-brand-navy overflow-hidden">
+        {/* Background decoration — grid pattern, consistent with homepage */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-30"
+          style={{
+            backgroundImage:
+              'linear-gradient(to right, #ffffff10 1px, transparent 1px), linear-gradient(to bottom, #ffffff10 1px, transparent 1px)',
+            backgroundSize: '40px 40px',
+            maskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 0%, transparent 80%)',
+            WebkitMaskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 0%, transparent 80%)',
+          }}
+        />
+
+        {/* Scattered medical iconography — subtle texture, not clutter */}
+        <div className="pointer-events-none absolute inset-0 text-white/[0.07]">
+          {/* Stethoscope */}
+          <svg className="absolute -top-6 right-10 w-40 h-40 rotate-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4.5 3v6a3.5 3.5 0 007 0V3M8 12.5v2a5 5 0 0010 0v-2.379a2.5 2.5 0 10-1-.001M20.5 10.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM4.5 3H3M11.5 3H10" />
+          </svg>
+          {/* Heartbeat pulse */}
+          <svg className="absolute top-1/3 -left-8 w-56 h-28" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M2 12h4l2-6 4 12 3-9 2 3h5" />
+          </svg>
+          {/* Cross / first aid */}
+          <svg className="absolute bottom-24 right-16 w-24 h-24 -rotate-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4v16m8-8H4" />
+            <rect x="3" y="3" width="18" height="18" rx="3" strokeWidth={1} />
+          </svg>
+          {/* Pill capsule */}
+          <svg className="absolute bottom-40 left-6 w-28 h-16 rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <rect x="2" y="8" width="20" height="8" rx="4" strokeWidth={1} />
+            <path strokeWidth={1} d="M12 8v8" />
+          </svg>
+          {/* Syringe */}
+          <svg className="absolute top-14 left-1/2 w-32 h-32 -translate-x-1/2 rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M18 3l3 3m-5-1l3 3M6 21l-2-2m0 0l1.5-4.5L14 6l4 4-8.5 8.5L6 21zM12 8l4 4" />
+          </svg>
         </div>
 
         {/* Logo */}
         <div className="relative z-10">
-          <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3">
             <BrandLogo size={48} rounded="rounded-2xl" />
             <span className="text-white font-bold text-lg">My Clinic Software</span>
-          </div>
+          </Link>
         </div>
 
         {/* Center content */}
@@ -37,10 +69,10 @@ export default async function LoginPage() {
             </svg>
           </div>
           <div>
-            <h2 className="text-3xl xl:text-4xl font-extrabold text-white leading-tight mb-3">
+            <h2 className="text-3xl xl:text-4xl font-extrabold text-white leading-tight mb-3 tracking-tight">
               Clinic management,<br />simplified.
             </h2>
-            <p className="text-blue-100 text-base xl:text-lg leading-relaxed">
+            <p className="text-slate-300 text-base xl:text-lg leading-relaxed">
               Manage patients, appointments, queues, and billing — all in one place.
             </p>
           </div>
@@ -54,11 +86,11 @@ export default async function LoginPage() {
             ].map(({ icon, label }) => (
               <div key={label} className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <svg className="w-4 h-4 text-blue-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icon} />
                   </svg>
                 </div>
-                <span className="text-blue-100 text-sm font-medium">{label}</span>
+                <span className="text-slate-300 text-sm font-medium">{label}</span>
               </div>
             ))}
           </div>
@@ -66,27 +98,32 @@ export default async function LoginPage() {
 
         {/* Bottom tagline */}
         <div className="relative z-10">
-          <p className="text-blue-200 text-sm">
+          <p className="text-slate-400 text-sm">
             &copy; {new Date().getFullYear()} My Clinic Software. All rights reserved.
           </p>
         </div>
       </div>
 
       {/* Right form panel */}
-      <div className="flex-1 flex flex-col justify-center items-center px-6 py-12 sm:px-12 bg-gray-50 relative overflow-hidden">
-        {/* Subtle background for mobile */}
-        <div className="absolute inset-0 -z-10 lg:hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>
-          <div className="absolute top-0 -left-4 w-72 h-72 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
-          <div className="absolute bottom-0 right-0 w-72 h-72 bg-indigo-300 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
-        </div>
+      <div className="flex-1 flex flex-col justify-center items-center px-6 py-12 sm:px-12 bg-white relative overflow-hidden">
+        {/* Subtle grid background for mobile */}
+        <div
+          className="pointer-events-none absolute inset-0 -z-10 lg:hidden"
+          style={{
+            backgroundImage:
+              'linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)',
+            backgroundSize: '48px 48px',
+            maskImage: 'radial-gradient(ellipse 80% 60% at 50% 20%, black 20%, transparent 75%)',
+            WebkitMaskImage: 'radial-gradient(ellipse 80% 60% at 50% 20%, black 20%, transparent 75%)',
+          }}
+        />
 
         <div className="w-full max-w-md">
           {/* Mobile logo */}
-          <div className="flex lg:hidden items-center justify-center gap-3 mb-10">
+          <Link href="/" className="flex lg:hidden items-center justify-center gap-3 mb-10">
             <BrandLogo size={44} rounded="rounded-2xl" className="shadow-lg" />
             <span className="text-gray-900 font-bold text-lg">My Clinic Software</span>
-          </div>
+          </Link>
 
           {/* Heading */}
           <div className="mb-8">
@@ -96,7 +133,10 @@ export default async function LoginPage() {
 
           <LoginForm />
 
-          <p className="mt-8 text-center text-xs text-gray-400">
+          <p className="mt-8 text-center text-xs text-gray-500 flex items-center justify-center gap-1.5">
+            <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
             Protected by secure authentication &mdash; My Clinic Software
           </p>
         </div>

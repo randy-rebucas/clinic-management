@@ -23,6 +23,7 @@ interface Clinic {
 
 export default function LoginForm() {
   const [state, action, pending] = useActionState(login, undefined);
+  const [showPassword, setShowPassword] = useState(false);
   const [hasSubdomain, setHasSubdomain] = useState(false);
   const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null);
   const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
@@ -107,8 +108,8 @@ export default function LoginForm() {
       <div className="space-y-6 sm:space-y-8">
         <div>
           <h3 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3 flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-8 h-8 bg-brand-teal-light rounded-md flex items-center justify-center">
+              <svg className="w-4 h-4 text-brand-teal-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
             </div>
@@ -122,7 +123,7 @@ export default function LoginForm() {
             <div className="flex items-center justify-center py-12 sm:py-16">
               <div className="flex flex-col items-center gap-4">
                 <div className="relative">
-                  <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                  <div className="w-12 h-12 border-4 border-brand-teal-light border-t-brand-teal rounded-full animate-spin"></div>
                 </div>
                 <p className="text-base sm:text-lg text-gray-600 font-medium">Loading clinics...</p>
               </div>
@@ -135,7 +136,7 @@ export default function LoginForm() {
                 </svg>
               </div>
               <p className="text-gray-600 mb-4 text-base sm:text-lg">No clinics available at the moment.</p>
-              <Link href="/tenant-onboard" className="inline-block px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105">
+              <Link href="/tenant-onboard" className="inline-block px-6 py-3 bg-brand-teal text-white rounded-md font-semibold hover:bg-brand-teal-dark transition-colors duration-150">
                 Register a new clinic
               </Link>
             </div>
@@ -146,18 +147,18 @@ export default function LoginForm() {
                   key={clinic._id}
                   type="button"
                   onClick={() => handleClinicSelect(clinic)}
-                  className="group w-full p-4 border-2 border-gray-200 rounded-2xl text-left hover:border-blue-400 hover:bg-blue-50/60 transition-all shadow-sm hover:shadow-md bg-white"
+                  className="group w-full p-4 border border-gray-200 rounded-md text-left hover:border-brand-teal hover:bg-brand-teal-light/40 transition-colors duration-150 bg-white"
                 >
                   <div className="flex items-start gap-3">
                     {/* Clinic icon */}
-                    <div className="flex-shrink-0 w-11 h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
-                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex-shrink-0 w-11 h-11 bg-brand-teal-light rounded-md flex items-center justify-center">
+                      <svg className="w-6 h-6 text-brand-teal-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                       </svg>
                     </div>
                     {/* Clinic info */}
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-sm text-gray-900 leading-tight truncate group-hover:text-blue-700 transition-colors">
+                      <h4 className="font-bold text-sm text-gray-900 leading-tight truncate group-hover:text-brand-teal-dark transition-colors">
                         {clinic.displayName || clinic.name}
                       </h4>
                       {clinic.address && (clinic.address.city || clinic.address.state) && (
@@ -179,7 +180,7 @@ export default function LoginForm() {
                       )}
                     </div>
                     {/* Arrow */}
-                    <svg className="w-4 h-4 text-gray-300 group-hover:text-blue-400 flex-shrink-0 mt-0.5 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-gray-300 group-hover:text-brand-teal flex-shrink-0 mt-0.5 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
@@ -192,7 +193,7 @@ export default function LoginForm() {
         <div className="pt-6 border-t border-gray-200/50">
           <p className="text-sm sm:text-base text-gray-600 text-center">
             Don&apos;t see your clinic?{' '}
-            <Link href="/tenant-onboard" className="text-blue-600 hover:text-blue-700 font-semibold underline decoration-2 underline-offset-2">
+            <Link href="/tenant-onboard" className="text-brand-teal-dark hover:text-brand-teal font-semibold underline decoration-2 underline-offset-2">
               Register a new clinic
             </Link>
           </p>
@@ -223,11 +224,11 @@ export default function LoginForm() {
             autoComplete="email"
             autoFocus
             placeholder="you@example.com"
-            className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
+            className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-colors bg-white hover:border-gray-400 text-base"
           />
         </div>
         {state?.errors?.email && (
-          <div className="mt-2 p-3 bg-red-50/90 backdrop-blur-sm border-2 border-red-200 rounded-xl text-sm text-red-800 shadow-md">
+          <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">
             <div className="flex items-start gap-2">
               <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
@@ -252,15 +253,33 @@ export default function LoginForm() {
           <input
             id="password"
             name="password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             required
             autoComplete="current-password"
             placeholder="Enter your password"
-            className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
+            className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-colors bg-white hover:border-gray-400 text-base"
           />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+            aria-pressed={showPassword}
+            className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none focus:text-brand-teal-dark transition-colors"
+          >
+            {showPassword ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.243 4.243L9.88 9.88" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            )}
+          </button>
         </div>
         {state?.errors?.password && (
-          <div className="mt-2 p-3 bg-red-50/90 backdrop-blur-sm border-2 border-red-200 rounded-xl text-sm text-red-800 shadow-md">
+          <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">
             <div className="flex items-start gap-2">
               <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
@@ -273,7 +292,7 @@ export default function LoginForm() {
 
       {/* General Error Message */}
       {state?.message && (
-        <div className="p-4 sm:p-5 bg-red-50/90 backdrop-blur-sm border-2 border-red-200 rounded-xl sm:rounded-2xl text-sm sm:text-base text-red-800 shadow-lg">
+        <div className="p-4 sm:p-5 bg-red-50 border border-red-200 rounded-md text-sm sm:text-base text-red-800">
           <div className="flex items-start gap-3">
             <svg className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
@@ -288,7 +307,7 @@ export default function LoginForm() {
         <button
           type="submit"
           disabled={pending}
-          className="w-full px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:from-blue-400 disabled:to-indigo-400 text-white font-semibold rounded-xl transition-all shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none disabled:cursor-not-allowed flex items-center justify-center gap-2 text-base sm:text-lg"
+          className="w-full px-6 sm:px-8 py-3 sm:py-4 bg-brand-teal hover:bg-brand-teal-dark disabled:bg-brand-teal/60 text-white font-semibold rounded-md transition-colors duration-150 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-base sm:text-lg"
         >
           {pending ? (
             <>
@@ -310,7 +329,7 @@ export default function LoginForm() {
       <div>
         <p className="text-sm sm:text-base text-gray-600 text-center">
           Don&apos;t have an account?{' '}
-          <Link href="/tenant-onboard" className="text-blue-600 hover:text-blue-700 font-semibold underline decoration-2 underline-offset-2">
+          <Link href="/tenant-onboard" className="text-brand-teal-dark hover:text-brand-teal font-semibold underline decoration-2 underline-offset-2">
             Register your clinic
           </Link>
         </p>
