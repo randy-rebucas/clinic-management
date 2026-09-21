@@ -54,10 +54,15 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
 
   // Move connect above all usages, and use function declaration
-  function connect() {
+  async function connect() {
     if (!enabled || socketRef.current?.connected) return;
 
-    const token = (typeof window === 'undefined') ? null : (localStorage.getItem('token') || sessionStorage.getItem('token'));
+    const token = (typeof window === 'undefined')
+      ? null
+      : await fetch('/api/auth/socket-token')
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => data?.token ?? null)
+          .catch(() => null);
     if (!token) {
       if (authRetryCountRef.current < 3) {
         authRetryCountRef.current++;

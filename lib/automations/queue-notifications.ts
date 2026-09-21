@@ -8,7 +8,7 @@ import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
 import Patient from '@/models/Patient';
 import { sendSMS } from '@/lib/sms';
-import { sendPushToUser } from '@/lib/push-notifications';
+import { sendPushToPatientDevices } from '@/lib/push-notifications';
 import { getSettings } from '@/lib/settings';
 import { Types } from 'mongoose';
 
@@ -83,14 +83,15 @@ export async function notifyQueuePatient(options: QueueNotificationOptions): Pro
       );
     }
 
-    // Push (fire-and-forget)
+    // Push (fire-and-forget) — patients receive push via their registered
+    // MobileDevice records, not the staff-only PushSubscription/web-push path.
     if (pushTitle && pushBody) {
-      sendPushToUser(queueEntry.patient.toString(), {
+      sendPushToPatientDevices(queueEntry.patient.toString(), {
         title: pushTitle,
         body: pushBody,
         tag: `queue-${queueId}`,
         url: '/queue',
-      }, options.tenantId?.toString()).catch((e) =>
+      }).catch((e) =>
         console.error('[queue-notifications] Push error:', e)
       );
     }

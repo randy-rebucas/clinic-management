@@ -7,6 +7,7 @@ import { getSettings } from '@/lib/settings';
 import { createNotification } from '@/lib/notifications';
 import { sendEmail, generateAppointmentReminderEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
+import { sendPushToPatientDevices } from '@/lib/push-notifications';
 import { Types } from 'mongoose';
 
 export interface AppointmentConfirmationOptions {
@@ -14,6 +15,7 @@ export interface AppointmentConfirmationOptions {
   tenantId?: string | Types.ObjectId;
   confirmationMethod?: 'sms' | 'email' | 'link';
   sendConfirmation?: boolean;
+  sendPush?: boolean;
 }
 
 /**
@@ -103,6 +105,21 @@ export async function sendConfirmationRequest(options: AppointmentConfirmationOp
         }
       } catch (error) {
         console.error('Error sending confirmation email:', error);
+      }
+    }
+
+    // Send push notification to patient's mobile devices
+    if (options.sendPush !== false && patient._id) {
+      try {
+        const pushResult = await sendPushToPatientDevices(patient._id.toString(), {
+          title: 'Confirm Your Appointment',
+          body: `${appointmentDate.toLocaleDateString()} at ${displayTime}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. Tap to confirm.`,
+          tag: `appointment-confirm-${appointment._id}`,
+          url: `/appointments/${appointment._id}`,
+        });
+        if (pushResult.sent) sent = true;
+      } catch (error) {
+        console.error('Error sending confirmation push notification:', error);
       }
     }
 

@@ -299,9 +299,17 @@ export function registerAllModels(): void {
   // Audit models
    
   require('./AuditLog');
-   
+
   require('./Notification');
-  
+
+  // SaaS / integration models
+  require('./Product');
+  require('./MedicalRepresentativeVisit');
+  require('./SupportRequest');
+  require('./PaypalOrder');
+  require('./PushSubscription');
+  require('./MobileDevice');
+
   console.log('✅ All models registered successfully');
 }
 
@@ -354,6 +362,14 @@ const models = {
   // Audit
   AuditLog: require('./AuditLog').default,
   Notification: require('./Notification').default,
+
+  // SaaS / integration
+  Product: require('./Product').default,
+  MedicalRepresentativeVisit: require('./MedicalRepresentativeVisit').default,
+  SupportRequest: require('./SupportRequest').default,
+  PaypalOrder: require('./PaypalOrder').default,
+  PushSubscription: require('./PushSubscription').default,
+  MobileDevice: require('./MobileDevice').default,
 };
 
 export default models;

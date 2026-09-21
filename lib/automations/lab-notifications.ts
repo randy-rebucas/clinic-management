@@ -7,6 +7,7 @@ import { getSettings } from '@/lib/settings';
 import { createNotification, createLabResultNotification } from '@/lib/notifications';
 import { sendEmail, generateLabResultEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
+import { sendPushToPatientDevices } from '@/lib/push-notifications';
 import { Types } from 'mongoose';
 
 export interface LabNotificationOptions {
@@ -15,6 +16,7 @@ export interface LabNotificationOptions {
   sendSMS?: boolean;
   sendEmail?: boolean;
   sendNotification?: boolean;
+  sendPush?: boolean;
 }
 
 /**
@@ -108,6 +110,21 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
         }
       } catch (error) {
         console.error('Error sending lab result email:', error);
+      }
+    }
+
+    // Send push notification to patient's mobile devices
+    if (options.sendPush !== false && patient._id) {
+      try {
+        const pushResult = await sendPushToPatientDevices(patient._id.toString(), {
+          title: 'Lab Results Available',
+          body: `Your results for ${labResult.request.testType} are ready to view.`,
+          tag: `lab-result-${labResult._id}`,
+          url: `/lab-results/${labResult._id}`,
+        });
+        if (pushResult.sent) sent = true;
+      } catch (error) {
+        console.error('Error sending lab result push notification:', error);
       }
     }
 

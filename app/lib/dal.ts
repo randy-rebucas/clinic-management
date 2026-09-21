@@ -15,7 +15,10 @@ if (!secretKey && process.env.NODE_ENV !== 'production') {
   );
 }
 const encodedKey = new TextEncoder().encode(
-  secretKey || 'default-secret-key-change-in-production-dev-only'
+  secretKey ||
+    (process.env.NODE_ENV === 'production'
+      ? ''
+      : 'default-secret-key-change-in-production-dev-only')
 );
 
 // Runtime validation function - call this when actually using the secret
