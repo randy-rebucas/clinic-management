@@ -96,8 +96,13 @@ export default function PatientLoginClient() {
           setScannerReady(true);
           setCameraError(null);
         } catch (err: any) {
-          console.error('Scanner error:', err);
-          setCameraError(err.message || 'Unable to access camera. Please try uploading an image instead.');
+          // Camera permission denial / no camera is an expected, handled case — not an app error.
+          if (err?.name === 'NotAllowedError') {
+            setCameraError('Camera access was denied. Please allow camera permission, or upload an image instead.');
+          } else {
+            console.error('Scanner error:', err);
+            setCameraError(err.message || 'Unable to access camera. Please try uploading an image instead.');
+          }
           setScannerReady(false);
         }
       }
@@ -195,41 +200,43 @@ export default function PatientLoginClient() {
 
 
   return (
-    <div className="min-h-screen relative overflow-hidden flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      {/* Abstract Background Elements */}
-      <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>
-        <div className="absolute top-0 -left-4 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-        <div className="absolute top-0 -right-4 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-        <div className="absolute -bottom-8 left-20 w-96 h-96 bg-indigo-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
-        <div className="absolute top-20 right-10 w-72 h-72 border-4 border-blue-200/20 rotate-45 rounded-3xl"></div>
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-      </div>
+    <div className="min-h-[calc(100vh-4rem)] bg-white relative overflow-hidden flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      {/* Subtle grid background, consistent with homepage hero */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+          maskImage: 'radial-gradient(ellipse 80% 60% at 50% 20%, black 20%, transparent 75%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 80% 60% at 50% 20%, black 20%, transparent 75%)',
+        }}
+      />
 
       <div className="max-w-md w-full relative z-10">
         {/* Header */}
         <div className="text-center mb-8 sm:mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl sm:rounded-3xl shadow-xl mb-4 sm:mb-6 transform hover:scale-105 transition-transform">
+          <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-brand-teal rounded-2xl mb-4 sm:mb-6">
             <svg className="w-10 h-10 sm:w-12 sm:h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
           </div>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 mb-3 tracking-tight">Patient Portal Login</h1>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">Patient Portal Login</h1>
           <p className="text-base sm:text-lg text-gray-600">Access your medical records and appointments</p>
         </div>
 
         {/* Login Method Tabs */}
-        <div className="bg-white/90 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-200/50 overflow-hidden mb-4 sm:mb-6">
-          <div className="flex border-b border-gray-200/50 bg-gradient-to-r from-gray-50 to-blue-50/30">
+        <div className="bg-white rounded-lg border border-gray-200 shadow-[0_20px_50px_rgb(15,23,42,0.12)] overflow-hidden mb-4 sm:mb-6">
+          <div className="flex border-b border-gray-200 bg-gray-50">
             <button
               onClick={() => {
                 stopScanner();
                 setLoginMethod('code');
                 setError(null);
               }}
-              className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-semibold transition-all ${loginMethod === 'code'
-                  ? 'bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-700 border-b-2 border-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+              className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-semibold transition-colors ${loginMethod === 'code'
+                  ? 'bg-white text-brand-teal border-b-2 border-brand-teal'
+                  : 'text-gray-600 hover:text-gray-900'
                 }`}
             >
               Patient Code
@@ -239,9 +246,9 @@ export default function PatientLoginClient() {
                 setLoginMethod('qr');
                 setError(null);
               }}
-              className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-semibold transition-all ${loginMethod === 'qr'
-                  ? 'bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-700 border-b-2 border-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+              className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-semibold transition-colors ${loginMethod === 'qr'
+                  ? 'bg-white text-brand-teal border-b-2 border-brand-teal'
+                  : 'text-gray-600 hover:text-gray-900'
                 }`}
             >
               QR Code
@@ -251,7 +258,7 @@ export default function PatientLoginClient() {
           <div className="p-6 sm:p-8">
             {/* Error Message */}
             {error && (
-              <div className="bg-red-50/90 backdrop-blur-sm border-2 border-red-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 mb-4 sm:mb-6 shadow-lg">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 sm:p-5 mb-4 sm:mb-6">
                 <div className="flex items-start gap-3">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
@@ -275,7 +282,7 @@ export default function PatientLoginClient() {
                     onChange={(e) => setPatientCode(e.target.value.toUpperCase())}
                     placeholder="CLINIC-0001"
                     required
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none transition-colors bg-white hover:border-gray-400 text-base"
                     disabled={loading}
                   />
                   <p className="text-xs sm:text-sm text-gray-500 mt-2">
@@ -285,7 +292,7 @@ export default function PatientLoginClient() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-base sm:text-lg"
+                  className="w-full px-6 sm:px-8 py-3 sm:py-4 bg-brand-teal hover:bg-brand-teal-dark text-white rounded-md font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-base sm:text-lg"
                 >
                   {loading ? (
                     <span className="flex items-center justify-center gap-2">
@@ -303,7 +310,7 @@ export default function PatientLoginClient() {
             {loginMethod === 'qr' && (
               <div className="space-y-4">
                 {/* QR Input Method Tabs */}
-                <div className="flex bg-gradient-to-r from-gray-100 to-blue-50/30 rounded-xl p-1.5 sm:p-2">
+                <div className="flex bg-gray-100 rounded-md p-1.5 sm:p-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -311,9 +318,9 @@ export default function PatientLoginClient() {
                       setError(null);
                       setCameraError(null);
                     }}
-                    className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${qrInputMethod === 'scan'
-                        ? 'bg-white text-blue-700 shadow-md'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                    className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-md transition-colors ${qrInputMethod === 'scan'
+                        ? 'bg-white text-brand-teal shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
                       }`}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,9 +337,9 @@ export default function PatientLoginClient() {
                       setError(null);
                       setCameraError(null);
                     }}
-                    className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${qrInputMethod === 'upload'
-                        ? 'bg-white text-blue-700 shadow-md'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                    className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-md transition-colors ${qrInputMethod === 'upload'
+                        ? 'bg-white text-brand-teal shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
                       }`}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -348,9 +355,9 @@ export default function PatientLoginClient() {
                       setError(null);
                       setCameraError(null);
                     }}
-                    className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${qrInputMethod === 'paste'
-                        ? 'bg-white text-blue-700 shadow-md'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                    className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-md transition-colors ${qrInputMethod === 'paste'
+                        ? 'bg-white text-brand-teal shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
                       }`}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -364,7 +371,7 @@ export default function PatientLoginClient() {
                 {qrInputMethod === 'scan' && (
                   <div className="space-y-3">
                     {cameraError ? (
-                      <div className="bg-amber-50/90 backdrop-blur-sm border-2 border-amber-200 rounded-xl sm:rounded-2xl p-5 sm:p-6 text-center shadow-lg">
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 sm:p-6 text-center">
                         <svg className="w-12 h-12 mx-auto text-amber-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                         </svg>
@@ -372,7 +379,7 @@ export default function PatientLoginClient() {
                         <button
                           type="button"
                           onClick={() => setQrInputMethod('upload')}
-                          className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
+                          className="px-4 py-2 bg-brand-teal text-white rounded-md font-semibold hover:bg-brand-teal-dark transition-colors text-sm"
                         >
                           Try uploading an image instead
                         </button>
@@ -386,7 +393,7 @@ export default function PatientLoginClient() {
                         />
                         {!scannerReady && !cameraError && (
                           <div className="flex items-center justify-center py-4">
-                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-brand-teal"></div>
                             <span className="ml-2 text-sm text-gray-600">Starting camera...</span>
                           </div>
                         )}
@@ -406,7 +413,7 @@ export default function PatientLoginClient() {
 
                     <div
                       onClick={() => fileInputRef.current?.click()}
-                      className="border-2 border-dashed border-gray-300 rounded-xl sm:rounded-2xl p-8 sm:p-12 text-center cursor-pointer hover:border-blue-500 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 transition-all shadow-md hover:shadow-lg transform hover:scale-[1.02]"
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-8 sm:p-12 text-center cursor-pointer hover:border-brand-teal hover:bg-gray-50 transition-colors"
                     >
                       <svg className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -428,7 +435,7 @@ export default function PatientLoginClient() {
                     />
                     {loading && (
                       <div className="flex items-center justify-center py-2">
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-brand-teal"></div>
                         <span className="ml-2 text-sm text-gray-600">Processing image...</span>
                       </div>
                     )}
@@ -449,7 +456,7 @@ export default function PatientLoginClient() {
                         placeholder='{"patientId":"...","patientCode":"CLINIC-0001","type":"patient_login"}'
                         rows={5}
                         required
-                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 font-mono text-sm"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none transition-colors bg-white hover:border-gray-400 font-mono text-sm"
                         disabled={loading}
                       />
                       <p className="text-xs sm:text-sm text-gray-500 mt-2">
@@ -459,7 +466,7 @@ export default function PatientLoginClient() {
                     <button
                       type="submit"
                       disabled={loading || !qrCode.trim()}
-                      className="w-full px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-base sm:text-lg"
+                      className="w-full px-6 sm:px-8 py-3 sm:py-4 bg-brand-teal hover:bg-brand-teal-dark text-white rounded-md font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-base sm:text-lg"
                     >
                       {loading ? (
                         <span className="flex items-center justify-center gap-2">
@@ -481,12 +488,12 @@ export default function PatientLoginClient() {
         <div className="text-center space-y-3 sm:space-y-4 mt-6 sm:mt-8">
           <p className="text-sm sm:text-base text-gray-600">
             Don&apos;t have a patient code?{' '}
-            <Link href="/onboard" className="text-blue-600 hover:text-blue-700 font-semibold underline decoration-2 underline-offset-2">
+            <Link href="/onboard" className="text-brand-teal hover:text-brand-teal-dark font-semibold underline decoration-2 underline-offset-2">
               Register here
             </Link>
           </p>
           <p className="text-sm sm:text-base text-gray-600">
-            <Link href="/" className="text-blue-600 hover:text-blue-700 font-semibold underline decoration-2 underline-offset-2">
+            <Link href="/" className="text-brand-teal hover:text-brand-teal-dark font-semibold underline decoration-2 underline-offset-2">
               Back to Home
             </Link>
           </p>
