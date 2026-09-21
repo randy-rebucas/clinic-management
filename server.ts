@@ -9,7 +9,15 @@ import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
 import { Server as SocketIOServer } from 'socket.io';
-import { verify } from 'jsonwebtoken';
+import { jwtVerify } from 'jose';
+
+const secretKey = process.env.SESSION_SECRET;
+const encodedKey = new TextEncoder().encode(
+  secretKey ||
+    (process.env.NODE_ENV === 'production'
+      ? ''
+      : 'default-secret-key-change-in-production-dev-only')
+);
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || 'localhost';
@@ -57,13 +65,13 @@ app.prepare().then(() => {
         return next(new Error('Authentication token required'));
       }
 
-      const secret = process.env.JWT_SECRET;
-      if (!secret) {
-        return next(new Error('JWT_SECRET not configured'));
+      if (!secretKey && process.env.NODE_ENV === 'production') {
+        return next(new Error('SESSION_SECRET not configured'));
       }
 
-      const decoded = verify(token, secret) as JWTPayload;
-      
+      const { payload } = await jwtVerify(token, encodedKey, { algorithms: ['HS256'] });
+      const decoded = payload as unknown as JWTPayload;
+
       // Attach user data to socket
       socket.data = {
         userId: decoded.userId,

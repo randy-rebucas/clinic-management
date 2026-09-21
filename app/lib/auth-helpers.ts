@@ -19,10 +19,16 @@ export interface JWTPayload {
 // Use the same secret as dal.ts for consistency
 const secretKey = process.env.SESSION_SECRET;
 const encodedKey = new TextEncoder().encode(
-  secretKey || 'default-secret-key-change-in-production-dev-only'
+  secretKey ||
+    (process.env.NODE_ENV === 'production'
+      ? ''
+      : 'default-secret-key-change-in-production-dev-only')
 );
 
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
+  if (!secretKey && process.env.NODE_ENV === 'production') {
+    throw new Error('SESSION_SECRET environment variable is required in production');
+  }
   try {
     const { payload } = await jwtVerify(token, encodedKey, {
       algorithms: ['HS256'],
