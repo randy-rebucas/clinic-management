@@ -356,45 +356,23 @@ export default function PublicOnboardingClient() {
   const progress = visibleSteps.length > 0 ? ((currentStepIndex + 1) / visibleSteps.length) * 100 : 0;
 
   return (
-    <div className="min-h-screen relative overflow-hidden w-full">
-      {/* Abstract Background Elements */}
-      <div className="fixed inset-0 -z-10">
-        {/* Base gradient */}
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>
-        
-        {/* Animated gradient orbs */}
-        <div className="absolute top-0 -left-4 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-        <div className="absolute top-0 -right-4 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-        <div className="absolute -bottom-8 left-20 w-96 h-96 bg-indigo-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
-        
-        {/* Geometric shapes */}
-        <div className="absolute top-20 right-10 w-72 h-72 border-4 border-blue-200/20 rotate-45 rounded-3xl"></div>
-        <div className="absolute bottom-20 left-10 w-96 h-96 border-4 border-indigo-200/15 rotate-12 rounded-full"></div>
-        
-        {/* Grid pattern overlay */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-      </div>
+    <div className="min-h-[calc(100vh-4rem)] bg-white relative overflow-hidden">
+      {/* Subtle grid background, consistent with homepage hero */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+          maskImage: 'radial-gradient(ellipse 80% 60% at 50% 20%, black 20%, transparent 75%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 80% 60% at 50% 20%, black 20%, transparent 75%)',
+        }}
+      />
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12 w-full relative z-10">
-        <div className="max-w-4xl mx-auto w-full">
-          {/* Header - Modern Design */}
-          <div className="text-center mb-6 sm:mb-8 lg:mb-10">
-            <div className="inline-flex items-center justify-center w-14 h-14 sm:w-18 sm:h-18 lg:w-20 lg:h-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl sm:rounded-3xl mb-4 sm:mb-6 shadow-xl transform hover:scale-105 transition-transform">
-              <svg className="w-7 h-7 sm:w-9 sm:h-9 lg:w-10 lg:h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            </div>
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 mb-3 sm:mb-4 tracking-tight">
-              Patient Registration
-            </h1>
-            <p className="text-base sm:text-lg lg:text-xl text-gray-600 px-4 max-w-2xl mx-auto">
-              Welcome! Please complete the form below to register as a new patient.
-            </p>
-          </div>
-
-          {/* Success Message */}
+      <div className="container relative mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+        {/* Success Message */}
           {success && (
-            <div className="bg-white/90 backdrop-blur-sm border-2 border-green-200 rounded-2xl sm:rounded-3xl p-6 sm:p-8 mb-6 shadow-2xl animate-fade-in">
+            <div className="bg-white border border-green-200 rounded-lg p-6 sm:p-8 mb-6 shadow-[0_20px_50px_rgb(15,23,42,0.12)] animate-fade-in">
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0">
                   <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
@@ -446,7 +424,7 @@ export default function PublicOnboardingClient() {
                         </p>
                         <Link
                           href="/patient/login"
-                          className="text-xs text-blue-600 hover:text-blue-700 font-medium underline"
+                          className="text-xs text-brand-teal hover:text-brand-teal-dark font-medium underline"
                         >
                           Or login with your patient code
                         </Link>
@@ -457,13 +435,13 @@ export default function PublicOnboardingClient() {
                   <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4">
                     <Link
                       href="/book"
-                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:scale-105 text-center"
+                      className="px-6 py-3 bg-brand-teal hover:bg-brand-teal-dark text-white rounded-md font-semibold transition-colors text-center"
                     >
                       Book an Appointment
                     </Link>
                     <Link
                       href="/"
-                      className="px-6 py-3 bg-white/80 backdrop-blur-sm border-2 border-gray-300 hover:border-gray-400 text-gray-700 rounded-xl font-semibold transition-all hover:shadow-lg transform hover:scale-105 text-center"
+                      className="px-6 py-3 bg-white border border-gray-300 hover:border-gray-900 text-gray-900 rounded-md font-semibold transition-colors text-center"
                     >
                       Go to Home
                     </Link>
@@ -475,7 +453,7 @@ export default function PublicOnboardingClient() {
 
           {/* Error Message */}
           {error && !success && (
-            <div className="bg-white/90 backdrop-blur-sm border-2 border-red-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-xl animate-fade-in">
+            <div className="bg-white border border-red-200 rounded-lg p-4 sm:p-6 mb-4 sm:mb-6 shadow-[0_20px_50px_rgb(15,23,42,0.12)] animate-fade-in">
               <div className="flex items-start gap-2">
                 <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
@@ -488,105 +466,101 @@ export default function PublicOnboardingClient() {
             </div>
           )}
 
-          {/* Form Card */}
+          {/* Stepper + Form */}
           {!success && (
-            <div className="bg-white/90 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-200/50 overflow-hidden">
-              {/* Progress Bar */}
-              <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-4 sm:px-6 py-5 sm:py-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg sm:text-xl font-semibold text-white">
-                    Step {currentStepIndex + 1} of {visibleSteps.length}
-                  </h2>
-                  <span className="text-sm text-blue-100">{Math.round(progress)}%</span>
-                </div>
-                <div className="w-full bg-white/20 rounded-full h-3 sm:h-3.5 overflow-hidden">
-                  <div
-                    className="bg-white h-full rounded-full transition-all duration-500 ease-out shadow-lg"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                <p className="text-blue-100 text-xs sm:text-sm mt-2">
-                  {STEPS[currentStep]?.title} - {STEPS[currentStep]?.description}
-                </p>
-              </div>
-
-              {/* Step Indicators - Mobile */}
-              <div className="px-4 sm:px-6 py-4 bg-gradient-to-r from-gray-50 to-blue-50/30 border-b border-gray-200/50 sm:hidden">
-                <div className="flex justify-between items-center">
-                  {STEPS.filter(step => step.id).map((step, index) => (
-                    <div key={step.id} className="flex-1 flex flex-col items-center">
+            <div className="lg:grid lg:grid-cols-4 lg:gap-8">
+              {/* Stepper - left */}
+              <aside className="hidden lg:block lg:col-span-1">
+                <div className="sticky top-24 space-y-1">
+                  {STEPS.map((step, index) => (
+                    <div key={step.id} className="flex items-start gap-3 py-2">
                       <div
-                        className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all shadow-md ${
-                          currentStep > step.id
-                            ? 'bg-gradient-to-br from-green-500 to-emerald-500 text-white'
-                            : currentStep === step.id
-                            ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white ring-2 ring-blue-300 ring-offset-2'
-                            : 'bg-gray-300 text-gray-600'
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors flex-shrink-0 ${
+                          currentStep > index
+                            ? 'bg-brand-teal text-white'
+                            : currentStep === index
+                            ? 'bg-brand-teal text-white ring-2 ring-brand-teal-light ring-offset-2'
+                            : 'bg-gray-200 text-gray-500'
                         }`}
                       >
-                        {currentStep > step.id ? (
+                        {currentStep > index ? (
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                           </svg>
                         ) : (
-                          step.id + 1
+                          index + 1
                         )}
                       </div>
-                      <span className="text-xs text-gray-600 mt-1 text-center">{step.title}</span>
+                      <div className="pt-1">
+                        <p className={`text-sm font-medium ${currentStep >= index ? 'text-gray-900' : 'text-gray-500'}`}>
+                          {step.title}
+                        </p>
+                        <p className="text-xs text-gray-500">{step.description}</p>
+                      </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </aside>
 
-              {/* Step Indicators - Desktop */}
-              <div className="hidden sm:block px-6 py-5 bg-gradient-to-r from-gray-50 to-blue-50/30 border-b border-gray-200/50">
-                <div className="flex justify-between">
-                  {STEPS.map((step, index) => (
-                    <div key={step.id} className="flex-1 flex items-center">
-                      <div className="flex items-center flex-1">
+              {/* Form - right */}
+              <div className="lg:col-span-3">
+                {/* Step Indicators - Mobile/Tablet */}
+                <div className="px-4 sm:px-6 py-4 bg-gray-50 border border-gray-200 rounded-lg mb-6 lg:hidden">
+                  <div className="flex justify-between items-center">
+                    {STEPS.map((step, index) => (
+                      <div key={step.id} className="flex-1 flex flex-col items-center">
                         <div
-                          className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold transition-all shadow-lg ${
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
                             currentStep > index
-                              ? 'bg-gradient-to-br from-green-500 to-emerald-500 text-white'
+                              ? 'bg-brand-teal text-white'
                               : currentStep === index
-                              ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white ring-2 ring-blue-300 ring-offset-2 scale-110'
-                              : 'bg-gray-300 text-gray-600'
+                              ? 'bg-brand-teal text-white ring-2 ring-brand-teal-light ring-offset-2'
+                              : 'bg-gray-200 text-gray-500'
                           }`}
                         >
                           {currentStep > index ? (
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                             </svg>
                           ) : (
                             index + 1
                           )}
                         </div>
-                        <div className="ml-3 flex-1">
-                          <p className="text-sm font-medium text-gray-900">{step.title}</p>
-                          <p className="text-xs text-gray-500">{step.description}</p>
-                        </div>
+                        <span className="text-xs text-gray-600 mt-1 text-center">{step.title}</span>
                       </div>
-                      {index < STEPS.length - 1 && (
-                        <div
-                          className={`flex-1 h-1 mx-4 rounded-full transition-all ${
-                            currentStep > index ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gray-300'
-                          }`}
-                        />
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* Form Content */}
-              <form onSubmit={currentStep === STEPS.length - 1 ? handleSubmit : (e) => { e.preventDefault(); nextStep(); }}>
-                <div className="p-4 sm:p-6 lg:p-8">
+                <div className="bg-white rounded-lg border border-gray-200 shadow-[0_20px_50px_rgb(15,23,42,0.12)] overflow-hidden">
+                  {/* Progress */}
+                  <div className="px-4 sm:px-6 py-5 sm:py-6 border-b border-gray-100">
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+                        Step {currentStepIndex + 1} of {visibleSteps.length} — {STEPS[currentStep]?.title}
+                      </h2>
+                      <span className="font-mono text-sm text-gray-500">{Math.round(progress)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-brand-teal h-full rounded-full transition-all duration-500 ease-out"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Form Content */}
+                  <form onSubmit={currentStep === STEPS.length - 1 ? handleSubmit : (e) => { e.preventDefault(); nextStep(); }}>
+                    <div className="p-4 sm:p-6 lg:p-8">
 
                   {/* Step 1: Personal Information */}
                   {currentStep === 0 && (
-                    <div className="space-y-4 sm:space-y-6 animate-fade-in">
-                      <div>
-                        <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Personal Information</h3>
+                    <div className="animate-fade-in md:grid md:grid-cols-3 md:gap-8">
+                      <div className="md:col-span-1 mb-4 md:mb-0">
+                        <h3 className="text-base font-semibold text-gray-900">Personal Information</h3>
+                        <p className="text-sm text-gray-500 mt-1">Your basic identity details.</p>
+                      </div>
+                      <div className="md:col-span-2">
                         <div className="space-y-4">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
@@ -598,7 +572,7 @@ export default function PublicOnboardingClient() {
                                 required
                                 value={formData.firstName}
                                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
                                 placeholder="John"
                               />
                             </div>
@@ -608,7 +582,7 @@ export default function PublicOnboardingClient() {
                                 type="text"
                                 value={formData.middleName}
                                 onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
-                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
                                 placeholder="Michael"
                               />
                             </div>
@@ -621,7 +595,7 @@ export default function PublicOnboardingClient() {
                                 required
                                 value={formData.lastName}
                                 onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
                                 placeholder="Doe"
                               />
                             </div>
@@ -631,7 +605,7 @@ export default function PublicOnboardingClient() {
                                 type="text"
                                 value={formData.suffix}
                                 onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
-                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
                                 placeholder="Jr., Sr., III"
                               />
                             </div>
@@ -647,7 +621,7 @@ export default function PublicOnboardingClient() {
                                 value={formData.dateOfBirth}
                                 onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
                                 max={new Date().toISOString().split('T')[0]}
-                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
                               />
                             </div>
                             <div>
@@ -655,7 +629,7 @@ export default function PublicOnboardingClient() {
                               <select
                                 value={formData.sex}
                                 onChange={(e) => setFormData({ ...formData, sex: e.target.value as any })}
-                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base bg-white/50 backdrop-blur-sm hover:border-blue-300 transition-all"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base bg-white hover:border-gray-400 transition-colors"
                               >
                                 <option value="unknown">Unknown</option>
                                 <option value="male">Male</option>
@@ -669,7 +643,7 @@ export default function PublicOnboardingClient() {
                                 type="text"
                                 value={formData.civilStatus}
                                 onChange={(e) => setFormData({ ...formData, civilStatus: e.target.value })}
-                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
                                 placeholder="Single, Married, etc."
                               />
                             </div>
@@ -679,7 +653,7 @@ export default function PublicOnboardingClient() {
                                 type="text"
                                 value={formData.nationality}
                                 onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
-                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
                                 placeholder="Filipino, American, etc."
                               />
                             </div>
@@ -689,7 +663,7 @@ export default function PublicOnboardingClient() {
                                 type="text"
                                 value={formData.occupation}
                                 onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
-                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
                                 placeholder="Your occupation"
                               />
                             </div>
@@ -701,10 +675,13 @@ export default function PublicOnboardingClient() {
 
                   {/* Step 2: Contact & Address */}
                   {currentStep === 1 && (
-                    <div className="space-y-4 sm:space-y-6 animate-fade-in">
-                      <div>
-                        <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Contact & Address</h3>
-                        <div className="space-y-4">
+                    <div className="animate-fade-in space-y-8">
+                      <div className="md:grid md:grid-cols-3 md:gap-8">
+                        <div className="md:col-span-1 mb-4 md:mb-0">
+                          <h3 className="text-base font-semibold text-gray-900">Contact</h3>
+                          <p className="text-sm text-gray-500 mt-1">How we can reach you.</p>
+                        </div>
+                        <div className="md:col-span-2">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -714,7 +691,7 @@ export default function PublicOnboardingClient() {
                                 type="email"
                                 value={formData.email}
                                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
                                 placeholder="john.doe@example.com"
                               />
                             </div>
@@ -727,87 +704,93 @@ export default function PublicOnboardingClient() {
                                 required
                                 value={formData.phone}
                                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
                                 placeholder="+1234567890"
                               />
                             </div>
                           </div>
-                          <div className="pt-4 border-t border-gray-200">
-                            <h4 className="text-base font-medium text-gray-900 mb-3">Address</h4>
-                            <div className="space-y-4">
+                        </div>
+                      </div>
+
+                      <div className="md:grid md:grid-cols-3 md:gap-8 pt-8 border-t border-gray-200">
+                        <div className="md:col-span-1 mb-4 md:mb-0">
+                          <h3 className="text-base font-semibold text-gray-900">Address</h3>
+                          <p className="text-sm text-gray-500 mt-1">Where you currently live.</p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                Street Address <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={formData.address.street}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    address: { ...formData.address, street: e.target.value },
+                                  })
+                                }
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
+                                placeholder="123 Main Street"
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                               <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                  Street Address <span className="text-red-500">*</span>
+                                  City <span className="text-red-500">*</span>
                                 </label>
                                 <input
                                   type="text"
                                   required
-                                  value={formData.address.street}
+                                  value={formData.address.city}
                                   onChange={(e) =>
                                     setFormData({
                                       ...formData,
-                                      address: { ...formData.address, street: e.target.value },
+                                      address: { ...formData.address, city: e.target.value },
                                     })
                                   }
-                                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
-                                  placeholder="123 Main Street"
+                                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
+                                  placeholder="Manila"
                                 />
                               </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    City <span className="text-red-500">*</span>
-                                  </label>
-                                  <input
-                                    type="text"
-                                    required
-                                    value={formData.address.city}
-                                    onChange={(e) =>
-                                      setFormData({
-                                        ...formData,
-                                        address: { ...formData.address, city: e.target.value },
-                                      })
-                                    }
-                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
-                                    placeholder="Manila"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Province <span className="text-red-500">*</span>
-                                  </label>
-                                  <input
-                                    type="text"
-                                    required
-                                    value={formData.address.state}
-                                    onChange={(e) =>
-                                      setFormData({
-                                        ...formData,
-                                        address: { ...formData.address, state: e.target.value },
-                                      })
-                                    }
-                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
-                                    placeholder="Metro Manila"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Zip Code <span className="text-red-500">*</span>
-                                  </label>
-                                  <input
-                                    type="text"
-                                    required
-                                    value={formData.address.zipCode}
-                                    onChange={(e) =>
-                                      setFormData({
-                                        ...formData,
-                                        address: { ...formData.address, zipCode: e.target.value },
-                                      })
-                                    }
-                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
-                                    placeholder="1000"
-                                  />
-                                </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                  Province <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={formData.address.state}
+                                  onChange={(e) =>
+                                    setFormData({
+                                      ...formData,
+                                      address: { ...formData.address, state: e.target.value },
+                                    })
+                                  }
+                                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
+                                  placeholder="Metro Manila"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                  Zip Code <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={formData.address.zipCode}
+                                  onChange={(e) =>
+                                    setFormData({
+                                      ...formData,
+                                      address: { ...formData.address, zipCode: e.target.value },
+                                    })
+                                  }
+                                  className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
+                                  placeholder="1000"
+                                />
                               </div>
                             </div>
                           </div>
@@ -818,105 +801,111 @@ export default function PublicOnboardingClient() {
 
                   {/* Step 3: Emergency Contact & Identifiers */}
                   {currentStep === 2 && (
-                    <div className="space-y-4 sm:space-y-6 animate-fade-in">
-                      <div>
-                        <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Emergency Contact & Identifiers</h3>
-                        <div className="space-y-4">
-                          <div>
-                            <h4 className="text-base font-medium text-gray-900 mb-3">Emergency Contact</h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                  Name <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                  type="text"
-                                  required
-                                  value={formData.emergencyContact.name}
-                                  onChange={(e) =>
-                                    setFormData({
-                                      ...formData,
-                                      emergencyContact: { ...formData.emergencyContact, name: e.target.value },
-                                    })
-                                  }
-                                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
-                                  placeholder="Jane Doe"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                  Phone <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                  type="tel"
-                                  required
-                                  value={formData.emergencyContact.phone}
-                                  onChange={(e) =>
-                                    setFormData({
-                                      ...formData,
-                                      emergencyContact: { ...formData.emergencyContact, phone: e.target.value },
-                                    })
-                                  }
-                                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
-                                  placeholder="+1234567890"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                  Relationship <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                  type="text"
-                                  required
-                                  value={formData.emergencyContact.relationship}
-                                  onChange={(e) =>
-                                    setFormData({
-                                      ...formData,
-                                      emergencyContact: {
-                                        ...formData.emergencyContact,
-                                        relationship: e.target.value,
-                                      },
-                                    })
-                                  }
-                                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
-                                  placeholder="Spouse, Parent, etc."
-                                />
-                              </div>
+                    <div className="animate-fade-in space-y-8">
+                      <div className="md:grid md:grid-cols-3 md:gap-8">
+                        <div className="md:col-span-1 mb-4 md:mb-0">
+                          <h3 className="text-base font-semibold text-gray-900">Emergency Contact</h3>
+                          <p className="text-sm text-gray-500 mt-1">Who to contact in an emergency.</p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                Name <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={formData.emergencyContact.name}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    emergencyContact: { ...formData.emergencyContact, name: e.target.value },
+                                  })
+                                }
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
+                                placeholder="Jane Doe"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                Phone <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="tel"
+                                required
+                                value={formData.emergencyContact.phone}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    emergencyContact: { ...formData.emergencyContact, phone: e.target.value },
+                                  })
+                                }
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
+                                placeholder="+1234567890"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                Relationship <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={formData.emergencyContact.relationship}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    emergencyContact: {
+                                      ...formData.emergencyContact,
+                                      relationship: e.target.value,
+                                    },
+                                  })
+                                }
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
+                                placeholder="Spouse, Parent, etc."
+                              />
                             </div>
                           </div>
-                          <div className="pt-4 border-t border-gray-200">
-                            <h4 className="text-base font-medium text-gray-900 mb-3">Identifiers (Optional)</h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">PhilHealth ID</label>
-                                <input
-                                  type="text"
-                                  value={formData.identifiers?.philHealth || ''}
-                                  onChange={(e) =>
-                                    setFormData({
-                                      ...formData,
-                                      identifiers: { ...formData.identifiers, philHealth: e.target.value },
-                                    })
-                                  }
-                                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
-                                  placeholder="PhilHealth number"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Government ID</label>
-                                <input
-                                  type="text"
-                                  value={formData.identifiers?.govId || ''}
-                                  onChange={(e) =>
-                                    setFormData({
-                                      ...formData,
-                                      identifiers: { ...formData.identifiers, govId: e.target.value },
-                                    })
-                                  }
-                                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300"
-                                  placeholder="Government ID number"
-                                />
-                              </div>
+                        </div>
+                      </div>
+
+                      <div className="md:grid md:grid-cols-3 md:gap-8 pt-8 border-t border-gray-200">
+                        <div className="md:col-span-1 mb-4 md:mb-0">
+                          <h3 className="text-base font-semibold text-gray-900">Identifiers</h3>
+                          <p className="text-sm text-gray-500 mt-1">Optional government or insurance IDs.</p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1.5">PhilHealth ID</label>
+                              <input
+                                type="text"
+                                value={formData.identifiers?.philHealth || ''}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    identifiers: { ...formData.identifiers, philHealth: e.target.value },
+                                  })
+                                }
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
+                                placeholder="PhilHealth number"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1.5">Government ID</label>
+                              <input
+                                type="text"
+                                value={formData.identifiers?.govId || ''}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    identifiers: { ...formData.identifiers, govId: e.target.value },
+                                  })
+                                }
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
+                                placeholder="Government ID number"
+                              />
                             </div>
                           </div>
                         </div>
@@ -926,212 +915,226 @@ export default function PublicOnboardingClient() {
 
                   {/* Step 4: Medical Information */}
                   {currentStep === 3 && (
-                    <div className="space-y-4 sm:space-y-6 animate-fade-in">
-                      <div>
-                        <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Medical Information</h3>
-                        <p className="text-sm text-gray-600 mb-4">All fields in this section are optional but help us provide better care.</p>
-                        <div className="space-y-6">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Medical History</label>
-                            <textarea
-                              value={formData.medicalHistory}
-                              onChange={(e) => setFormData({ ...formData, medicalHistory: e.target.value })}
-                              rows={4}
-                              placeholder="Enter your medical history, previous surgeries, chronic conditions, etc."
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base resize-none"
-                            />
-                          </div>
+                    <div className="animate-fade-in space-y-8">
+                      <div className="md:grid md:grid-cols-3 md:gap-8">
+                        <div className="md:col-span-1 mb-4 md:mb-0">
+                          <h3 className="text-base font-semibold text-gray-900">Medical History</h3>
+                          <p className="text-sm text-gray-500 mt-1">Optional, but helps us provide better care.</p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <textarea
+                            value={formData.medicalHistory}
+                            onChange={(e) => setFormData({ ...formData, medicalHistory: e.target.value })}
+                            rows={4}
+                            placeholder="Enter your medical history, previous surgeries, chronic conditions, etc."
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base resize-none"
+                          />
+                        </div>
+                      </div>
 
-                          {/* Allergies */}
-                          <div>
-                            <div className="flex justify-between items-center mb-3">
-                              <label className="block text-sm font-medium text-gray-700">Allergies</label>
-                              <button
-                                type="button"
-                                onClick={addAllergy}
-                                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl font-semibold transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
-                              >
-                                + Add Allergy
-                              </button>
+                      {/* Allergies */}
+                      <div className="md:grid md:grid-cols-3 md:gap-8 pt-8 border-t border-gray-200">
+                        <div className="md:col-span-1 mb-4 md:mb-0">
+                          <h3 className="text-base font-semibold text-gray-900">Allergies</h3>
+                          <p className="text-sm text-gray-500 mt-1">Substances you react to, if any.</p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="flex justify-end mb-3">
+                            <button
+                              type="button"
+                              onClick={addAllergy}
+                              className="px-4 py-2 bg-brand-teal hover:bg-brand-teal-dark text-white rounded-md font-semibold transition-colors text-sm"
+                            >
+                              + Add Allergy
+                            </button>
+                          </div>
+                          {formData.allergies.length === 0 ? (
+                            <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
+                              <p className="text-sm text-gray-500">No allergies recorded. Click &quot;Add Allergy&quot; to add one.</p>
                             </div>
-                            {formData.allergies.length === 0 ? (
-                              <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
-                                <p className="text-sm text-gray-500">No allergies recorded. Click &quot;Add Allergy&quot; to add one.</p>
-                              </div>
-                            ) : (
-                              <div className="space-y-3">
-                                {formData.allergies.map((allergy, index) => (
-                                  <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">Substance</label>
-                                        <input
-                                          type="text"
-                                          value={allergy.substance}
-                                          onChange={(e) => updateAllergy(index, 'substance', e.target.value)}
-                                          placeholder="e.g., Penicillin"
-                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">Reaction</label>
-                                        <input
-                                          type="text"
-                                          value={allergy.reaction}
-                                          onChange={(e) => updateAllergy(index, 'reaction', e.target.value)}
-                                          placeholder="e.g., Rash"
-                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                                        />
-                                      </div>
-                                      <div className="flex gap-2">
-                                        <div className="flex-1">
-                                          <label className="block text-xs font-medium text-gray-700 mb-1">Severity</label>
-                                          <select
-                                            value={allergy.severity}
-                                            onChange={(e) => updateAllergy(index, 'severity', e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm bg-white"
-                                          >
-                                            <option value="unknown">Unknown</option>
-                                            <option value="mild">Mild</option>
-                                            <option value="moderate">Moderate</option>
-                                            <option value="severe">Severe</option>
-                                            <option value="life-threatening">Life-threatening</option>
-                                          </select>
-                                        </div>
-                                        <button
-                                          type="button"
-                                          onClick={() => removeAllergy(index)}
-                                          className="mt-6 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl transition-all shadow-sm hover:shadow-md text-sm font-semibold"
-                                        >
-                                          Remove
-                                        </button>
-                                      </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {formData.allergies.map((allergy, index) => (
+                                <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">Substance</label>
+                                      <input
+                                        type="text"
+                                        value={allergy.substance}
+                                        onChange={(e) => updateAllergy(index, 'substance', e.target.value)}
+                                        placeholder="e.g., Penicillin"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-sm"
+                                      />
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Pre-existing Conditions */}
-                          <div>
-                            <div className="flex justify-between items-center mb-3">
-                              <label className="block text-sm font-medium text-gray-700">Pre-existing Conditions</label>
-                              <button
-                                type="button"
-                                onClick={addCondition}
-                                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl font-semibold transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
-                              >
-                                + Add Condition
-                              </button>
-                            </div>
-                            {formData.preExistingConditions.length === 0 ? (
-                              <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
-                                <p className="text-sm text-gray-500">No conditions recorded. Click &quot;Add Condition&quot; to add one.</p>
-                              </div>
-                            ) : (
-                              <div className="space-y-3">
-                                {formData.preExistingConditions.map((condition, index) => (
-                                  <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                                      <div className="sm:col-span-2">
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">Condition</label>
-                                        <input
-                                          type="text"
-                                          value={condition.condition}
-                                          onChange={(e) => updateCondition(index, 'condition', e.target.value)}
-                                          placeholder="e.g., Diabetes"
-                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">Reaction</label>
+                                      <input
+                                        type="text"
+                                        value={allergy.reaction}
+                                        onChange={(e) => updateAllergy(index, 'reaction', e.target.value)}
+                                        placeholder="e.g., Rash"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-sm"
+                                      />
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <div className="flex-1">
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Severity</label>
                                         <select
-                                          value={condition.status}
-                                          onChange={(e) => updateCondition(index, 'status', e.target.value)}
-                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm bg-white"
+                                          value={allergy.severity}
+                                          onChange={(e) => updateAllergy(index, 'severity', e.target.value)}
+                                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-sm bg-white"
                                         >
-                                          <option value="active">Active</option>
-                                          <option value="chronic">Chronic</option>
-                                          <option value="resolved">Resolved</option>
+                                          <option value="unknown">Unknown</option>
+                                          <option value="mild">Mild</option>
+                                          <option value="moderate">Moderate</option>
+                                          <option value="severe">Severe</option>
+                                          <option value="life-threatening">Life-threatening</option>
                                         </select>
                                       </div>
-                                      <div className="flex gap-2">
-                                        <div className="flex-1">
-                                          <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
-                                          <input
-                                            type="date"
-                                            value={condition.diagnosisDate || ''}
-                                            onChange={(e) => updateCondition(index, 'diagnosisDate', e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                                          />
-                                        </div>
-                                        <button
-                                          type="button"
-                                          onClick={() => removeCondition(index)}
-                                          className="mt-6 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl transition-all shadow-sm hover:shadow-md text-sm font-semibold"
-                                        >
-                                          Remove
-                                        </button>
-                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeAllergy(index)}
+                                        className="mt-6 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-md transition-colors text-sm font-semibold"
+                                      >
+                                        Remove
+                                      </button>
                                     </div>
                                   </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Family History */}
-                          <div>
-                            <div className="flex justify-between items-center mb-3">
-                              <label className="block text-sm font-medium text-gray-700">Family History</label>
-                              <button
-                                type="button"
-                                onClick={addFamilyHistory}
-                                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl font-semibold transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
-                              >
-                                + Add History
-                              </button>
+                                </div>
+                              ))}
                             </div>
-                            {Object.keys(formData.familyHistory).length === 0 ? (
-                              <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
-                                <p className="text-sm text-gray-500">No family history recorded. Click &quot;Add History&quot; to add one.</p>
-                              </div>
-                            ) : (
-                              <div className="space-y-2">
-                                {Object.entries(formData.familyHistory).map(([condition, relation], index) => (
-                                  <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex justify-between items-center">
-                                    <div>
-                                      <span className="font-medium text-sm text-gray-900">{condition}</span>
-                                      {relation && <span className="text-gray-500 text-sm ml-2">({relation})</span>}
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => removeFamilyHistory(condition)}
-                                      className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl transition-all shadow-sm hover:shadow-md text-sm font-semibold"
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Pre-existing Conditions */}
+                      <div className="md:grid md:grid-cols-3 md:gap-8 pt-8 border-t border-gray-200">
+                        <div className="md:col-span-1 mb-4 md:mb-0">
+                          <h3 className="text-base font-semibold text-gray-900">Pre-existing Conditions</h3>
+                          <p className="text-sm text-gray-500 mt-1">Ongoing or past diagnoses.</p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="flex justify-end mb-3">
+                            <button
+                              type="button"
+                              onClick={addCondition}
+                              className="px-4 py-2 bg-brand-teal hover:bg-brand-teal-dark text-white rounded-md font-semibold transition-colors text-sm"
+                            >
+                              + Add Condition
+                            </button>
                           </div>
+                          {formData.preExistingConditions.length === 0 ? (
+                            <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
+                              <p className="text-sm text-gray-500">No conditions recorded. Click &quot;Add Condition&quot; to add one.</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {formData.preExistingConditions.map((condition, index) => (
+                                <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                    <div className="sm:col-span-2">
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">Condition</label>
+                                      <input
+                                        type="text"
+                                        value={condition.condition}
+                                        onChange={(e) => updateCondition(index, 'condition', e.target.value)}
+                                        placeholder="e.g., Diabetes"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-sm"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
+                                      <select
+                                        value={condition.status}
+                                        onChange={(e) => updateCondition(index, 'status', e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-sm bg-white"
+                                      >
+                                        <option value="active">Active</option>
+                                        <option value="chronic">Chronic</option>
+                                        <option value="resolved">Resolved</option>
+                                      </select>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <div className="flex-1">
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
+                                        <input
+                                          type="date"
+                                          value={condition.diagnosisDate || ''}
+                                          onChange={(e) => updateCondition(index, 'diagnosisDate', e.target.value)}
+                                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-sm"
+                                        />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeCondition(index)}
+                                        className="mt-6 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-md transition-colors text-sm font-semibold"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Family History */}
+                      <div className="md:grid md:grid-cols-3 md:gap-8 pt-8 border-t border-gray-200">
+                        <div className="md:col-span-1 mb-4 md:mb-0">
+                          <h3 className="text-base font-semibold text-gray-900">Family History</h3>
+                          <p className="text-sm text-gray-500 mt-1">Conditions that run in your family.</p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="flex justify-end mb-3">
+                            <button
+                              type="button"
+                              onClick={addFamilyHistory}
+                              className="px-4 py-2 bg-brand-teal hover:bg-brand-teal-dark text-white rounded-md font-semibold transition-colors text-sm"
+                            >
+                              + Add History
+                            </button>
+                          </div>
+                          {Object.keys(formData.familyHistory).length === 0 ? (
+                            <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
+                              <p className="text-sm text-gray-500">No family history recorded. Click &quot;Add History&quot; to add one.</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {Object.entries(formData.familyHistory).map(([condition, relation], index) => (
+                                <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex justify-between items-center">
+                                  <div>
+                                    <span className="font-medium text-sm text-gray-900">{condition}</span>
+                                    {relation && <span className="text-gray-500 text-sm ml-2">({relation})</span>}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeFamilyHistory(condition)}
+                                    className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-md transition-colors text-sm font-semibold"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
                   )}
 
                   {/* Navigation Buttons */}
-                  <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-4 pt-6 border-t border-gray-200/50 mt-6">
+                  <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-4 pt-6 border-t border-gray-200 mt-6">
                     <button
                       type="button"
                       onClick={prevStep}
                       disabled={currentStep === 1}
-                      className={`px-6 py-3 rounded-xl font-semibold transition-all ${
+                      className={`px-6 py-3 rounded-md font-semibold transition-colors ${
                         currentStep === 1
                           ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : 'bg-white/80 backdrop-blur-sm border-2 border-gray-300 hover:border-gray-400 text-gray-700 hover:shadow-lg transform hover:scale-105'
+                          : 'bg-white border border-gray-300 hover:border-gray-900 text-gray-900'
                       }`}
                     >
                       <span className="flex items-center justify-center gap-2">
@@ -1145,7 +1148,7 @@ export default function PublicOnboardingClient() {
                       <button
                         type="button"
                         onClick={nextStep}
-                        className="px-6 sm:px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex-1 sm:flex-initial"
+                        className="px-6 sm:px-8 py-3 bg-brand-teal hover:bg-brand-teal-dark text-white rounded-md font-semibold transition-colors flex-1 sm:flex-initial"
                       >
                         <span className="flex items-center justify-center gap-2">
                           Next
@@ -1158,7 +1161,7 @@ export default function PublicOnboardingClient() {
                       <button
                         type="submit"
                         disabled={submitting}
-                        className="px-6 sm:px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-green-400 disabled:to-emerald-400 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex-1 sm:flex-initial disabled:cursor-not-allowed disabled:transform-none"
+                        className="px-6 sm:px-8 py-3 bg-brand-teal hover:bg-brand-teal-dark disabled:bg-brand-teal-light text-white rounded-md font-semibold transition-colors flex-1 sm:flex-initial disabled:cursor-not-allowed"
                       >
                         {submitting ? (
                           <span className="flex items-center justify-center gap-2">
@@ -1177,7 +1180,9 @@ export default function PublicOnboardingClient() {
                     )}
                   </div>
                 </div>
-              </form>
+                  </form>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1186,24 +1191,23 @@ export default function PublicOnboardingClient() {
             <div className="mt-6 text-center text-sm text-gray-600 px-4">
               <p>
                 Already registered?{' '}
-                <Link href="/book" className="text-blue-600 hover:text-blue-700 font-medium">
+                <Link href="/book" className="text-brand-teal hover:text-brand-teal-dark font-medium">
                   Book an appointment
                 </Link>
                 {' '}or{' '}
-                <Link href="/login" className="text-blue-600 hover:text-blue-700 font-medium">
+                <Link href="/login" className="text-brand-teal hover:text-brand-teal-dark font-medium">
                   Login
                 </Link>
               </p>
               <p className="mt-2">
                 Need help? Contact us at{' '}
-                <a href="mailto:support@clinic.com" className="text-blue-600 hover:text-blue-700 font-medium">
+                <a href="mailto:support@clinic.com" className="text-brand-teal hover:text-brand-teal-dark font-medium">
                   support@clinic.com
                 </a>
               </p>
             </div>
           )}
         </div>
-      </div>
 
       <style jsx>{`
         @keyframes fade-in {
