@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
 import { getTenantContext } from '@/lib/tenant';
+import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
+import {
+  escapeHtml as e,
+  sealedDocumentParts,
+  PROTECTED_DOCUMENT_HEADERS,
+} from '@/lib/document-protection';
 
 export async function GET(
   request: NextRequest,
@@ -16,42 +22,56 @@ export async function GET(
     return unauthorizedResponse();
   }
 
+  const permissionCheck = await requirePermission(session, 'prescriptions', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
+  }
+
   try {
     await connectDB();
     const { id } = await params;
     const searchParams = request.nextUrl.searchParams;
-    const copyType = searchParams.get('copy') || 'patient'; // 'patient' or 'clinic'
+    const copyType = searchParams.get('copy') === 'clinic' ? 'clinic' : 'patient';
 
     // Get tenant context and settings
     const tenantContext = await getTenantContext();
     const tenantId = session.tenantId || tenantContext.tenantId;
-    const settings = await getSettings(tenantId);
+    const settingInfo = await getSettings(tenantId);
 
     // Digital signature toggle: use tenant setting if present, else fallback to query param
     let showSignature = true;
-    if (typeof settings.prescriptionDigitalSignatureEnabled === 'boolean') {
-      showSignature = settings.prescriptionDigitalSignatureEnabled;
+    if (typeof settingInfo.prescriptionDigitalSignatureEnabled === 'boolean') {
+      showSignature = settingInfo.prescriptionDigitalSignatureEnabled;
     } else {
       showSignature = searchParams.get('showSignature') !== '0';
     }
-    const settingInfo = await getSettings(tenantId);
 
-    const prescription = await Prescription.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth address gender')
-      .populate({
-        path: 'prescribedBy',
-        select: 'name email doctorProfile licenseNumber',
-        populate: {
-          path: 'doctorProfile',
-          select: 'licenseNumber'
-        }
-      })
-      .populate('visit', 'visitCode date followUpDate');
+    const query = tenantScopedQuery(id, tenantId);
+    const prescription = query
+      ? await Prescription.findOne(query)
+          .populate('patient', 'firstName lastName patientCode email phone dateOfBirth address gender')
+          .populate({
+            path: 'prescribedBy',
+            select: 'name email doctorProfile licenseNumber',
+            populate: {
+              path: 'doctorProfile',
+              select: 'licenseNumber'
+            }
+          })
+          .populate('visit', 'visitCode date followUpDate')
+      : null;
 
     if (!prescription) {
       return NextResponse.json(
         { success: false, error: 'Prescription not found' },
         { status: 404 }
+      );
+    }
+
+    if (prescription.status === 'cancelled') {
+      return NextResponse.json(
+        { success: false, error: 'Cancelled prescriptions cannot be printed' },
+        { status: 409 }
       );
     }
 
@@ -65,7 +85,7 @@ export async function GET(
       };
 
       await prescription.save();
-    } else if (copyType === 'clinic') {
+    } else {
       prescription.copies = prescription.copies || {};
       prescription.copies.clinicCopy = {
         ...prescription.copies.clinicCopy,
@@ -76,16 +96,21 @@ export async function GET(
       await prescription.save();
     }
 
-    // Generate HTML for printable prescription
-    const html = generatePrescriptionHTML(prescription, copyType, showSignature, settingInfo);
-
-    return new NextResponse(html, {
-      headers: {
-        'Content-Type': 'text/html',
-      },
+    const seal = await issueSeal({
+      request,
+      documentType: 'prescription',
+      document: prescription,
+      tenantId,
+      userId: session.userId,
+      copyType,
     });
-  } catch (error: any) {
 
+    // Generate HTML for printable prescription
+    const html = generatePrescriptionHTML(prescription, copyType, showSignature, settingInfo, seal);
+
+    return new NextResponse(html, { headers: PROTECTED_DOCUMENT_HEADERS });
+  } catch (error: any) {
+    console.error('Error generating prescription:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to generate prescription' },
       { status: 500 }
@@ -93,19 +118,34 @@ export async function GET(
   }
 }
 
-function generatePrescriptionHTML(prescription: any, copyType: string = 'patient', showSignature: boolean = true, settingInfo: any): string {
+function generatePrescriptionHTML(
+  prescription: any,
+  copyType: string,
+  showSignature: boolean,
+  settingInfo: any,
+  seal: IssuedSeal
+): string {
 
-  const patient = prescription.patient;
+  const patient = prescription.patient || {};
   const provider = prescription.prescribedBy;
   const date = new Date(prescription.issuedAt).toLocaleDateString();
   const isPatientCopy = copyType === 'patient';
+  const clinicName = settingInfo?.clinicName || 'Clinic Name';
+  const protection = sealedDocumentParts({
+    seal,
+    clinicName,
+    documentLabel: 'Prescription',
+    documentCode: prescription.prescriptionCode,
+    fileCopy: !isPatientCopy,
+  });
 
   return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Prescription ${prescription.prescriptionCode}</title>
+  <title>Prescription ${e(prescription.prescriptionCode)}</title>
+  ${protection.head}
   <script>
     window.onload = function() {
       setTimeout(function() { window.print(); }, 200);
@@ -191,19 +231,21 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
   </style>
 </head>
 <body>
+  ${protection.watermark}
   <div style="display: flex; flex-direction: column; min-height: calc(100vh - 50px);">
+    ${protection.banner}
     <!-- HEADER ROW -->
     <div class="header" style="flex: 0 0 auto;">
       <div style="display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
-          <h1 style="margin-bottom: 4px;">${settingInfo && settingInfo.clinicName ? settingInfo.clinicName : 'Clinic Name'}</h1>
-          <div style="font-size: 14px; color: #000000;">${settingInfo && settingInfo.clinicAddress ? settingInfo.clinicAddress : ''}</div>
-          <div style="font-size: 14px; color: #000000;">${settingInfo && settingInfo.clinicPhone ? 'Tel: ' + settingInfo.clinicPhone : ''}</div>
-          <div style="font-size: 14px; color: #000000;">${settingInfo && settingInfo.clinicEmail ? 'Email: ' + settingInfo.clinicEmail : ''}</div>
+          <h1 style="margin-bottom: 4px;">${e(clinicName)}</h1>
+          <div style="font-size: 14px; color: #000000;">${e(settingInfo?.clinicAddress)}</div>
+          <div style="font-size: 14px; color: #000000;">${settingInfo?.clinicPhone ? 'Tel: ' + e(settingInfo.clinicPhone) : ''}</div>
+          <div style="font-size: 14px; color: #000000;">${settingInfo?.clinicEmail ? 'Email: ' + e(settingInfo.clinicEmail) : ''}</div>
         </div>
         <div style="text-align: right;">
           <h2 style="margin: 0; color: #000000;">PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h2>
-          <strong>Code:</strong> ${prescription.prescriptionCode}<br>
+          <strong>Code:</strong> ${e(prescription.prescriptionCode)}<br>
           ${!isPatientCopy ? `<small style="color: #000000;">Archived: ${new Date().toLocaleString()}</small>` : ''}
         </div>
       </div>
@@ -215,7 +257,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
         <div style="flex: 1; min-width: 280px;">
           <div class="info-row">
             <div class="info-label">Patient:</div>
-            <div>${patient.firstName} ${patient.lastName}</div>
+            <div>${e(patient.firstName)} ${e(patient.lastName)}</div>
           </div>
           ${patient.dateOfBirth ? `
           <div class="info-row">
@@ -226,7 +268,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
           ${patient.gender ? `
           <div class="info-row">
             <div class="info-label">Gender:</div>
-            <div>${patient.gender}</div>
+            <div>${e(patient.gender)}</div>
           </div>
           ` : ''}
           ${patient.dateOfBirth ? `
@@ -240,7 +282,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
           ${patient.phone ? `
           <div class="info-row">
             <div class="info-label">Phone:</div>
-            <div>${patient.phone}</div>
+            <div>${e(patient.phone)}</div>
           </div>
           ` : ''}
           <div class="info-row">
@@ -251,34 +293,33 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
         ${patient.address ? `
         <div class="info-row">
           <div class="info-label">Address:</div>
-          <div>${(() => {
+          <div>${e((() => {
         if (typeof patient.address === 'object' && patient.address !== null) {
           const { street, city, state, zipCode } = patient.address;
           return [street, city, state, zipCode].filter(Boolean).join(', ');
         }
         return patient.address;
-      })()}</div>
+      })())}</div>
         </div>
         ` : ''}
       </div>
 
       <div class="medications">
-        ${prescription.medications.reverse().map((med: any, index: number) => `
+        ${[...prescription.medications].reverse().map((med: any, index: number) => `
           <div class="medication-item">
             <div class="medication-name" style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
-              <span>${index + 1}. ${med.name}</span>
-              ${med.genericName ? `<span>(${med.genericName})</span>` : ''}
-              ${med.quantity ? `<span>` : ''}
+              <span>${index + 1}. ${e(med.name)}</span>
+              ${med.genericName ? `<span>(${e(med.genericName)})</span>` : ''}
             </div>
             <div class="medication-details" style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between;">
-              ${med.instructions ? `<span><strong>Sig:</strong> <b>${med.instructions}</b></span>` : ''} 
-              ${med.quantity ? `<span><strong>#</strong> ${med.quantity}</span>` : ''}
+              ${med.instructions ? `<span><strong>Sig:</strong> <b>${e(med.instructions)}</b></span>` : ''}
+              ${med.quantity ? `<span><strong>#</strong> ${e(med.quantity)}</span>` : ''}
             </div>
           </div>
         `).join('')}
       </div>
 
-      
+
     </div>
 
     <!-- FOOTER ROW -->
@@ -293,7 +334,7 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
         <div style="margin-top: 10px; line-height: 1.2; text-align: left;">
           <h3 style="margin-bottom: 4px;">Additional Notes:</h3>
           <div style="display: flex; gap: 16px; flex-wrap: wrap;">
-            ${prescription.notes ? `<span>${prescription.notes}</span>` : ''}
+            ${prescription.notes ? `<span>${e(prescription.notes)}</span>` : ''}
             ${followUpDate ? `<span style="font-weight: bold;"><strong>Follow-up Date:</strong> ${followUpDate}</span>` : ''}
           </div>
         </div>
@@ -302,15 +343,15 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
 
       <div class="signature-section">
         <div class="signature-box">
-          <div>${provider ? provider.name : 'Provider'}</div>
+          <div>${provider ? e(provider.name) : 'Provider'}</div>
           <div style="font-size: 12px; margin-top: 5px;">
             ${(() => {
       const licenseLine = settingInfo?.licenseNumber
-        ? `License No: ${settingInfo.licenseNumber}`
+        ? `License No: ${e(settingInfo.licenseNumber)}`
         : 'License No: ____________';
       const ptrValue = settingInfo?.ptr || settingInfo?.PTR;
       const ptrLine = ptrValue
-        ? `<br>PTR No: ${ptrValue}`
+        ? `<br>PTR No: ${e(ptrValue)}`
         : '<br>PTR No: ____________';
       return `${licenseLine}${ptrLine}`;
     })()}
@@ -318,11 +359,13 @@ function generatePrescriptionHTML(prescription: any, copyType: string = 'patient
         </div>
       </div>
 
-      <p>This prescription was generated digitally by ${settingInfo && settingInfo.clinicName ? settingInfo.clinicName : 'the clinic'}.</p>
+      ${protection.seal}
+
+      <p>This prescription was generated digitally by ${e(clinicName)}.</p>
       <p>Please verify all information before dispensing. For questions or concerns, contact:</p>
       <p>
-        ${settingInfo && settingInfo.clinicPhone ? 'Tel: ' + settingInfo.clinicPhone : ''}<br>
-        ${settingInfo && settingInfo.clinicEmail ? 'Email: ' + settingInfo.clinicEmail : ''}
+        ${settingInfo?.clinicPhone ? 'Tel: ' + e(settingInfo.clinicPhone) : ''}<br>
+        ${settingInfo?.clinicEmail ? 'Email: ' + e(settingInfo.clinicEmail) : ''}
       </p>
       <p style="margin-top: 8px; font-weight: bold; color: #000000;">Powered by: DevCom Digital Marketing Services</p>
     </div>
@@ -368,4 +411,3 @@ function formatAgeWithMonths(dateOfBirth?: string | Date): string {
 
   return `${years} ${yearLabel}, ${months} ${monthLabel}`;
 }
-
