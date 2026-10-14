@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Document from '@/models/Document';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { getTenantContext } from '@/lib/tenant';
+import { tenantScopedQuery } from '@/lib/document-seal';
+import {
+  escapeHtml as e,
+  protectionHead,
+  watermarkOverlay,
+  PROTECTED_DOCUMENT_HEADERS,
+} from '@/lib/document-protection';
 
 export async function GET(
   request: NextRequest,
@@ -14,10 +22,19 @@ export async function GET(
     return unauthorizedResponse();
   }
 
+  const permissionCheck = await requirePermission(session, 'documents', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
+  }
+
   try {
     await connectDB();
-    const { id } = await params;
-    const document = await Document.findById(id);
+    const { id: rawId } = await params;
+    const tenantContext = await getTenantContext();
+    const query = tenantScopedQuery(rawId, session.tenantId || tenantContext.tenantId);
+    const document = query ? await Document.findOne(query) : null;
+    // Re-serialize the validated ObjectId so nothing user-supplied reaches the HTML/JS below
+    const id = String(document?._id ?? '');
 
     if (!document) {
       return NextResponse.json(
@@ -47,6 +64,14 @@ export async function GET(
     };
 
     const categoryLabel = getCategoryLabel(document.category);
+    const watermark = watermarkOverlay(
+      [
+        'CONFIDENTIAL · NOT AN OFFICIAL COPY',
+        `Viewed by ${session.email} · ${new Date().toLocaleString('en-US')}`,
+        `Document ${document.documentCode || id}`,
+      ],
+      { warning: true }
+    );
 
     // Return HTML page with embedded document viewer
     const html = `
@@ -55,7 +80,8 @@ export async function GET(
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${document.title}</title>
+        <title>${e(document.title)}</title>
+        ${protectionHead({ shieldOnBlur: false })}
         <style>
           * {
             box-sizing: border-box;
@@ -210,11 +236,12 @@ export async function GET(
         </script>
       </head>
       <body>
+        ${watermark}
         <div class="header">
           <div>
-            <h1>${document.title}</h1>
+            <h1>${e(document.title)}</h1>
             <div class="header-info">
-              ${categoryLabel} • ${document.documentType.toUpperCase()}
+              ${e(categoryLabel)} • ${e(String(document.documentType).toUpperCase())}
             </div>
           </div>
           <div class="header-actions">
@@ -244,17 +271,17 @@ export async function GET(
         </div>
         <div class="viewer">
           ${document.documentType === 'pdf' 
-            ? `<object data="${pdfUrl}" type="application/pdf" class="pdf-viewer" style="width: 100%; height: 100%;">
-                <embed src="${pdfUrl}" type="application/pdf" style="width: 100%; height: 100%;" />
+            ? `<object data="${e(pdfUrl)}" type="application/pdf" class="pdf-viewer" style="width: 100%; height: 100%;">
+                <embed src="${e(pdfUrl)}" type="application/pdf" style="width: 100%; height: 100%;" />
                 <div class="error-message">
                   <p>Your browser does not support PDF viewing.</p>
                   <p><a href="/api/documents/${id}/download" class="btn btn-primary" style="display: inline-block; margin-top: 12px;">Download PDF</a></p>
                 </div>
               </object>`
             : document.documentType === 'image'
-            ? `<img src="${document.thumbnailUrl || document.url}" alt="${document.title}" onclick="window.open('${document.url}', '_blank')" />`
+            ? `<img src="${e(document.thumbnailUrl || document.url)}" alt="${e(document.title)}" />`
             : `<div class="error-message">
-                <p>Preview not available for ${document.documentType} files.</p>
+                <p>Preview not available for ${e(document.documentType)} files.</p>
                 <p><a href="/api/documents/${id}/download">Click here to download</a> the file to view it.</p>
               </div>`
           }
@@ -263,11 +290,7 @@ export async function GET(
       </html>
     `;
 
-    return new NextResponse(html, {
-      headers: {
-        'Content-Type': 'text/html',
-      },
-    });
+    return new NextResponse(html, { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {
     console.error('Error viewing document:', error);
     return NextResponse.json(

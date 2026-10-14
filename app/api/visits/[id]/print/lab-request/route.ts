@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { getSettings } from '@/lib/settings';
+import { getTenantContext } from '@/lib/tenant';
+import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
+import {
+  escapeHtml as e,
+  safeImageSrc,
+  sealedDocumentParts,
+  PROTECTED_DOCUMENT_HEADERS,
+} from '@/lib/document-protection';
 
 export async function GET(
   request: NextRequest,
@@ -14,13 +23,24 @@ export async function GET(
     return unauthorizedResponse();
   }
 
+  const permissionCheck = await requirePermission(session, 'visits', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
+  }
+
   try {
     await connectDB();
     const { id } = await params;
-    const visit = await Visit.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth gender')
-      .populate('provider', 'name email')
-      .populate('labsOrdered');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
+    const query = tenantScopedQuery(id, tenantId);
+    const visit = query
+      ? await Visit.findOne(query)
+          .populate('patient', 'firstName lastName patientCode email phone dateOfBirth gender')
+          .populate('provider', 'name email')
+          .populate('labsOrdered')
+      : null;
 
     if (!visit) {
       return NextResponse.json(
@@ -29,14 +49,28 @@ export async function GET(
       );
     }
 
-    // Generate HTML for printable lab request
-    const html = generateLabRequestHTML(visit);
+    if (visit.status === 'cancelled') {
+      return NextResponse.json(
+        { success: false, error: 'Lab requests cannot be issued for cancelled visits' },
+        { status: 409 }
+      );
+    }
 
-    return new NextResponse(html, {
-      headers: {
-        'Content-Type': 'text/html',
-      },
-    });
+    const [settings, seal] = await Promise.all([
+      getSettings(tenantId),
+      issueSeal({
+        request,
+        documentType: 'lab_request',
+        document: visit,
+        tenantId,
+        userId: session.userId,
+      }),
+    ]);
+
+    // Generate HTML for printable lab request
+    const html = generateLabRequestHTML(visit, settings, seal);
+
+    return new NextResponse(html, { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {
     console.error('Error generating lab request:', error);
     return NextResponse.json(
@@ -46,9 +80,11 @@ export async function GET(
   }
 }
 
-function generateLabRequestHTML(visit: any): string {
-  const patient = visit.patient;
+function generateLabRequestHTML(visit: any, settings: any, seal: IssuedSeal): string {
+  const patient = visit.patient || {};
   const provider = visit.provider;
+  const clinicName = settings?.clinicName || 'Clinic';
+  const signatureSrc = safeImageSrc(visit.digitalSignature?.signatureData);
   const visitDate = new Date(visit.date).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -71,12 +107,20 @@ function generateLabRequestHTML(visit: any): string {
     ? visit.labsOrdered.map((lab: any) => lab.testType || 'Lab Test').join(', ')
     : 'As per clinical indication';
 
+  const protection = sealedDocumentParts({
+    seal,
+    clinicName,
+    documentLabel: 'Laboratory Request',
+    documentCode: visit.visitCode,
+  });
+
   return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Lab Request - ${visit.visitCode}</title>
+  <title>Lab Request - ${e(visit.visitCode)}</title>
+  ${protection.head}
   <style>
     @media print {
       @page {
@@ -180,17 +224,20 @@ function generateLabRequestHTML(visit: any): string {
   </style>
 </head>
 <body>
+  ${protection.watermark}
+  ${protection.banner}
   <div class="header">
+    <div style="font-size: 14px; margin-bottom: 6px;"><strong>${e(clinicName)}</strong>${settings?.clinicAddress ? ` · ${e(settings.clinicAddress)}` : ''}</div>
     <h1>LABORATORY REQUEST FORM</h1>
     <div style="text-align: right; margin-top: -30px;">
-      <strong>Request Code:</strong> ${visit.visitCode}
+      <strong>Request Code:</strong> ${e(visit.visitCode)}
     </div>
   </div>
 
   <div class="info-section">
     <div class="info-row">
       <div class="info-label">Patient Name:</div>
-      <div>${patient.firstName} ${patient.lastName}${patient.patientCode ? ` (ID: ${patient.patientCode})` : ''}</div>
+      <div>${e(patient.firstName)} ${e(patient.lastName)}${patient.patientCode ? ` (ID: ${e(patient.patientCode)})` : ''}</div>
     </div>
     ${patient.dateOfBirth ? `
     <div class="info-row">
@@ -201,13 +248,13 @@ function generateLabRequestHTML(visit: any): string {
     ${patient.gender ? `
     <div class="info-row">
       <div class="info-label">Gender:</div>
-      <div>${patient.gender}</div>
+      <div>${e(patient.gender)}</div>
     </div>
     ` : ''}
     ${patient.phone ? `
     <div class="info-row">
       <div class="info-label">Phone:</div>
-      <div>${patient.phone}</div>
+      <div>${e(patient.phone)}</div>
     </div>
     ` : ''}
     <div class="info-row">
@@ -221,7 +268,7 @@ function generateLabRequestHTML(visit: any): string {
     ${provider ? `
     <div class="info-row">
       <div class="info-label">Requested By:</div>
-      <div>${provider.name}</div>
+      <div>${e(provider.name)}</div>
     </div>
     ` : ''}
   </div>
@@ -229,12 +276,12 @@ function generateLabRequestHTML(visit: any): string {
   ${diagnosisText ? `
   <div class="clinical-info">
     <h3 style="margin-top: 0;">Clinical Information</h3>
-    <p><strong>Diagnosis:</strong> ${diagnosisText}</p>
+    <p><strong>Diagnosis:</strong> ${e(diagnosisText)}</p>
     ${visit.chiefComplaint ? `
-    <p><strong>Chief Complaint:</strong> ${visit.chiefComplaint}</p>
+    <p><strong>Chief Complaint:</strong> ${e(visit.chiefComplaint)}</p>
     ` : ''}
     ${visit.soapNotes?.assessment ? `
-    <p><strong>Clinical Assessment:</strong> ${visit.soapNotes.assessment}</p>
+    <p><strong>Clinical Assessment:</strong> ${e(visit.soapNotes.assessment)}</p>
     ` : ''}
   </div>
   ` : ''}
@@ -244,14 +291,14 @@ function generateLabRequestHTML(visit: any): string {
     ${visit.labsOrdered && visit.labsOrdered.length > 0 ? `
       ${visit.labsOrdered.map((lab: any, index: number) => `
         <div class="test-item">
-          <strong>${index + 1}. ${lab.testType || 'Lab Test'}</strong>
-          ${lab.status ? `<span class="urgency-badge ${lab.status === 'ordered' ? 'urgency-routine' : 'urgency-urgent'}">${lab.status.toUpperCase()}</span>` : ''}
-          ${lab.interpretation ? `<p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">${lab.interpretation}</p>` : ''}
+          <strong>${index + 1}. ${e(lab.testType || 'Lab Test')}</strong>
+          ${lab.status ? `<span class="urgency-badge ${lab.status === 'ordered' ? 'urgency-routine' : 'urgency-urgent'}">${e(String(lab.status).toUpperCase())}</span>` : ''}
+          ${lab.interpretation ? `<p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">${e(lab.interpretation)}</p>` : ''}
         </div>
       `).join('')}
     ` : `
       <div class="test-item">
-        <strong>${labTests}</strong>
+        <strong>${e(labTests)}</strong>
         <span class="urgency-badge urgency-routine">ROUTINE</span>
       </div>
     `}
@@ -260,30 +307,31 @@ function generateLabRequestHTML(visit: any): string {
   ${visit.notes ? `
   <div style="margin: 20px 0; padding: 15px; background-color: #f9fafb; border-left: 4px solid #6b7280;">
     <h3 style="margin-top: 0;">Special Instructions:</h3>
-    <p>${visit.notes}</p>
+    <p>${e(visit.notes)}</p>
   </div>
   ` : ''}
 
   <div class="signature-section">
-    ${visit.digitalSignature ? `
+    ${signatureSrc ? `
       <div style="margin-bottom: 20px;">
-        <img src="${visit.digitalSignature.signatureData}" alt="Signature" style="max-height: 80px;" />
+        <img src="${signatureSrc}" alt="Signature" style="max-height: 80px;" />
       </div>
     ` : ''}
     <div class="signature-box">
-      <div>${provider ? provider.name : 'Licensed Physician'}</div>
-      <div style="font-size: 12px; margin-top: 5px;">Medical License Number</div>
+      <div>${provider ? e(provider.name) : 'Licensed Physician'}</div>
+      <div style="font-size: 12px; margin-top: 5px;">${settings?.licenseNumber ? `License No: ${e(settings.licenseNumber)}` : 'Medical License Number'}</div>
       <div style="font-size: 11px; margin-top: 10px;">Date: ${today}</div>
     </div>
   </div>
 
+  ${protection.seal}
+
   <div class="footer">
-    <p>This is a computer-generated lab request form. Please verify all information before processing.</p>
+    <p>This is a computer-generated lab request form. Please verify the serial above before processing.</p>
     <p>For questions, please contact the requesting physician.</p>
-    <p>Visit Code: ${visit.visitCode}</p>
+    <p>Visit Code: ${e(visit.visitCode)}</p>
   </div>
 </body>
 </html>
   `;
 }
-
