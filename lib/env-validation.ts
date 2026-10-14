@@ -14,6 +14,9 @@ const envConfig: EnvConfig = {
     'ROOT_DOMAIN', // Root domain for multi-tenant subdomain detection
     'INSTALL_SECRET', // Required to access /api/install/* routes in production
     'LAB_WEBHOOK_SECRET', // HMAC secret for third-party lab webhook verification
+    'DOCUMENT_SEAL_SECRET', // HMAC key for printed-document seals (falls back to a key derived from SESSION_SECRET)
+    'DOCUMENT_VERIFY_BASE_URL', // Canonical origin printed in document QR codes, e.g. https://myclinicsoft.com
+    'DOCUMENT_ANTI_INSPECT', // Set to "off" to disable the DevTools trap on protected documents
     'TWILIO_ACCOUNT_SID',
     'TWILIO_AUTH_TOKEN',
     'TWILIO_PHONE_NUMBER',
@@ -63,6 +66,11 @@ export function validateEnv(): { valid: boolean; errors: string[] } {
   // Validate ENCRYPTION_KEY — must be a 64-char hex string (32 bytes for AES-256)
   if (process.env.ENCRYPTION_KEY && !/^[0-9a-fA-F]{64}$/.test(process.env.ENCRYPTION_KEY)) {
     errors.push('ENCRYPTION_KEY must be a 64-character hex string (32 bytes for AES-256)');
+  }
+
+  // Validate DOCUMENT_SEAL_SECRET length if set
+  if (process.env.DOCUMENT_SEAL_SECRET && process.env.DOCUMENT_SEAL_SECRET.length < 32) {
+    errors.push('DOCUMENT_SEAL_SECRET must be at least 32 characters long');
   }
 
   // Validate MONGODB_URI format if set

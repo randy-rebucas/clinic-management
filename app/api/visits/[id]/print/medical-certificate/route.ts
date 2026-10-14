@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { getSettings } from '@/lib/settings';
+import { getTenantContext } from '@/lib/tenant';
+import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
+import {
+  escapeHtml as e,
+  safeImageSrc,
+  sealedDocumentParts,
+  PROTECTED_DOCUMENT_HEADERS,
+} from '@/lib/document-protection';
 
 export async function GET(
   request: NextRequest,
@@ -14,12 +23,23 @@ export async function GET(
     return unauthorizedResponse();
   }
 
+  const permissionCheck = await requirePermission(session, 'visits', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
+  }
+
   try {
     await connectDB();
     const { id } = await params;
-    const visit = await Visit.findById(id)
-      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth gender')
-      .populate('provider', 'name email');
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
+    const query = tenantScopedQuery(id, tenantId);
+    const visit = query
+      ? await Visit.findOne(query)
+          .populate('patient', 'firstName lastName patientCode email phone dateOfBirth gender')
+          .populate('provider', 'name email')
+      : null;
 
     if (!visit) {
       return NextResponse.json(
@@ -28,14 +48,28 @@ export async function GET(
       );
     }
 
-    // Generate HTML for printable medical certificate
-    const html = generateMedicalCertificateHTML(visit);
+    if (visit.status === 'cancelled') {
+      return NextResponse.json(
+        { success: false, error: 'Certificates cannot be issued for cancelled visits' },
+        { status: 409 }
+      );
+    }
 
-    return new NextResponse(html, {
-      headers: {
-        'Content-Type': 'text/html',
-      },
-    });
+    const [settings, seal] = await Promise.all([
+      getSettings(tenantId),
+      issueSeal({
+        request,
+        documentType: 'medical_certificate',
+        document: visit,
+        tenantId,
+        userId: session.userId,
+      }),
+    ]);
+
+    // Generate HTML for printable medical certificate
+    const html = generateMedicalCertificateHTML(visit, settings, seal);
+
+    return new NextResponse(html, { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {
     console.error('Error generating medical certificate:', error);
     return NextResponse.json(
@@ -45,9 +79,11 @@ export async function GET(
   }
 }
 
-function generateMedicalCertificateHTML(visit: any): string {
-  const patient = visit.patient;
+function generateMedicalCertificateHTML(visit: any, settings: any, seal: IssuedSeal): string {
+  const patient = visit.patient || {};
   const provider = visit.provider;
+  const clinicName = settings?.clinicName || 'Clinic';
+  const signatureSrc = safeImageSrc(visit.digitalSignature?.signatureData);
   const visitDate = new Date(visit.date).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -65,12 +101,20 @@ function generateMedicalCertificateHTML(visit: any): string {
     ? `${primaryDiagnosis.code ? `(${primaryDiagnosis.code}) ` : ''}${primaryDiagnosis.description || ''}`
     : 'Medical condition';
 
+  const protection = sealedDocumentParts({
+    seal,
+    clinicName,
+    documentLabel: 'Medical Certificate',
+    documentCode: visit.visitCode,
+  });
+
   return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Medical Certificate - ${visit.visitCode}</title>
+  <title>Medical Certificate - ${e(visit.visitCode)}</title>
+  ${protection.head}
   <style>
     @media print {
       @page {
@@ -100,6 +144,11 @@ function generateMedicalCertificateHTML(visit: any): string {
       font-size: 24px;
       font-weight: bold;
       letter-spacing: 2px;
+    }
+    .clinic-info {
+      font-size: 13px;
+      line-height: 1.4;
+      margin-bottom: 12px;
     }
     .certificate-body {
       margin: 40px 0;
@@ -139,30 +188,27 @@ function generateMedicalCertificateHTML(visit: any): string {
       color: #666;
       text-align: center;
     }
-    .stamp {
-      margin-top: 20px;
-      text-align: center;
-    }
-    .stamp-box {
-      display: inline-block;
-      border: 2px dashed #333;
-      padding: 15px 30px;
-      font-weight: bold;
-    }
   </style>
 </head>
 <body>
+  ${protection.watermark}
+  ${protection.banner}
   <div class="header">
+    <div class="clinic-info">
+      <strong style="font-size: 16px;">${e(clinicName)}</strong><br>
+      ${settings?.clinicAddress ? `${e(settings.clinicAddress)}<br>` : ''}
+      ${settings?.clinicPhone ? `Tel: ${e(settings.clinicPhone)}` : ''}
+    </div>
     <h1>MEDICAL CERTIFICATE</h1>
   </div>
 
   <div class="certificate-body">
-    <p>This is to certify that I have examined <strong>${patient.firstName} ${patient.lastName}</strong>${patient.patientCode ? ` (Patient ID: ${patient.patientCode})` : ''} on <strong>${visitDate}</strong>.</p>
+    <p>This is to certify that I have examined <strong>${e(patient.firstName)} ${e(patient.lastName)}</strong>${patient.patientCode ? ` (Patient ID: ${e(patient.patientCode)})` : ''} on <strong>${visitDate}</strong>.</p>
 
     <div class="patient-info">
       <div class="info-row">
         <span class="info-label">Patient Name:</span>
-        <span>${patient.firstName} ${patient.lastName}</span>
+        <span>${e(patient.firstName)} ${e(patient.lastName)}</span>
       </div>
       ${patient.dateOfBirth ? `
       <div class="info-row">
@@ -173,7 +219,7 @@ function generateMedicalCertificateHTML(visit: any): string {
       ${patient.gender ? `
       <div class="info-row">
         <span class="info-label">Gender:</span>
-        <span>${patient.gender}</span>
+        <span>${e(patient.gender)}</span>
       </div>
       ` : ''}
       <div class="info-row">
@@ -182,24 +228,24 @@ function generateMedicalCertificateHTML(visit: any): string {
       </div>
       <div class="info-row">
         <span class="info-label">Visit Code:</span>
-        <span>${visit.visitCode}</span>
+        <span>${e(visit.visitCode)}</span>
       </div>
     </div>
 
     ${visit.chiefComplaint ? `
-    <p><strong>Chief Complaint:</strong> ${visit.chiefComplaint}</p>
+    <p><strong>Chief Complaint:</strong> ${e(visit.chiefComplaint)}</p>
     ` : ''}
 
     ${primaryDiagnosis ? `
-    <p><strong>Diagnosis:</strong> ${diagnosisText}</p>
+    <p><strong>Diagnosis:</strong> ${e(diagnosisText)}</p>
     ` : ''}
 
     ${visit.soapNotes?.assessment ? `
-    <p><strong>Clinical Assessment:</strong> ${visit.soapNotes.assessment}</p>
+    <p><strong>Clinical Assessment:</strong> ${e(visit.soapNotes.assessment)}</p>
     ` : ''}
 
     ${visit.treatmentPlan?.followUp?.instructions ? `
-    <p><strong>Recommendations:</strong> ${visit.treatmentPlan.followUp.instructions}</p>
+    <p><strong>Recommendations:</strong> ${e(visit.treatmentPlan.followUp.instructions)}</p>
     ` : ''}
 
     ${visit.followUpDate ? `
@@ -208,30 +254,25 @@ function generateMedicalCertificateHTML(visit: any): string {
   </div>
 
   <div class="signature-section">
-    ${visit.digitalSignature ? `
+    ${signatureSrc ? `
       <div style="margin-bottom: 20px;">
-        <img src="${visit.digitalSignature.signatureData}" alt="Signature" style="max-height: 80px;" />
+        <img src="${signatureSrc}" alt="Signature" style="max-height: 80px;" />
       </div>
     ` : ''}
     <div class="signature-box">
-      <div>${provider ? provider.name : 'Licensed Physician'}</div>
-      <div style="font-size: 12px; margin-top: 5px;">Medical License Number</div>
+      <div>${provider ? e(provider.name) : 'Licensed Physician'}</div>
+      <div style="font-size: 12px; margin-top: 5px;">${settings?.licenseNumber ? `License No: ${e(settings.licenseNumber)}` : 'Medical License Number'}</div>
       <div style="font-size: 11px; margin-top: 10px;">Date: ${today}</div>
     </div>
   </div>
 
-  <div class="stamp">
-    <div class="stamp-box">
-      OFFICIAL MEDICAL CERTIFICATE
-    </div>
-  </div>
+  ${protection.seal}
 
   <div class="footer">
     <p>This certificate is issued based on medical examination conducted on the date specified above.</p>
-    <p>For verification, please contact the clinic with Visit Code: ${visit.visitCode}</p>
+    <p>Valid only if the serial above verifies at ${e(seal.verifyBaseUrl)}/verify. Visit Code: ${e(visit.visitCode)}</p>
   </div>
 </body>
 </html>
   `;
 }
-
