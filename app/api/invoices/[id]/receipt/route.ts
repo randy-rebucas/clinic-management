@@ -3,8 +3,15 @@ import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Invoice from '@/models/Invoice';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
+import { getTenantContext } from '@/lib/tenant';
+import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
+import {
+  escapeHtml as e,
+  sealedDocumentParts,
+  PROTECTED_DOCUMENT_HEADERS,
+} from '@/lib/document-protection';
 
 export async function GET(
   request: NextRequest,
@@ -16,18 +23,26 @@ export async function GET(
     return unauthorizedResponse();
   }
 
+  const permissionCheck = await requirePermission(session, 'invoices', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
+  }
+
   try {
     await connectDB();
     const { id } = await params;
-    
-    if (!id || id === 'undefined') {
+    const tenantContext = await getTenantContext();
+    const tenantId = session.tenantId || tenantContext.tenantId;
+
+    const query = id ? tenantScopedQuery(id, tenantId) : null;
+    if (!query) {
       return NextResponse.json(
         { success: false, error: 'Invalid invoice ID' },
         { status: 400 }
       );
     }
 
-    const invoice = await Invoice.findById(id)
+    const invoice = await Invoice.findOne(query)
       .populate('patient', 'firstName lastName patientCode email phone dateOfBirth address')
       .populate('visit', 'visitCode date')
       .populate('createdBy', 'name email');
@@ -38,6 +53,22 @@ export async function GET(
         { status: 404 }
       );
     }
+
+    if (invoice.status === 'refunded') {
+      return NextResponse.json(
+        { success: false, error: 'Receipts cannot be issued for refunded invoices' },
+        { status: 409 }
+      );
+    }
+
+    // Seal is computed from the stored record, before any display-only population below
+    const seal = await issueSeal({
+      request,
+      documentType: 'receipt',
+      document: invoice,
+      tenantId,
+      userId: session.userId,
+    });
 
     // Manually populate items.serviceId if needed (convert to plain object first)
     const invoiceData = invoice.toObject ? invoice.toObject() : invoice;
@@ -72,13 +103,9 @@ export async function GET(
     }
 
     // Generate HTML for printable receipt (EOR - Electronic Official Receipt)
-    const html = await generateReceiptHTML(invoiceData);
+    const html = await generateReceiptHTML(invoiceData, tenantId, seal);
 
-    return new NextResponse(html, {
-      headers: {
-        'Content-Type': 'text/html',
-      },
-    });
+    return new NextResponse(html, { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {
     console.error('Error generating receipt:', error);
     return NextResponse.json(
@@ -88,15 +115,21 @@ export async function GET(
   }
 }
 
-async function generateReceiptHTML(invoice: any): Promise<string> {
-  const settings = await getSettings();
+async function generateReceiptHTML(invoice: any, tenantId: string | null | undefined, seal: IssuedSeal): Promise<string> {
+  const settings = await getSettings(tenantId);
   const currency = settings.billingSettings?.currency || 'PHP';
   const clinicName = settings.clinicName || 'MyClinicSoft';
   const clinicAddress = settings.clinicAddress || '';
   const clinicPhone = settings.clinicPhone || '';
   const clinicEmail = settings.clinicEmail || '';
   
-  const patient = invoice.patient;
+  const patient = invoice.patient || {};
+  const protection = sealedDocumentParts({
+    seal,
+    clinicName,
+    documentLabel: 'Official Receipt',
+    documentCode: invoice.invoiceNumber,
+  });
   const date = new Date(invoice.createdAt).toLocaleDateString();
   const time = new Date(invoice.createdAt).toLocaleTimeString();
   const totalPaid = invoice.payments?.reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
@@ -127,7 +160,8 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Official Receipt ${invoice.invoiceNumber}</title>
+  <title>Official Receipt ${e(invoice.invoiceNumber)}</title>
+  ${protection.head}
   <style>
     @media print {
       @page {
@@ -267,9 +301,11 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
   </style>
 </head>
 <body>
+  ${protection.watermark}
   <div class="no-print print-button">
     <button onclick="window.print()">Print Receipt</button>
   </div>
+  ${protection.banner}
 
   <div class="header">
     <h1>OFFICIAL RECEIPT</h1>
@@ -278,13 +314,13 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
 
   <div class="receipt-info">
     <div>
-      <strong>Receipt Number:</strong> ${invoice.invoiceNumber}<br>
+      <strong>Receipt Number:</strong> ${e(invoice.invoiceNumber)}<br>
       <strong>Date:</strong> ${date}<br>
       <strong>Time:</strong> ${time}
     </div>
     <div style="text-align: right;">
-      <strong>Status:</strong> ${invoice.status.toUpperCase()}<br>
-      ${invoice.visit ? `<strong>Visit:</strong> ${invoice.visit.visitCode}<br>` : ''}
+      <strong>Status:</strong> ${e(String(invoice.status || '').toUpperCase())}<br>
+      ${invoice.visit ? `<strong>Visit:</strong> ${e(invoice.visit.visitCode)}<br>` : ''}
     </div>
   </div>
 
@@ -292,24 +328,26 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
     <h3 style="margin-bottom: 10px; color: #1f2937;">Patient Information</h3>
     <div class="info-row">
       <div class="info-label">Name:</div>
-      <div>${patient.firstName} ${patient.lastName}${patient.patientCode ? ` (${patient.patientCode})` : ''}</div>
+      <div>${e(patient.firstName)} ${e(patient.lastName)}${patient.patientCode ? ` (${e(patient.patientCode)})` : ''}</div>
     </div>
     ${patient.email ? `
     <div class="info-row">
       <div class="info-label">Email:</div>
-      <div>${patient.email}</div>
+      <div>${e(patient.email)}</div>
     </div>
     ` : ''}
     ${patient.phone ? `
     <div class="info-row">
       <div class="info-label">Phone:</div>
-      <div>${patient.phone}</div>
+      <div>${e(patient.phone)}</div>
     </div>
     ` : ''}
     ${patient.address ? `
     <div class="info-row">
       <div class="info-label">Address:</div>
-      <div>${patient.address.street}, ${patient.address.city}, ${patient.address.state} ${patient.address.zipCode}</div>
+      <div>${e(typeof patient.address === 'object'
+        ? [patient.address.street, patient.address.city, [patient.address.state, patient.address.zipCode].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+        : patient.address)}</div>
     </div>
     ` : ''}
   </div>
@@ -331,9 +369,9 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
           : item.description || 'Service';
         return `
         <tr>
-          <td>${item.code || `Item ${index + 1}`}</td>
-          <td>${serviceName}</td>
-          <td class="text-right">${item.quantity || 1}</td>
+          <td>${e(item.code || `Item ${index + 1}`)}</td>
+          <td>${e(serviceName)}</td>
+          <td class="text-right">${e(item.quantity || 1)}</td>
           <td class="text-right">${formatCurrency(item.unitPrice || 0)}</td>
           <td class="text-right">${formatCurrency(item.total || 0)}</td>
         </tr>
@@ -349,7 +387,7 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
     </div>
     ${invoice.discounts && invoice.discounts.length > 0 ? invoice.discounts.map((disc: any) => `
       <div class="total-row">
-        <span>Discount (${disc.type || disc.reason || 'Discount'}):</span>
+        <span>Discount (${e(disc.type || disc.reason || 'Discount')}):</span>
         <span>-${formatCurrency(disc.amount)}</span>
       </div>
     `).join('') : ''}
@@ -371,9 +409,9 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
       ${invoice.payments.map((payment: any, index: number) => `
         <div class="payment-item">
           <div>
-            <strong>Payment ${index + 1}:</strong> ${formatPaymentMethod(payment.method)}
-            ${payment.receiptNo ? ` (Receipt: ${payment.receiptNo})` : ''}
-            ${payment.referenceNo ? ` (Ref: ${payment.referenceNo})` : ''}
+            <strong>Payment ${index + 1}:</strong> ${e(formatPaymentMethod(payment.method))}
+            ${payment.receiptNo ? ` (Receipt: ${e(payment.receiptNo)})` : ''}
+            ${payment.referenceNo ? ` (Ref: ${e(payment.referenceNo)})` : ''}
             <br>
             <small style="color: #6b7280;">${new Date(payment.date).toLocaleString()}</small>
           </div>
@@ -400,18 +438,18 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
       <h3 style="margin-bottom: 10px; color: #1f2937;">Insurance/HMO Information</h3>
       <div class="info-row">
         <div class="info-label">Provider:</div>
-        <div>${invoice.insurance.provider}</div>
+        <div>${e(invoice.insurance.provider)}</div>
       </div>
       ${invoice.insurance.policyNumber ? `
         <div class="info-row">
           <div class="info-label">Policy Number:</div>
-          <div>${invoice.insurance.policyNumber}</div>
+          <div>${e(invoice.insurance.policyNumber)}</div>
         </div>
       ` : ''}
       ${invoice.insurance.memberId ? `
         <div class="info-row">
           <div class="info-label">Member ID:</div>
-          <div>${invoice.insurance.memberId}</div>
+          <div>${e(invoice.insurance.memberId)}</div>
         </div>
       ` : ''}
       ${invoice.insurance.coverageAmount ? `
@@ -423,17 +461,19 @@ async function generateReceiptHTML(invoice: any): Promise<string> {
       ${invoice.insurance.status ? `
         <div class="info-row">
           <div class="info-label">Status:</div>
-          <div>${invoice.insurance.status.toUpperCase()}</div>
+          <div>${e(String(invoice.insurance.status).toUpperCase())}</div>
         </div>
       ` : ''}
     </div>
   ` : ''}
 
+  ${protection.seal}
+
   <div class="footer">
-    <p><strong>${clinicName}</strong></p>
-    ${clinicAddress ? `<p>${clinicAddress}</p>` : ''}
-    ${clinicPhone ? `<p>Phone: ${clinicPhone}</p>` : ''}
-    ${clinicEmail ? `<p>Email: ${clinicEmail}</p>` : ''}
+    <p><strong>${e(clinicName)}</strong></p>
+    ${clinicAddress ? `<p>${e(clinicAddress)}</p>` : ''}
+    ${clinicPhone ? `<p>Phone: ${e(clinicPhone)}</p>` : ''}
+    ${clinicEmail ? `<p>Email: ${e(clinicEmail)}</p>` : ''}
     <p style="margin-top: 20px;"><strong>This is an official receipt. Please keep this for your records.</strong></p>
     <p style="margin-top: 10px;">Generated on ${new Date().toLocaleString()}</p>
   </div>

@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Document from '@/models/Document';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
 import { getCloudinaryFileUrl, extractPublicIdFromUrl, isCloudinaryConfigured } from '@/lib/cloudinary';
+import { getTenantContext } from '@/lib/tenant';
+import { tenantScopedQuery } from '@/lib/document-seal';
 
 export async function GET(
   request: NextRequest,
@@ -15,10 +17,17 @@ export async function GET(
     return unauthorizedResponse();
   }
 
+  const permissionCheck = await requirePermission(session, 'documents', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
+  }
+
   try {
     await connectDB();
     const { id } = await params;
-    const document = await Document.findById(id);
+    const tenantContext = await getTenantContext();
+    const query = tenantScopedQuery(id, session.tenantId || tenantContext.tenantId);
+    const document = query ? await Document.findOne(query) : null;
 
     if (!document) {
       return NextResponse.json(
@@ -54,9 +63,10 @@ export async function GET(
       return new NextResponse(buffer, {
         headers: {
           'Content-Type': document.contentType || 'application/pdf',
-          'Content-Disposition': `inline; filename="${document.originalFilename}"`,
-          'Content-Length': document.size.toString(),
-          'Cache-Control': 'public, max-age=3600',
+          'Content-Disposition': `inline; filename="${String(document.originalFilename || 'document').replace(/["\r\n\\]/g, '')}"`,
+          'Content-Length': buffer.length.toString(),
+          // Patient files must never be stored by shared caches/CDNs
+          'Cache-Control': 'private, no-store, max-age=0',
           'X-Content-Type-Options': 'nosniff',
           'Accept-Ranges': 'bytes',
         },
