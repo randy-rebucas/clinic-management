@@ -46,6 +46,8 @@ export async function GET(
       showSignature = searchParams.get('showSignature') !== '0';
     }
 
+    const paperSize: PaperSize = settingInfo.prescriptionPaperSize === 'A4' ? 'A4' : 'A5';
+
     const query = tenantScopedQuery(id, tenantId);
     const prescription = query
       ? await Prescription.findOne(query)
@@ -106,7 +108,7 @@ export async function GET(
     });
 
     // Generate HTML for printable prescription
-    const html = generatePrescriptionHTML(prescription, copyType, showSignature, settingInfo, seal);
+    const html = generatePrescriptionHTML(prescription, copyType, showSignature, settingInfo, seal, paperSize);
 
     return new NextResponse(html, { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {
@@ -118,13 +120,36 @@ export async function GET(
   }
 }
 
+type PaperSize = 'A5' | 'A4';
+
+// A5 is half of A4, so it gets a tighter margin, narrower screen preview and smaller type.
+const A5_OVERRIDES = `
+    body {
+      max-width: 560px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .header h1 { font-size: 20px; }
+    .header h2 { font-size: 15px; }
+    .info-label { width: 100px; }
+    .info-col { min-width: 0; }
+    .medication-name { font-size: 15px; }
+    .medication-details { font-size: 14px; }
+    .signature-box { margin-top: 28px; min-width: 160px; }
+    .footer { font-size: 10px; }
+    .footer p { line-height: 12px; }
+`;
+
 function generatePrescriptionHTML(
   prescription: any,
   copyType: string,
   showSignature: boolean,
   settingInfo: any,
-  seal: IssuedSeal
+  seal: IssuedSeal,
+  paperSize: PaperSize
 ): string {
+  const isA5 = paperSize === 'A5';
 
   const patient = prescription.patient || {};
   const provider = prescription.prescribedBy;
@@ -154,8 +179,8 @@ function generatePrescriptionHTML(
   <style>
     @media print {
       @page {
-        size: A4;
-        margin: 10mm;
+        size: ${paperSize} portrait;
+        margin: ${isA5 ? '8mm' : '10mm'};
       }
       body {
         margin: 0;
@@ -188,6 +213,10 @@ function generatePrescriptionHTML(
     .info-label {
       font-weight: bold;
       width: 150px;
+    }
+    .info-col {
+      flex: 1;
+      min-width: 280px;
     }
     .medications {
       margin-top: 20px;
@@ -228,6 +257,7 @@ function generatePrescriptionHTML(
       margin: unset;
       line-height: 14px;
     }
+    ${isA5 ? A5_OVERRIDES : ''}
   </style>
 </head>
 <body>
@@ -254,7 +284,7 @@ function generatePrescriptionHTML(
     <!-- CONTENT ROW -->
     <div style="flex: 1 1 auto;">
       <div class="info-section" style="display: flex; flex-wrap: wrap;">
-        <div style="flex: 1; min-width: 280px;">
+        <div class="info-col">
           <div class="info-row">
             <div class="info-label">Patient:</div>
             <div>${e(patient.firstName)} ${e(patient.lastName)}</div>
@@ -278,7 +308,7 @@ function generatePrescriptionHTML(
           </div>
           ` : ''}
         </div>
-        <div style="flex: 1; min-width: 280px;">
+        <div class="info-col">
           ${patient.phone ? `
           <div class="info-row">
             <div class="info-label">Phone:</div>
