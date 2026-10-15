@@ -140,6 +140,7 @@ export function getDefaultSettings() {
       sidebarCollapsed: false,
       showNotifications: true,
     },
+    prescriptionPaperSize: 'A5' as const,
   };
 }
 

@@ -70,6 +70,7 @@ interface Settings {
     sidebarCollapsed: boolean;
     showNotifications: boolean;
   };
+  prescriptionPaperSize?: 'A5' | 'A4';
 }
 
 interface SettingsPageClientProps {
@@ -156,6 +157,7 @@ const defaultSettingsFallback: Settings = {
     sidebarCollapsed: false,
     showNotifications: true,
   },
+  prescriptionPaperSize: 'A5',
 };
 
 // Helper component for labeled TextField
@@ -393,7 +395,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="border-b border-gray-200 overflow-x-auto">
             <nav className="flex -mb-px min-w-max">
-              {['clinic', 'hours', 'appointments', 'communication', 'billing', 'queue', 'general', 'display', 'integrations'].map((tab) => (
+              {['clinic', 'hours', 'appointments', 'communication', 'billing', 'queue', 'general', 'display', 'prescriptions', 'integrations'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -411,6 +413,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                    tab === 'queue' ? 'Queue' :
                    tab === 'general' ? 'General' :
                    tab === 'display' ? 'Display' :
+                   tab === 'prescriptions' ? 'Prescriptions' :
                    'Integrations'}
                 </button>
               ))}
@@ -899,6 +902,34 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     />
                     <span className="text-sm">Show Notifications</span>
                   </label>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'prescriptions' && (
+              <div className="bg-gradient-to-br from-teal-50 to-teal-100/50 border border-teal-200 rounded-xl p-5">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="p-2 bg-teal-500 rounded-lg">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">Prescription Settings</h3>
+                </div>
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Paper Size</label>
+                    <select
+                      value={settings.prescriptionPaperSize || 'A5'}
+                      onChange={(e) => updateSettings('prescriptionPaperSize', e.target.value as 'A5' | 'A4')}
+                      disabled={!isAdmin}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    >
+                      <option value="A5">A5 (148 × 210 mm)</option>
+                      <option value="A4">A4 (210 × 297 mm)</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Page size used when printing prescriptions.</p>
+                  </div>
                 </div>
               </div>
             )}

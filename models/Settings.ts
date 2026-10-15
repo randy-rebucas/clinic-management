@@ -112,6 +112,7 @@ export interface ISettings extends Document {
 
   // Prescription Settings
   prescriptionDigitalSignatureEnabled?: boolean;
+  prescriptionPaperSize?: 'A5' | 'A4';
 
   createdAt: Date;
   updatedAt: Date;
@@ -250,6 +251,7 @@ const SettingsSchema = new Schema<ISettings>(
     },
     // Prescription Settings
     prescriptionDigitalSignatureEnabled: { type: Boolean, default: true },
+    prescriptionPaperSize: { type: String, enum: ['A5', 'A4'], default: 'A5' },
   },
   {
     timestamps: true,
