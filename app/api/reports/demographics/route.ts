@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { isAdmin } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, patientTenantFilter } from '@/lib/api/tenant-session';
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   // Only admin can view demographics reports
-  if (session.role !== 'admin') {
+  if (!isAdmin(session)) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized' },
       { status: 403 }
@@ -21,7 +19,9 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
-    const patients = await Patient.find({}).lean();
+    const patients = await Patient.find(patientTenantFilter(tenantId))
+      .select('dateOfBirth sex civilStatus address.city nationality preExistingConditions allergies identifiers.philHealth identifiers.other discountEligibility')
+      .lean();
 
     // Age groups
     const ageGroups: Record<string, number> = {

@@ -38,7 +38,18 @@ export interface IAppointment extends Document {
   
   // Audit
   createdBy?: Types.ObjectId; // from Extended (ref: 'User')
-  
+
+  archived?: boolean;
+  archivedAt?: Date;
+
+  // Automation markers / links
+  reminderSentAt?: Date;
+  insuranceCheckedAt?: Date;
+  recurringParentId?: Types.ObjectId;
+  recurringOccurrenceDate?: string;
+  waitlistProcessedAt?: Date;
+  waitlistFilledBy?: Types.ObjectId;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,7 +60,6 @@ const AppointmentSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     // Patient reference (required)
@@ -75,8 +85,6 @@ const AppointmentSchema: Schema = new Schema(
     // Appointment identification
     appointmentCode: {
       type: String,
-      unique: true, // unique: true automatically creates an index
-      sparse: true, // Allow null/undefined values
       trim: true,
     },
     
@@ -149,29 +157,62 @@ const AppointmentSchema: Schema = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'User',
     },
+
+    // Data retention
+    archived: { type: Boolean },
+    archivedAt: { type: Date },
+
+    // Automation markers / links
+    reminderSentAt: { type: Date },
+    insuranceCheckedAt: { type: Date },
+    recurringParentId: { type: Schema.Types.ObjectId, ref: 'Appointment' },
+    recurringOccurrenceDate: { type: String }, // clinic-local yyyy-MM-dd
+    waitlistProcessedAt: { type: Date },
+    waitlistFilledBy: { type: Schema.Types.ObjectId, ref: 'Appointment' },
   },
   {
     timestamps: true,
   }
 );
 
+AppointmentSchema.index({ tenantId: 1, recurringParentId: 1 }, { sparse: true });
+
 // Indexes for efficient queries (tenant-scoped)
+// Codes are allocated per tenant (APT-000001 in every clinic), so uniqueness must be per tenant too.
+AppointmentSchema.index(
+  { tenantId: 1, appointmentCode: 1 },
+  { unique: true, partialFilterExpression: { appointmentCode: { $type: 'string' } } }
+);
+// Prevents double booking a doctor's slot. Walk-ins are excluded (they share a doctor's time via the queue).
+// $in inside partialFilterExpression requires MongoDB 6.0+.
+AppointmentSchema.index(
+  { tenantId: 1, doctor: 1, appointmentDate: 1, appointmentTime: 1 },
+  {
+    unique: true,
+    name: 'uniq_active_doctor_slot',
+    partialFilterExpression: {
+      status: { $in: ['pending', 'scheduled', 'confirmed', 'rescheduled'] },
+      doctor: { $type: 'objectId' },
+      appointmentDate: { $type: 'date' },
+      appointmentTime: { $type: 'string' },
+      isWalkIn: false,
+    },
+  }
+);
 AppointmentSchema.index({ tenantId: 1, appointmentDate: 1, appointmentTime: 1 });
-// scheduledAt is already indexed inline (index: true)
 AppointmentSchema.index({ tenantId: 1, doctor: 1, appointmentDate: 1 });
 AppointmentSchema.index({ tenantId: 1, provider: 1, scheduledAt: 1 });
+AppointmentSchema.index({ tenantId: 1, patient: 1, appointmentDate: -1 });
 AppointmentSchema.index({ tenantId: 1, patient: 1, status: 1 });
-AppointmentSchema.index({ tenantId: 1, status: 1 });
+AppointmentSchema.index({ tenantId: 1, status: 1, scheduledAt: 1 });
 AppointmentSchema.index({ tenantId: 1, room: 1, appointmentDate: 1, appointmentTime: 1 });
-AppointmentSchema.index({ tenantId: 1, doctor: 1 }); // Tenant-scoped doctor lookups
-AppointmentSchema.index({ tenantId: 1, provider: 1 }); // Tenant-scoped provider lookups
-AppointmentSchema.index({ tenantId: 1, createdBy: 1 }); // Tenant-scoped audit queries
-AppointmentSchema.index({ tenantId: 1, patient: 1, createdAt: -1 }); // Tenant-scoped patient history
-AppointmentSchema.index({ tenantId: 1, status: 1, scheduledAt: 1 }); // Tenant-scoped status-based date queries
-AppointmentSchema.index({ tenantId: 1, appointmentDate: 1, status: 1 }); // Tenant-scoped date + status queries
-AppointmentSchema.index({ tenantId: 1, isWalkIn: 1, appointmentDate: 1 }); // Tenant-scoped walk-in queries
-AppointmentSchema.index({ tenantId: 1, room: 1, status: 1 }); // Tenant-scoped room-based status queries
-AppointmentSchema.index({ tenantId: 1, patient: 1, appointmentDate: -1 }); // Tenant-scoped patient appointment history
+AppointmentSchema.index({ tenantId: 1, isWalkIn: 1, appointmentDate: 1 });
+AppointmentSchema.index({ tenantId: 1, appointmentDate: 1, status: 1 });
+AppointmentSchema.index({ tenantId: 1, patient: 1, createdAt: -1 });
+AppointmentSchema.index({ tenantId: 1, createdBy: 1 });
+// Cross-tenant cron scans (no-show handling, reminders)
+AppointmentSchema.index({ appointmentDate: 1, status: 1 });
+AppointmentSchema.index({ tenantId: 1, archived: 1, createdAt: 1 });
 
 // Virtual for computed scheduledAt from appointmentDate + appointmentTime
 AppointmentSchema.virtual('computedScheduledAt').get(function (this: IAppointment) {

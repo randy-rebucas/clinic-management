@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import VisitForm from './VisitForm';
+import { formatApiError } from './utils/apiError';
 
 interface Patient {
   _id: string;
@@ -36,17 +37,7 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
   const [activeInitialData, setActiveInitialData] = useState<any | null>(null);
   const router = useRouter();
 
-  useEffect(() => {
-    fetchData();
-    if (queueId) {
-      fetchQueueVitals();
-    }
-    if (!patientId) {
-      fetchLatestDraft();
-    }
-  }, [queueId, patientId]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [patientsRes, userRes] = await Promise.all([
         fetch('/api/patients'),
@@ -100,9 +91,9 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
     } finally {
       setLoading(false);
     }
-  };
+  }, [patientId, router]);
 
-  const fetchLatestDraft = async () => {
+  const fetchLatestDraft = useCallback(async () => {
     try {
       const res = await fetch('/api/visits?status=draft&limit=1');
       if (!res.ok) return;
@@ -115,7 +106,7 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
     } catch {
       // non-fatal
     }
-  };
+  }, []);
 
   const restoreServerDraft = () => {
     if (!serverDraft) return;
@@ -143,7 +134,7 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
 
   const dismissServerDraft = () => setShowDraftBanner(false);
 
-  const fetchQueueVitals = async () => {
+  const fetchQueueVitals = useCallback(async () => {
     try {
       const res = await fetch(`/api/queue/${queueId}`);
 
@@ -169,9 +160,21 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
       console.error('Failed to fetch queue vitals:', error);
       setError('Failed to load queue vitals');
     }
-  };
+  }, [queueId, router]);
 
-  const handleSubmit = async (formData: any) => {
+  useEffect(() => {
+    const load = async () => {
+      await Promise.all([
+        fetchData(),
+        queueId ? fetchQueueVitals() : undefined,
+        patientId ? undefined : fetchLatestDraft(),
+      ]);
+    };
+    load();
+  }, [queueId, patientId, fetchData, fetchQueueVitals, fetchLatestDraft]);
+
+  const handleSubmit = async (formData: any): Promise<boolean> => {
+    if (submitting) return false;
     // Client-side validation for medications
     if (
       formData?.treatmentPlan?.medications &&
@@ -180,7 +183,7 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
       for (const [i, med] of formData.treatmentPlan.medications.entries()) {
         if (!med.name || typeof med.name !== 'string' || !med.name.trim()) {
           setError(`Medication #${i + 1} is missing a name. Please enter a medication name.`);
-          return;
+          return false;
         }
       }
     }
@@ -211,7 +214,7 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
 
       if (res.status === 401) {
         router.push('/login');
-        return;
+        return false;
       }
 
       const contentType = res.headers.get('content-type');
@@ -220,7 +223,7 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
         data = await res.json();
       } else {
         setError('Failed to create visit: API error');
-        return;
+        return false;
       }
 
       if (data.success) {
@@ -229,12 +232,14 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
           window.open(`/api/prescriptions/${prescriptionId}/print`, '_blank');
         }
         router.push('/visits?success=true');
-      } else {
-        setError('Error: ' + data.error);
+        return true;
       }
+      setError(formatApiError(data, 'Failed to create visit'));
+      return false;
     } catch (error) {
       console.error('Failed to create visit:', error);
       setError('Failed to create visit');
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -265,7 +270,7 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
         <div className="flex flex-col gap-6">
           {/* Error Message */}
           {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
+            <div role="alert" className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
               <div className="flex items-start gap-3">
                 <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -282,10 +287,12 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex items-center gap-4">
               <button
+                type="button"
                 onClick={handleCancel}
+                aria-label="Back to visits"
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
@@ -305,13 +312,7 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
 
           {/* Form Card */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            {submitting ? (
-              <div className="flex flex-col items-center justify-center gap-4 p-12">
-                <div className="animate-spin rounded-full h-16 w-16 border-4 border-teal-100 border-t-teal-600"></div>
-                <p className="text-sm text-gray-600 font-medium">Creating visit...</p>
-              </div>
-            ) : (
-              <div className="p-6 sm:p-8">
+            <div className="p-6 sm:p-8" aria-busy={submitting}>
                 {/* Server draft banner */}
                 {showDraftBanner && serverDraft && (
                   <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 bg-amber-50 border border-amber-300 rounded-lg text-sm">
@@ -346,6 +347,8 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
                   </div>
                 )}
                 <VisitForm
+                  // Restoring a server draft remounts the form so all fields come from the draft.
+                  key={activeInitialData?._id ?? 'new'}
                   initialData={activeInitialData ?? {
                     ...(patientId ? { patient: patientId } : {}),
                     ...(queueVitals ? { vitals: queueVitals } : {}),
@@ -358,7 +361,6 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
                   providerName={providerName}
                 />
               </div>
-            )}
           </div>
         </div>
       </div>

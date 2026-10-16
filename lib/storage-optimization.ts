@@ -9,7 +9,8 @@ import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
 import LabResult from '@/models/LabResult';
 import { Types } from 'mongoose';
-import { deleteFromCloudinary, extractPublicIdFromUrl } from '@/lib/cloudinary';
+import { deleteFromCloudinary } from '@/lib/cloudinary';
+import { cloudinaryRefForDocument } from '@/lib/document-file';
 
 export interface StorageCleanupResult {
   success: boolean;
@@ -89,21 +90,14 @@ export async function cleanupOldFiles(
     for (const doc of documentsToDelete) {
       try {
         // Delete from Cloudinary if applicable
-        if (doc.metadata?.cloudinaryPublicId) {
-          if (!dryRun) {
-            const deleteResult = await deleteFromCloudinary(doc.metadata.cloudinaryPublicId);
-            if (!deleteResult.success) {
-              errors.push(`Failed to delete Cloudinary file: ${doc.metadata.cloudinaryPublicId}`);
-            }
-          }
-        } else if (doc.url && doc.url.includes('cloudinary.com')) {
-          // Try to extract public ID from URL
-          const publicId = extractPublicIdFromUrl(doc.url);
-          if (publicId && !dryRun) {
-            const deleteResult = await deleteFromCloudinary(publicId);
-            if (!deleteResult.success) {
-              errors.push(`Failed to delete Cloudinary file from URL: ${doc.url}`);
-            }
+        const ref = cloudinaryRefForDocument(doc);
+        if (ref && !dryRun) {
+          const deleteResult = await deleteFromCloudinary(ref.publicId, {
+            resourceType: ref.resourceType,
+            deliveryType: ref.deliveryType,
+          });
+          if (!deleteResult.success) {
+            errors.push(`Failed to delete Cloudinary file: ${ref.publicId}`);
           }
         }
 
@@ -115,7 +109,8 @@ export async function cleanupOldFiles(
         deletedDocuments++;
         freedBytes += doc.size || 0;
       } catch (error: any) {
-        errors.push(`Error deleting document ${doc._id}: ${error.message}`);
+        console.error(`Error deleting document ${doc._id}:`, error);
+        errors.push(`Error deleting document ${doc._id}`);
       }
     }
 
@@ -141,7 +136,7 @@ export async function cleanupOldFiles(
       deletedAttachments: 0,
       freedBytes: 0,
       freedGB: 0,
-      errors: [error.message || 'Unknown error'],
+      errors: ['Storage cleanup failed'],
     };
   }
 }
@@ -177,20 +172,14 @@ export async function bulkDeleteFiles(
     for (const doc of documents) {
       try {
         // Delete from Cloudinary if applicable
-        if (deleteFromCloud) {
-          if (doc.metadata?.cloudinaryPublicId) {
-            const deleteResult = await deleteFromCloudinary(doc.metadata.cloudinaryPublicId);
-            if (!deleteResult.success) {
-              errors.push(`Failed to delete Cloudinary file: ${doc.metadata.cloudinaryPublicId}`);
-            }
-          } else if (doc.url && doc.url.includes('cloudinary.com')) {
-            const publicId = extractPublicIdFromUrl(doc.url);
-            if (publicId) {
-              const deleteResult = await deleteFromCloudinary(publicId);
-              if (!deleteResult.success) {
-                errors.push(`Failed to delete Cloudinary file from URL: ${doc.url}`);
-              }
-            }
+        const ref = deleteFromCloud ? cloudinaryRefForDocument(doc) : null;
+        if (ref) {
+          const deleteResult = await deleteFromCloudinary(ref.publicId, {
+            resourceType: ref.resourceType,
+            deliveryType: ref.deliveryType,
+          });
+          if (!deleteResult.success) {
+            errors.push(`Failed to delete Cloudinary file: ${ref.publicId}`);
           }
         }
 
@@ -200,7 +189,8 @@ export async function bulkDeleteFiles(
         deletedDocuments++;
         freedBytes += doc.size || 0;
       } catch (error: any) {
-        errors.push(`Error deleting document ${doc._id}: ${error.message}`);
+        console.error(`Error deleting document ${doc._id}:`, error);
+        errors.push(`Error deleting document ${doc._id}`);
       }
     }
 
@@ -222,7 +212,7 @@ export async function bulkDeleteFiles(
       deletedAttachments: 0,
       freedBytes: 0,
       freedGB: 0,
-      errors: [error.message || 'Unknown error'],
+      errors: ['Storage cleanup failed'],
     };
   }
 }
@@ -250,7 +240,7 @@ export async function getStorageAnalytics(
     }).select('size uploadDate status').lean();
 
     // Get attachments from other models
-    const patients = await Patient.find({ tenantId: tenantIdObj })
+    const patients = await Patient.find({ tenantIds: tenantIdObj })
       .select('attachments').lean();
     const visits = await Visit.find({ tenantId: tenantIdObj })
       .select('attachments').lean();

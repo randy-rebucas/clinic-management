@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { toDateKey } from './utils/dateKey';
 
 interface Appointment {
   _id: string;
@@ -55,9 +56,9 @@ export default function AppointmentCalendar({
 
   const getAppointmentsForDate = (date: Date | null) => {
     if (!date) return [];
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toDateKey(date);
     return appointments.filter((apt) => {
-      const aptDate = new Date(apt.appointmentDate).toISOString().split('T')[0];
+      const aptDate = toDateKey(apt.appointmentDate);
       return aptDate === dateStr;
     });
   };
@@ -124,36 +125,39 @@ export default function AppointmentCalendar({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-500 rounded-lg">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-gray-900">
+            <h2 className="text-xl font-bold text-gray-900" aria-live="polite">
               {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
             </h2>
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => navigateMonth('prev')}
               aria-label="Previous month"
               className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900 transition-colors"
             >
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
             <button
+              type="button"
               onClick={goToToday}
               className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition-colors border border-blue-200"
             >
               Today
             </button>
             <button
+              type="button"
               onClick={() => navigateMonth('next')}
               aria-label="Next month"
               className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900 transition-colors"
             >
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
@@ -180,8 +184,18 @@ export default function AppointmentCalendar({
             return (
               <button
                 key={index}
+                type="button"
                 onClick={() => date && onDateSelect(date)}
                 disabled={!date}
+                aria-hidden={!date || undefined}
+                aria-label={
+                  date
+                    ? `${date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}${
+                        isToday(date) ? ', today' : ''
+                      }, ${appointmentCount} appointment${appointmentCount === 1 ? '' : 's'}${hasWalkIn ? ', includes walk-ins' : ''}`
+                    : undefined
+                }
+                aria-pressed={date ? isSelected(date) : undefined}
                 className={`aspect-square p-1 relative transition-all ${
                   isSelected(date)
                     ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md'

@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
+import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
 
 export type MembershipTier = 'bronze' | 'silver' | 'gold' | 'platinum';
 export type MembershipStatus = 'active' | 'inactive' | 'expired' | 'suspended';
@@ -21,7 +22,9 @@ export interface IMembership extends Document {
   joinDate: Date;
   expiryDate?: Date;
   renewalDate?: Date;
-  
+  expiryRemindersSent?: number[]; // day thresholds already reminded
+  expiryRemindersFor?: Date; // expiryDate the markers apply to
+
   // Benefits
   discountPercentage: number; // Discount percentage based on tier
   benefits: string[]; // List of benefits (e.g., "free_consultation", "priority_booking")
@@ -99,6 +102,8 @@ const MembershipSchema: Schema = new Schema(
     joinDate: { type: Date, default: Date.now, required: true },
     expiryDate: { type: Date },
     renewalDate: { type: Date },
+    expiryRemindersSent: { type: [Number], default: undefined },
+    expiryRemindersFor: { type: Date },
     discountPercentage: { type: Number, default: 0, min: 0, max: 100 },
     benefits: [{ type: String }],
     referredBy: { type: Schema.Types.ObjectId, ref: 'Patient', index: true },
@@ -111,17 +116,35 @@ const MembershipSchema: Schema = new Schema(
 
 // Indexes (tenant-scoped)
 MembershipSchema.index({ tenantId: 1, patient: 1 }, { unique: true, sparse: true }); // One membership per patient per tenant
-MembershipSchema.index({ tenantId: 1, membershipNumber: 1 }, { unique: true, sparse: true }); // Tenant-scoped membership number
+MembershipSchema.index(
+  { tenantId: 1, membershipNumber: 1 },
+  { unique: true, partialFilterExpression: { membershipNumber: { $type: 'string' } } }
+);
 MembershipSchema.index({ tenantId: 1, tier: 1, status: 1 });
 MembershipSchema.index({ tenantId: 1, points: -1 });
 MembershipSchema.index({ tenantId: 1, expiryDate: 1 });
 
-// Pre-save hook to generate membership number and set tier benefits
-MembershipSchema.pre('save', async function (this: IMembership, next) {
-  if (!this.membershipNumber) {
-    const count = await mongoose.models.Membership?.countDocuments() || 0;
-    this.membershipNumber = `MEM-${Date.now()}-${count + 1}`;
+// Must run before validation: membershipNumber is required.
+MembershipSchema.pre('validate', async function (this: IMembership, next) {
+  if (this.membershipNumber) return next();
+  try {
+    const seq = await nextSequence(
+      this.tenantId,
+      'membership',
+      maxCodeSeed(mongoose.model('Membership'), 'membershipNumber', {
+        tenantId: this.tenantId ?? null,
+        membershipNumber: { $regex: /^MEM-\d+$/ },
+      })
+    );
+    this.membershipNumber = formatCode('MEM', seq);
+    next();
+  } catch (err) {
+    next(err as Error);
   }
+});
+
+// Set tier benefits
+MembershipSchema.pre('save', async function (this: IMembership, next) {
 
   // Set tier-based benefits
   const tierBenefits: Record<MembershipTier, { discount: number; benefits: string[] }> = {

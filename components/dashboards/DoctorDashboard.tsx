@@ -244,6 +244,8 @@ export default function DoctorDashboard() {
               </div>
               <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
                 <button
+                  type="button"
+                  aria-pressed={period === 'today'}
                   onClick={() => setPeriod('today')}
                   className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
                     period === 'today' 
@@ -254,6 +256,8 @@ export default function DoctorDashboard() {
                   Today
                 </button>
                 <button
+                  type="button"
+                  aria-pressed={period === 'week'}
                   onClick={() => setPeriod('week')}
                   className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
                     period === 'week' 
@@ -264,6 +268,8 @@ export default function DoctorDashboard() {
                   Week
                 </button>
                 <button
+                  type="button"
+                  aria-pressed={period === 'month'}
                   onClick={() => setPeriod('month')}
                   className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
                     period === 'month' 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -58,35 +58,24 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
   });
   const router = useRouter();
 
-  useEffect(() => {
-    fetchSpecializations();
-    fetchDoctor();
-  }, [doctorId]);
-  
-  // Check if specialization is custom after both doctor and specializations are loaded
-  useEffect(() => {
-    if (formData.specialization && specializations.length > 0) {
-      const specNames = specializations.map((s) => s.name);
-      const isCustom = !specNames.includes(formData.specialization);
-      setShowCustomSpecialization(isCustom);
-    }
-  }, [formData.specialization, specializations]);
 
-  const fetchSpecializations = async () => {
+  const fetchSpecializations = useCallback(async (): Promise<Specialization[]> => {
     try {
       const res = await fetch('/api/specializations');
       if (res.ok) {
         const data: SpecializationResponse = await res.json();
         if (data.success && data.data) {
           setSpecializations(data.data);
+          return data.data;
         }
       }
     } catch (err) {
       console.error('Failed to fetch specializations:', err);
     }
-  };
+    return [];
+  }, []);
 
-  const fetchDoctor = async () => {
+  const fetchDoctor = useCallback(async (): Promise<string | null> => {
     try {
       setLoading(true);
       setError(null);
@@ -94,7 +83,7 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
 
       if (res.status === 401) {
         router.push('/login');
-        return;
+        return null;
       }
 
       if (!res.ok) {
@@ -104,7 +93,7 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
           errorData = await res.json();
         }
         setError(errorData?.error || `Failed to load doctor: ${res.status} ${res.statusText}`);
-        return;
+        return null;
       }
 
       const data = await res.json();
@@ -114,9 +103,6 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
         const spec = (typeof doctor.specializationId === 'object' && doctor.specializationId?.name)
           ? doctor.specializationId.name
           : doctor.specialization || '';
-        
-        // Wait for specializations to load before checking if custom
-        // This will be rechecked after specializations are loaded
         setFormData({
           firstName: doctor.firstName || '',
           lastName: doctor.lastName || '',
@@ -131,6 +117,7 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
           bio: doctor.bio || '',
           qualifications: doctor.qualifications?.join(', ') || '',
         });
+        return spec;
       } else {
         setError(data.error || 'Failed to load doctor');
       }
@@ -140,7 +127,19 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
     } finally {
       setLoading(false);
     }
-  };
+    return null;
+  }, [doctorId, router]);
+
+  useEffect(() => {
+    const load = async () => {
+      const [specs, spec] = await Promise.all([fetchSpecializations(), fetchDoctor()]);
+      // A saved specialization that isn't in the list was entered via "Other".
+      if (spec && specs.length > 0) {
+        setShowCustomSpecialization(!specs.some((s) => s.name === spec));
+      }
+    };
+    load();
+  }, [fetchSpecializations, fetchDoctor]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -251,9 +250,10 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
             <div className="flex items-center gap-4">
               <Link
                 href={`/doctors/${doctorId}`}
+                aria-label="Back to doctor profile"
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
@@ -287,8 +287,8 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Title</label>
-                      <input
+                      <label htmlFor="doctor-edit-title" className="block text-sm font-semibold text-gray-700 mb-1.5">Title</label>
+                      <input id="doctor-edit-title"
                         type="text"
                         value={formData.title}
                         onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -297,8 +297,8 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">First Name <span className="text-red-500">*</span></label>
-                      <input
+                      <label htmlFor="doctor-edit-first-name" className="block text-sm font-semibold text-gray-700 mb-1.5">First Name <span className="text-red-500">*</span></label>
+                      <input id="doctor-edit-first-name"
                         type="text"
                         required
                         value={formData.firstName}
@@ -307,8 +307,8 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Last Name <span className="text-red-500">*</span></label>
-                      <input
+                      <label htmlFor="doctor-edit-last-name" className="block text-sm font-semibold text-gray-700 mb-1.5">Last Name <span className="text-red-500">*</span></label>
+                      <input id="doctor-edit-last-name"
                         type="text"
                         required
                         value={formData.lastName}
@@ -317,8 +317,8 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Status</label>
-                      <select
+                      <label htmlFor="doctor-edit-status" className="block text-sm font-semibold text-gray-700 mb-1.5">Status</label>
+                      <select id="doctor-edit-status"
                         value={formData.status}
                         onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
                         className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white transition-all"
@@ -343,8 +343,8 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email <span className="text-red-500">*</span></label>
-                      <input
+                      <label htmlFor="doctor-edit-email" className="block text-sm font-semibold text-gray-700 mb-1.5">Email <span className="text-red-500">*</span></label>
+                      <input id="doctor-edit-email"
                         type="email"
                         required
                         value={formData.email}
@@ -353,8 +353,8 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Phone <span className="text-red-500">*</span></label>
-                      <input
+                      <label htmlFor="doctor-edit-phone" className="block text-sm font-semibold text-gray-700 mb-1.5">Phone <span className="text-red-500">*</span></label>
+                      <input id="doctor-edit-phone"
                         type="tel"
                         required
                         value={formData.phone}
@@ -377,8 +377,8 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Specialization <span className="text-red-500">*</span></label>
-                      <select
+                      <label htmlFor="doctor-edit-specialization" className="block text-sm font-semibold text-gray-700 mb-1.5">Specialization <span className="text-red-500">*</span></label>
+                      <select id="doctor-edit-specialization"
                         required={!showCustomSpecialization}
                         value={showCustomSpecialization ? '' : formData.specialization}
                         onChange={(e) => {
@@ -405,6 +405,7 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                         <input
                           type="text"
                           required
+                          aria-label="Custom specialization"
                           placeholder="Enter specialization"
                           value={formData.specialization}
                           onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
@@ -413,8 +414,8 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                       )}
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">License Number <span className="text-red-500">*</span></label>
-                      <input
+                      <label htmlFor="doctor-edit-license-number" className="block text-sm font-semibold text-gray-700 mb-1.5">License Number <span className="text-red-500">*</span></label>
+                      <input id="doctor-edit-license-number"
                         type="text"
                         required
                         value={formData.licenseNumber}
@@ -423,8 +424,8 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">PTR</label>
-                      <input
+                      <label htmlFor="doctor-edit-ptr" className="block text-sm font-semibold text-gray-700 mb-1.5">PTR</label>
+                      <input id="doctor-edit-ptr"
                         type="text"
                         value={formData.ptr}
                         onChange={(e) => setFormData({ ...formData, ptr: e.target.value })}
@@ -432,8 +433,8 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Department</label>
-                      <input
+                      <label htmlFor="doctor-edit-department" className="block text-sm font-semibold text-gray-700 mb-1.5">Department</label>
+                      <input id="doctor-edit-department"
                         type="text"
                         value={formData.department}
                         onChange={(e) => setFormData({ ...formData, department: e.target.value })}
@@ -442,8 +443,8 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Qualifications</label>
-                      <input
+                      <label htmlFor="doctor-edit-qualifications" className="block text-sm font-semibold text-gray-700 mb-1.5">Qualifications</label>
+                      <input id="doctor-edit-qualifications"
                         type="text"
                         value={formData.qualifications}
                         onChange={(e) => setFormData({ ...formData, qualifications: e.target.value })}
@@ -462,9 +463,10 @@ export default function DoctorEditClient({ doctorId }: { doctorId: string }) {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                     </div>
-                    <h2 className="text-lg font-bold text-gray-900">Bio</h2>
+                    <h2 id="doctor-edit-bio-heading" className="text-lg font-bold text-gray-900">Bio</h2>
                   </div>
                   <textarea
+                    aria-labelledby="doctor-edit-bio-heading"
                     value={formData.bio}
                     onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
                     rows={4}

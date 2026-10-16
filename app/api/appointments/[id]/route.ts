@@ -1,33 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import Doctor from '@/models/Doctor';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { Types } from 'mongoose';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zObjectId, zShortText, zLongText } from '@/lib/api/validate';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import {
+  ACTIVE_APPOINTMENT_STATUSES,
+  findDoctorConflict,
+  normalizeTime,
+  isSlotDuplicateError,
+} from '@/lib/appointment-booking';
 
-// Email reminder function (placeholder - implement with your email service)
-async function sendAppointmentReminder(appointment: any) {
-  const patient = appointment.patient;
-  const appointmentDate = new Date(appointment.appointmentDate);
-  const appointmentTime = appointment.appointmentTime;
-  
-  // TODO: Implement actual email sending
+const STATUSES = ['pending', 'scheduled', 'confirmed', 'rescheduled', 'no-show', 'completed', 'cancelled'] as const;
+
+const updateAppointmentSchema = z.object({
+  status: z.enum(STATUSES).optional(),
+  doctor: zObjectId.optional(),
+  room: zShortText.optional(),
+  appointmentDate: z.string().min(1).max(40).optional(),
+  appointmentTime: z.string().regex(/^\d{1,2}:\d{2}$/, 'Invalid time').optional(),
+  scheduledAt: z.string().max(40).optional(),
+  duration: z.coerce.number().int().min(15).max(240).optional(),
+  reason: zShortText.optional(),
+  notes: zLongText.optional(),
+  estimatedWaitTime: z.coerce.number().int().min(0).max(1440).optional(),
+  _skipAutomation: z.boolean().optional(),
+});
+
+function populateOptions(tenantObjectId: Types.ObjectId) {
+  return {
+    patient: { path: 'patient', select: 'firstName lastName email phone', match: { tenantIds: tenantObjectId } },
+    doctor: {
+      path: 'doctor',
+      select: 'firstName lastName specializationId',
+      populate: { path: 'specializationId', select: 'name' },
+      match: { tenantId: tenantObjectId },
+    },
+  };
 }
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // User authentication check
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to read appointments
-  const permissionCheck = await requirePermission(session, 'appointments', 'read');
+  const permissionCheck = await requirePermission(ctx.session, 'appointments', 'read');
   if (permissionCheck) {
     return permissionCheck;
   }
@@ -35,56 +58,16 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    // Build populate options with tenant filter for doctor
-    const doctorPopulateOptions: any = {
-      path: 'doctor',
-      select: 'firstName lastName specializationId',
-      populate: {
-        path: 'specializationId',
-        select: 'name',
-      },
-    };
-    if (tenantId) {
-      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-    
-    // Build populate options with tenant filter for patient
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName email phone',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    const appointment = await Appointment.findOne(query)
-      .populate(patientPopulateOptions)
-      .populate(doctorPopulateOptions);
-    if (!appointment) {
-      return NextResponse.json(
-        { success: false, error: 'Appointment not found' },
-        { status: 404 }
-      );
-    }
+    if (!isValidId(id)) return notFound('Appointment');
+
+    const pop = populateOptions(ctx.tenantObjectId);
+    const appointment = await Appointment.findOne(tenantFilter(ctx.tenantId, { _id: id }))
+      .populate(pop.patient)
+      .populate(pop.doctor);
+    if (!appointment) return notFound('Appointment');
     return NextResponse.json({ success: true, data: appointment });
   } catch (error) {
+    console.error('Error fetching appointment:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch appointment' },
       { status: 500 }
@@ -96,14 +79,10 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // User authentication check
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to update appointments
   const permissionCheck = await requirePermission(session, 'appointments', 'update');
   if (permissionCheck) {
     return permissionCheck;
@@ -112,112 +91,125 @@ export async function PUT(
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    // Build populate options with tenant filter for doctor
-    const doctorPopulateOptions: any = {
-      path: 'doctor',
-      select: 'firstName lastName specializationId',
-      populate: {
-        path: 'specializationId',
-        select: 'name',
-      },
-    };
-    if (tenantId) {
-      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-    
-    // Build populate options with tenant filter for patient
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName email phone',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    // Get old appointment to check status change
-    const oldAppointment = await Appointment.findOne(query);
-    const statusChangedToCancelled = oldAppointment && oldAppointment.status !== 'cancelled' && body.status === 'cancelled';
+    if (!isValidId(id)) return notFound('Appointment');
 
-    const appointment = await Appointment.findOneAndUpdate(query, body, {
-      new: true,
-      runValidators: true,
-    })
-      .populate(patientPopulateOptions)
-      .populate(doctorPopulateOptions);
-    if (!appointment) {
-      return NextResponse.json(
-        { success: false, error: 'Appointment not found' },
-        { status: 404 }
-      );
+    const parsed = await parseBody(request, updateAppointmentSchema);
+    if (isValidationError(parsed)) return parsed;
+    const { _skipAutomation, ...fields } = parsed.data;
+
+    const query = tenantFilter(tenantId, { _id: id });
+    const oldAppointment = await Appointment.findOne(query).lean() as any;
+    if (!oldAppointment) return notFound('Appointment');
+
+    const update: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) update[key] = value;
     }
-    
-    // Send reminder if status changed to confirmed
-    if (body.status === 'confirmed' && appointment.patient) {
-      sendAppointmentReminder(appointment).catch(console.error);
+    if (fields.appointmentTime) {
+      const t = normalizeTime(fields.appointmentTime);
+      if (!t) return NextResponse.json({ success: false, error: 'Invalid time' }, { status: 400 });
+      update.appointmentTime = t;
+    }
+    for (const key of ['appointmentDate', 'scheduledAt'] as const) {
+      if (fields[key]) {
+        const d = new Date(fields[key] as string);
+        if (isNaN(d.getTime())) return NextResponse.json({ success: false, error: 'Invalid date' }, { status: 400 });
+        update[key] = d;
+      }
+    }
+    if (fields.doctor) {
+      const doctor = await Doctor.exists({ _id: fields.doctor, tenantId: tenantObjectId });
+      if (!doctor) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid doctor selected. Please select a doctor from this clinic.' },
+          { status: 400 }
+        );
+      }
+      update.doctor = new Types.ObjectId(fields.doctor);
     }
 
-    // Check if appointment was cancelled - try to fill from waitlist
+    const next = { ...oldAppointment, ...update };
+    const slotChanged = ['doctor', 'appointmentDate', 'appointmentTime', 'duration'].some((k) => k in update)
+      || (fields.status && !ACTIVE_APPOINTMENT_STATUSES.includes(oldAppointment.status) && ACTIVE_APPOINTMENT_STATUSES.includes(fields.status));
+    if (slotChanged && next.doctor && next.appointmentDate && next.appointmentTime && !next.isWalkIn
+      && ACTIVE_APPOINTMENT_STATUSES.includes(next.status)) {
+      const conflict = await findDoctorConflict({
+        tenantId,
+        doctorId: next.doctor,
+        appointmentDate: fields.appointmentDate && /^\d{4}-\d{2}-\d{2}$/.test(fields.appointmentDate)
+          ? fields.appointmentDate
+          : next.appointmentDate,
+        appointmentTime: next.appointmentTime,
+        duration: next.duration,
+        tz: await getTenantTimezone(tenantId),
+        excludeId: id,
+      });
+      if (conflict) {
+        return NextResponse.json(
+          { success: false, error: 'The doctor already has an appointment at this time. Please choose another time.' },
+          { status: 409 }
+        );
+      }
+    }
+
+    const pop = populateOptions(tenantObjectId);
+    let appointment;
+    try {
+      appointment = await Appointment.findOneAndUpdate(query, { $set: update }, {
+        new: true,
+        runValidators: true,
+      })
+        .populate(pop.patient)
+        .populate(pop.doctor);
+    } catch (err: any) {
+      if (isSlotDuplicateError(err)) {
+        return NextResponse.json(
+          { success: false, error: 'The doctor already has an appointment at this time. Please choose another time.' },
+          { status: 409 }
+        );
+      }
+      throw err;
+    }
+    if (!appointment) return notFound('Appointment');
+
+    const statusChangedToCancelled = oldAppointment.status !== 'cancelled' && fields.status === 'cancelled';
     if (statusChangedToCancelled) {
       import('@/lib/automations/waitlist-management').then(({ fillCancelledSlot }) => {
-        fillCancelledSlot(appointment._id, tenantId ? new Types.ObjectId(tenantId) : undefined)
+        fillCancelledSlot(appointment._id, tenantObjectId)
           .catch((error) => {
             console.error('Error filling cancelled slot from waitlist:', error);
-            // Don't fail appointment update if waitlist fill fails
           });
       }).catch((error) => {
         console.error('Error loading waitlist management module:', error);
       });
     }
 
-    // Trigger queue status update automation if status changed
-    const oldStatus = oldAppointment?.status;
-    const newStatus = body.status;
-    const skipAutomation = body._skipAutomation === true;
-    
-    if (oldStatus !== newStatus && newStatus && !skipAutomation) {
-      // Import and trigger queue update automation (async, don't wait)
+    const oldStatus = oldAppointment.status;
+    const newStatus = fields.status;
+    if (oldStatus !== newStatus && newStatus && _skipAutomation !== true) {
       import('@/lib/automations/queue-from-appointment').then(({ updateQueueFromAppointment }) => {
         updateQueueFromAppointment({
           appointmentId: appointment._id,
           patientId: appointment.patient,
           newAppointmentStatus: newStatus,
-          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          tenantId: tenantObjectId,
         }).catch((error) => {
           console.error('[Appointment API] Error in queue automation:', error);
-          // Don't fail appointment update if queue update fails
         });
       }).catch((error) => {
         console.error('[Appointment API] Error loading queue automation module:', error);
       });
-    } else if (skipAutomation) {
     }
-    
+
     return NextResponse.json({ success: true, data: appointment });
   } catch (error: any) {
-    if (error.name === 'ValidationError') {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid appointment data' },
         { status: 400 }
       );
     }
+    console.error('Error updating appointment:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update appointment' },
       { status: 500 }
@@ -229,15 +221,10 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // User authentication check
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to delete appointments
-  const permissionCheck = await requirePermission(session, 'appointments', 'delete');
+  const permissionCheck = await requirePermission(ctx.session, 'appointments', 'delete');
   if (permissionCheck) {
     return permissionCheck;
   }
@@ -245,32 +232,16 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const appointment = await Appointment.findOneAndDelete(query);
-    if (!appointment) {
-      return NextResponse.json(
-        { success: false, error: 'Appointment not found' },
-        { status: 404 }
-      );
-    }
+    if (!isValidId(id)) return notFound('Appointment');
+
+    const appointment = await Appointment.findOneAndDelete(tenantFilter(ctx.tenantId, { _id: id }));
+    if (!appointment) return notFound('Appointment');
     return NextResponse.json({ success: true, data: {} });
   } catch (error) {
+    console.error('Error deleting appointment:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to delete appointment' },
       { status: 500 }
     );
   }
 }
-

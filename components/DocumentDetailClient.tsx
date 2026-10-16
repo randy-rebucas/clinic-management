@@ -131,50 +131,49 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
   };
 
   useEffect(() => {
-    fetchDocument();
-  }, [documentId]);
+    const fetchDocument = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch(`/api/documents/${documentId}`);
 
-  const fetchDocument = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await fetch(`/api/documents/${documentId}`);
+        if (res.status === 401) {
+          router.push('/login');
+          return;
+        }
 
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const contentType = res.headers.get('content-type');
-      let data;
+        const contentType = res.headers.get('content-type');
+        let data;
       
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        console.error('API returned non-JSON response:', text.substring(0, 500));
-        setError(`API error: ${res.status} ${res.statusText}`);
-        return;
-      }
+        if (contentType && contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const text = await res.text();
+          console.error('API returned non-JSON response:', text.substring(0, 500));
+          setError(`API error: ${res.status} ${res.statusText}`);
+          return;
+        }
 
-      if (!res.ok) {
-        const errorMsg = data?.error || `Failed to load document: ${res.status} ${res.statusText}`;
-        setError(errorMsg);
-        return;
-      }
+        if (!res.ok) {
+          const errorMsg = data?.error || `Failed to load document: ${res.status} ${res.statusText}`;
+          setError(errorMsg);
+          return;
+        }
 
-      if (data.success && data.data) {
-        setDocument(data.data);
-      } else {
-        setError(data.error || 'Failed to load document');
+        if (data.success && data.data) {
+          setDocument(data.data);
+        } else {
+          setError(data.error || 'Failed to load document');
+        }
+      } catch (error: any) {
+        console.error('Failed to fetch document:', error);
+        setError(error.message || 'Failed to load document. Please try again.');
+      } finally {
+        setLoading(false);
       }
-    } catch (error: any) {
-      console.error('Failed to fetch document:', error);
-      setError(error.message || 'Failed to load document. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    fetchDocument();
+  }, [documentId, router]);
 
   const handleDownload = () => {
     window.open(`/api/documents/${documentId}/download`, '_blank');
@@ -236,9 +235,10 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
             <div className="flex items-center gap-4">
               <Link
                 href="/documents"
+                aria-label="Back to documents"
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>

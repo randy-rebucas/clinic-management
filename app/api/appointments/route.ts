@@ -1,24 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import { registerAllModels } from '@/models';
 import Appointment from '@/models/Appointment';
 import Doctor from '@/models/Doctor';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
-import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zObjectId, zShortText, zLongText } from '@/lib/api/validate';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import {
+  appointmentDayRange,
+  findDoctorConflict,
+  nextAppointmentCode,
+  nextWalkInNumber,
+  normalizeTime,
+  isSlotDuplicateError,
+} from '@/lib/appointment-booking';
+
+const DEFAULT_LIMIT = 500;
+const MAX_LIMIT = 1000;
+
+const STATUSES = ['pending', 'scheduled', 'confirmed', 'rescheduled', 'no-show', 'completed', 'cancelled'] as const;
+
+const createAppointmentSchema = z.object({
+  patient: zObjectId,
+  doctor: z.union([zObjectId, z.literal('')]).optional().transform((v) => v || undefined),
+  room: zShortText.optional(),
+  appointmentDate: z.string().min(1).max(40).optional(),
+  appointmentTime: z.string().regex(/^\d{1,2}:\d{2}$/, 'Invalid time').optional().or(z.literal('').transform(() => undefined)),
+  scheduledAt: z.string().max(40).optional(),
+  duration: z.coerce.number().int().min(15).max(240).optional(),
+  reason: zShortText.optional(),
+  notes: zLongText.optional(),
+  status: z.enum(STATUSES).optional(),
+  isWalkIn: z.boolean().optional(),
+  estimatedWaitTime: z.coerce.number().int().min(0).max(1440).optional(),
+});
+
+function parseDateInput(value: string | null | undefined): Date | undefined {
+  if (!value) return undefined;
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? undefined : d;
+}
 
 export async function GET(request: NextRequest) {
-  // User authentication check
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to read appointments
   const permissionCheck = await requirePermission(session, 'appointments', 'read');
   if (permissionCheck) {
     return permissionCheck;
@@ -29,33 +61,39 @@ export async function GET(request: NextRequest) {
     registerAllModels();
     const searchParams = request.nextUrl.searchParams;
     const date = searchParams.get('date');
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
     const doctorId = searchParams.get('doctorId');
     const patientId = searchParams.get('patientId');
     const status = searchParams.get('status');
     const isWalkIn = searchParams.get('isWalkIn');
     const room = searchParams.get('room');
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '', 10) || DEFAULT_LIMIT, 1), MAX_LIMIT);
+    const page = Math.max(parseInt(searchParams.get('page') || '1', 10) || 1, 1);
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    const query: any = {};
+    const query: any = { tenantId: tenantObjectId };
     if (date) {
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
-      query.appointmentDate = { $gte: startOfDay, $lte: endOfDay };
+      const tz = await getTenantTimezone(tenantId);
+      const { start, end } = appointmentDayRange(date, tz);
+      query.appointmentDate = { $gte: start, $lte: end };
+    } else if (startDate || endDate) {
+      const range: any = {};
+      const from = parseDateInput(startDate);
+      const to = parseDateInput(endDate);
+      if (from) range.$gte = from;
+      if (to) range.$lte = to;
+      if (Object.keys(range).length) query.appointmentDate = range;
     }
     if (doctorId) {
-      query.doctor = doctorId;
+      if (!isValidId(doctorId)) return NextResponse.json({ success: true, data: [] });
+      query.doctor = new Types.ObjectId(doctorId);
     }
     if (patientId) {
-      query.patient = patientId;
+      if (!isValidId(patientId)) return NextResponse.json({ success: true, data: [] });
+      query.patient = new Types.ObjectId(patientId);
     }
     if (status) {
-      // Support comma-separated statuses
-      const statuses = status.split(',');
+      const statuses = status.split(',').filter((s) => (STATUSES as readonly string[]).includes(s));
       query.status = { $in: statuses };
     }
     if (isWalkIn !== null && isWalkIn !== undefined) {
@@ -64,15 +102,7 @@ export async function GET(request: NextRequest) {
     if (room) {
       query.room = room;
     }
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
 
-    // Build populate options with tenant filter for doctor
     const doctorPopulateOptions: any = {
       path: 'doctor',
       select: 'firstName lastName specializationId',
@@ -80,50 +110,49 @@ export async function GET(request: NextRequest) {
         path: 'specializationId',
         select: 'name',
       },
+      match: { tenantId: tenantObjectId },
     };
-    if (tenantId) {
-      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-    
-    // Build populate options with tenant filter for patient
+
     // Patient model uses tenantIds (array) since patients can belong to multiple clinics
     const patientPopulateOptions: any = {
       path: 'patient',
       select: 'firstName lastName email phone',
+      match: { tenantIds: tenantObjectId },
     };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
 
-    const appointments = await Appointment.find(query)
-      .populate(patientPopulateOptions)
-      .populate(doctorPopulateOptions)
-      .populate('provider', 'name email')
-      .sort({ appointmentDate: 1, appointmentTime: 1 });
+    const [appointments, total] = await Promise.all([
+      Appointment.find(query)
+        .populate(patientPopulateOptions)
+        .populate(doctorPopulateOptions)
+        .populate('provider', 'name email')
+        .sort({ appointmentDate: 1, appointmentTime: 1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Appointment.countDocuments(query),
+    ]);
 
-    return NextResponse.json({ success: true, data: appointments });
+    return NextResponse.json({
+      success: true,
+      data: appointments,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
   } catch (error: any) {
     console.error('Error fetching appointments:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to fetch appointments' },
+      { success: false, error: 'Failed to fetch appointments' },
       { status: 500 }
     );
   }
 }
 
+const SLOT_TAKEN = 'The doctor already has an appointment at this time. Please choose another time.';
+
 export async function POST(request: NextRequest) {
-  // User authentication check
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to write/create appointments
   const permissionCheck = await requirePermission(session, 'appointments', 'write');
   if (permissionCheck) {
     return permissionCheck;
@@ -132,37 +161,27 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     registerAllModels();
-    const body = await request.json();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
+    const parsed = await parseBody(request, createAppointmentSchema);
+    if (isValidationError(parsed)) return parsed;
+    const body = parsed.data;
 
-    // Check subscription limit for creating appointments
-    if (tenantId) {
-      const { checkSubscriptionLimit } = await import('@/lib/subscription-limits');
-      const limitCheck = await checkSubscriptionLimit(tenantId, 'createAppointment');
-      if (!limitCheck.allowed) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: limitCheck.reason || 'Subscription limit exceeded',
-            limit: limitCheck.limit,
-            current: limitCheck.current,
-            remaining: limitCheck.remaining,
-          },
-          { status: 403 }
-        );
-      }
+    const { checkSubscriptionLimit } = await import('@/lib/subscription-limits');
+    const limitCheck = await checkSubscriptionLimit(tenantId, 'createAppointment');
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: limitCheck.reason || 'Subscription limit exceeded',
+          limit: limitCheck.limit,
+          current: limitCheck.current,
+          remaining: limitCheck.remaining,
+        },
+        { status: 403 }
+      );
     }
-    
-    // Validate that the doctor belongs to the tenant
-    if (body.doctor && tenantId) {
-      const doctorQuery: any = {
-        _id: body.doctor,
-        tenantId: new Types.ObjectId(tenantId),
-      };
-      const doctor = await Doctor.findOne(doctorQuery);
+
+    if (body.doctor) {
+      const doctor = await Doctor.findOne({ _id: body.doctor, tenantId: tenantObjectId }).select('_id').lean();
       if (!doctor) {
         return NextResponse.json(
           { success: false, error: 'Invalid doctor selected. Please select a doctor from this clinic.' },
@@ -170,158 +189,107 @@ export async function POST(request: NextRequest) {
         );
       }
     }
-    
-    // Validate that the patient belongs to the tenant
-    // Patient model uses tenantIds (array) since patients can belong to multiple clinics
-    if (body.patient && tenantId) {
-      const patientQuery: any = {
-        _id: body.patient,
-        tenantIds: new Types.ObjectId(tenantId),
-      };
-      const patient = await Patient.findOne(patientQuery);
-      if (!patient) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
-          { status: 400 }
-        );
+
+    const patient = await Patient.findOne({ _id: body.patient, tenantIds: tenantObjectId }).select('_id').lean();
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
+        { status: 400 }
+      );
+    }
+
+    const settings = await getSettings(tenantId);
+    const tz = await getTenantTimezone(tenantId);
+    const duration = body.duration || settings.appointmentSettings?.defaultDuration || 30;
+    const appointmentTime = body.appointmentTime ? normalizeTime(body.appointmentTime) || undefined : undefined;
+    const appointmentDate = parseDateInput(body.appointmentDate);
+    const scheduledAt = parseDateInput(body.scheduledAt);
+
+    if (body.appointmentDate && !appointmentDate) {
+      return NextResponse.json({ success: false, error: 'Invalid appointment date' }, { status: 400 });
+    }
+
+    const status = body.status || 'scheduled';
+    if (body.doctor && appointmentDate && appointmentTime && !body.isWalkIn && !['cancelled', 'completed', 'no-show'].includes(status)) {
+      const conflict = await findDoctorConflict({
+        tenantId,
+        doctorId: body.doctor,
+        appointmentDate: body.appointmentDate && /^\d{4}-\d{2}-\d{2}$/.test(body.appointmentDate)
+          ? body.appointmentDate
+          : appointmentDate,
+        appointmentTime,
+        duration,
+        tz,
+      });
+      if (conflict) {
+        return NextResponse.json({ success: false, error: SLOT_TAKEN }, { status: 409 });
       }
     }
-    
-    // Get settings for defaults
-    const settings = await getSettings();
-    
-    // Set default duration if not provided
-    if (!body.duration) {
-      body.duration = settings.appointmentSettings?.defaultDuration || 30;
-    }
-    
-    // Auto-generate appointmentCode if not provided (tenant-scoped)
-    if (!body.appointmentCode) {
-      const codeQuery: any = { appointmentCode: { $exists: true, $ne: null } };
-      if (tenantId) {
-        codeQuery.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const lastAppointment = await Appointment.findOne(codeQuery)
-        .sort({ appointmentCode: -1 })
-        .exec();
-      
-      let nextNumber = 1;
-      if (lastAppointment?.appointmentCode) {
-        const match = lastAppointment.appointmentCode.match(/(\d+)$/);
-        if (match) {
-          nextNumber = parseInt(match[1], 10) + 1;
-        }
-      }
-      
-      body.appointmentCode = `APT-${String(nextNumber).padStart(6, '0')}`;
-    }
-    
-    // For walk-ins, ensure queue number is set (tenant-scoped)
-    if (body.isWalkIn && !body.queueNumber) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      
-      const walkInQuery: any = {
-        isWalkIn: true,
-        appointmentDate: { $gte: today, $lt: tomorrow },
-        status: { $in: ['scheduled', 'confirmed'] },
-      };
-      if (tenantId) {
-        walkInQuery.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        walkInQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const todayWalkIns = await Appointment.find(walkInQuery).sort({ queueNumber: -1 });
-      
-      body.queueNumber = todayWalkIns.length > 0 
-        ? (todayWalkIns[0].queueNumber || 0) + 1
-        : 1;
-    }
-    
-    // Automatically set createdBy to the authenticated user
+
     const appointmentData: any = {
-      ...body,
+      patient: new Types.ObjectId(body.patient),
+      doctor: body.doctor ? new Types.ObjectId(body.doctor) : undefined,
+      room: body.room,
+      appointmentDate,
+      appointmentTime,
+      scheduledAt,
+      duration,
+      reason: body.reason,
+      notes: body.notes,
+      status,
+      isWalkIn: !!body.isWalkIn,
+      estimatedWaitTime: body.estimatedWaitTime,
+      appointmentCode: await nextAppointmentCode(tenantId),
       createdBy: session.userId,
+      tenantId: tenantObjectId,
     };
-    
-    // Ensure appointment is created with tenantId
-    if (tenantId && !appointmentData.tenantId) {
-      appointmentData.tenantId = new Types.ObjectId(tenantId);
+
+    // Walk-in numbers are always allocated server-side; a client-computed number races.
+    if (appointmentData.isWalkIn) {
+      appointmentData.queueNumber = await nextWalkInNumber(tenantId, tz, appointmentDate || new Date());
     }
-    
-    const appointment = await Appointment.create(appointmentData);
-    
-    // Build populate options with tenant filter for doctor
-    const doctorPopulateOptions: any = {
-      path: 'doctor',
-      select: 'firstName lastName specializationId',
-      populate: {
-        path: 'specializationId',
-        select: 'name',
-      },
-    };
-    if (tenantId) {
-      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+
+    let appointment;
+    try {
+      appointment = await Appointment.create(appointmentData);
+    } catch (err: any) {
+      if (isSlotDuplicateError(err)) {
+        return NextResponse.json({ success: false, error: SLOT_TAKEN }, { status: 409 });
+      }
+      throw err;
     }
-    
-    // Build populate options with tenant filter for patient
-    // Patient model uses tenantIds (array) since patients can belong to multiple clinics
-    const patientPopulateOptions: any = {
+
+    await appointment.populate({
       path: 'patient',
       select: 'firstName lastName email phone',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
+      match: { tenantIds: tenantObjectId },
+    });
+    await appointment.populate({
+      path: 'doctor',
+      select: 'firstName lastName specializationId',
+      populate: { path: 'specializationId', select: 'name' },
+      match: { tenantId: tenantObjectId },
+    });
+
+    if (appointment.patient && settings?.automationSettings?.autoInsuranceVerification) {
+      const { autoVerifyInsuranceForAppointment } = await import('@/lib/automations/insurance-verification');
+      autoVerifyInsuranceForAppointment(appointment._id, tenantId).catch(console.error);
     }
-    
-    await appointment.populate(patientPopulateOptions);
-    await appointment.populate(doctorPopulateOptions);
-    
-    // Send confirmation email if status is confirmed
-    if (appointment.status === 'confirmed' && appointment.patient) {
-      // Trigger email reminder (async, don't wait)
-      sendAppointmentReminder(appointment).catch(console.error);
+
+    if (!appointment.doctor && !appointment.provider && settings?.automationSettings?.autoSmartAssignment) {
+      const { assignDoctorToAppointment } = await import('@/lib/automations/smart-assignment');
+      assignDoctorToAppointment({
+        appointmentId: appointment._id,
+        patientId: appointment.patient,
+        appointmentDate: appointment.appointmentDate || appointment.scheduledAt,
+        appointmentTime: appointment.appointmentTime || '09:00',
+        reason: appointment.reason,
+        tenantId: tenantObjectId,
+      }).catch((error) => {
+        console.error('Error in smart appointment assignment:', error);
+      });
     }
-    
-    // Auto-verify insurance if enabled (async, don't block response)
-    if (tenantId && appointment.patient) {
-      const { getSettings } = await import('@/lib/settings');
-      const settings = await getSettings(tenantId.toString());
-      if (settings?.automationSettings?.autoInsuranceVerification) {
-        const { autoVerifyInsuranceForAppointment } = await import('@/lib/automations/insurance-verification');
-        autoVerifyInsuranceForAppointment(appointment._id, tenantId).catch(console.error);
-      }
-    }
-    
-    // Auto-assign doctor if not assigned and smart assignment enabled (async, don't block response)
-    if (!appointment.doctor && !appointment.provider && tenantId) {
-      const { getSettings } = await import('@/lib/settings');
-      const settings = await getSettings(tenantId.toString());
-      if (settings?.automationSettings?.autoSmartAssignment) {
-        const { assignDoctorToAppointment } = await import('@/lib/automations/smart-assignment');
-        assignDoctorToAppointment({
-          appointmentId: appointment._id,
-          patientId: appointment.patient,
-          appointmentDate: appointment.appointmentDate || appointment.scheduledAt,
-          appointmentTime: appointment.appointmentTime || '09:00',
-          reason: appointment.reason,
-          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
-        }).catch((error) => {
-          console.error('Error in smart appointment assignment:', error);
-        });
-      }
-    }
-    
+
     return NextResponse.json(
       { success: true, data: appointment },
       { status: 201 }
@@ -330,34 +298,13 @@ export async function POST(request: NextRequest) {
     console.error('Error creating appointment:', error);
     if (error.name === 'ValidationError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid appointment data' },
         { status: 400 }
       );
     }
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to create appointment' },
+      { success: false, error: 'Failed to create appointment' },
       { status: 500 }
     );
   }
 }
-
-// Email reminder function (placeholder - implement with your email service)
-async function sendAppointmentReminder(appointment: any) {
-  // This is a placeholder. In production, integrate with:
-  // - SendGrid, AWS SES, Nodemailer, etc.
-  // - SMS service like Twilio for SMS reminders
-  
-  const patient = appointment.patient;
-  const appointmentDate = new Date(appointment.appointmentDate);
-  const appointmentTime = appointment.appointmentTime;
-  
-  // TODO: Implement actual email sending
-  // Example with Nodemailer:
-  // await transporter.sendMail({
-  //   from: 'clinic@example.com',
-  //   to: patient.email,
-  //   subject: 'Appointment Confirmation',
-  //   html: `...`
-  // });
-}
-

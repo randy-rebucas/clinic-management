@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 interface Notification {
   _id: string;
@@ -18,11 +18,7 @@ export default function NotificationsPageClient() {
   const [error, setError] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => {
-    fetchNotifications();
-  }, []);
-
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/notifications');
@@ -39,7 +35,14 @@ export default function NotificationsPageClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchNotifications();
+    };
+    load();
+  }, [fetchNotifications]);
 
   const markAsRead = async (notificationId: string) => {
     try {

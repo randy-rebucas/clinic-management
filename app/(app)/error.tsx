@@ -15,7 +15,7 @@ export default function AppError({
 
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center p-6 text-center">
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-2xl">
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-2xl" aria-hidden="true">
         ⚠
       </div>
       <h2 className="mb-2 text-xl font-bold text-gray-900">
@@ -30,6 +30,7 @@ export default function AppError({
         )}
       </p>
       <button
+        type="button"
         onClick={reset}
         className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
       >

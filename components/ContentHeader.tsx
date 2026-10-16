@@ -76,7 +76,7 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
       <div className="h-14 px-6 flex items-center justify-between">
         {/* Left side - Breadcrumb */}
         <div className="flex-1">
-          <nav className="flex items-center gap-2 text-sm">
+          <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-sm">
             <Link
               href="/"
               className="text-gray-600 hover:text-blue-600 transition-colors"
@@ -95,9 +95,9 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
                   
                   return (
                     <div key={href} className="flex items-center gap-2">
-                      <span className="text-gray-400">/</span>
+                      <span className="text-gray-400" aria-hidden="true">/</span>
                       {isLast ? (
-                        <span className="text-gray-900 font-medium">{label}</span>
+                        <span className="text-gray-900 font-medium" aria-current="page">{label}</span>
                       ) : (
                         <Link
                           href={href}
@@ -125,12 +125,15 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
                 : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
             }`}
             title="Notifications"
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+            aria-current={isNotificationsActive ? 'page' : undefined}
           >
             <svg
               className="w-5 h-5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
@@ -140,12 +143,12 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
               />
             </svg>
             {unreadCount > 0 && (
-              <span className="absolute top-0 right-0 flex items-center justify-center min-w-[1.25rem] h-5 px-1 text-xs font-bold text-white bg-red-500 rounded-full">
+              <span aria-hidden="true" className="absolute top-0 right-0 flex items-center justify-center min-w-[1.25rem] h-5 px-1 text-xs font-bold text-white bg-red-500 rounded-full">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
             {isNotificationsActive && unreadCount === 0 && (
-              <span className="absolute bottom-0.5 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-blue-600 rounded-full" />
+              <span aria-hidden="true" className="absolute bottom-0.5 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-blue-600 rounded-full" />
             )}
           </Link>
 
@@ -155,14 +158,21 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
           {/* User Dropdown Menu */}
           <div className="relative" ref={dropdownRef}>
             <button
+              type="button"
               onClick={() => setDropdownOpen(!dropdownOpen)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setDropdownOpen(false);
+              }}
+              aria-label={`User menu for ${user.name}`}
+              aria-haspopup="true"
+              aria-expanded={dropdownOpen}
               className="flex items-center gap-3 p-1.5 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
             >
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-medium text-gray-900">{user.name}</p>
                 <p className="text-xs text-gray-500 capitalize">{user.role}</p>
               </div>
-              <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+              <div aria-hidden="true" className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
                 {user.name.charAt(0).toUpperCase()}
               </div>
             </button>
@@ -182,7 +192,7 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
                     onClick={() => setDropdownOpen(false)}
                     className="w-full px-4 py-2 text-left text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center gap-2"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                     Profile
@@ -193,7 +203,7 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
                     onClick={() => setDropdownOpen(false)}
                     className="w-full px-4 py-2 text-left text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center gap-2"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
@@ -206,7 +216,7 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
                       onClick={() => setDropdownOpen(false)}
                       className="w-full px-4 py-2 text-left text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center gap-2"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m6 2a8 8 0 11-16 0 8 8 0 0116 0z" />
                       </svg>
                       Admin
@@ -224,6 +234,7 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
+                      aria-hidden="true"
                     >
                       <path
                         strokeLinecap="round"

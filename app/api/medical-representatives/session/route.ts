@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
-import { cookies } from 'next/headers';
+import { deleteSession } from '@/app/lib/dal';
+import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
 
 /**
  * GET /api/medical-representatives/session
@@ -10,31 +10,15 @@ import { cookies } from 'next/headers';
  */
 export async function GET(request: NextRequest) {
   try {
-    // Verify session
-    const session = await verifySession();
-    
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized - No session found' },
-        { status: 401 }
-      );
-    }
-
-    // Check if user is a medical representative
-    if (session.role !== 'medical-representative') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden - Medical representative access only' },
-        { status: 403 }
-      );
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
 
     await connectDB();
 
-    // Find medical representative by user ID, scoped to tenant
-    const medicalRep = await MedicalRepresentative.findOne({
-      userId: session.userId,
-      tenantIds: session.tenantId,
-    })
+    const filter: Record<string, unknown> = { userId: rep.userObjectId };
+    if (rep.ownerFilter.tenantId) filter.tenantIds = rep.ownerFilter.tenantId;
+
+    const medicalRep = await MedicalRepresentative.findOne(filter)
       .select('-internalNotes -paymentStatus -paymentDate -paymentAmount -paymentMethod -paymentReference -password')
       .lean();
 
@@ -52,7 +36,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('Get medical representative session error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -64,10 +48,8 @@ export async function GET(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    
-    // Delete the session cookie
-    cookieStore.delete('session');
+    // deleteSession expires the cookie with its original domain, so a cross-subdomain cookie is removed too.
+    await deleteSession();
 
     return NextResponse.json({
       success: true,
@@ -76,7 +58,7 @@ export async function DELETE(request: NextRequest) {
   } catch (error: any) {
     console.error('Logout error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }

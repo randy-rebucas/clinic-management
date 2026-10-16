@@ -135,8 +135,8 @@ export default function MedicalRepresentativeSettingsClient() {
       return;
     }
 
-    if (newPassword.length < 8) {
-      setErrorMessage('Password must be at least 8 characters long');
+    if (newPassword.length < 12) {
+      setErrorMessage('Password must be at least 12 characters long');
       return;
     }
 
@@ -238,7 +238,7 @@ export default function MedicalRepresentativeSettingsClient() {
             className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
             aria-label="Go back"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
+            <ArrowLeft aria-hidden="true" className="w-5 h-5 text-gray-600" />
           </button>
           <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
         </div>
@@ -249,6 +249,7 @@ export default function MedicalRepresentativeSettingsClient() {
             <div className="bg-white rounded-xl shadow-sm p-4 space-y-2">
               <button
                 onClick={() => setActiveTab('profile')}
+                aria-pressed={activeTab === 'profile'}
                 className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
                   activeTab === 'profile'
                     ? 'bg-blue-100 text-blue-700 font-semibold'
@@ -259,6 +260,7 @@ export default function MedicalRepresentativeSettingsClient() {
               </button>
               <button
                 onClick={() => setActiveTab('security')}
+                aria-pressed={activeTab === 'security'}
                 className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
                   activeTab === 'security'
                     ? 'bg-blue-100 text-blue-700 font-semibold'
@@ -270,6 +272,7 @@ export default function MedicalRepresentativeSettingsClient() {
               </button>
               <button
                 onClick={() => setActiveTab('notifications')}
+                aria-pressed={activeTab === 'notifications'}
                 className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
                   activeTab === 'notifications'
                     ? 'bg-blue-100 text-blue-700 font-semibold'
@@ -303,10 +306,11 @@ export default function MedicalRepresentativeSettingsClient() {
                 <form onSubmit={handleSaveProfile} className="space-y-6">
                   {/* Email (Read-only) */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label htmlFor="mr-settings-email" className="block text-sm font-medium text-gray-700 mb-2">
                       Email Address
                     </label>
                     <input
+                      id="mr-settings-email"
                       type="email"
                       value={settings.email}
                       disabled
@@ -446,8 +450,10 @@ export default function MedicalRepresentativeSettingsClient() {
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
                           className="absolute right-3 top-2.5 text-gray-400"
+                          aria-label={showPassword ? 'Hide passwords' : 'Show passwords'}
+                          aria-pressed={showPassword}
                         >
-                          {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                          {showPassword ? <EyeOff aria-hidden="true" className="w-5 h-5" /> : <Eye aria-hidden="true" className="w-5 h-5" />}
                         </button>
                       </div>
                     </div>
@@ -462,7 +468,7 @@ export default function MedicalRepresentativeSettingsClient() {
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
                         required
-                        placeholder="At least 8 characters"
+                        placeholder="At least 12 characters"
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
@@ -546,6 +552,9 @@ export default function MedicalRepresentativeSettingsClient() {
                     <button
                       type="button"
                       onClick={() => handleToggle('notificationsEnabled')}
+                      role="switch"
+                      aria-checked={settings.notificationsEnabled}
+                      aria-label="Push notifications"
                       className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                         settings.notificationsEnabled
                           ? 'bg-blue-100 text-blue-700'
@@ -567,6 +576,9 @@ export default function MedicalRepresentativeSettingsClient() {
                     <button
                       type="button"
                       onClick={() => handleToggle('emailNotifications')}
+                      role="switch"
+                      aria-checked={settings.emailNotifications}
+                      aria-label="Email notifications"
                       className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                         settings.emailNotifications
                           ? 'bg-blue-100 text-blue-700'

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useModalA11y } from './hooks/useModalA11y';
 
 interface Medicine {
   _id: string;
@@ -68,8 +69,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [medicineSuggestions, setMedicineSuggestions] = useState<Medicine[]>([]);
-  const [showMedicineSuggestions, setShowMedicineSuggestions] = useState(false);
+  const [fetchedSuggestions, setMedicineSuggestions] = useState<Medicine[]>([]);
+  const [suggestionsOpen, setShowMedicineSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [formData, setFormData] = useState({
     name: '',
@@ -126,12 +127,20 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
   }, [categoryFilter, formFilter, search]);
 
   useEffect(() => {
-    fetchMedicines();
+    const load = async () => {
+      await fetchMedicines();
+    };
+    load();
   }, [fetchMedicines]);
+
+  const suggestionsEnabled = formData.name.length >= 2 && !editingMedicine;
+  const medicineSuggestions = suggestionsEnabled ? fetchedSuggestions : [];
+  const showMedicineSuggestions = suggestionsEnabled && suggestionsOpen;
 
   // Fetch medicine suggestions for autocomplete
   useEffect(() => {
     if (formData.name.length >= 2 && !editingMedicine) {
+      let cancelled = false;
       const timer = setTimeout(() => {
         const params = new URLSearchParams();
         params.set('search', formData.name);
@@ -140,6 +149,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
         fetch(`/api/medicines?${params.toString()}`)
           .then((res) => res.json())
           .then((data) => {
+            if (cancelled) return;
             if (data.success && data.data) {
               // Filter out exact matches and limit to 10 suggestions
               const suggestions = data.data
@@ -156,15 +166,16 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
             }
           })
           .catch(() => {
+            if (cancelled) return;
             setMedicineSuggestions([]);
             setShowMedicineSuggestions(false);
           });
       }, 300); // Debounce for 300ms
       
-      return () => clearTimeout(timer);
-    } else {
-      setMedicineSuggestions([]);
-      setShowMedicineSuggestions(false);
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
     }
   }, [formData.name, editingMedicine]);
 
@@ -317,6 +328,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
       e.preventDefault();
       selectMedicineSuggestion(medicineSuggestions[highlightedIndex]);
     } else if (e.key === 'Escape') {
+      e.stopPropagation();
       setShowMedicineSuggestions(false);
       setHighlightedIndex(-1);
     }
@@ -348,6 +360,9 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
     setShowMedicineSuggestions(false);
     setHighlightedIndex(-1);
   };
+
+  const closeModal = () => { setShowModal(false); resetForm(); };
+  const modalRef = useModalA11y<HTMLDivElement>(showModal, closeModal);
 
   if (loading) {
     return (
@@ -490,6 +505,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                     </div>
                     <input
                       type="text"
+                      aria-label="Search medicines"
                       placeholder="Search medicines..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -497,8 +513,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                     />
                     {search && (
                       <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
-                        <button onClick={() => setSearch('')} className="cursor-pointer p-1 text-gray-400 hover:text-gray-600">
-                          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
+                        <button onClick={() => setSearch('')} aria-label="Clear search" className="cursor-pointer p-1 text-gray-400 hover:text-gray-600">
+                          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                             <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
                           </svg>
                         </button>
@@ -510,6 +526,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                 {/* Category Dropdown */}
                 <div style={{ minWidth: '180px' }}>
                   <select
+                    aria-label="Filter by category"
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
@@ -524,6 +541,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                 {/* Form Dropdown */}
                 <div style={{ minWidth: '140px' }}>
                   <select
+                    aria-label="Filter by form"
                     value={formFilter}
                     onChange={(e) => setFormFilter(e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
@@ -605,17 +623,19 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                       <div className="flex gap-2 items-center flex-shrink-0">
                         <button
                           onClick={() => handleEdit(medicine)}
+                          aria-label={`Edit ${medicine.name}`}
                           className="p-2.5 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </button>
                         <button
                           onClick={() => handleDelete(medicine)}
+                          aria-label={`Delete ${medicine.name}`}
                           className="p-2.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
@@ -630,8 +650,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
         {/* Add/Edit Modal */}
         {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto mx-4">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="medicine-modal-title" className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto mx-4">
               <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-indigo-100/50">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-indigo-500 rounded-lg">
@@ -639,7 +659,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                     </svg>
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900">
+                  <h2 id="medicine-modal-title" className="text-xl font-bold text-gray-900">
                     {editingMedicine ? 'Edit Medicine' : 'Add New Medicine'}
                   </h2>
                 </div>
@@ -648,8 +668,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Name */}
                   <div className="col-span-2 medicine-name-autocomplete relative">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Medicine Name *</label>
-                    <input
+                    <label htmlFor="medicine-name" className="block text-sm font-medium text-gray-700 mb-1">Medicine Name *</label>
+                    <input id="medicine-name"
                       type="text"
                       value={formData.name}
                       onChange={(e) => {
@@ -702,8 +722,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
                   {/* Category */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-                    <select
+                    <label htmlFor="medicine-category" className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                    <select id="medicine-category"
                       value={formData.category}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                       required
@@ -717,8 +737,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
                   {/* Generic Name */}
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Generic Name</label>
-                    <input
+                    <label htmlFor="medicine-generic-name" className="block text-sm font-medium text-gray-700 mb-1">Generic Name</label>
+                    <input id="medicine-generic-name"
                       type="text"
                       value={formData.genericName}
                       onChange={(e) => setFormData({ ...formData, genericName: e.target.value })}
@@ -728,8 +748,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
                   {/* Brand Names */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Brand Names</label>
-                    <input
+                    <label htmlFor="medicine-brand-names" className="block text-sm font-medium text-gray-700 mb-1">Brand Names</label>
+                    <input id="medicine-brand-names"
                       type="text"
                       value={formData.brandNames}
                       onChange={(e) => setFormData({ ...formData, brandNames: e.target.value })}
@@ -740,8 +760,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
                   {/* Form */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Form *</label>
-                    <select
+                    <label htmlFor="medicine-form" className="block text-sm font-medium text-gray-700 mb-1">Form *</label>
+                    <select id="medicine-form"
                       value={formData.form}
                       onChange={(e) => setFormData({ ...formData, form: e.target.value as Medicine['form'] })}
                       required
@@ -755,8 +775,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
                   {/* Route */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Route *</label>
-                    <select
+                    <label htmlFor="medicine-route" className="block text-sm font-medium text-gray-700 mb-1">Route *</label>
+                    <select id="medicine-route"
                       value={formData.route}
                       onChange={(e) => setFormData({ ...formData, route: e.target.value as Medicine['route'] })}
                       required
@@ -770,8 +790,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
                   {/* Strength */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Strength *</label>
-                    <input
+                    <label htmlFor="medicine-strength" className="block text-sm font-medium text-gray-700 mb-1">Strength *</label>
+                    <input id="medicine-strength"
                       type="text"
                       value={formData.strength}
                       onChange={(e) => setFormData({ ...formData, strength: e.target.value })}
@@ -783,8 +803,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
                   {/* Indications */}
                   <div className="col-span-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Indications</label>
-                    <input
+                    <label htmlFor="medicine-indications" className="block text-sm font-medium text-gray-700 mb-1">Indications</label>
+                    <input id="medicine-indications"
                       type="text"
                       value={formData.indications}
                       onChange={(e) => setFormData({ ...formData, indications: e.target.value })}
@@ -829,7 +849,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                 <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
                   <button
                     type="button"
-                    onClick={() => { setShowModal(false); resetForm(); }}
+                    onClick={closeModal}
                     className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-semibold"
                   >
                     Cancel

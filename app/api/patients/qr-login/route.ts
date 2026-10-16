@@ -1,155 +1,88 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SignJWT } from 'jose';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { hashLoginQrToken, patientLoginResponse } from '../auth/shared';
+
+const TOKEN_FORMAT = /^[A-Za-z0-9_-]{43,128}$/;
+
+function readQrToken(qrCode: unknown): string | null {
+  let data: unknown = qrCode;
+  if (typeof qrCode === 'string') {
+    try {
+      data = JSON.parse(qrCode);
+    } catch {
+      return null;
+    }
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const { type, token } = data as Record<string, unknown>;
+  if (type !== 'patient_login' || typeof token !== 'string' || !TOKEN_FORMAT.test(token)) return null;
+  return token;
+}
 
 /**
  * Patient QR Code Login
- * Allows patients to login using their QR code
- * Rate limited to prevent brute force attacks
+ * POST /api/patients/qr-login
+ * Body: { qrCode: '{"type":"patient_login","token":"<server-issued token>"}' }
+ *
+ * The QR must carry a random token issued by GET /api/patients/me/login-qr (stored hashed,
+ * expiring, revocable). Patient codes / ids alone are not credentials.
  */
 export async function POST(request: NextRequest) {
-  // Apply strict rate limiting for authentication endpoint
   const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
   if (rateLimitResponse) {
     return rateLimitResponse;
   }
-  
-  try {
-    await connectDB();
-    const body = await request.json();
-    const { qrCode, tenantId: bodyTenantId } = body;
 
-    if (!qrCode) {
+  try {
+    let body: Record<string, unknown>;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
+    }
+
+    if (!body?.qrCode) {
       return NextResponse.json(
         { success: false, error: 'QR code is required' },
         { status: 400 }
       );
     }
 
-    // Parse QR code data
-    let qrData;
-    try {
-      qrData = typeof qrCode === 'string' ? JSON.parse(qrCode) : qrCode;
-    } catch (error) {
+    const token = readQrToken(body.qrCode);
+    if (!token) {
       return NextResponse.json(
-        { success: false, error: 'Invalid QR code format' },
+        { success: false, error: 'This QR code is not valid for login. Please ask the clinic for a new one or sign in another way.' },
         { status: 400 }
       );
     }
 
-    const { patientId, patientCode, type, tenantId: qrTenantId } = qrData;
+    await connectDB();
 
-    if (!patientId && !patientCode) {
-      return NextResponse.json(
-        { success: false, error: 'Patient identification not found in QR code' },
-        { status: 400 }
-      );
-    }
-
-    if (type !== 'patient_login') {
-      return NextResponse.json(
-        { success: false, error: 'Invalid QR code type. This QR code is not for patient login.' },
-        { status: 400 }
-      );
-    }
-
-    // Get tenant context from subdomain or body/QR code
-    const tenantContext = await getTenantContext();
-    const tenantId = bodyTenantId || qrTenantId || tenantContext.tenantId;
-
-    // Find patient by ID or patient code (tenant-scoped)
-    let patient;
-    if (patientId) {
-      const patientQuery: any = { _id: patientId };
-      if (tenantId) {
-        patientQuery.tenantIds = new Types.ObjectId(tenantId);
-      } else {
-        // If no tenant, check for patients without tenantIds (backward compatibility)
-        patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-      }
-      patient = await Patient.findOne(patientQuery);
-    } else if (patientCode) {
-      const patientQuery: any = { patientCode };
-      if (tenantId) {
-        patientQuery.tenantIds = new Types.ObjectId(tenantId);
-      } else {
-        // If no tenant, check for patients without tenantIds (backward compatibility)
-        patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-      }
-      patient = await Patient.findOne(patientQuery);
-    }
+    const patient = await Patient.findOne({
+      loginQrTokenHash: hashLoginQrToken(token),
+      loginQrTokenExpiry: { $gt: new Date() },
+      active: { $ne: false },
+    });
 
     if (!patient) {
       return NextResponse.json(
-        { success: false, error: 'Patient not found' },
-        { status: 404 }
+        { success: false, error: 'This QR code is invalid or has expired.' },
+        { status: 401 }
       );
     }
-
-    // Verify patient is active
-    if (patient.active === false) {
-      return NextResponse.json(
-        { success: false, error: 'Patient account is inactive. Please contact the clinic.' },
-        { status: 403 }
-      );
-    }
-
-    // Sign a JWT so the patient_session cookie cannot be tampered with
-    const secretKey = process.env.SESSION_SECRET;
-    if (!secretKey) {
-      return NextResponse.json({ success: false, error: 'Server configuration error' }, { status: 500 });
-    }
-    const encodedKey = new TextEncoder().encode(secretKey);
-    const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-    const patientJwt = await new SignJWT({
-      patientId: patient._id.toString(),
-      patientCode: patient.patientCode,
-      type: 'patient',
-      email: patient.email || `patient-${patient.patientCode}@clinic.local`,
-    })
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuedAt()
-      .setExpirationTime('7d')
-      .sign(encodedKey);
-
-    const response = NextResponse.json({
-      success: true,
-      data: {
-        patientId: patient._id.toString(),
-        patientCode: patient.patientCode,
-        firstName: patient.firstName,
-        lastName: patient.lastName,
-        email: patient.email,
-      },
-      message: 'Login successful',
-    });
-
-    // Set signed JWT as the patient session cookie (7 days)
-    response.cookies.set('patient_session', patientJwt, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      expires: expires,
-      path: '/',
-    });
 
     logger.info('Patient QR code login successful', {
       patientId: patient._id.toString(),
-      patientCode: patient.patientCode,
     });
 
-    return response;
-
+    return await patientLoginResponse(patient);
   } catch (error: any) {
     logger.error('Error in patient QR code login', error as Error, {
-      name: error.name,
-      code: error.code,
+      name: error?.name,
+      code: error?.code,
     });
 
     return NextResponse.json(
@@ -158,4 +91,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

@@ -1,51 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { sendSMS, isSMSConfigured } from '@/lib/sms';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
+import { normalizePhone } from '@/lib/phone';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { formatInTz } from '@/lib/tz';
+import { Types } from 'mongoose';
+
+const MAX_BATCH = 200;
+
+function populateFor(tenantObjectId: Types.ObjectId) {
+  return [
+    { path: 'patient', select: 'firstName lastName phone', match: { tenantIds: tenantObjectId } },
+    { path: 'doctor', select: 'firstName lastName', match: { tenantId: tenantObjectId } },
+  ];
+}
 
 // Send SMS reminder for a specific appointment
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(ctx.session, 'appointments', 'update');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
-    const body = await request.json();
-    const { appointmentId } = body;
+    const body = await request.json().catch(() => ({}));
+    const appointmentId = body?.appointmentId;
 
-    if (!appointmentId) {
+    if (!isValidId(appointmentId)) {
       return NextResponse.json(
         { success: false, error: 'Appointment ID required' },
         { status: 400 }
       );
     }
 
-    const appointment = await Appointment.findById(appointmentId)
-      .populate('patient', 'firstName lastName phone')
-      .populate('doctor', 'firstName lastName');
+    const appointment = await Appointment.findOne(tenantFilter(ctx.tenantId, { _id: appointmentId }))
+      .populate(populateFor(ctx.tenantObjectId));
 
-    if (!appointment) {
-      return NextResponse.json(
-        { success: false, error: 'Appointment not found' },
-        { status: 404 }
-      );
-    }
+    if (!appointment) return notFound('Appointment');
 
     const patient = appointment.patient as any;
-    if (!patient.phone) {
+    if (!patient?.phone) {
       return NextResponse.json(
         { success: false, error: 'Patient phone number not available' },
         { status: 400 }
       );
     }
 
-    // Send SMS reminder
-    const result = await sendSMSReminder(appointment);
+    const tz = await getTenantTimezone(ctx.tenantId);
+    const result = await sendSMSReminder(appointment, tz);
 
     return NextResponse.json({
       success: true,
@@ -61,39 +68,40 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Auto-send SMS reminders for upcoming appointments
+// Send SMS reminders for this clinic's upcoming appointments
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(ctx.session, 'appointments', 'update');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
     const searchParams = request.nextUrl.searchParams;
-    const hoursAhead = parseInt(searchParams.get('hoursAhead') || '24');
+    const hoursAhead = Math.min(Math.max(parseInt(searchParams.get('hoursAhead') || '24') || 24, 1), 72);
 
-    // Find appointments in the next N hours that need reminders
     const now = new Date();
     const futureTime = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
 
-    const appointmentsNeedingReminders = await Appointment.find({
+    const appointmentsNeedingReminders = await Appointment.find(tenantFilter(ctx.tenantId, {
       appointmentDate: { $gte: now, $lte: futureTime },
       status: { $in: ['scheduled', 'confirmed'] },
-    })
-      .populate('patient', 'firstName lastName phone')
-      .populate('doctor', 'firstName lastName');
+    }))
+      .limit(MAX_BATCH)
+      .populate(populateFor(ctx.tenantObjectId));
 
+    const tz = await getTenantTimezone(ctx.tenantId);
     const results = [];
     for (const appointment of appointmentsNeedingReminders) {
       const patient = appointment.patient as any;
-      if (patient.phone) {
+      if (patient?.phone) {
         try {
-          const result = await sendSMSReminder(appointment);
-          results.push({ appointmentId: appointment._id, success: true, result });
+          const result = await sendSMSReminder(appointment, tz);
+          results.push({ appointmentId: appointment._id, success: result.success, result });
         } catch (error) {
-          results.push({ appointmentId: appointment._id, success: false, error: (error as Error).message });
+          console.error('Error sending SMS reminder:', error);
+          results.push({ appointmentId: appointment._id, success: false, error: 'Failed to send' });
         }
       }
     }
@@ -112,24 +120,23 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// SMS sending function using Twilio
-async function sendSMSReminder(appointment: any) {
+async function sendSMSReminder(appointment: any, tz: string) {
   const patient = appointment.patient as any;
   const doctor = appointment.doctor as any;
-  const appointmentDate = new Date(appointment.appointmentDate);
-  const appointmentTime = appointment.appointmentTime || 'TBD';
+  const appointmentTime = appointment.appointmentTime || '';
   const [hours, minutes] = appointmentTime.split(':').map(Number);
-  const displayTime = hours >= 12 
-    ? `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} PM`
-    : `${hours}:${minutes.toString().padStart(2, '0')} AM`;
+  const displayTime = Number.isFinite(hours) && Number.isFinite(minutes)
+    ? hours >= 12
+      ? `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} PM`
+      : `${hours}:${minutes.toString().padStart(2, '0')} AM`
+    : 'TBD';
+  const dateText = appointment.appointmentDate ? formatInTz(appointment.appointmentDate, 'MMM d, yyyy', tz) : 'TBD';
 
-  const message = `Reminder: You have an appointment with ${doctor ? `${doctor.firstName} ${doctor.lastName}` : 'your doctor'} on ${appointmentDate.toLocaleDateString()} at ${displayTime}. Appointment Code: ${appointment.appointmentCode}. Please arrive 10 minutes early.`;
+  const message = `Reminder: You have an appointment with ${doctor ? `${doctor.firstName} ${doctor.lastName}` : 'your doctor'} on ${dateText} at ${displayTime}. Appointment Code: ${appointment.appointmentCode}. Please arrive 10 minutes early.`;
 
-  // Format phone number (ensure it starts with + and country code)
-  let phoneNumber = patient.phone.trim();
-  if (!phoneNumber.startsWith('+')) {
-    // If no country code, assume it needs one (you may want to add country code detection)
-    phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`; // Default to US (+1)
+  const phoneNumber = normalizePhone(patient.phone);
+  if (!phoneNumber) {
+    return { success: false, configured: isSMSConfigured(), error: 'Invalid phone number' };
   }
 
   const smsResult = await sendSMS({
@@ -143,7 +150,6 @@ async function sendSMSReminder(appointment: any) {
     phone: phoneNumber,
     messageText: message,
     configured: isSMSConfigured(),
-    error: smsResult.error,
+    error: smsResult.success ? undefined : 'Failed to send',
   };
 }
-

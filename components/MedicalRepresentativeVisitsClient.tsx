@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, MapPin, Calendar, Clock, Trash2, Edit2 } from 'lucide-react';
+import { useModalA11y } from './hooks/useModalA11y';
 
 interface Visit {
   _id: string;
@@ -49,6 +50,9 @@ export default function MedicalRepresentativeVisitsClient() {
     status: 'scheduled',
     notes: '',
   });
+
+  const closeForm = () => setShowForm(false);
+  const formModalRef = useModalA11y<HTMLDivElement>(showForm, closeForm);
 
   // Fetch visits
   useEffect(() => {
@@ -213,7 +217,7 @@ export default function MedicalRepresentativeVisitsClient() {
               className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
               aria-label="Go back"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
+              <ArrowLeft aria-hidden="true" className="w-5 h-5 text-gray-600" />
             </button>
             <h1 className="text-3xl font-bold text-gray-900">Track Visits</h1>
           </div>
@@ -241,16 +245,24 @@ export default function MedicalRepresentativeVisitsClient() {
         {/* Form Modal */}
         {showForm && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div
+              ref={formModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="visit-form-title"
+              className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            >
               <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-900">
+                <h2 id="visit-form-title" className="text-2xl font-bold text-gray-900">
                   {editingId ? 'Edit Visit' : 'Add New Visit'}
                 </h2>
                 <button
-                  onClick={() => setShowForm(false)}
+                  type="button"
+                  onClick={closeForm}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
+                  aria-label="Close visit form"
                 >
-                  ×
+                  <span aria-hidden="true">×</span>
                 </button>
               </div>
 
@@ -414,6 +426,7 @@ export default function MedicalRepresentativeVisitsClient() {
             <button
               key={status}
               onClick={() => setFilterStatus(status)}
+              aria-pressed={filterStatus === status}
               className={`px-4 py-2 rounded-lg font-medium transition-colors capitalize ${
                 filterStatus === status
                   ? 'bg-blue-600 text-white'
@@ -474,16 +487,16 @@ export default function MedicalRepresentativeVisitsClient() {
                     <button
                       onClick={() => handleEditVisit(visit)}
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      aria-label="Edit visit"
+                      aria-label={`Edit visit to ${visit.clinicName}`}
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 aria-hidden="true" className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteVisit(visit._id)}
                       className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      aria-label="Delete visit"
+                      aria-label={`Delete visit to ${visit.clinicName}`}
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 aria-hidden="true" className="w-4 h-4" />
                     </button>
                   </div>
                 </div>

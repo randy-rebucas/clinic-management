@@ -5,19 +5,22 @@ import Appointment from '@/models/Appointment';
 import Visit from '@/models/Visit';
 import Invoice from '@/models/Invoice';
 import Doctor from '@/models/Doctor';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import {
+  requireTenantSession,
+  isTenantSessionError,
+  tenantFilter,
+  patientTenantFilter,
+} from '@/lib/api/tenant-session';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { dayRangeInTz, dayRangeOffsetInTz } from '@/lib/tz';
+import { periodRange } from '../_lib/report-range';
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to read reports
   const permissionCheck = await requirePermission(session, 'reports', 'read');
   if (permissionCheck) {
     return permissionCheck;
@@ -25,129 +28,92 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get('period') || 'today'; // today, week, month
+    const tz = await getTenantTimezone(tenantId);
 
-    // Calculate date range
     const now = new Date();
-    let dateRange: { start: Date; end: Date };
-    
-    switch (period) {
-      case 'week':
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - now.getDay());
-        weekStart.setHours(0, 0, 0, 0);
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
-        weekEnd.setHours(23, 59, 59, 999);
-        dateRange = { start: weekStart, end: weekEnd };
-        break;
-      case 'month':
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        monthStart.setHours(0, 0, 0, 0);
-        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        monthEnd.setHours(23, 59, 59, 999);
-        dateRange = { start: monthStart, end: monthEnd };
-        break;
-      case 'today':
-      default:
-        dateRange = {
-          start: new Date(now.setHours(0, 0, 0, 0)),
-          end: new Date(now.setHours(23, 59, 59, 999)),
-        };
-        break;
-    }
+    const dateRange = period === 'week'
+      ? periodRange('weekly', tz, now)
+      : period === 'month'
+        ? periodRange('monthly', tz, now)
+        : periodRange('daily', tz, now);
 
-    // Get today's date for today-specific queries
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(now);
-    todayEnd.setHours(23, 59, 59, 999);
+    const { start: todayStart, end: todayEnd } = dayRangeInTz(now, tz);
+    const scope = tenantFilter(tenantId);
 
-    // Build tenant filter
-    const tenantFilter: any = {};
-    if (tenantId) {
-      tenantFilter.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    // Fetch all data in parallel with tenant filter
     const [
       totalPatients,
       totalDoctors,
       todayAppointments,
       periodAppointments,
       periodVisits,
-      periodInvoices,
-      outstandingInvoices,
+      periodInvoiceAgg,
+      outstandingAgg,
+      paymentAgg,
     ] = await Promise.all([
-      Patient.countDocuments(tenantFilter),
-      Doctor.countDocuments({ ...tenantFilter, status: 'active' }),
+      Patient.countDocuments(patientTenantFilter(tenantId)),
+      Doctor.countDocuments({ ...scope, status: 'active' }),
       Appointment.countDocuments({
-        ...tenantFilter,
+        ...scope,
         appointmentDate: { $gte: todayStart, $lte: todayEnd },
         status: { $in: ['scheduled', 'confirmed'] },
       }),
       Appointment.countDocuments({
-        ...tenantFilter,
+        ...scope,
         appointmentDate: { $gte: dateRange.start, $lte: dateRange.end },
       }),
       Visit.countDocuments({
-        ...tenantFilter,
+        ...scope,
         date: { $gte: dateRange.start, $lte: dateRange.end },
         status: { $ne: 'cancelled' },
       }),
-      Invoice.find({
-        ...tenantFilter,
-        createdAt: { $gte: dateRange.start, $lte: dateRange.end },
-      }),
-      Invoice.find({
-        ...tenantFilter,
-        status: { $in: ['unpaid', 'partial'] },
-      }),
+      Invoice.aggregate([
+        { $match: { ...scope, createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
+        { $group: { _id: null, revenue: { $sum: { $ifNull: ['$totalPaid', 0] } }, billed: { $sum: { $ifNull: ['$total', 0] } } } },
+      ]),
+      Invoice.aggregate([
+        { $match: { ...scope, status: { $in: ['unpaid', 'partial'] } } },
+        { $group: { _id: null, outstanding: { $sum: { $ifNull: ['$outstandingBalance', 0] } }, count: { $sum: 1 } } },
+      ]),
+      Invoice.aggregate([
+        { $match: { ...scope, createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
+        { $unwind: '$payments' },
+        { $group: { _id: { $ifNull: ['$payments.method', 'unknown'] }, amount: { $sum: { $ifNull: ['$payments.amount', 0] } } } },
+      ]),
     ]);
 
-    // Calculate revenue metrics
-    const periodRevenue = periodInvoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
-    const periodBilled = periodInvoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
-    const totalOutstanding = outstandingInvoices.reduce((sum: number, inv: any) => sum + (inv.outstandingBalance || 0), 0);
+    const periodRevenue = periodInvoiceAgg[0]?.revenue || 0;
+    const periodBilled = periodInvoiceAgg[0]?.billed || 0;
+    const totalOutstanding = outstandingAgg[0]?.outstanding || 0;
+    const outstandingInvoiceCount = outstandingAgg[0]?.count || 0;
 
-    // Recent appointments (today) with tenant filter
     const recentAppointments = await Appointment.find({
-      ...tenantFilter,
+      ...scope,
       appointmentDate: { $gte: todayStart, $lte: todayEnd },
     })
       .populate('patient', 'firstName lastName')
       .populate('doctor', 'firstName lastName')
       .sort({ appointmentTime: 1 })
-      .limit(10);
+      .limit(10)
+      .lean();
 
-    // Upcoming appointments (next 7 days) with tenant filter
-    const nextWeek = new Date(now);
-    nextWeek.setDate(now.getDate() + 7);
+    const nextWeek = dayRangeOffsetInTz(7, now, tz).end;
     const upcomingAppointments = await Appointment.find({
-      ...tenantFilter,
-      appointmentDate: { $gte: todayEnd, $lte: nextWeek },
+      ...scope,
+      appointmentDate: { $gt: todayEnd, $lte: nextWeek },
       status: { $in: ['scheduled', 'confirmed'] },
     })
       .populate('patient', 'firstName lastName')
       .populate('doctor', 'firstName lastName')
       .sort({ appointmentDate: 1, appointmentTime: 1 })
-      .limit(10);
+      .limit(10)
+      .lean();
 
-    // Payment method breakdown for period
     const paymentMethodBreakdown: Record<string, number> = {};
-    periodInvoices.forEach((inv: any) => {
-      inv.payments?.forEach((payment: any) => {
-        const method = payment.method || 'unknown';
-        paymentMethodBreakdown[method] = (paymentMethodBreakdown[method] || 0) + (payment.amount || 0);
-      });
+    paymentAgg.forEach((row: any) => {
+      paymentMethodBreakdown[row._id] = row.amount;
     });
 
     return NextResponse.json({
@@ -167,7 +133,7 @@ export async function GET(request: NextRequest) {
           periodRevenue: parseFloat(periodRevenue.toFixed(2)),
           periodBilled: parseFloat(periodBilled.toFixed(2)),
           totalOutstanding: parseFloat(totalOutstanding.toFixed(2)),
-          outstandingInvoiceCount: outstandingInvoices.length,
+          outstandingInvoiceCount,
         },
         recentAppointments: recentAppointments.map((apt: any) => ({
           _id: apt._id,

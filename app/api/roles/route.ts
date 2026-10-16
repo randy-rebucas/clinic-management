@@ -1,99 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Role from '@/models/Role';
 import Permission from '@/models/Permission'; // Import to register model for populate
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requireAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zShortText } from '@/lib/api/validate';
+
+const ROLE_NAMES = ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'] as const;
+
+const defaultPermissionSchema = z.object({
+  resource: z.string().trim().min(1).max(100),
+  actions: z.array(z.string().trim().min(1).max(50)).max(20),
+});
+
+const createRoleSchema = z.object({
+  name: z.enum(ROLE_NAMES),
+  displayName: zShortText.min(1),
+  description: z.string().trim().max(1000).optional(),
+  level: z.number().int().min(0).max(100).optional(),
+  isActive: z.boolean().optional(),
+  defaultPermissions: z.array(defaultPermissionSchema).max(100).optional(),
+});
 
 // GET all roles - admin only
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-  
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Only admin can view roles
-  let isAdmin = session.role === 'admin';
-  
-  if (!isAdmin) {
-    // Double-check against database (handles session role mismatch)
-    try {
-      const User = (await import('@/models/User')).default;
-      const user = await User.findById(session.userId)
-        .populate('role', 'name')
-        .lean();
-      
-      if (user && (user as any).role) {
-        const roleName = typeof (user as any).role === 'object' && 'name' in (user as any).role
-          ? (user as any).role.name
-          : null;
-        
-        if (roleName === 'admin') {
-          isAdmin = true; // Allow access if user is admin in database
-        } else {
-          return forbiddenResponse('Admin access required');
-        }
-      } else {
-        return forbiddenResponse('Admin access required');
-      }
-    } catch (error) {
-      console.error('Error checking user role:', error);
-      return forbiddenResponse('Admin access required');
-    }
-  }
-  
-  if (!isAdmin) {
-    return forbiddenResponse('Admin access required');
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   try {
     await connectDB();
-    
+
+    if (!isAdmin(session)) {
+      // Double-check against database (handles session role mismatch)
+      const User = (await import('@/models/User')).default;
+      const user = await User.findOne(tenantFilter(tenantId, { _id: session.userId }))
+        .populate('role', 'name')
+        .lean();
+      const roleName = (user as any)?.role && typeof (user as any).role === 'object'
+        ? (user as any).role.name
+        : null;
+      if (roleName !== 'admin') {
+        return forbiddenResponse('Admin access required');
+      }
+    }
+
     // Ensure Permission model is registered on mongoose before populate
-    // Access mongoose.models to ensure the model is registered
     if (!mongoose.models.Permission) {
-      // Force registration by accessing the imported model
-      const _ = Permission;
+      void Permission;
     }
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = {};
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    // Fetch roles with populate
-    const roles = await Role.find(query)
-      .populate('permissions', 'resource actions')
+
+    const roles = await Role.find(tenantFilter(tenantId))
+      .populate({ path: 'permissions', select: 'resource actions', match: tenantFilter(tenantId) })
       .sort({ level: -1, name: 1 })
       .lean()
       .exec();
 
-    // Ensure we always return an array
     const rolesData = Array.isArray(roles) ? roles : [];
 
     return NextResponse.json({ success: true, data: rolesData });
   } catch (error: any) {
     console.error('Error fetching roles:', error);
-    // Provide more detailed error information
-    const errorMessage = error.message || error.toString() || 'Failed to fetch roles';
-    console.error('Error details:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
     return NextResponse.json(
-      { success: false, error: errorMessage },
+      { success: false, error: 'Failed to fetch roles' },
       { status: 500 }
     );
   }
@@ -101,41 +72,20 @@ export async function GET(request: NextRequest) {
 
 // POST create new role - admin only
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
-  
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantObjectId } = ctx;
 
-  // Only admin can create roles
-  if (session.role !== 'admin') {
+  if (!isAdmin(session)) {
     return forbiddenResponse('Admin access required');
   }
 
   try {
     await connectDB();
-    const body = await request.json();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
+    const parsed = await parseBody(request, createRoleSchema);
+    if (isValidationError(parsed)) return parsed;
 
-    // Validate role name
-    const validRoleNames = ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'];
-    if (body.name && !validRoleNames.includes(body.name)) {
-      return NextResponse.json(
-        { success: false, error: `Role name must be one of: ${validRoleNames.join(', ')}` },
-        { status: 400 }
-      );
-    }
-
-    // Ensure role is created with tenantId
-    const roleData: any = { ...body };
-    if (tenantId && !roleData.tenantId) {
-      roleData.tenantId = new Types.ObjectId(tenantId);
-    }
-
-    const role = await Role.create(roleData);
+    const role = await Role.create({ ...parsed.data, tenantId: tenantObjectId });
     await role.populate('permissions', 'resource actions');
 
     return NextResponse.json({ success: true, data: role }, { status: 201 });
@@ -143,7 +93,7 @@ export async function POST(request: NextRequest) {
     console.error('Error creating role:', error);
     if (error.name === 'ValidationError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid role data' },
         { status: 400 }
       );
     }
@@ -159,4 +109,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

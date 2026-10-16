@@ -37,39 +37,38 @@ export default function InvoicesPageClient() {
   };
 
   useEffect(() => {
+    const fetchInvoices = async () => {
+      try {
+        const res = await fetch('/api/invoices');
+      
+        if (res.status === 401) {
+          router.push('/login');
+          return;
+        }
+      
+        const contentType = res.headers.get('content-type');
+        let data;
+        if (contentType && contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const text = await res.text();
+          console.error('API returned non-JSON response:', text.substring(0, 500));
+          data = { success: false, error: `API error: ${res.status} ${res.statusText}` };
+        }
+      
+        if (data.success) {
+          setInvoices(data.data);
+        } else {
+          console.error('Failed to fetch invoices:', data.error);
+        }
+      } catch (error) {
+        console.error('Failed to fetch invoices:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchInvoices();
-  }, []);
-
-  const fetchInvoices = async () => {
-    try {
-      const res = await fetch('/api/invoices');
-      
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      const contentType = res.headers.get('content-type');
-      let data;
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        console.error('API returned non-JSON response:', text.substring(0, 500));
-        data = { success: false, error: `API error: ${res.status} ${res.statusText}` };
-      }
-      
-      if (data.success) {
-        setInvoices(data.data);
-      } else {
-        console.error('Failed to fetch invoices:', data.error);
-      }
-    } catch (error) {
-      console.error('Failed to fetch invoices:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [router]);
 
   const getStatusColor = (status: string): 'green' | 'yellow' | 'red' | 'gray' => {
     switch (status) {
@@ -160,23 +159,26 @@ export default function InvoicesPageClient() {
                 <div className="flex-1">
                   <div className="relative">
                     <div className="absolute left-4 top-1/2 transform -translate-y-1/2 p-1.5">
-                      <svg className="w-5 h-5 text-gray-400" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <svg className="w-5 h-5 text-gray-400" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                         <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
                       </svg>
                     </div>
                     <input
                       type="text"
                       placeholder="Search by patient name or invoice number..."
+                      aria-label="Search invoices"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm"
                     />
                     {searchQuery && (
                       <button
+                        type="button"
                         onClick={() => setSearchQuery('')}
+                        aria-label="Clear search"
                         className="absolute right-4 top-1/2 transform -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                       >
-                        <svg width="14" height="14" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg width="14" height="14" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                           <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                         </svg>
                       </button>
@@ -187,6 +189,7 @@ export default function InvoicesPageClient() {
                   <select
                     value={filterStatus}
                     onChange={(e) => setFilterStatus(e.target.value)}
+                    aria-label="Filter by status"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                   >
                     <option value="all">All Statuses</option>

@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import InventoryItem from '@/models/Inventory';
-import Medicine from '@/models/Medicine';
-import User from '@/models/User';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { isAdmin } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
+
+const MAX_ITEMS = 5000;
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   // Only admin can view inventory reports
-  if (session.role !== 'admin') {
+  if (!isAdmin(session)) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized' },
       { status: 403 }
@@ -27,7 +25,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const status = searchParams.get('status');
 
-    const query: any = {};
+    const query: any = tenantFilter(tenantId);
     if (category) {
       query.category = category;
     }
@@ -36,9 +34,9 @@ export async function GET(request: NextRequest) {
     }
 
     const items = await InventoryItem.find(query)
-      .populate('medicineId', 'name genericName')
-      .populate('lastRestockedBy', 'name')
-      .sort({ name: 1 });
+      .sort({ name: 1 })
+      .limit(MAX_ITEMS)
+      .lean();
 
     // Calculate statistics
     const totalItems = items.length;

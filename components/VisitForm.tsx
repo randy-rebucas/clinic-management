@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
+import { useModalA11y } from './hooks/useModalA11y';
 
 const SignaturePad = dynamic(() => import('./SignaturePad'), { ssr: false });
 
@@ -89,7 +90,8 @@ interface VisitFormData {
 interface VisitFormProps {
   initialData?: Partial<VisitFormData>;
   patients: Array<{ _id: string; firstName: string; lastName: string; email?: string; phone?: string; patientCode?: string }>;
-  onSubmit: (data: VisitFormData) => void;
+  /** Return (or resolve to) false when the save failed so the local draft is kept. */
+  onSubmit: (data: VisitFormData) => void | boolean | Promise<void | boolean>;
   onCancel?: () => void;
   onDraftSaved?: (draftId: string) => void;
   providerName: string;
@@ -115,6 +117,27 @@ interface SelectedHistoryItem {
 
 
 const LOCAL_DRAFT_KEY = 'visit_form_draft';
+
+const EMPTY_QUICK_HISTORY: QuickHistoryData = {
+  visits: [],
+  appointments: [],
+  prescriptions: [],
+  invoices: [],
+  labResults: [],
+};
+
+/** Timestamp of the saved local draft, or null when there is none. */
+function readLocalDraftTimestamp(): string | null {
+  try {
+    const raw = localStorage.getItem(LOCAL_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { timestamp?: string; data?: Partial<VisitFormData> };
+    return parsed?.data ? parsed.timestamp ?? '' : null;
+  } catch {
+    // ignore corrupt data
+    return null;
+  }
+}
 
 export default function VisitForm({
   initialData,
@@ -145,9 +168,15 @@ export default function VisitForm({
   const [icd10Search, setIcd10Search] = useState('');
   const [icd10Results, setIcd10Results] = useState<Array<{ code: string; description: string }>>([]);
   const [showIcd10Search, setShowIcd10Search] = useState(false);
-  const [patientSearch, setPatientSearch] = useState('');
+  const [patientSearchInput, setPatientSearch] = useState<string | null>(null);
   const [showPatientSearch, setShowPatientSearch] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<{ _id: string; firstName: string; lastName: string; email?: string; phone?: string; patientCode?: string } | null>(null);
+  const [pickedPatient, setSelectedPatient] = useState<{ _id: string; firstName: string; lastName: string; email?: string; phone?: string; patientCode?: string } | null>(null);
+  // An explicit pick wins; a preset/restored patient id is resolved from `patients`.
+  const selectedPatient =
+    (pickedPatient && pickedPatient._id === formData.patient ? pickedPatient : null) ??
+    (formData.patient ? patients.find((p) => p._id === formData.patient) ?? null : null);
+  const patientSearch =
+    patientSearchInput ?? (selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : '');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [activeTab, setActiveTab] = useState<'soap' | 'traditional' | 'treatment'>('soap');
@@ -156,22 +185,22 @@ export default function VisitForm({
   const [medicationNameOptions, setMedicationNameOptions] = useState<{ name: string; dosage?: string; frequency?: string; duration?: string; source?: string }[]>([]);
   const [activeMedSuggestionIndex, setActiveMedSuggestionIndex] = useState<number | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const initializedRef = useRef(false);
   // Draft feature state
   const [draftId, setDraftId] = useState<string | undefined>(initialData?._id && initialData?.status === 'draft' ? initialData._id : undefined);
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [localDraftBanner, setLocalDraftBanner] = useState(false);
-  const [localDraftTimestamp, setLocalDraftTimestamp] = useState<string>('');
+  // VisitForm is only mounted after client-side data loading (never during SSR/hydration), so
+  // localStorage can be read in the initializer. Only new visits offer the local draft.
+  const [localDraftTimestamp] = useState<string | null>(() =>
+    initialData?._id ? null : readLocalDraftTimestamp()
+  );
+  const [localDraftBanner, setLocalDraftBanner] = useState(localDraftTimestamp !== null);
   const [showHistoryPreview, setShowHistoryPreview] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [quickHistory, setQuickHistory] = useState<QuickHistoryData>({
-    visits: [],
-    appointments: [],
-    prescriptions: [],
-    invoices: [],
-    labResults: [],
-  });
+  const [patientHistory, setQuickHistory] = useState<QuickHistoryData>(EMPTY_QUICK_HISTORY);
+  const quickHistory = formData.patient ? patientHistory : EMPTY_QUICK_HISTORY;
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<SelectedHistoryItem | null>(null);
   const [historyDetail, setHistoryDetail] = useState<any | null>(null);
   const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
@@ -179,24 +208,6 @@ export default function VisitForm({
 
   const chiefComplaintInputRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
-
-  // On mount: check localStorage for a saved draft (only for new visits)
-  useEffect(() => {
-    if (initialData?._id) return; // editing existing — skip
-    try {
-      const raw = localStorage.getItem(LOCAL_DRAFT_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as { timestamp: string; data: Partial<VisitFormData>; vitals: VisitFormData['vitals'] };
-        if (parsed?.data) {
-          setLocalDraftBanner(true);
-          setLocalDraftTimestamp(parsed.timestamp);
-        }
-      }
-    } catch {
-      // ignore corrupt data
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Auto-save to localStorage (debounced 1.5s) whenever form is dirty
   useEffect(() => {
@@ -449,31 +460,12 @@ export default function VisitForm({
     const value = e.target.value;
     fetchMedicationNames(value);
   };
-  // Sync selected patient when formData.patient changes
-  useEffect(() => {
-    if (formData.patient) {
-      const patient = patients.find((p) => p._id === formData.patient);
-      // Using setTimeout to avoid synchronous setState in effect
-      const timer = setTimeout(() => {
-        setSelectedPatient(patient || null);
-        if (patient) {
-          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-        }
-      }, 0);
-      return () => clearTimeout(timer);
-    } else {
-      setTimeout(() => {
-        setSelectedPatient(null);
-        setPatientSearch('');
-        setQuickHistory({ visits: [], appointments: [], prescriptions: [], invoices: [], labResults: [] });
-      }, 0);
-    }
-
-  }, [formData.patient, patients]);
-
   useEffect(() => {
     if (!formData.patient) return;
-    fetchQuickHistory(formData.patient);
+    const load = async () => {
+      await fetchQuickHistory(formData.patient);
+    };
+    load();
   }, [formData.patient, fetchQuickHistory]);
 
 
@@ -523,18 +515,31 @@ export default function VisitForm({
     return parts.length ? 'Vitals: ' + parts.join(', ') : '';
   }
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!formData.patient || (!lockPatientSelection && !selectedPatient)) {
       alert('Please select a valid patient');
       setShowPatientSearch(true);
       return;
     }
-    setIsDirty(false);
-    localStorage.removeItem(LOCAL_DRAFT_KEY);
-    // Merge the separate `vitals` state back into formData before submitting
-    // (vitals inputs update the dedicated `vitals` state, not formData.vitals)
-    onSubmit({ ...formData, vitals });
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      // Merge the separate `vitals` state back into formData before submitting
+      // (vitals inputs update the dedicated `vitals` state, not formData.vitals)
+      const ok = await onSubmit({ ...formData, vitals });
+      // Keep the local draft unless the save is confirmed, so a failed save can't lose the note.
+      if (ok !== false) {
+        setIsDirty(false);
+        try {
+          localStorage.removeItem(LOCAL_DRAFT_KEY);
+        } catch {
+          // storage unavailable
+        }
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Draft status badge label
@@ -604,6 +609,9 @@ export default function VisitForm({
     setHistoryDetail(null);
     setHistoryDetailError(null);
   };
+
+  const signatureDialogRef = useModalA11y<HTMLDivElement>(showSignaturePad, () => setShowSignaturePad(false));
+  const historyDialogRef = useModalA11y<HTMLDivElement>(showHistoryPreview, closeHistoryDrawer);
 
   const historyTotalCount =
     quickHistory.visits.length +
@@ -683,25 +691,21 @@ export default function VisitForm({
     setShowSignaturePad(false);
   };
 
-  // Sync vitals state with initialData.vitals
-  useEffect(() => {
-    let timer: NodeJS.Timeout | undefined;
-    if (initialData?.vitals && JSON.stringify(initialData.vitals) !== JSON.stringify(vitals)) {
-      timer = setTimeout(() => setVitals(initialData.vitals), 0);
-    }
-    // Optionally reset to {} if no vitals:
-    else if (!initialData?.vitals && Object.keys(vitals ?? {}).length > 0) {
-      timer = setTimeout(() => setVitals({}), 0);
-    }
-    return () => { if (timer) clearTimeout(timer); };
-  }, [formKey, initialData?.vitals]);
+  // Vitals provided later by the parent (e.g. queue vitals that load after the form) replace the
+  // current vitals; adjusting state during render avoids an extra effect pass.
+  const initialVitalsKey = JSON.stringify(initialData?.vitals ?? null);
+  const [syncedVitalsKey, setSyncedVitalsKey] = useState(initialVitalsKey);
+  if (syncedVitalsKey !== initialVitalsKey) {
+    setSyncedVitalsKey(initialVitalsKey);
+    setVitals(initialData?.vitals || {});
+  }
   return (
     <form key={formKey} onSubmit={handleSubmit}>
       {/* Local draft restore banner */}
       {localDraftBanner && (
         <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 bg-amber-50 border border-amber-300 rounded-lg text-sm">
           <span className="text-amber-800 font-medium">
-            📝 You have an unsaved local draft from {new Date(localDraftTimestamp).toLocaleString()}. Restore it?
+            📝 You have an unsaved local draft from {new Date(localDraftTimestamp ?? '').toLocaleString()}. Restore it?
           </span>
           <div className="flex gap-2 shrink-0">
             <button type="button" onClick={restoreLocalDraft} className="px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-xs font-semibold">Restore</button>
@@ -737,7 +741,7 @@ export default function VisitForm({
           <div className="flex flex-col gap-4">
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label htmlFor={lockPatientSelection ? undefined : 'visit-patient-search'} className="block text-sm font-semibold text-gray-700 mb-2">
                   Patient <span className="text-red-500">*</span>
                 </label>
                 {lockPatientSelection ? (
@@ -759,6 +763,7 @@ export default function VisitForm({
                     <input
                       type="text"
                       required
+                      id="visit-patient-search"
                       value={patientSearch}
                       onChange={(e) => {
                         setPatientSearch(e.target.value);
@@ -841,11 +846,12 @@ export default function VisitForm({
                 )}
               </div>
               <div className="flex-1" style={{ minWidth: '200px' }}>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label htmlFor="visit-type" className="block text-sm font-semibold text-gray-700 mb-2">
                   Visit Type <span className="text-red-500">*</span>
                 </label>
                 <p className="text-xs text-gray-600 mb-2">Select the type of visit being documented</p>
                 <select
+                  id="visit-type"
                   value={formData.visitType}
                   onChange={(e) => setFormData({ ...formData, visitType: e.target.value as any })}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -860,10 +866,11 @@ export default function VisitForm({
               </div>
             </div>
             <div className="w-full">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Chief Complaint</label>
+              <label htmlFor="visit-chief-complaint" className="block text-sm font-semibold text-gray-700 mb-2">Chief Complaint</label>
               <p className="text-xs text-gray-600 mb-2">Primary reason for the visit in the patient&apos;s own words</p>
               <input
                 type="text"
+                id="visit-chief-complaint"
                 value={formData.chiefComplaint}
                 onChange={(e) => setFormData({ ...formData, chiefComplaint: e.target.value })}
                 ref={el => { chiefComplaintInputRef.current = el; }}
@@ -930,11 +937,12 @@ export default function VisitForm({
               {activeTab === 'soap' && (
                 <div className="flex flex-col gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="visit-soap-subjective" className="block text-sm font-semibold text-gray-700 mb-2">
                       S - Subjective
                     </label>
                     <p className="text-xs text-gray-600 mb-2">Patient&apos;s description of symptoms, history, and concerns</p>
                     <textarea
+                      id="visit-soap-subjective"
                       value={formData.soapNotes?.subjective || ''}
                       onChange={(e) =>
                         setFormData({
@@ -948,11 +956,12 @@ export default function VisitForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="visit-soap-objective" className="block text-sm font-semibold text-gray-700 mb-2">
                       O - Objective
                     </label>
                     <p className="text-xs text-gray-600 mb-2">Measurable observations, vital signs, and physical examination findings</p>
                     <textarea
+                      id="visit-soap-objective"
                       value={(() => {
                         const vitalsText = formatVitalsForSoap(initialData?.vitals);
                         const userText = formData.soapNotes?.objective || '';
@@ -977,11 +986,12 @@ export default function VisitForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="visit-soap-assessment" className="block text-sm font-semibold text-gray-700 mb-2">
                       A - Assessment
                     </label>
                     <p className="text-xs text-gray-600 mb-2">Clinical impression, diagnosis, or differential diagnosis</p>
                     <textarea
+                      id="visit-soap-assessment"
                       value={formData.soapNotes?.assessment || ''}
                       onChange={(e) =>
                         setFormData({
@@ -995,11 +1005,12 @@ export default function VisitForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="visit-soap-plan" className="block text-sm font-semibold text-gray-700 mb-2">
                       P - Plan
                     </label>
                     <p className="text-xs text-gray-600 mb-2">Treatment plan, medications, procedures, and follow-up instructions</p>
                     <textarea
+                      id="visit-soap-plan"
                       value={formData.soapNotes?.plan || ''}
                       onChange={(e) =>
                         setFormData({
@@ -1019,9 +1030,10 @@ export default function VisitForm({
               {activeTab === 'traditional' && (
                 <div className="flex flex-col gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">History of Present Illness</label>
+                    <label htmlFor="visit-hpi" className="block text-sm font-semibold text-gray-700 mb-2">History of Present Illness</label>
                     <p className="text-xs text-gray-600 mb-2">Detailed chronological description of the current illness or problem</p>
                     <textarea
+                      id="visit-hpi"
                       value={formData.historyOfPresentIllness}
                       onChange={(e) => setFormData({ ...formData, historyOfPresentIllness: e.target.value })}
                       rows={4}
@@ -1030,14 +1042,15 @@ export default function VisitForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Vitals</label>
+                    <p className="block text-sm font-semibold text-gray-700 mb-2">Vitals</p>
                     <p className="text-xs text-gray-600 mb-2">Record patient&apos;s vital signs during the visit</p>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">BP (Blood Pressure)</label>
+                        <label htmlFor="visit-vitals-bp" className="block text-xs font-semibold text-gray-600 mb-2">BP (Blood Pressure)</label>
                         <p className="text-xs text-gray-500 mb-1.5">Format: 120/80</p>
                         <input
                           type="text"
+                          id="visit-vitals-bp"
                           value={(vitals?.bp ?? '')}
                           onChange={(e) => setVitals({ ...vitals, bp: e.target.value })}
                           placeholder="120/80"
@@ -1045,10 +1058,11 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">HR (Heart Rate)</label>
+                        <label htmlFor="visit-vitals-hr" className="block text-xs font-semibold text-gray-600 mb-2">HR (Heart Rate)</label>
                         <p className="text-xs text-gray-500 mb-1.5">Beats per minute</p>
                         <input
                           type="number"
+                          id="visit-vitals-hr"
                           value={(vitals?.hr ?? '')}
                           onChange={(e) => setVitals({ ...vitals, hr: parseInt(e.target.value) || undefined })}
                           placeholder="72"
@@ -1056,11 +1070,12 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Temp (°C)</label>
+                        <label htmlFor="visit-vitals-temp" className="block text-xs font-semibold text-gray-600 mb-2">Temp (°C)</label>
                         <p className="text-xs text-gray-500 mb-1.5">Temperature in Celsius</p>
                         <input
                           type="number"
                           step="0.1"
+                          id="visit-vitals-temp"
                           value={(vitals?.tempC ?? '')}
                           onChange={(e) => setVitals({ ...vitals, tempC: parseFloat(e.target.value) || undefined })}
                           placeholder="37.0"
@@ -1068,10 +1083,11 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">SpO2 (%)</label>
+                        <label htmlFor="visit-vitals-spo2" className="block text-xs font-semibold text-gray-600 mb-2">SpO2 (%)</label>
                         <p className="text-xs text-gray-500 mb-1.5">Oxygen saturation</p>
                         <input
                           type="number"
+                          id="visit-vitals-spo2"
                           value={(vitals?.spo2 ?? '')}
                           onChange={(e) => setVitals({ ...vitals, spo2: parseInt(e.target.value) || undefined })}
                           placeholder="98"
@@ -1079,10 +1095,11 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">RR (Respiratory Rate)</label>
+                        <label htmlFor="visit-vitals-rr" className="block text-xs font-semibold text-gray-600 mb-2">RR (Respiratory Rate)</label>
                         <p className="text-xs text-gray-500 mb-1.5">Breaths per minute</p>
                         <input
                           type="number"
+                          id="visit-vitals-rr"
                           value={(vitals?.rr ?? '')}
                           onChange={(e) => setVitals({ ...vitals, rr: parseInt(e.target.value) || undefined })}
                           placeholder="16"
@@ -1090,11 +1107,12 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Height (cm)</label>
+                        <label htmlFor="visit-vitals-height" className="block text-xs font-semibold text-gray-600 mb-2">Height (cm)</label>
                         <p className="text-xs text-gray-500 mb-1.5">Height in centimeters</p>
                         <input
                           type="number"
                           step="0.1"
+                          id="visit-vitals-height"
                           value={(vitals?.heightCm ?? '')}
                           onChange={(e) => setVitals({ ...vitals, heightCm: parseFloat(e.target.value) || undefined })}
                           placeholder="170"
@@ -1102,11 +1120,12 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Weight (kg)</label>
+                        <label htmlFor="visit-vitals-weight" className="block text-xs font-semibold text-gray-600 mb-2">Weight (kg)</label>
                         <p className="text-xs text-gray-500 mb-1.5">Weight in kilograms</p>
                         <input
                           type="number"
                           step="0.1"
+                          id="visit-vitals-weight"
                           value={(vitals?.weightKg ?? '')}
                           onChange={(e) => setVitals({ ...vitals, weightKg: parseFloat(e.target.value) || undefined })}
                           placeholder="70"
@@ -1114,11 +1133,12 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">BMI</label>
+                        <label htmlFor="visit-vitals-bmi" className="block text-xs font-semibold text-gray-600 mb-2">BMI</label>
                         <p className="text-xs text-gray-500 mb-1.5">Body Mass Index</p>
                         <input
                           type="number"
                           step="0.1"
+                          id="visit-vitals-bmi"
                           value={(vitals?.bmi ?? '')}
                           onChange={(e) => setVitals({ ...vitals, bmi: parseFloat(e.target.value) || undefined })}
                           placeholder="24.2"
@@ -1128,13 +1148,14 @@ export default function VisitForm({
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Physical Examination</label>
+                    <p className="block text-sm font-semibold text-gray-700 mb-2">Physical Examination</p>
                     <p className="text-xs text-gray-600 mb-2">Document findings for each body system examined</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">General</label>
+                        <label htmlFor="visit-pe-general" className="block text-xs font-semibold text-gray-600 mb-2">General</label>
                         <p className="text-xs text-gray-500 mb-1.5">Overall appearance, alertness, distress level</p>
                         <textarea
+                          id="visit-pe-general"
                           value={formData.physicalExam?.general || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1148,9 +1169,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Head/HEENT</label>
+                        <label htmlFor="visit-pe-heent" className="block text-xs font-semibold text-gray-600 mb-2">Head/HEENT</label>
                         <p className="text-xs text-gray-500 mb-1.5">Head, eyes, ears, nose, throat findings</p>
                         <textarea
+                          id="visit-pe-heent"
                           value={formData.physicalExam?.headEent || formData.physicalExam?.heent || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1164,9 +1186,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Chest</label>
+                        <label htmlFor="visit-pe-chest" className="block text-xs font-semibold text-gray-600 mb-2">Chest</label>
                         <p className="text-xs text-gray-500 mb-1.5">Chest wall and thoracic findings</p>
                         <textarea
+                          id="visit-pe-chest"
                           value={formData.physicalExam?.chest || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1180,9 +1203,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Lungs</label>
+                        <label htmlFor="visit-pe-lungs" className="block text-xs font-semibold text-gray-600 mb-2">Lungs</label>
                         <p className="text-xs text-gray-500 mb-1.5">Breath sounds, air entry, wheeze/crackles</p>
                         <textarea
+                          id="visit-pe-lungs"
                           value={formData.physicalExam?.lungs || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1196,9 +1220,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Cardiovascular</label>
+                        <label htmlFor="visit-pe-cardiovascular" className="block text-xs font-semibold text-gray-600 mb-2">Cardiovascular</label>
                         <p className="text-xs text-gray-500 mb-1.5">Heart sounds, pulses, peripheral circulation</p>
                         <textarea
+                          id="visit-pe-cardiovascular"
                           value={formData.physicalExam?.cardiovascular || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1212,9 +1237,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Abdomen</label>
+                        <label htmlFor="visit-pe-abdomen" className="block text-xs font-semibold text-gray-600 mb-2">Abdomen</label>
                         <p className="text-xs text-gray-500 mb-1.5">Inspection, auscultation, palpation, percussion</p>
                         <textarea
+                          id="visit-pe-abdomen"
                           value={formData.physicalExam?.abdomen || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1228,9 +1254,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Extremities</label>
+                        <label htmlFor="visit-pe-extremities" className="block text-xs font-semibold text-gray-600 mb-2">Extremities</label>
                         <p className="text-xs text-gray-500 mb-1.5">Edema, deformities, pulses, range of motion</p>
                         <textarea
+                          id="visit-pe-extremities"
                           value={formData.physicalExam?.extremities || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1244,9 +1271,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Skin</label>
+                        <label htmlFor="visit-pe-skin" className="block text-xs font-semibold text-gray-600 mb-2">Skin</label>
                         <p className="text-xs text-gray-500 mb-1.5">Rashes, lesions, hydration, turgor</p>
                         <textarea
+                          id="visit-pe-skin"
                           value={formData.physicalExam?.skin || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1260,9 +1288,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Lymph Notes</label>
+                        <label htmlFor="visit-pe-lymph" className="block text-xs font-semibold text-gray-600 mb-2">Lymph Notes</label>
                         <p className="text-xs text-gray-500 mb-1.5">Lymph node findings and remarks</p>
                         <textarea
+                          id="visit-pe-lymph"
                           value={formData.physicalExam?.lymphNotes || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1276,9 +1305,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Breast</label>
+                        <label htmlFor="visit-pe-breast" className="block text-xs font-semibold text-gray-600 mb-2">Breast</label>
                         <p className="text-xs text-gray-500 mb-1.5">Inspection/palpation findings</p>
                         <textarea
+                          id="visit-pe-breast"
                           value={formData.physicalExam?.breast || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1292,9 +1322,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Rectum</label>
+                        <label htmlFor="visit-pe-rectum" className="block text-xs font-semibold text-gray-600 mb-2">Rectum</label>
                         <p className="text-xs text-gray-500 mb-1.5">Rectal examination findings</p>
                         <textarea
+                          id="visit-pe-rectum"
                           value={formData.physicalExam?.rectum || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1308,9 +1339,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Gentalia/Genitalia</label>
+                        <label htmlFor="visit-pe-genitalia" className="block text-xs font-semibold text-gray-600 mb-2">Gentalia/Genitalia</label>
                         <p className="text-xs text-gray-500 mb-1.5">Genital examination findings</p>
                         <textarea
+                          id="visit-pe-genitalia"
                           value={formData.physicalExam?.genitalia || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1324,9 +1356,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Musculoskeletal</label>
+                        <label htmlFor="visit-pe-musculoskeletal" className="block text-xs font-semibold text-gray-600 mb-2">Musculoskeletal</label>
                         <p className="text-xs text-gray-500 mb-1.5">Joints, gait, deformities, strength</p>
                         <textarea
+                          id="visit-pe-musculoskeletal"
                           value={formData.physicalExam?.musculoskeletal || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1340,9 +1373,10 @@ export default function VisitForm({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Neurological</label>
+                        <label htmlFor="visit-pe-neurological" className="block text-xs font-semibold text-gray-600 mb-2">Neurological</label>
                         <p className="text-xs text-gray-500 mb-1.5">Mental status, cranial nerves, reflexes</p>
                         <textarea
+                          id="visit-pe-neurological"
                           value={formData.physicalExam?.neurological || formData.physicalExam?.neuro || ''}
                           onChange={(e) =>
                             setFormData({
@@ -1357,9 +1391,10 @@ export default function VisitForm({
                       </div>
                     </div>
                     <div className="mt-4">
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Admitting Impression</label>
+                      <label htmlFor="visit-admitting-impression" className="block text-sm font-semibold text-gray-700 mb-2">Admitting Impression</label>
                       <p className="text-xs text-gray-600 mb-2">Primary clinical impression on admission/encounter</p>
                       <textarea
+                        id="visit-admitting-impression"
                         value={formData.admittingImpression || ''}
                         onChange={(e) => setFormData({ ...formData, admittingImpression: e.target.value })}
                         rows={3}
@@ -1377,7 +1412,7 @@ export default function VisitForm({
                   <div>
                     <div className="flex justify-between items-center mb-3">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700">Medications</label>
+                        <p className="block text-sm font-semibold text-gray-700">Medications</p>
                         <p className="text-xs text-gray-600 mt-1">Prescribed medications with dosage, frequency, and duration</p>
                       </div>
                       <button
@@ -1405,6 +1440,7 @@ export default function VisitForm({
                                   <input
                                     type="text"
                                     placeholder="e.g., Amoxicillin"
+                                    aria-label={`Medication ${index + 1} name`}
                                     value={med.name}
                                     autoComplete="off"
                                     onFocus={() => {
@@ -1479,6 +1515,7 @@ export default function VisitForm({
                                 <input
                                   type="text"
                                   placeholder="e.g., 500mg"
+                                  aria-label={`Medication ${index + 1} dosage`}
                                   value={med.dosage}
                                   list="dosage-options"
                                   onChange={(e) => {
@@ -1504,6 +1541,7 @@ export default function VisitForm({
                                 <input
                                   type="text"
                                   placeholder="e.g., 3x daily"
+                                  aria-label={`Medication ${index + 1} frequency`}
                                   value={med.frequency}
                                   list="frequency-options"
                                   onChange={(e) => {
@@ -1530,6 +1568,7 @@ export default function VisitForm({
                                   <input
                                     type="text"
                                     placeholder="e.g., 7 days"
+                                    aria-label={`Medication ${index + 1} duration`}
                                     value={med.duration}
                                     list="duration-options"
                                     onChange={(e) => {
@@ -1556,6 +1595,7 @@ export default function VisitForm({
                                 <div className="flex items-center gap-2">
                                   <input
                                     type="number"
+                                    aria-label={`Medication ${index + 1} quantity`}
                                     value={med.quantity ? med.quantity.toString() : '1'}
                                     onChange={(e) => {
                                       const medications = [...(formData.treatmentPlan?.medications || [])];
@@ -1582,6 +1622,7 @@ export default function VisitForm({
                                   <input
                                     type="text"
                                     placeholder="Additional instructions..."
+                                    aria-label={`Medication ${index + 1} instructions`}
                                     value={med.instructions}
                                     onChange={(e) => {
                                       const medications = [...(formData.treatmentPlan?.medications || [])];
@@ -1606,19 +1647,21 @@ export default function VisitForm({
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Follow-up Date</label>
+                    <label htmlFor="visit-follow-up-date" className="block text-sm font-semibold text-gray-700 mb-2">Follow-up Date</label>
                     <p className="text-xs text-gray-600 mb-2">Schedule the next appointment or follow-up date</p>
                     <input
                       type="date"
+                      id="visit-follow-up-date"
                       value={formData.followUpDate}
                       onChange={(e) => setFormData({ ...formData, followUpDate: e.target.value })}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Follow-up Instructions</label>
+                    <label htmlFor="visit-follow-up-instructions" className="block text-sm font-semibold text-gray-700 mb-2">Follow-up Instructions</label>
                     <p className="text-xs text-gray-600 mb-2">Instructions for the patient regarding follow-up care</p>
                     <textarea
+                      id="visit-follow-up-instructions"
                       value={formData.treatmentPlan?.followUp?.instructions || ''}
                       onChange={(e) =>
                         setFormData({
@@ -1700,6 +1743,7 @@ export default function VisitForm({
                       <p className="text-xs text-gray-500 mb-1.5">Start typing to search ICD-10 codes</p>
                       <input
                         type="text"
+                        aria-label={`Diagnosis ${index + 1} ICD-10 code`}
                         value={diagnosis.code || ''}
                         onChange={(e) => {
                           updateDiagnosis(index, 'code', e.target.value);
@@ -1734,6 +1778,7 @@ export default function VisitForm({
                       <p className="text-xs text-gray-500 mb-1.5">Full diagnosis description</p>
                       <input
                         type="text"
+                        aria-label={`Diagnosis ${index + 1} description`}
                         value={diagnosis.description || ''}
                         onChange={(e) => updateDiagnosis(index, 'description', e.target.value)}
                         placeholder="Diagnosis description"
@@ -1743,6 +1788,7 @@ export default function VisitForm({
                     <div className="flex items-end gap-3">
                       <div className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
                         <input type="checkbox"
+                          aria-label={`Diagnosis ${index + 1} primary`}
                           checked={diagnosis.primary || false}
                           onChange={(e) => updateDiagnosis(index, 'primary', e.target.checked)}
                           className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
@@ -1825,9 +1871,14 @@ export default function VisitForm({
                   backgroundColor: 'rgba(0, 0, 0, 0.3)',
                   backdropFilter: 'blur(4px)',
                 }}
+                aria-hidden="true"
                 onClick={() => setShowSignaturePad(false)}
               />
               <div
+                ref={signatureDialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Digital signature"
                 className="relative"
                 style={{
                   zIndex: 10,
@@ -1854,14 +1905,15 @@ export default function VisitForm({
           <div className="fixed inset-0 z-50">
             <div
               className="absolute inset-0 bg-black/40"
+              aria-hidden="true"
               onClick={closeHistoryDrawer}
             />
-            <div className={`absolute left-0 top-0 h-full w-full ${selectedHistoryItem ? 'max-w-[92rem]' : 'max-w-[430px]'} bg-white shadow-2xl border-r border-gray-200 overflow-hidden transition-all duration-300`}>
+            <div ref={historyDialogRef} role="dialog" aria-modal="true" aria-labelledby="visit-history-title" className={`absolute left-0 top-0 h-full w-full ${selectedHistoryItem ? 'max-w-[92rem]' : 'max-w-[430px]'} bg-white shadow-2xl border-r border-gray-200 overflow-hidden transition-all duration-300`}>
               <div className="h-full flex flex-col lg:flex-row">
                 <div className="w-full lg:w-[390px] border-r border-gray-200 overflow-y-auto bg-white">
                   <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
                     <div>
-                      <h3 className="text-base font-bold text-gray-900">Quick History Preview</h3>
+                      <h3 id="visit-history-title" className="text-base font-bold text-gray-900">Quick History Preview</h3>
                       <p className="text-xs text-gray-600 mt-1">
                         {selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : 'No patient selected'}
                       </p>
@@ -1872,9 +1924,10 @@ export default function VisitForm({
                     <button
                       type="button"
                       onClick={closeHistoryDrawer}
+                      aria-label="Close history preview"
                       className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
@@ -2142,7 +2195,7 @@ export default function VisitForm({
               </svg>
             </div>
             <div>
-              <label className="block text-sm font-bold text-gray-900">Clinical Images & Attachments</label>
+              <label htmlFor="visit-attachments" className="block text-sm font-bold text-gray-900">Clinical Images & Attachments</label>
               <p className="text-xs text-gray-600 mt-1">
                 Upload clinical images, X-rays, or other documents related to this visit
               </p>
@@ -2151,6 +2204,7 @@ export default function VisitForm({
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <input
               type="file"
+              id="visit-attachments"
               accept="image/*,.pdf,.doc,.docx"
               multiple
               onChange={(e) => {
@@ -2174,11 +2228,12 @@ export default function VisitForm({
               </svg>
             </div>
             <div>
-              <label className="block text-sm font-bold text-gray-900">Additional Notes</label>
+              <label htmlFor="visit-notes" className="block text-sm font-bold text-gray-900">Additional Notes</label>
               <p className="text-xs text-gray-600 mt-1">Any additional information, observations, or comments about this visit</p>
             </div>
           </div>
           <textarea
+            id="visit-notes"
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
             rows={3}
@@ -2216,8 +2271,8 @@ export default function VisitForm({
                 Cancel
               </button>
             )}
-            <button type="submit" className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold shadow-md">
-              Save Visit
+            <button type="submit" disabled={submitting} aria-busy={submitting} className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed">
+              {submitting ? 'Saving…' : 'Save Visit'}
             </button>
           </div>
         </div>

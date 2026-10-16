@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { getSubscriptionUsage } from '@/lib/subscription-limits';
 import { checkSubscriptionStatus } from '@/lib/subscription';
 import { getSubscriptionLimitations } from '@/lib/subscription-packages';
@@ -12,25 +10,13 @@ import { getStorageUsageSummary } from '@/lib/storage-tracking';
  * Get subscription usage statistics
  * Returns current usage vs limits for the tenant's subscription plan
  */
-export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+export async function GET(_request: NextRequest) {
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { tenantId } = ctx;
 
   try {
     await connectDB();
-
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'Tenant not found' },
-        { status: 404 }
-      );
-    }
 
     // Get subscription status
     const subscriptionStatus = await checkSubscriptionStatus(tenantId);

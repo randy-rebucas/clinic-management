@@ -11,6 +11,12 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error(error);
+    // Dynamic import keeps Sentry out of the bundle when no DSN is configured at build time.
+    if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+      import("@sentry/nextjs")
+        .then((Sentry) => Sentry.captureException(error))
+        .catch(() => {});
+    }
   }, [error]);
 
   return (
@@ -28,6 +34,7 @@ export default function GlobalError({
         }}
       >
         <div
+          role="alert"
           style={{
             textAlign: "center",
             padding: "2rem",
@@ -68,8 +75,8 @@ export default function GlobalError({
               lineHeight: 1.5,
             }}
           >
-            An unexpected error occurred. Please try again, or contact support
-            if the problem persists.
+            An unexpected error occurred and the page could not be displayed.
+            Please try again, or contact support if the problem persists.
           </p>
           {error.digest && (
             <p
@@ -83,21 +90,40 @@ export default function GlobalError({
               Error ID: {error.digest}
             </p>
           )}
-          <button
-            onClick={reset}
-            style={{
-              background: "#2563eb",
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              padding: "0.625rem 1.5rem",
-              fontSize: "0.95rem",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Try again
-          </button>
+          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={reset}
+              style={{
+                background: "#2563eb",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                padding: "0.625rem 1.5rem",
+                fontSize: "0.95rem",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Try again
+            </button>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              style={{
+                background: "#fff",
+                color: "#374151",
+                border: "1px solid #d1d5db",
+                borderRadius: 8,
+                padding: "0.625rem 1.5rem",
+                fontSize: "0.95rem",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Reload page
+            </button>
+          </div>
         </div>
       </body>
     </html>

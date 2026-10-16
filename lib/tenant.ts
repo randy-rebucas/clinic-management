@@ -3,6 +3,7 @@
  */
 import 'server-only';
 
+import { cache } from 'react';
 import { headers } from 'next/headers';
 import connectDB from '@/lib/mongodb';
 import Tenant, { ITenant } from '@/models/Tenant';
@@ -101,9 +102,9 @@ export function extractSubdomain(host?: string | null): string | null {
 
 /**
  * Get tenant context from request headers
- * This is used in server components and API routes
+ * This is used in server components and API routes (memoized per request)
  */
-export async function getTenantContext(): Promise<TenantContext> {
+export const getTenantContext = cache(async (): Promise<TenantContext> => {
   try {
     const headersList = await headers();
     const host = headersList.get('host') || headersList.get('x-forwarded-host');
@@ -156,7 +157,7 @@ export async function getTenantContext(): Promise<TenantContext> {
       tenant: null,
     };
   }
-}
+});
 
 /**
  * Get tenant ID from request headers (lightweight version)

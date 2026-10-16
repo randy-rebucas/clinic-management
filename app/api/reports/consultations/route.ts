@@ -1,74 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { resolveReportRange, isRangeError, dateKeyInTz } from '../_lib/report-range';
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const denied = await requirePermission(session, 'reports', 'read');
+  if (denied) return denied;
 
   try {
     await connectDB();
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get('period') || 'monthly'; // daily, weekly, monthly
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
+    const tz = await getTenantTimezone(tenantId);
 
-    // Calculate date range based on period
-    let dateRange: { start: Date; end: Date };
-    const now = new Date();
-
-    if (startDate && endDate) {
-      dateRange = {
-        start: new Date(startDate),
-        end: new Date(endDate),
-      };
-      dateRange.end.setHours(23, 59, 59, 999);
-    } else {
-      switch (period) {
-        case 'daily':
-          dateRange = {
-            start: new Date(now.setHours(0, 0, 0, 0)),
-            end: new Date(now.setHours(23, 59, 59, 999)),
-          };
-          break;
-        case 'weekly':
-          const weekStart = new Date(now);
-          weekStart.setDate(now.getDate() - now.getDay()); // Start of week (Sunday)
-          weekStart.setHours(0, 0, 0, 0);
-          const weekEnd = new Date(weekStart);
-          weekEnd.setDate(weekStart.getDate() + 6);
-          weekEnd.setHours(23, 59, 59, 999);
-          dateRange = { start: weekStart, end: weekEnd };
-          break;
-        case 'monthly':
-        default:
-          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-          monthStart.setHours(0, 0, 0, 0);
-          const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-          monthEnd.setHours(23, 59, 59, 999);
-          dateRange = { start: monthStart, end: monthEnd };
-          break;
-      }
+    const dateRange = resolveReportRange(searchParams, tz);
+    if (isRangeError(dateRange)) {
+      return NextResponse.json({ success: false, error: dateRange.error }, { status: 400 });
     }
 
-    // Get consultations (visits) in date range
-    const visits = await Visit.find({
+    const visits = await Visit.find(tenantFilter(tenantId, {
       date: { $gte: dateRange.start, $lte: dateRange.end },
       status: { $ne: 'cancelled' },
-    })
-      .populate('patient', 'firstName lastName patientCode')
+    }))
+      .select('date visitType status provider')
       .populate('provider', 'name')
-      .sort({ date: -1 });
+      .sort({ date: -1 })
+      .lean();
 
     // Group by date
     const byDate: Record<string, any[]> = {};
     visits.forEach((visit: any) => {
-      const dateKey = new Date(visit.date).toISOString().split('T')[0];
+      const dateKey = dateKeyInTz(visit.date, tz);
       if (!byDate[dateKey]) {
         byDate[dateKey] = [];
       }

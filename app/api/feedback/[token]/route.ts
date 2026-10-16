@@ -13,7 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params;
-  if (!token || token.length < 40) {
+  if (!token || !/^[a-f0-9]{40,128}$/i.test(token)) {
     return NextResponse.json({ success: false, error: 'Invalid token' }, { status: 400 });
   }
 
@@ -58,7 +58,7 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params;
-  if (!token || token.length < 40) {
+  if (!token || !/^[a-f0-9]{40,128}$/i.test(token)) {
     return NextResponse.json({ success: false, error: 'Invalid token' }, { status: 400 });
   }
 
@@ -79,11 +79,18 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Survey already submitted' }, { status: 409 });
     }
 
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
+    const rating = (v: unknown) => (Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 5 ? (v as number) : undefined);
 
-    const { overallRating, doctorRating, staffRating, facilityRating, waitTimeRating, comments, wouldRecommend } = body;
+    const overallRating = rating(body?.overallRating);
+    const doctorRating = rating(body?.doctorRating);
+    const staffRating = rating(body?.staffRating);
+    const facilityRating = rating(body?.facilityRating);
+    const waitTimeRating = rating(body?.waitTimeRating);
+    const comments = typeof body?.comments === 'string' ? body.comments.slice(0, 5000) : undefined;
+    const wouldRecommend = body?.wouldRecommend;
 
-    if (!overallRating || overallRating < 1 || overallRating > 5) {
+    if (!overallRating) {
       return NextResponse.json({ success: false, error: 'Overall rating (1–5) is required' }, { status: 400 });
     }
 

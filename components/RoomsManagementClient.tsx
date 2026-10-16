@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useModalA11y } from './hooks/useModalA11y';
 
 interface Room {
   _id: string;
@@ -92,7 +93,10 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
   }, [typeFilter, statusFilter]);
 
   useEffect(() => {
-    fetchRooms();
+    const load = async () => {
+      await fetchRooms();
+    };
+    load();
   }, [fetchRooms]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -192,6 +196,9 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
       notes: '',
     });
   };
+
+  const closeModal = () => { setShowModal(false); resetForm(); };
+  const modalRef = useModalA11y<HTMLDivElement>(showModal, closeModal);
 
   const getTypeBadge = (type: string) => {
     const t = ROOM_TYPES.find(rt => rt.value === type);
@@ -363,6 +370,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                 {/* Type Dropdown */}
                 <div style={{ minWidth: '180px' }}>
                   <select
+                    aria-label="Filter by room type"
                     value={typeFilter}
                     onChange={(e) => setTypeFilter(e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
@@ -377,6 +385,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                 {/* Status Dropdown */}
                 <div style={{ minWidth: '180px' }}>
                   <select
+                    aria-label="Filter by status"
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
@@ -461,17 +470,19 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                   <div className="px-5 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
                     <button
                       onClick={() => handleEdit(room)}
+                      aria-label={`Edit ${room.name}`}
                       className="p-2.5 bg-cyan-50 text-cyan-700 rounded-lg hover:bg-cyan-100 transition-colors"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
                     </button>
                     <button
                       onClick={() => handleDelete(room)}
+                      aria-label={`Delete ${room.name}`}
                       className="p-2.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                     </button>
@@ -484,8 +495,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
         {/* Add/Edit Modal */}
         {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="room-modal-title" className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
               <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-cyan-50 to-cyan-100/50">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-cyan-500 rounded-lg">
@@ -493,7 +504,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900">
+                  <h2 id="room-modal-title" className="text-xl font-bold text-gray-900">
                     {editingRoom ? 'Edit Room' : 'Add New Room'}
                   </h2>
                 </div>
@@ -502,8 +513,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Name */}
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Room Name *</label>
-                    <input
+                    <label htmlFor="room-name" className="block text-sm font-medium text-gray-700 mb-1">Room Name *</label>
+                    <input id="room-name"
                       type="text"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -515,8 +526,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
                   {/* Room Number */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Room Number</label>
-                    <input
+                    <label htmlFor="room-number" className="block text-sm font-medium text-gray-700 mb-1">Room Number</label>
+                    <input id="room-number"
                       type="text"
                       value={formData.roomNumber}
                       onChange={(e) => setFormData({ ...formData, roomNumber: e.target.value })}
@@ -527,8 +538,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
                   {/* Room Type */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Room Type *</label>
-                    <select
+                    <label htmlFor="room-type" className="block text-sm font-medium text-gray-700 mb-1">Room Type *</label>
+                    <select id="room-type"
                       value={formData.roomType}
                       onChange={(e) => setFormData({ ...formData, roomType: e.target.value as Room['roomType'] })}
                       required
@@ -542,8 +553,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
                   {/* Building */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Building</label>
-                    <input
+                    <label htmlFor="room-building" className="block text-sm font-medium text-gray-700 mb-1">Building</label>
+                    <input id="room-building"
                       type="text"
                       value={formData.building}
                       onChange={(e) => setFormData({ ...formData, building: e.target.value })}
@@ -553,8 +564,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
                   {/* Floor */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Floor</label>
-                    <input
+                    <label htmlFor="room-floor" className="block text-sm font-medium text-gray-700 mb-1">Floor</label>
+                    <input id="room-floor"
                       type="number"
                       value={formData.floor}
                       onChange={(e) => setFormData({ ...formData, floor: parseInt(e.target.value) || 1 })}
@@ -565,8 +576,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
                   {/* Capacity */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Capacity</label>
-                    <input
+                    <label htmlFor="room-capacity" className="block text-sm font-medium text-gray-700 mb-1">Capacity</label>
+                    <input id="room-capacity"
                       type="number"
                       value={formData.capacity}
                       onChange={(e) => setFormData({ ...formData, capacity: parseInt(e.target.value) || 1 })}
@@ -577,8 +588,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
                   {/* Status */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <select
+                    <label htmlFor="room-status" className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select id="room-status"
                       value={formData.status}
                       onChange={(e) => setFormData({ ...formData, status: e.target.value as Room['status'] })}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
@@ -591,8 +602,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
                   {/* Equipment */}
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Equipment</label>
-                    <input
+                    <label htmlFor="room-equipment" className="block text-sm font-medium text-gray-700 mb-1">Equipment</label>
+                    <input id="room-equipment"
                       type="text"
                       value={formData.equipment}
                       onChange={(e) => setFormData({ ...formData, equipment: e.target.value })}
@@ -603,8 +614,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
                   {/* Amenities */}
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Amenities</label>
-                    <input
+                    <label htmlFor="room-amenities" className="block text-sm font-medium text-gray-700 mb-1">Amenities</label>
+                    <input id="room-amenities"
                       type="text"
                       value={formData.amenities}
                       onChange={(e) => setFormData({ ...formData, amenities: e.target.value })}
@@ -615,8 +626,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
                   {/* Notes */}
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                    <textarea
+                    <label htmlFor="room-notes" className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea id="room-notes"
                       value={formData.notes}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                       rows={2}
@@ -629,7 +640,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                 <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
                   <button
                     type="button"
-                    onClick={() => { setShowModal(false); resetForm(); }}
+                    onClick={closeModal}
                     className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-semibold"
                   >
                     Cancel

@@ -3,12 +3,12 @@
 
 import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
-import Patient from '@/models/Patient';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
+import { hourInTz, formatInTz } from '@/lib/tz';
 import { Types } from 'mongoose';
+import { forEachTenant, automationEnabled, delivered, errorMessage, BATCH_LIMIT, type AutomationTenant } from './shared';
 
 export interface MedicationReminderOptions {
   prescriptionId: string | Types.ObjectId;
@@ -19,51 +19,30 @@ export interface MedicationReminderOptions {
 }
 
 /**
- * Parse frequency string to times per day
+ * Clinic-local hours at which reminders go out. Only waking hours, so the cron
+ * (vercel.json: 08/12/14/16/20 Manila) never texts patients at night.
  */
+export const MEDICATION_REMINDER_HOURS = [8, 12, 14, 16, 20];
+
 function parseFrequencyToTimesPerDay(frequency?: string): number {
   if (!frequency) return 1;
 
   const freq = frequency.toUpperCase();
-  
-  if (freq.includes('ONCE') || freq === 'QD' || freq === 'Q24H') return 1;
+
+  if (freq.includes('ONCE') || freq === 'QD' || freq === 'Q24H' || freq === 'OD') return 1;
   if (freq.includes('TWICE') || freq === 'BID' || freq === 'Q12H') return 2;
-  if (freq.includes('THRICE') || freq === 'TID' || freq === 'Q8H') return 3;
+  if (freq.includes('THRICE') || freq.includes('THREE') || freq === 'TID' || freq === 'Q8H') return 3;
   if (freq.includes('FOUR') || freq === 'QID' || freq === 'Q6H') return 4;
-  if (freq.includes('FIVE') || freq === 'Q4H') return 5;
-  if (freq.includes('SIX') || freq === 'Q4H') return 6;
-  
-  // Default to once if can't parse
+
   return 1;
 }
 
-/**
- * Calculate medication times based on frequency
- */
-function calculateMedicationTimes(frequency?: string, startTime?: Date): Date[] {
-  const timesPerDay = parseFrequencyToTimesPerDay(frequency);
-  const times: Date[] = [];
-  
-  const baseTime = startTime || new Date();
-  baseTime.setHours(8, 0, 0, 0); // Default to 8 AM start
-  
-  if (timesPerDay === 1) {
-    times.push(new Date(baseTime));
-  } else if (timesPerDay === 2) {
-    times.push(new Date(baseTime)); // 8 AM
-    times.push(new Date(baseTime.getTime() + 12 * 60 * 60 * 1000)); // 8 PM
-  } else if (timesPerDay === 3) {
-    times.push(new Date(baseTime)); // 8 AM
-    times.push(new Date(baseTime.getTime() + 8 * 60 * 60 * 1000)); // 4 PM
-    times.push(new Date(baseTime.getTime() + 16 * 60 * 60 * 1000)); // 12 AM next day
-  } else if (timesPerDay === 4) {
-    times.push(new Date(baseTime)); // 8 AM
-    times.push(new Date(baseTime.getTime() + 6 * 60 * 60 * 1000)); // 2 PM
-    times.push(new Date(baseTime.getTime() + 12 * 60 * 60 * 1000)); // 8 PM
-    times.push(new Date(baseTime.getTime() + 18 * 60 * 60 * 1000)); // 2 AM next day
-  }
-  
-  return times;
+/** Reminder hours (clinic-local) for a dosing frequency. */
+function calculateReminderHours(timesPerDay: number): number[] {
+  if (timesPerDay === 2) return [8, 20];
+  if (timesPerDay === 3) return [8, 14, 20];
+  if (timesPerDay >= 4) return [8, 12, 16, 20];
+  return [8];
 }
 
 /**
@@ -77,26 +56,22 @@ export async function sendMedicationReminder(options: MedicationReminderOptions)
   try {
     await connectDB();
 
-    const settings = await getSettings();
-    const autoMedicationAdherence = (settings.automationSettings as any)?.autoMedicationAdherence !== false;
+    if (!options.tenantId) {
+      return { success: false, sent: false, error: 'Tenant is required' };
+    }
+    const tenantId = new Types.ObjectId(String(options.tenantId));
 
-    if (!autoMedicationAdherence) {
+    const settings = await getSettings(tenantId.toString());
+    if (!automationEnabled(settings, 'autoMedicationAdherence')) {
       return { success: true, sent: false };
     }
 
-    const prescriptionId = typeof options.prescriptionId === 'string' 
-      ? new Types.ObjectId(options.prescriptionId) 
-      : options.prescriptionId;
-
-    const prescription = await Prescription.findById(prescriptionId)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('prescribedBy', 'firstName lastName');
+    const prescription = await Prescription.findOne({ _id: options.prescriptionId, tenantId })
+      .populate('patient', 'firstName lastName email phone');
 
     if (!prescription) {
       return { success: false, sent: false, error: 'Prescription not found' };
     }
-
-    // Only send reminders for active prescriptions
     if (prescription.status !== 'active') {
       return { success: true, sent: false };
     }
@@ -106,198 +81,138 @@ export async function sendMedicationReminder(options: MedicationReminderOptions)
       return { success: false, sent: false, error: 'Patient not found' };
     }
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : prescription.tenantId;
-
-    // Get first medication for reminder
     const medication = prescription.medications?.[0];
     if (!medication) {
       return { success: true, sent: false };
     }
 
     const clinicName = settings.clinicName || 'Clinic';
-    const reminderMessage = generateMedicationReminderSMS(medication, clinicName);
-    const emailContent = generateMedicationReminderEmail(prescription, medication, settings);
-
     let sent = false;
 
-    // Send SMS if enabled and phone available
     if (options.sendSMS !== false && patient.phone) {
       try {
-        let phoneNumber = patient.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-        }
-
-        const smsResult = await sendSMS({
-          to: phoneNumber,
-          message: reminderMessage,
-        });
-
-        if (smsResult.success) {
-          sent = true;
-        }
+        const smsResult = await sendSMS({ to: patient.phone, message: generateMedicationReminderSMS(medication, clinicName) });
+        if (delivered(smsResult)) sent = true;
       } catch (error) {
         console.error('Error sending medication reminder SMS:', error);
       }
     }
 
-    // Send email if enabled and email available
     if (options.sendEmail !== false && patient.email) {
       try {
-        const emailResult = await sendEmail({
-          to: patient.email,
-          subject: emailContent.subject,
-          html: emailContent.html,
-        });
-
-        if (emailResult.success) {
-          sent = true;
-        }
+        const emailContent = generateMedicationReminderEmail(prescription, medication);
+        const emailResult = await sendEmail({ to: patient.email, subject: emailContent.subject, html: emailContent.html });
+        if (delivered(emailResult)) sent = true;
       } catch (error) {
         console.error('Error sending medication reminder email:', error);
       }
     }
 
-    // Send in-app notification
-    if (options.sendNotification !== false && patient._id) {
-      try {
-        await createNotification({
-          userId: patient._id,
-          tenantId,
-          type: 'reminder',
-          priority: 'normal',
-          title: 'Medication Reminder',
-          message: `Time to take your medication: ${medication.name}`,
-          relatedEntity: {
-            type: 'prescription',
-            id: prescription._id,
-          },
-          actionUrl: `/prescriptions/${prescription._id}`,
-        });
-        sent = true;
-      } catch (error) {
-        console.error('Error creating medication reminder notification:', error);
-      }
-    }
-
+    // Patients have no User account, so no in-app notification is created here.
     return { success: true, sent };
   } catch (error: any) {
     console.error('Error sending medication reminder:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send medication reminder' 
+      error: 'Failed to send medication reminder',
     };
   }
 }
 
-/**
- * Process all active prescriptions and send medication reminders
- * This should be called by a cron job multiple times per day
- */
-export async function processMedicationReminders(
-  tenantId?: string | Types.ObjectId,
-  reminderTime?: Date
-): Promise<{
+type AdherenceResult = {
   success: boolean;
   processed: number;
   remindersSent: number;
   errors: number;
   results: Array<{ prescriptionId: string; success: boolean; error?: string }>;
-}> {
-  try {
-    await connectDB();
+};
 
-    const settings = await getSettings();
-    const autoMedicationAdherence = (settings.automationSettings as any)?.autoMedicationAdherence !== false;
+async function processTenant(tenant: AutomationTenant, now: Date): Promise<AdherenceResult> {
+  const out: AdherenceResult = { success: true, processed: 0, remindersSent: 0, errors: 0, results: [] };
 
-    if (!autoMedicationAdherence) {
-      return { success: true, processed: 0, remindersSent: 0, errors: 0, results: [] };
-    }
+  const settings = await getSettings(tenant.tenantId);
+  if (!automationEnabled(settings, 'autoMedicationAdherence')) return out;
 
-    const now = reminderTime || new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
+  const currentHour = hourInTz(now, tenant.timezone);
+  if (!MEDICATION_REMINDER_HOURS.includes(currentHour)) return out;
+  const slotKey = `${formatInTz(now, 'yyyy-MM-dd', tenant.timezone)} ${String(currentHour).padStart(2, '0')}`;
 
-    // Find active prescriptions
-    const query: any = {
-      status: 'active',
-      issuedAt: { $lte: now }, // Prescription has been issued
-    };
+  // Courses longer than 90 days are treated as maintenance and not texted several times a day.
+  const earliestIssued = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  const prescriptions = await Prescription.find({
+    tenantId: tenant.tenantObjectId,
+    status: 'active',
+    issuedAt: { $lte: now, $gte: earliestIssued },
+    lastMedicationReminderSlot: { $ne: slotKey },
+  })
+    .select('_id issuedAt medications')
+    .sort({ issuedAt: -1 })
+    .limit(BATCH_LIMIT * 4)
+    .lean();
 
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
+  for (const prescription of prescriptions as any[]) {
+    const medication = prescription.medications?.[0];
+    if (!medication?.frequency) continue;
 
-    const prescriptions = await Prescription.find(query)
-      .populate('patient', 'firstName lastName email phone');
+    const durationDays = medication.durationDays || 7;
+    const endDate = new Date(new Date(prescription.issuedAt).getTime() + durationDays * 24 * 60 * 60 * 1000);
+    if (now > endDate) continue;
 
-    const results: Array<{ prescriptionId: string; success: boolean; error?: string }> = [];
-    let remindersSent = 0;
-    let errors = 0;
+    const reminderHours = calculateReminderHours(parseFrequencyToTimesPerDay(medication.frequency));
+    if (!reminderHours.includes(currentHour)) continue;
 
-    for (const prescription of prescriptions) {
-      // Check if prescription is still within duration
-      const issuedDate = new Date(prescription.issuedAt);
-      const durationDays = prescription.medications?.[0]?.durationDays || 7;
-      const endDate = new Date(issuedDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+    out.processed++;
+    try {
+      // Claim the slot first so a rerun within the same hour never double-sends.
+      const claim = await Prescription.updateOne(
+        { _id: prescription._id, tenantId: tenant.tenantObjectId, lastMedicationReminderSlot: { $ne: slotKey } },
+        { $set: { lastMedicationReminderSlot: slotKey } }
+      );
+      if (claim.modifiedCount === 0) continue;
 
-      if (now > endDate) {
-        continue; // Prescription duration has ended
-      }
-
-      // Check if it's time for a reminder based on frequency
-      const medication = prescription.medications?.[0];
-      if (!medication || !medication.frequency) {
-        continue;
-      }
-
-      const timesPerDay = parseFrequencyToTimesPerDay(medication.frequency);
-      const reminderHours = calculateReminderHours(timesPerDay);
-
-      // Check if current time matches any reminder time (within 30 minutes window)
-      const shouldRemind = reminderHours.some(hour => {
-        const timeDiff = Math.abs((currentHour * 60 + currentMinute) - (hour * 60));
-        return timeDiff <= 30; // 30 minute window
-      });
-
-      if (!shouldRemind) {
-        continue;
-      }
-
-      // Send reminder
       const result = await sendMedicationReminder({
         prescriptionId: prescription._id,
-        tenantId: prescription.tenantId,
+        tenantId: tenant.tenantObjectId,
         sendSMS: true,
         sendEmail: true,
-        sendNotification: true,
       });
-
-      results.push({
-        prescriptionId: prescription._id.toString(),
-        success: result.success,
-        error: result.error,
-      });
-
-      if (result.success && result.sent) {
-        remindersSent++;
-      } else if (!result.success) {
-        errors++;
-      }
+      out.results.push({ prescriptionId: String(prescription._id), success: result.success, error: result.error });
+      if (result.success && result.sent) out.remindersSent++;
+      else if (!result.success) out.errors++;
+    } catch (error) {
+      out.errors++;
+      out.results.push({ prescriptionId: String(prescription._id), success: false, error: errorMessage(error) });
     }
+  }
 
-    return {
-      success: true,
-      processed: prescriptions.length,
-      remindersSent,
-      errors,
-      results,
-    };
+  return out;
+}
+
+/**
+ * Send medication reminders for the current clinic-local hour slot.
+ * Without a tenantId every active tenant is processed.
+ */
+export async function processMedicationReminders(
+  tenantId?: string | Types.ObjectId,
+  reminderTime?: Date
+): Promise<AdherenceResult> {
+  try {
+    await connectDB();
+    const now = reminderTime || new Date();
+    const runs = await forEachTenant(tenantId, (t) => processTenant(t, now));
+    const total: AdherenceResult = { success: runs.every((r) => r.success), processed: 0, remindersSent: 0, errors: 0, results: [] };
+    for (const run of runs) {
+      if (!run.result) {
+        total.errors++;
+        continue;
+      }
+      total.processed += run.result.processed;
+      total.remindersSent += run.result.remindersSent;
+      total.errors += run.result.errors;
+      total.results.push(...run.result.results);
+    }
+    return total;
   } catch (error: any) {
     console.error('Error processing medication reminders:', error);
     return {
@@ -305,40 +220,17 @@ export async function processMedicationReminders(
       processed: 0,
       remindersSent: 0,
       errors: 1,
-      results: [{ prescriptionId: 'unknown', success: false, error: error.message }],
+      results: [],
     };
   }
 }
 
-/**
- * Calculate reminder hours based on times per day
- */
-function calculateReminderHours(timesPerDay: number): number[] {
-  if (timesPerDay === 1) return [8]; // 8 AM
-  if (timesPerDay === 2) return [8, 20]; // 8 AM, 8 PM
-  if (timesPerDay === 3) return [8, 16, 0]; // 8 AM, 4 PM, 12 AM
-  if (timesPerDay === 4) return [8, 14, 20, 2]; // 8 AM, 2 PM, 8 PM, 2 AM
-  return [8]; // Default
-}
-
-/**
- * Generate medication reminder SMS
- */
 function generateMedicationReminderSMS(medication: any, clinicName: string): string {
   return `Medication Reminder: Time to take ${medication.name}${medication.strength ? ` (${medication.strength})` : ''}${medication.instructions ? `. ${medication.instructions}` : ''}. - ${clinicName}`;
 }
 
-/**
- * Generate medication reminder email
- */
-function generateMedicationReminderEmail(
-  prescription: any,
-  medication: any,
-  settings: any
-): { subject: string; html: string } {
+function generateMedicationReminderEmail(prescription: any, medication: any): { subject: string; html: string } {
   const patient = prescription.patient as any;
-  const clinicName = settings.clinicName || 'Clinic';
-
   const subject = `Medication Reminder - ${medication.name}`;
 
   const html = `
@@ -360,17 +252,17 @@ function generateMedicationReminderEmail(
           <h1>⏰ Medication Reminder</h1>
         </div>
         <div class="content">
-          <p>Dear ${patient.firstName} ${patient.lastName},</p>
+          <p>Dear ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)},</p>
           <p>This is a reminder to take your medication:</p>
           <div class="medication-box">
-            <h2>${medication.name}</h2>
-            ${medication.genericName ? `<p><strong>Generic Name:</strong> ${medication.genericName}</p>` : ''}
-            ${medication.strength ? `<p><strong>Strength:</strong> ${medication.strength}</p>` : ''}
-            ${medication.dose ? `<p><strong>Dose:</strong> ${medication.dose}</p>` : ''}
-            ${medication.frequency ? `<p><strong>Frequency:</strong> ${medication.frequency}</p>` : ''}
-            ${medication.instructions ? `<p><strong>Instructions:</strong> ${medication.instructions}</p>` : ''}
+            <h2>${escapeHtml(medication.name)}</h2>
+            ${medication.genericName ? `<p><strong>Generic Name:</strong> ${escapeHtml(medication.genericName)}</p>` : ''}
+            ${medication.strength ? `<p><strong>Strength:</strong> ${escapeHtml(medication.strength)}</p>` : ''}
+            ${medication.dose ? `<p><strong>Dose:</strong> ${escapeHtml(medication.dose)}</p>` : ''}
+            ${medication.frequency ? `<p><strong>Frequency:</strong> ${escapeHtml(medication.frequency)}</p>` : ''}
+            ${medication.instructions ? `<p><strong>Instructions:</strong> ${escapeHtml(medication.instructions)}</p>` : ''}
           </div>
-          <p><strong>Prescription Code:</strong> ${prescription.prescriptionCode}</p>
+          <p><strong>Prescription Code:</strong> ${escapeHtml(prescription.prescriptionCode)}</p>
           <p>Please take your medication as prescribed. If you have any questions, please contact the clinic.</p>
         </div>
         <div class="footer">
@@ -383,4 +275,3 @@ function generateMedicationReminderEmail(
 
   return { subject, html };
 }
-

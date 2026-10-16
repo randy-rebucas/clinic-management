@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 
 interface SegmentationFilterProps {
@@ -35,6 +35,7 @@ export function PatientSegmentationFilter({
 }: SegmentationFilterProps) {
   const [expandedSection, setExpandedSection] = useState<'tags' | 'flags' | null>(null);
   const [tagInput, setTagInput] = useState('');
+  const uid = useId();
 
   const handleTagToggle = useCallback((tag: string) => {
     onTagsChange(
@@ -75,8 +76,8 @@ export function PatientSegmentationFilter({
         <button
           onClick={() => setExpandedSection(expandedSection === 'tags' ? null : 'tags')}
           className="w-full flex items-center justify-between p-3 hover:bg-gray-50 transition-colors"
+          type="button"
           aria-expanded={expandedSection === 'tags'}
-          aria-label="Toggle patient tags filter"
         >
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm">Patient Tags</span>
@@ -88,6 +89,7 @@ export function PatientSegmentationFilter({
           </div>
           <ChevronDown
             size={18}
+            aria-hidden="true"
             className={`transition-transform ${expandedSection === 'tags' ? 'rotate-180' : ''}`}
           />
         </button>
@@ -96,10 +98,10 @@ export function PatientSegmentationFilter({
           <div className="border-t p-3 space-y-3 bg-gray-50">
             {/* Available tags */}
             <div>
-              <label className="text-xs font-medium text-gray-600 block mb-2">
+              <p id={`${uid}-available-tags`} className="text-xs font-medium text-gray-600 block mb-2">
                 Available Tags: {availableTags.length}
-              </label>
-              <div className="flex flex-wrap gap-2">
+              </p>
+              <div className="flex flex-wrap gap-2" role="group" aria-labelledby={`${uid}-available-tags`}>
                 {availableTags.map((tag) => (
                   <button
                     key={tag}
@@ -119,18 +121,18 @@ export function PatientSegmentationFilter({
 
             {/* Custom tag input */}
             <div>
-              <label className="text-xs font-medium text-gray-600 block mb-2">
+              <label htmlFor={`${uid}-custom-tag`} className="text-xs font-medium text-gray-600 block mb-2">
                 Add Custom Tag:
               </label>
               <div className="flex gap-2">
                 <input
+                  id={`${uid}-custom-tag`}
                   type="text"
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddCustomTag()}
                   placeholder="Type tag name..."
                   className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  aria-label="Enter custom tag"
                 />
                 <button
                   onClick={handleAddCustomTag}
@@ -145,10 +147,10 @@ export function PatientSegmentationFilter({
             {/* Selected tags */}
             {selectedTags.length > 0 && (
               <div>
-                <label className="text-xs font-medium text-gray-600 block mb-2">
+                <p id={`${uid}-selected-tags`} className="text-xs font-medium text-gray-600 block mb-2">
                   Selected: {selectedTags.length}
-                </label>
-                <div className="flex flex-wrap gap-2">
+                </p>
+                <div className="flex flex-wrap gap-2" role="group" aria-labelledby={`${uid}-selected-tags`}>
                   {selectedTags.map((tag) => (
                     <button
                       key={tag}
@@ -171,8 +173,8 @@ export function PatientSegmentationFilter({
         <button
           onClick={() => setExpandedSection(expandedSection === 'flags' ? null : 'flags')}
           className="w-full flex items-center justify-between p-3 hover:bg-gray-50 transition-colors"
+          type="button"
           aria-expanded={expandedSection === 'flags'}
-          aria-label="Toggle patient segment flags filter"
         >
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm">Patient Segments</span>
@@ -184,6 +186,7 @@ export function PatientSegmentationFilter({
           </div>
           <ChevronDown
             size={18}
+            aria-hidden="true"
             className={`transition-transform ${expandedSection === 'flags' ? 'rotate-180' : ''}`}
           />
         </button>

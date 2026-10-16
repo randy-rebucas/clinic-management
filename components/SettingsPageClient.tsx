@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState, useCallback } from 'react';
 
 interface Settings {
   _id?: string;
@@ -177,10 +177,13 @@ const LabeledTextField = ({
   type?: string;
   step?: string;
   placeholder?: string;
-}) => (
+}) => {
+  const id = useId();
+  return (
   <div>
-    <label className="block text-sm font-medium mb-1">{label}</label>
+    <label htmlFor={id} className="block text-sm font-medium mb-1">{label}</label>
     <input
+      id={id}
       type={type}
       step={step}
       value={value}
@@ -190,7 +193,8 @@ const LabeledTextField = ({
       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
     />
   </div>
-);
+  );
+};
 
 export default function SettingsPageClient({ user }: SettingsPageClientProps) {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -200,11 +204,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
   const [activeTab, setActiveTab] = useState('clinic');
   const isAdmin = user.role === 'admin';
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/settings');
@@ -225,7 +225,14 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchSettings();
+    };
+    load();
+  }, [fetchSettings]);
 
   const handleSave = async () => {
     if (!settings || !isAdmin) return;
@@ -399,6 +406,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
+                  aria-pressed={activeTab === tab}
                   className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                     activeTab === tab
                       ? 'border-blue-500 text-blue-600'
@@ -517,6 +525,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                           <label className="relative inline-flex items-center cursor-pointer">
                             <input
                               type="checkbox"
+                              aria-label={`${day.label} open`}
                               checked={!hours.closed}
                               onChange={(e) => updateBusinessHours(day.value, 'closed', !e.target.checked)}
                               disabled={!isAdmin}
@@ -532,6 +541,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                           <div className="flex gap-2 items-center flex-1 min-w-[200px]">
                             <input
                               type="time"
+                              aria-label={`${day.label} opening time`}
                               value={hours.open}
                               onChange={(e) => updateBusinessHours(day.value, 'open', e.target.value)}
                               disabled={!isAdmin}
@@ -540,6 +550,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                             <p className="text-sm text-gray-600">to</p>
                             <input
                               type="time"
+                              aria-label={`${day.label} closing time`}
                               value={hours.close}
                               onChange={(e) => updateBusinessHours(day.value, 'close', e.target.value)}
                               disabled={!isAdmin}
@@ -804,8 +815,8 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     placeholder="UTC"
                   />
                   <div>
-                    <label className="block text-sm font-medium mb-1">Date Format</label>
-                    <select
+                    <label htmlFor="settings-date-format" className="block text-sm font-medium mb-1">Date Format</label>
+                    <select id="settings-date-format"
                       value={settings.generalSettings.dateFormat}
                       onChange={(e) => updateSettings('generalSettings.dateFormat', e.target.value)}
                       disabled={!isAdmin}
@@ -817,8 +828,8 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Time Format</label>
-                    <select
+                    <label htmlFor="settings-time-format" className="block text-sm font-medium mb-1">Time Format</label>
+                    <select id="settings-time-format"
                       value={settings.generalSettings.timeFormat}
                       onChange={(e) => updateSettings('generalSettings.timeFormat', e.target.value as '12h' | '24h')}
                       disabled={!isAdmin}
@@ -870,8 +881,8 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
                 <div className="flex flex-col gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1">Theme</label>
-                    <select
+                    <label htmlFor="settings-theme" className="block text-sm font-medium mb-1">Theme</label>
+                    <select id="settings-theme"
                       value={settings.displaySettings.theme}
                       onChange={(e) => updateSettings('displaySettings.theme', e.target.value as 'light' | 'dark' | 'auto')}
                       disabled={!isAdmin}
@@ -918,8 +929,8 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
                 <div className="flex flex-col gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1">Paper Size</label>
-                    <select
+                    <label htmlFor="settings-paper-size" className="block text-sm font-medium mb-1">Paper Size</label>
+                    <select id="settings-paper-size"
                       value={settings.prescriptionPaperSize || 'A5'}
                       onChange={(e) => updateSettings('prescriptionPaperSize', e.target.value as 'A5' | 'A4')}
                       disabled={!isAdmin}

@@ -39,9 +39,9 @@ const variants = {
 export default function AlertBanner({ type, message, title, className = '' }: AlertBannerProps) {
   const v = variants[type];
   return (
-    <div className={`${v.wrapper} border-l-4 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2 ${className}`}>
+    <div role={type === 'error' ? 'alert' : 'status'} className={`${v.wrapper} border-l-4 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2 ${className}`}>
       <div className="flex items-start gap-3">
-        <svg className={`w-5 h-5 ${v.icon} flex-shrink-0 mt-0.5`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={`w-5 h-5 ${v.icon} flex-shrink-0 mt-0.5`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={v.path} />
         </svg>
         <div className="flex-1">

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
 import Product from '@/models/Product';
+import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
 
 const VALID_PRODUCT_STATUSES = ['active', 'discontinued', 'inactive'] as const;
 
@@ -11,27 +11,12 @@ const VALID_PRODUCT_STATUSES = ['active', 'discontinued', 'inactive'] as const;
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    if (session.role !== 'medical-representative') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
 
     await connectDB();
 
-    const products = await Product.find({
-      tenantId: session.tenantId,
-      userId: session.userId,
-    })
+    const products = await Product.find(rep.ownerFilter)
       .sort({ createdAt: -1 })
       .lean();
 
@@ -42,7 +27,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('Get products error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -54,20 +39,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    if (session.role !== 'medical-representative') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
 
     let body: Record<string, unknown>;
     try {
@@ -97,7 +70,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (name.length > 200 || category.length > 100 || manufacturer.length > 200 ||
-        description.length > 2000 || packaging.length > 200) {
+        description.length > 2000 || packaging.length > 200 ||
+        (dosage?.length ?? 0) > 200 || (strength?.length ?? 0) > 200) {
       return NextResponse.json({ success: false, error: 'One or more fields exceed maximum length.' }, { status: 400 });
     }
 
@@ -113,8 +87,7 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     const product = await Product.create({
-      tenantId: session.tenantId,
-      userId: session.userId,
+      ...rep.ownerFilter,
       name,
       category,
       manufacturer,
@@ -135,7 +108,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Create product error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }

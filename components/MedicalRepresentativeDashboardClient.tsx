@@ -42,40 +42,39 @@ export default function MedicalRepresentativeDashboardClient() {
   const router = useRouter();
 
   useEffect(() => {
-    fetchMedicalRepData();
-  }, []);
-
-  const fetchMedicalRepData = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch('/api/medical-representatives/session');
-      const data = await res.json();
-      if (!data.success) {
-        if (res.status === 401) {
-          router.push('/medical-representatives/login');
+    const fetchMedicalRepData = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch('/api/medical-representatives/session');
+        const data = await res.json();
+        if (!data.success) {
+          if (res.status === 401) {
+            router.push('/medical-representatives/login');
+            return;
+          }
+          setError(data.error || 'Failed to load data');
           return;
         }
-        setError(data.error || 'Failed to load data');
-        return;
-      }
 
-      setMedicalRep(data.data);
+        setMedicalRep(data.data);
       
-      // Calculate stats
-    //   const products = data.data.products || [];
-    //   setStats({
-    //     totalVisits: 0, // TODO: Track visits in future
-    //     thisMonth: 0,
-    //     activeProducts: products.length,
-    //     territorySize: data.data.territory ? data.data.territory.split(',').length : 1
-    //   });
-    } catch (err: any) {
-      console.error('Fetch medical representative data error:', err);
-      // setError(err.message || 'Failed to load data');
-    } finally {
-      setLoading(false);
-    }
-  };
+        // Calculate stats
+      //   const products = data.data.products || [];
+      //   setStats({
+      //     totalVisits: 0, // TODO: Track visits in future
+      //     thisMonth: 0,
+      //     activeProducts: products.length,
+      //     territorySize: data.data.territory ? data.data.territory.split(',').length : 1
+      //   });
+      } catch (err: any) {
+        console.error('Fetch medical representative data error:', err);
+        // setError(err.message || 'Failed to load data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMedicalRepData();
+  }, [router]);
 
   const handleLogout = async () => {
     try {
@@ -223,33 +222,33 @@ export default function MedicalRepresentativeDashboardClient() {
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Full Name</label>
+                  <span className="text-sm font-medium text-gray-600">Full Name</span>
                   <p className="mt-1 text-base text-gray-900">
                     {medicalRep.firstName} {medicalRep.lastName}
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Title</label>
+                  <span className="text-sm font-medium text-gray-600">Title</span>
                   <p className="mt-1 text-base text-gray-900">{medicalRep.title || 'Not specified'}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Email</label>
+                  <span className="text-sm font-medium text-gray-600">Email</span>
                   <p className="mt-1 text-base text-gray-900">{medicalRep.email}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Phone</label>
+                  <span className="text-sm font-medium text-gray-600">Phone</span>
                   <p className="mt-1 text-base text-gray-900">{medicalRep.phone}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Company</label>
+                  <span className="text-sm font-medium text-gray-600">Company</span>
                   <p className="mt-1 text-base text-gray-900">{medicalRep.company}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Territory</label>
+                  <span className="text-sm font-medium text-gray-600">Territory</span>
                   <p className="mt-1 text-base text-gray-900">{medicalRep.territory}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Status</label>
+                  <span className="text-sm font-medium text-gray-600">Status</span>
                   <p className="mt-1">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       medicalRep.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
@@ -259,7 +258,7 @@ export default function MedicalRepresentativeDashboardClient() {
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Member Since</label>
+                  <span className="text-sm font-medium text-gray-600">Member Since</span>
                   <p className="mt-1 text-base text-gray-900">
                     {new Date(medicalRep.createdAt).toLocaleDateString()}
                   </p>
@@ -268,14 +267,14 @@ export default function MedicalRepresentativeDashboardClient() {
 
               {medicalRep.bio && (
                 <div className="mt-6">
-                  <label className="text-sm font-medium text-gray-600">Bio</label>
+                  <span className="text-sm font-medium text-gray-600">Bio</span>
                   <p className="mt-1 text-base text-gray-700">{medicalRep.bio}</p>
                 </div>
               )}
 
               {medicalRep.products && medicalRep.products.length > 0 && (
                 <div className="mt-6">
-                  <label className="text-sm font-medium text-gray-600">Products</label>
+                  <span className="text-sm font-medium text-gray-600">Products</span>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {medicalRep.products.map((product, index) => (
                       <span

@@ -1,53 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Notification from '@/models/Notification';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { isValidId, notFound } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+import { requireNotificationScope, isNotificationScopeError } from '../_lib/scope';
+
+// Recipients may only toggle the read state of their own notifications.
+const updateNotificationSchema = z.object({ read: z.boolean() });
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const scope = await requireNotificationScope();
+  if (isNotificationScopeError(scope)) return scope;
 
   try {
     await connectDB();
     const { id } = await params;
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const notification = await Notification.findOne(query);
+    if (!isValidId(id)) return notFound('Notification');
 
-    if (!notification) {
-      return NextResponse.json(
-        { success: false, error: 'Notification not found' },
-        { status: 404 }
-      );
-    }
-
-    // Users can only view their own notifications (unless admin)
-    if (notification.user.toString() !== session.userId && session.role !== 'admin') {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 403 }
-      );
-    }
+    const notification = await Notification.findOne({ ...scope.ownFilter, _id: id });
+    if (!notification) return notFound('Notification');
 
     return NextResponse.json({ success: true, data: notification });
   } catch (error: any) {
@@ -63,54 +38,27 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const scope = await requireNotificationScope();
+  if (isNotificationScopeError(scope)) return scope;
 
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
+    if (!isValidId(id)) return notFound('Notification');
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    const parsed = await parseBody(request, updateNotificationSchema);
+    if (isValidationError(parsed)) return parsed;
+    const { read } = parsed.data;
 
+    const query = { ...scope.ownFilter, _id: id };
     const notification = await Notification.findOne(query);
+    if (!notification) return notFound('Notification');
 
-    if (!notification) {
-      return NextResponse.json(
-        { success: false, error: 'Notification not found' },
-        { status: 404 }
-      );
-    }
+    const update = read
+      ? { $set: { read: true, readAt: notification.read ? notification.readAt : new Date() } }
+      : { $set: { read: false }, $unset: { readAt: 1 } };
 
-    // Users can only update their own notifications (unless admin)
-    if (notification.user.toString() !== session.userId && session.role !== 'admin') {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 403 }
-      );
-    }
-
-    // If marking as read, set readAt timestamp
-    if (body.read === true && !notification.read) {
-      body.readAt = new Date();
-    } else if (body.read === false) {
-      body.readAt = undefined;
-    }
-
-    const updatedNotification = await Notification.findOneAndUpdate(query, body, {
+    const updatedNotification = await Notification.findOneAndUpdate(query, update, {
       new: true,
       runValidators: true,
     });
@@ -118,12 +66,6 @@ export async function PUT(
     return NextResponse.json({ success: true, data: updatedNotification });
   } catch (error: any) {
     console.error('Error updating notification:', error);
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 400 }
-      );
-    }
     return NextResponse.json(
       { success: false, error: 'Failed to update notification' },
       { status: 500 }
@@ -135,45 +77,16 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const scope = await requireNotificationScope();
+  if (isNotificationScopeError(scope)) return scope;
 
   try {
     await connectDB();
     const { id } = await params;
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    if (!isValidId(id)) return notFound('Notification');
 
-    const notification = await Notification.findOne(query);
-
-    if (!notification) {
-      return NextResponse.json(
-        { success: false, error: 'Notification not found' },
-        { status: 404 }
-      );
-    }
-
-    // Users can only delete their own notifications (unless admin)
-    if (notification.user.toString() !== session.userId && session.role !== 'admin') {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 403 }
-      );
-    }
-
-    await Notification.findOneAndDelete(query);
+    const deleted = await Notification.findOneAndDelete({ ...scope.ownFilter, _id: id });
+    if (!deleted) return notFound('Notification');
 
     return NextResponse.json({ success: true, data: {} });
   } catch (error: any) {
@@ -184,4 +97,3 @@ export async function DELETE(
     );
   }
 }
-

@@ -1,26 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Document from '@/models/Document';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { tenantScopedQuery } from '@/lib/document-seal';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import {
   escapeHtml as e,
   protectionHead,
   watermarkOverlay,
   PROTECTED_DOCUMENT_HEADERS,
+  withScriptNonce,
 } from '@/lib/document-protection';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session } = ctx;
 
   const permissionCheck = await requirePermission(session, 'documents', 'read');
   if (permissionCheck) {
@@ -30,8 +28,7 @@ export async function GET(
   try {
     await connectDB();
     const { id: rawId } = await params;
-    const tenantContext = await getTenantContext();
-    const query = tenantScopedQuery(rawId, session.tenantId || tenantContext.tenantId);
+    const query = tenantScopedQuery(rawId, ctx.tenantId);
     const document = query ? await Document.findOne(query) : null;
     // Re-serialize the validated ObjectId so nothing user-supplied reaches the HTML/JS below
     const id = String(document?._id ?? '');
@@ -50,13 +47,8 @@ export async function GET(
       );
     }
 
-    // Determine the PDF URL to use
-    let pdfUrl = document.url;
-    
-    // If it's a data URL or needs inline viewing, use the stream endpoint
-    if (document.url.startsWith('data:') || document.documentType === 'pdf') {
-      pdfUrl = `/api/documents/${id}/stream`;
-    }
+    // Files are always served through the authenticated stream endpoint.
+    const pdfUrl = `/api/documents/${id}/stream`;
 
     // Helper function to format category label
     const getCategoryLabel = (category: string): string => {
@@ -86,13 +78,13 @@ export async function GET(
           * {
             box-sizing: border-box;
           }
-          body { 
-            margin: 0; 
-            padding: 0; 
+          body {
+            margin: 0;
+            padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
             background-color: #f3f4f6;
           }
-          .header { 
+          .header {
             background: white;
             padding: 16px 20px;
             border-bottom: 1px solid #e5e7eb;
@@ -143,9 +135,9 @@ export async function GET(
           .btn-secondary:hover {
             background-color: #e5e7eb;
           }
-          .viewer { 
-            width: 100%; 
-            height: calc(100vh - 60px); 
+          .viewer {
+            width: 100%;
+            height: calc(100vh - 60px);
             background: #525252;
             display: flex;
             align-items: center;
@@ -153,10 +145,10 @@ export async function GET(
           }
           .viewer iframe,
           .viewer object,
-          .viewer embed { 
-            width: 100%; 
-            height: 100%; 
-            border: none; 
+          .viewer embed {
+            width: 100%;
+            height: 100%;
+            border: none;
             background: white;
           }
           .viewer object {
@@ -225,7 +217,7 @@ export async function GET(
               }, 1000);
             }
           });
-          
+
           function showPdfFallback() {
             const viewer = document.querySelector('.viewer');
             if (viewer) {
@@ -245,7 +237,7 @@ export async function GET(
             </div>
           </div>
           <div class="header-actions">
-            ${document.documentType === 'pdf' 
+            ${document.documentType === 'pdf'
               ? `<a href="/api/documents/${id}/stream" target="_blank" class="btn btn-primary">
                   <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -261,7 +253,7 @@ export async function GET(
               </svg>
               Download
             </a>
-            <button onclick="window.print()" class="btn btn-secondary">
+            <button data-print class="btn btn-secondary">
               <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
@@ -270,7 +262,7 @@ export async function GET(
           </div>
         </div>
         <div class="viewer">
-          ${document.documentType === 'pdf' 
+          ${document.documentType === 'pdf'
             ? `<object data="${e(pdfUrl)}" type="application/pdf" class="pdf-viewer" style="width: 100%; height: 100%;">
                 <embed src="${e(pdfUrl)}" type="application/pdf" style="width: 100%; height: 100%;" />
                 <div class="error-message">
@@ -279,7 +271,7 @@ export async function GET(
                 </div>
               </object>`
             : document.documentType === 'image'
-            ? `<img src="${e(document.thumbnailUrl || document.url)}" alt="${e(document.title)}" />`
+            ? `<img src="${e(pdfUrl)}" alt="${e(document.title)}" />`
             : `<div class="error-message">
                 <p>Preview not available for ${e(document.documentType)} files.</p>
                 <p><a href="/api/documents/${id}/download">Click here to download</a> the file to view it.</p>
@@ -290,7 +282,7 @@ export async function GET(
       </html>
     `;
 
-    return new NextResponse(html, { headers: PROTECTED_DOCUMENT_HEADERS });
+    return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {
     console.error('Error viewing document:', error);
     return NextResponse.json(

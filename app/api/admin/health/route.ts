@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
+import { isAdmin } from '@/app/lib/auth-helpers';
 
 export async function GET() {
   try {
-    // Verify session and admin role
-    const session = await verifySession() as any;
-    if (!session?.user?.role?.name || session.user.role.name !== 'admin') {
+    // Verify session (tenant comes from the session) and admin role
+    const auth = await requireTenantSession();
+    if (isTenantSessionError(auth)) return auth;
+    if (!isAdmin(auth.session)) {
       return NextResponse.json(
-        { success: false, message: 'Unauthorized' },
-        { status: 401 }
+        { success: false, message: 'Forbidden' },
+        { status: 403 }
       );
     }
 

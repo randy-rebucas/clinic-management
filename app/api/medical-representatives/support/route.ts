@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
+import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
 import connectDB from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
 import SupportRequestModel from '@/models/SupportRequest';
@@ -22,10 +22,9 @@ function escapeHtml(str: string): string {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await verifySession();
-    if (!session || session.role !== 'medical-representative') {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
+    const { session } = rep;
 
     let body: { subject?: unknown; category?: unknown; message?: unknown; email?: unknown };
     try {
@@ -68,8 +67,7 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     const supportRequest = await SupportRequestModel.create({
-      tenantId: session.tenantId,
-      userId: session.userId,
+      ...rep.ownerFilter,
       email,
       subject,
       category,

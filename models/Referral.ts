@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
+import { nextSequence, formatCode } from '@/lib/counters';
 
 export type ReferralStatus = 'pending' | 'accepted' | 'completed' | 'declined' | 'cancelled';
 export type ReferralType = 'doctor_to_doctor' | 'patient_to_patient' | 'external';
@@ -61,7 +62,9 @@ export interface IReferral extends Document {
   followUpRequired: boolean;
   followUpDate?: Date;
   followUpNotes?: string;
-  
+  followUpReminderSentAt?: Date;
+  escalationSentAt?: Date;
+
   // Feedback
   feedback?: {
     rating?: number; // 1-5
@@ -135,6 +138,8 @@ const ReferralSchema: Schema = new Schema(
     followUpRequired: { type: Boolean, default: false },
     followUpDate: { type: Date },
     followUpNotes: { type: String },
+    followUpReminderSentAt: { type: Date },
+    escalationSentAt: { type: Date },
     feedback: {
       rating: { type: Number, min: 1, max: 5 },
       comments: { type: String },
@@ -152,7 +157,10 @@ ReferralSchema.index({ tenantId: 1, patient: 1, status: 1 });
 ReferralSchema.index({ tenantId: 1, status: 1, referredDate: -1 });
 ReferralSchema.index({ tenantId: 1, type: 1, status: 1 });
 ReferralSchema.index({ tenantId: 1, 'feedback.submittedBy': 1 });
-ReferralSchema.index({ tenantId: 1, referralCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped referral code
+ReferralSchema.index(
+  { tenantId: 1, referralCode: 1 },
+  { unique: true, name: 'uniq_tenant_referralCode', partialFilterExpression: { referralCode: { $type: 'string' } } }
+);
 
 // Pre-validate hook to clean up referringContact before validation
 ReferralSchema.pre('validate', function (this: IReferral, next) {
@@ -165,13 +173,19 @@ ReferralSchema.pre('validate', function (this: IReferral, next) {
   next();
 });
 
-// Pre-save hook to generate referral code
+// Fallback only: routes allocate the code themselves. Shares the route's per-tenant 'referral' counter.
 ReferralSchema.pre('save', async function (this: IReferral, next) {
-  if (!this.referralCode) {
-    const count = await mongoose.models.Referral?.countDocuments() || 0;
-    this.referralCode = `REF-${Date.now()}-${count + 1}`;
+  if (this.referralCode) return next();
+  try {
+    const tenantId = this.tenantId ?? null;
+    const seq = await nextSequence(tenantId, 'referral', () =>
+      mongoose.model('Referral').countDocuments({ tenantId })
+    );
+    this.referralCode = formatCode('REF', seq);
+    next();
+  } catch (err) {
+    next(err as Error);
   }
-  next();
 });
 
 export default mongoose.models.Referral || mongoose.model<IReferral>('Referral', ReferralSchema);

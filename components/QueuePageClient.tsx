@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Modal } from './ui/Modal';
+import { formatApiError } from './utils/apiError';
 
 interface Vitals {
   bp?: string;        // Blood pressure (e.g., "120/80")
@@ -86,56 +87,19 @@ export default function QueuePageClient() {
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [showVitalsForm, setShowVitalsForm] = useState(false);
   const [selectedQueueForVitals, setSelectedQueueForVitals] = useState<Queue | null>(null);
+  const [addingToQueue, setAddingToQueue] = useState(false);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const router = useRouter();
+  // The polling interval must call the latest fetchQueue so it uses the current filters.
+  const fetchQueueRef = useRef<(showRefreshing?: boolean) => Promise<void>>(async () => {});
+  const queueRequestIdRef = useRef(0);
 
   useEffect(() => {
-    fetchDoctors();
-    fetchPatients();
-    fetchQueue();
-    const interval = setInterval(fetchQueue, 30000); // Refresh every 30 seconds
+    const interval = setInterval(() => fetchQueueRef.current(), 30000); // Refresh every 30 seconds
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    if (formData.patientId) {
-      const patient = patients.find((p) => p._id === formData.patientId);
-      setSelectedPatient(patient || null);
-      if (patient) {
-        setPatientSearch(`${patient.firstName} ${patient.lastName}${patient.patientCode ? ` (${patient.patientCode})` : ''}`);
-      }
-    }
-  }, [formData.patientId, patients]);
-
-  // Debounce patient search input
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedPatientSearch(patientSearch);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [patientSearch]);
-
-  // Fetch patients from server when debounced search changes
-  useEffect(() => {
-    if (selectedPatient) return; // don't re-fetch after a patient is selected
-    fetchPatients(debouncedPatientSearch);
-  }, [debouncedPatientSearch]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.patient-search-container')) {
-        setShowPatientSearch(false);
-        setHighlightedIndex(-1);
-      }
-    };
-
-    if (showPatientSearch) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [showPatientSearch]);
-
-  const fetchDoctors = async () => {
+  const fetchDoctors = useCallback(async () => {
     try {
       const res = await fetch('/api/doctors');
       if (res.ok) {
@@ -147,9 +111,9 @@ export default function QueuePageClient() {
     } catch (error) {
       console.error('Failed to fetch doctors:', error);
     }
-  };
+  }, []);
 
-  const fetchPatients = async (search?: string) => {
+  const fetchPatients = useCallback(async (search?: string) => {
     try {
       const params = new URLSearchParams({ limit: '500' });
       if (search?.trim()) params.set('search', search.trim());
@@ -163,9 +127,10 @@ export default function QueuePageClient() {
     } catch (error) {
       console.error('Failed to fetch patients:', error);
     }
-  };
+  }, []);
 
-  const fetchQueue = async (showRefreshing = false) => {
+  const fetchQueue = useCallback(async (showRefreshing = false) => {
+    const requestId = ++queueRequestIdRef.current;
     try {
       if (showRefreshing) setRefreshing(true);
 
@@ -192,6 +157,9 @@ export default function QueuePageClient() {
         data = { success: false, error: `API error: ${res.status} ${res.statusText}` };
       }
 
+      // A newer request (e.g. after a filter change) supersedes this one.
+      if (requestId !== queueRequestIdRef.current) return;
+
       if (data.success) {
         let filteredData = data.data || [];
         if (filterType) {
@@ -206,6 +174,7 @@ export default function QueuePageClient() {
         setQueue([]); // Clear queue on error
       }
     } catch (error) {
+      if (requestId !== queueRequestIdRef.current) return;
       console.error('Failed to fetch queue:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch queue';
       setError(errorMessage);
@@ -214,7 +183,47 @@ export default function QueuePageClient() {
       setLoading(false);
       if (showRefreshing) setRefreshing(false);
     }
-  };
+  }, [filterDoctor, filterStatus, filterType, router]);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchDoctors();
+    };
+    load();
+  }, [fetchDoctors]);
+
+  // Debounce patient search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedPatientSearch(patientSearch);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [patientSearch]);
+
+  // Fetch patients from server when debounced search changes
+  useEffect(() => {
+    if (selectedPatient) return; // don't re-fetch after a patient is selected
+    const load = async () => {
+      await fetchPatients(debouncedPatientSearch);
+    };
+    load();
+  }, [debouncedPatientSearch, selectedPatient, fetchPatients]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.patient-search-container')) {
+        setShowPatientSearch(false);
+        setHighlightedIndex(-1);
+      }
+    };
+
+    if (showPatientSearch) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showPatientSearch]);
+
 
   const showNotification = (message: string, type: 'error' | 'success') => {
     if (type === 'error') {
@@ -237,6 +246,8 @@ export default function QueuePageClient() {
   };
 
   const performStatusUpdate = async (queueId: string, newStatus: string) => {
+    if (statusUpdatingId) return;
+    setStatusUpdatingId(queueId);
     try {
       const res = await fetch(`/api/queue/${queueId}`, {
         method: 'PUT',
@@ -254,11 +265,13 @@ export default function QueuePageClient() {
         showNotification(`Status updated to ${newStatus}`, 'success');
         fetchQueue(true);
       } else {
-        showNotification(data.error || 'Failed to update queue status', 'error');
+        showNotification(formatApiError(data, 'Failed to update queue status'), 'error');
       }
     } catch (error) {
       console.error('Failed to update queue status:', error);
       showNotification('Failed to update queue status', 'error');
+    } finally {
+      setStatusUpdatingId(null);
     }
   };
 
@@ -312,6 +325,8 @@ export default function QueuePageClient() {
       setShowPatientSearch(true);
       return;
     }
+    if (addingToQueue) return;
+    setAddingToQueue(true);
 
     try {
       const res = await fetch('/api/queue', {
@@ -340,11 +355,13 @@ export default function QueuePageClient() {
         setSelectedPatient(null);
         fetchQueue(true);
       } else {
-        showNotification(data.error || 'Failed to add patient to queue', 'error');
+        showNotification(formatApiError(data, 'Failed to add patient to queue'), 'error');
       }
     } catch (error) {
       console.error('Failed to add patient to queue:', error);
       showNotification('Network error: Failed to add patient to queue', 'error');
+    } finally {
+      setAddingToQueue(false);
     }
   };
 
@@ -390,8 +407,15 @@ export default function QueuePageClient() {
   };
 
   useEffect(() => {
-    fetchQueue();
-  }, [filterDoctor, filterStatus]);
+    fetchQueueRef.current = fetchQueue;
+  }, [fetchQueue]);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchQueue();
+    };
+    load();
+  }, [fetchQueue]);
 
   
   const handleVitalsUpdate = async (vitalsData: Vitals) => {
@@ -434,7 +458,7 @@ export default function QueuePageClient() {
         // Refresh to ensure sync with server
         fetchQueue(true);
       } else {
-        showNotification(data.error || 'Failed to update vital signs', 'error');
+        showNotification(formatApiError(data, 'Failed to update vital signs'), 'error');
       }
     } catch (error) {
       console.error('Failed to update vitals:', error);
@@ -568,6 +592,7 @@ export default function QueuePageClient() {
                 </div>
                 <input
                   type="text"
+                  aria-label="Search queue by patient name or queue number"
                   placeholder="Search by patient name or queue number..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -577,9 +602,10 @@ export default function QueuePageClient() {
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
+                    aria-label="Clear search"
                     className="absolute right-4 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
@@ -657,8 +683,9 @@ export default function QueuePageClient() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Doctor</label>
+                  <label htmlFor="queue-filter-doctor" className="block text-sm font-semibold text-gray-700 mb-2">Doctor</label>
                   <select
+                    id="queue-filter-doctor"
                     value={filterDoctor || ''}
                     onChange={(e) => setFilterDoctor(e.target.value === 'all' ? '' : e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -672,8 +699,9 @@ export default function QueuePageClient() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Queue Type</label>
+                  <label htmlFor="queue-filter-type" className="block text-sm font-semibold text-gray-700 mb-2">Queue Type</label>
                   <select
+                    id="queue-filter-type"
                     value={filterType || ''}
                     onChange={(e) => setFilterType(e.target.value === 'all' ? '' : e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -685,8 +713,9 @@ export default function QueuePageClient() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
+                  <label htmlFor="queue-filter-status" className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
                   <select
+                    id="queue-filter-status"
                     value={filterStatus}
                     onChange={(e) => setFilterStatus(e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -1023,11 +1052,12 @@ export default function QueuePageClient() {
               <form onSubmit={handleAddToQueue}>
                 <div className="flex flex-col gap-5">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Patient <span className="text-red-500">*</span></label>
+                    <label htmlFor="queue-add-patient" className="block text-sm font-semibold text-gray-700 mb-2">Patient <span className="text-red-500">*</span></label>
                     <div className="relative patient-search-container">
                       <input
                         type="text"
                         required
+                        id="queue-add-patient"
                         value={patientSearch}
                         onChange={(e) => {
                           setPatientSearch(e.target.value);
@@ -1106,8 +1136,9 @@ export default function QueuePageClient() {
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Doctor (Optional)</label>
+                    <label htmlFor="queue-add-doctor" className="block text-sm font-semibold text-gray-700 mb-2">Doctor (Optional)</label>
                     <select
+                      id="queue-add-doctor"
                       value={formData.doctorId || 'none'}
                       onChange={(e) => setFormData({ ...formData, doctorId: e.target.value === 'none' ? '' : e.target.value })}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -1121,8 +1152,9 @@ export default function QueuePageClient() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Queue Type <span className="text-red-500">*</span></label>
+                    <label htmlFor="queue-add-type" className="block text-sm font-semibold text-gray-700 mb-2">Queue Type <span className="text-red-500">*</span></label>
                     <select
+                      id="queue-add-type"
                       value={formData.queueType}
                       onChange={(e) => setFormData({ ...formData, queueType: e.target.value as any })}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -1133,8 +1165,9 @@ export default function QueuePageClient() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
+                    <label htmlFor="queue-add-priority" className="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
                     <select
+                      id="queue-add-priority"
                       value={formData.priority.toString()}
                       onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -1158,8 +1191,8 @@ export default function QueuePageClient() {
                     >
                       Cancel
                     </button>
-                    <button type="submit" className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all text-sm font-semibold shadow-md">
-                      Add to Queue
+                    <button type="submit" disabled={addingToQueue} aria-busy={addingToQueue} className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all text-sm font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed">
+                      {addingToQueue ? 'Adding…' : 'Add to Queue'}
                     </button>
                   </div>
                 </div>
@@ -1191,6 +1224,8 @@ export default function QueuePageClient() {
                   Cancel
                 </button>
                 <button
+                  type="button"
+                  disabled={!!statusUpdatingId}
                   onClick={() => {
                     if (confirmAction) {
                       performStatusUpdate(confirmAction.id, confirmAction.action);
@@ -1219,9 +1254,10 @@ function VitalsForm({
   onCancel
 }: {
   initialVitals?: Vitals;
-  onSubmit: (vitals: Vitals) => void;
+  onSubmit: (vitals: Vitals) => void | Promise<void>;
   onCancel: () => void;
 }) {
+  const [saving, setSaving] = useState(false);
   const hasInitialVitals = initialVitals && Object.keys(initialVitals).length > 0;
   
   const [vitals, setVitals] = useState({
@@ -1244,8 +1280,9 @@ function VitalsForm({
     return undefined;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     const bmi = calculateBMI();
     const vitalsData: Vitals = {};
 
@@ -1264,7 +1301,12 @@ function VitalsForm({
       return;
     }
 
-    onSubmit(vitalsData);
+    setSaving(true);
+    try {
+      await onSubmit(vitalsData);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1290,7 +1332,7 @@ function VitalsForm({
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+            <label htmlFor="queue-vitals-bp" className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
               <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
               </svg>
@@ -1298,6 +1340,7 @@ function VitalsForm({
             </label>
             <input
               type="text"
+              id="queue-vitals-bp"
               value={vitals.bp}
               onChange={(e) => setVitals({ ...vitals, bp: e.target.value })}
               placeholder="120/80"
@@ -1309,7 +1352,7 @@ function VitalsForm({
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+            <label htmlFor="queue-vitals-hr" className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
               <svg className="w-4 h-4 text-pink-500" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
               </svg>
@@ -1317,6 +1360,7 @@ function VitalsForm({
             </label>
             <input
               type="number"
+              id="queue-vitals-hr"
               value={vitals.hr}
               onChange={(e) => setVitals({ ...vitals, hr: e.target.value })}
               placeholder="72"
@@ -1328,7 +1372,7 @@ function VitalsForm({
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+            <label htmlFor="queue-vitals-rr" className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
               <svg className="w-4 h-4 text-cyan-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" />
               </svg>
@@ -1336,6 +1380,7 @@ function VitalsForm({
             </label>
             <input
               type="number"
+              id="queue-vitals-rr"
               value={vitals.rr}
               onChange={(e) => setVitals({ ...vitals, rr: e.target.value })}
               placeholder="16"
@@ -1347,7 +1392,7 @@ function VitalsForm({
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+            <label htmlFor="queue-vitals-temp" className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
               <svg className="w-4 h-4 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clipRule="evenodd" />
               </svg>
@@ -1356,6 +1401,7 @@ function VitalsForm({
             <input
               type="number"
               step="0.1"
+              id="queue-vitals-temp"
               value={vitals.tempC}
               onChange={(e) => setVitals({ ...vitals, tempC: e.target.value })}
               placeholder="36.5"
@@ -1367,7 +1413,7 @@ function VitalsForm({
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+            <label htmlFor="queue-vitals-spo2" className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
               <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
               </svg>
@@ -1375,6 +1421,7 @@ function VitalsForm({
             </label>
             <input
               type="number"
+              id="queue-vitals-spo2"
               value={vitals.spo2}
               onChange={(e) => setVitals({ ...vitals, spo2: e.target.value })}
               placeholder="98"
@@ -1398,7 +1445,7 @@ function VitalsForm({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+            <label htmlFor="queue-vitals-height" className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
               <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
               </svg>
@@ -1407,6 +1454,7 @@ function VitalsForm({
             <input
               type="number"
               step="0.1"
+              id="queue-vitals-height"
               value={vitals.heightCm}
               onChange={(e) => setVitals({ ...vitals, heightCm: e.target.value })}
               placeholder="170"
@@ -1418,7 +1466,7 @@ function VitalsForm({
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+            <label htmlFor="queue-vitals-weight" className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
               <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
               </svg>
@@ -1427,6 +1475,7 @@ function VitalsForm({
             <input
               type="number"
               step="0.1"
+              id="queue-vitals-weight"
               value={vitals.weightKg}
               onChange={(e) => setVitals({ ...vitals, weightKg: e.target.value })}
               placeholder="70"
@@ -1443,9 +1492,9 @@ function VitalsForm({
                 <svg className="w-5 h-5 text-blue-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
-                <label className="text-sm font-bold text-white">
+                <p className="text-sm font-bold text-white">
                   BMI (Auto-Calculated)
-                </label>
+                </p>
               </div>
               <p className="text-4xl font-bold text-white mb-1">{calculateBMI()}</p>
               <p className="text-sm text-blue-100 font-medium">kg/m² - Body Mass Index</p>
@@ -1477,7 +1526,9 @@ function VitalsForm({
         </button>
         <button
           type="submit"
-          className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-bold shadow-lg hover:shadow-xl flex items-center gap-2"
+          disabled={saving}
+          aria-busy={saving}
+          className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-bold shadow-lg hover:shadow-xl flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

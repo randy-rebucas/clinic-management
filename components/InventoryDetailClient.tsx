@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useSetting } from './SettingsContext';
@@ -48,7 +48,8 @@ interface InventoryTransaction {
 
 export default function InventoryDetailClient({ itemId }: { itemId: string }) {
   const [item, setItem] = useState<InventoryItem | null>(null);
-  const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
+  // Transaction history has no API yet.
+  const transactions: InventoryTransaction[] = [];
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview');
@@ -64,12 +65,7 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
     }).format(amount);
   };
 
-  useEffect(() => {
-    fetchItem();
-    fetchTransactions();
-  }, [itemId]);
-
-  const fetchItem = async () => {
+  const fetchItem = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -103,16 +99,14 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [itemId, router]);
 
-  const fetchTransactions = async () => {
-    try {
-      // For now, we'll use an empty array. In the future, this could fetch from an API
-      setTransactions([]);
-    } catch (error) {
-      console.error('Failed to fetch transactions:', error);
-    }
-  };
+  useEffect(() => {
+    const load = async () => {
+      await fetchItem();
+    };
+    load();
+  }, [fetchItem]);
 
   const getStatusColor = (status: string): 'green' | 'yellow' | 'red' | 'gray' => {
     switch (status) {
@@ -217,9 +211,10 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
             <div className="flex items-center gap-4 mb-6">
               <Link 
                 href="/inventory"
+                aria-label="Back to inventory"
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
@@ -389,6 +384,8 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
               <div className="border-b border-gray-200 overflow-x-auto">
                 <nav className="flex -mb-px min-w-max">
                   <button
+                    type="button"
+                    aria-pressed={activeTab === 'overview'}
                     onClick={() => setActiveTab('overview')}
                     className={`py-3 px-4 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
                       activeTab === 'overview'
@@ -399,6 +396,8 @@ export default function InventoryDetailClient({ itemId }: { itemId: string }) {
                     Overview
                   </button>
                   <button
+                    type="button"
+                    aria-pressed={activeTab === 'history'}
                     onClick={() => setActiveTab('history')}
                     className={`py-3 px-4 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
                       activeTab === 'history'

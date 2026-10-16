@@ -7,11 +7,11 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Appointment from '@/models/Appointment';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
-import { sendSMS } from '@/lib/sms';
+import { sendEmail, escapeHtml } from '@/lib/email';
+import { dayRangeOffsetInTz } from '@/lib/tz';
 import logger from '@/lib/logger';
 import { Types } from 'mongoose';
+import { forEachTenant, getTenantTimezone, errorMessage, BATCH_LIMIT, type AutomationTenant } from './shared';
 
 export interface InsuranceVerificationResult {
   verified: boolean;
@@ -27,6 +27,12 @@ export interface InsuranceVerificationResult {
   };
   errors?: string[];
   verifiedAt?: Date;
+  /** True when the patient has no insurance on file (self-pay); not a failure. */
+  noInsurance?: boolean;
+}
+
+function toObjectId(id: string | Types.ObjectId): Types.ObjectId {
+  return typeof id === 'string' ? new Types.ObjectId(id) : id;
 }
 
 /**
@@ -40,10 +46,10 @@ export async function verifyInsurance(
   try {
     await connectDB();
 
-    const patient = await Patient.findOne({
-      _id: patientId,
-      tenantId: typeof tenantId === 'string' ? new Types.ObjectId(tenantId) : tenantId,
-    }).select('insurance firstName lastName email phone');
+    // Patient uses a tenantIds array. `insurance` is not a schema path, so read the raw document.
+    const patient = await Patient.findOne({ _id: patientId, tenantIds: toObjectId(tenantId) })
+      .select('insurance firstName lastName email phone')
+      .lean<any>();
 
     if (!patient) {
       return {
@@ -52,43 +58,22 @@ export async function verifyInsurance(
       };
     }
 
-    // Check if patient has insurance information
     if (!patient.insurance || !patient.insurance.provider || !patient.insurance.policyNumber) {
       return {
         verified: false,
+        noInsurance: true,
         errors: ['Patient does not have insurance information'],
       };
     }
 
-    // TODO: Integrate with actual insurance verification API
-    // This is a placeholder that simulates verification
-    const insuranceProvider = patient.insurance.provider;
-    const policyNumber = patient.insurance.policyNumber;
-
-    // Simulate API call (replace with actual integration)
-    const verificationResult = await simulateInsuranceVerification(
-      insuranceProvider,
-      policyNumber,
-      patient
-    );
-
-    // Update patient record with verification status
-    if (verificationResult.verified) {
-      patient.insurance = {
-        ...patient.insurance,
-        verified: true,
-        verifiedAt: new Date(),
-        coverageDetails: verificationResult.coverageDetails,
-      };
-      await patient.save();
-    }
-
-    return verificationResult;
+    // No eligibility provider is integrated yet; nothing is written back to the patient
+    // so simulated coverage never becomes part of the record.
+    return await simulateInsuranceVerification(patient.insurance.provider, String(patient.insurance.policyNumber));
   } catch (error: any) {
-    logger.error('Error verifying insurance', error as Error, { patientId, tenantId });
+    logger.error('Error verifying insurance', error as Error, { patientId: String(patientId), tenantId: String(tenantId) });
     return {
       verified: false,
-      errors: [error.message || 'Failed to verify insurance'],
+      errors: ['Failed to verify insurance'],
     };
   }
 }
@@ -98,18 +83,9 @@ export async function verifyInsurance(
  */
 async function simulateInsuranceVerification(
   provider: string,
-  policyNumber: string,
-  patient: any
+  policyNumber: string
 ): Promise<InsuranceVerificationResult> {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 500));
-
-  // Simulate verification logic
-  // In production, this would call an actual insurance verification API
-  // Examples: Availity, Change Healthcare, Experian Health, etc.
-
-  // For now, simulate a successful verification
-  const isVerified = policyNumber.length >= 8; // Simple validation
+  const isVerified = policyNumber.length >= 8; // Simple format validation
 
   if (!isVerified) {
     return {
@@ -124,14 +100,6 @@ async function simulateInsuranceVerification(
     verified: true,
     insuranceProvider: provider,
     policyNumber,
-    coverageDetails: {
-      coverageType: 'Primary',
-      coverageAmount: 10000,
-      copay: 20,
-      deductible: 500,
-      effectiveDate: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), // 1 year ago
-      expirationDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
-    },
     verifiedAt: new Date(),
   };
 }
@@ -152,49 +120,39 @@ export async function autoVerifyInsuranceForAppointment(
       return null; // Feature disabled
     }
 
-    const appointment = await Appointment.findById(appointmentId).select('patient');
+    const tid = toObjectId(tenantId);
+    const appointment = await Appointment.findOne({ _id: appointmentId, tenantId: tid }).select('patient insuranceCheckedAt');
     if (!appointment || !appointment.patient) {
       return null;
     }
+    if ((appointment as any).insuranceCheckedAt) {
+      return null;
+    }
 
-    const result = await verifyInsurance(appointment.patient, tenantId);
+    const result = await verifyInsurance(appointment.patient, tid);
 
-    // Send notification if verification failed
-    if (!result.verified) {
-      const patient = await Patient.findById(appointment.patient).select('firstName lastName email phone');
-      if (patient) {
-        const message = `Insurance verification failed for your appointment. Please contact the clinic to update your insurance information.`;
-        
-        // Send in-app notification
-        await createNotification({
-          userId: patient._id as any,
-          tenantId: typeof tenantId === 'string' ? new Types.ObjectId(tenantId) : tenantId,
-          type: 'appointment',
-          priority: 'normal',
-          title: 'Insurance Verification Failed',
-          message,
-          actionUrl: `/appointments/${appointmentId}`,
+    await Appointment.updateOne({ _id: appointment._id, tenantId: tid }, { $set: { insuranceCheckedAt: new Date() } });
+
+    // Only tell patients who actually have insurance on file that it couldn't be verified.
+    if (!result.verified && !result.noInsurance) {
+      const patient = await Patient.findOne({ _id: appointment.patient, tenantIds: tid }).select('firstName lastName email');
+      if (patient?.email) {
+        await sendEmail({
+          to: patient.email,
+          subject: 'Insurance Verification Required',
+          html: `
+            <p>Dear ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)},</p>
+            <p>We were unable to verify your insurance information for your upcoming appointment.</p>
+            <p>Please contact our office to update your insurance details.</p>
+            <p>Details: ${escapeHtml(result.errors?.join(', ') || 'Unknown error')}</p>
+          `,
         });
-
-        // Send email if available
-        if (patient.email) {
-          await sendEmail({
-            to: patient.email,
-            subject: 'Insurance Verification Required',
-            html: `
-              <p>Dear ${patient.firstName} ${patient.lastName},</p>
-              <p>We were unable to verify your insurance information for your upcoming appointment.</p>
-              <p>Please contact our office to update your insurance details.</p>
-              <p>Errors: ${result.errors?.join(', ') || 'Unknown error'}</p>
-            `,
-          });
-        }
       }
     }
 
     return result;
   } catch (error: any) {
-    logger.error('Error in auto insurance verification', error as Error, { appointmentId, tenantId });
+    logger.error('Error in auto insurance verification', error as Error, { appointmentId: String(appointmentId), tenantId: String(tenantId) });
     return null;
   }
 }
@@ -229,11 +187,11 @@ export async function batchVerifyInsurance(
           failed++;
         }
       } catch (error: any) {
-        logger.error('Error verifying insurance for patient', error as Error, { patientId });
+        logger.error('Error verifying insurance for patient', error as Error, { patientId: String(patientId) });
         failed++;
         results.push({
           verified: false,
-          errors: [error.message || 'Verification failed'],
+          errors: ['Verification failed'],
         });
       }
     }
@@ -245,7 +203,7 @@ export async function batchVerifyInsurance(
       results,
     };
   } catch (error: any) {
-    logger.error('Error in batch insurance verification', error as Error, { tenantId });
+    logger.error('Error in batch insurance verification', error as Error, { tenantId: String(tenantId) });
     return {
       success: false,
       verified: 0,
@@ -255,80 +213,67 @@ export async function batchVerifyInsurance(
   }
 }
 
-/**
- * Verify insurance for upcoming appointments
- * Cron job to verify insurance before appointments
- */
-export async function verifyInsuranceForUpcomingAppointments(
-  tenantId?: string | Types.ObjectId
-): Promise<{
+type UpcomingResult = {
   success: boolean;
   appointmentsChecked: number;
   verified: number;
   failed: number;
-}> {
+};
+
+async function processTenant(tenant: AutomationTenant): Promise<UpcomingResult> {
+  const out: UpcomingResult = { success: true, appointmentsChecked: 0, verified: 0, failed: 0 };
+
+  const settings = await getSettings(tenant.tenantId);
+  if (!settings?.automationSettings?.autoInsuranceVerification) return out;
+
+  const tz = tenant.timezone || (await getTenantTimezone(tenant.tenantId));
+  const start = dayRangeOffsetInTz(1, new Date(), tz).start;
+  const end = dayRangeOffsetInTz(2, new Date(), tz).end;
+
+  const appointments = await Appointment.find({
+    tenantId: tenant.tenantObjectId,
+    appointmentDate: { $gte: start, $lte: end },
+    status: { $in: ['pending', 'scheduled', 'confirmed'] },
+    insuranceCheckedAt: { $exists: false },
+  })
+    .select('_id')
+    .limit(BATCH_LIMIT)
+    .lean();
+
+  for (const appointment of appointments as any[]) {
+    out.appointmentsChecked++;
+    try {
+      const result = await autoVerifyInsuranceForAppointment(appointment._id, tenant.tenantObjectId);
+      if (result?.verified) out.verified++;
+      else if (result && !result.noInsurance) out.failed++;
+    } catch (error) {
+      out.failed++;
+      console.error('[insurance-verification] appointment failed:', errorMessage(error));
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Verify insurance for upcoming appointments (tomorrow and the day after, clinic-local).
+ * Without a tenantId every active tenant is processed.
+ */
+export async function verifyInsuranceForUpcomingAppointments(
+  tenantId?: string | Types.ObjectId
+): Promise<UpcomingResult> {
   try {
     await connectDB();
-
-    const settings = await getSettings(tenantId?.toString());
-    if (!settings?.automationSettings?.autoInsuranceVerification) {
-      return {
-        success: true,
-        appointmentsChecked: 0,
-        verified: 0,
-        failed: 0,
-      };
+    const runs = await forEachTenant(tenantId, processTenant);
+    const total: UpcomingResult = { success: runs.every((r) => r.success), appointmentsChecked: 0, verified: 0, failed: 0 };
+    for (const run of runs) {
+      total.appointmentsChecked += run.result?.appointmentsChecked ?? 0;
+      total.verified += run.result?.verified ?? 0;
+      total.failed += run.result?.failed ?? 0;
     }
-
-    // Find appointments in the next 24-48 hours that haven't had insurance verified
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-
-    const dayAfter = new Date();
-    dayAfter.setDate(dayAfter.getDate() + 2);
-    dayAfter.setHours(23, 59, 59, 999);
-
-    const query: any = {
-      date: { $gte: tomorrow, $lte: dayAfter },
-      status: { $in: ['scheduled', 'confirmed'] },
-    };
-
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' ? new Types.ObjectId(tenantId) : tenantId;
-    }
-
-    const appointments = await Appointment.find(query)
-      .select('patient')
-      .populate('patient', 'insurance')
-      .lean();
-
-    let verified = 0;
-    let failed = 0;
-
-    for (const appointment of appointments) {
-      if (appointment.patient && (appointment.patient as any).insurance) {
-        const appointmentId = appointment._id?.toString() || appointment._id;
-        const result = await autoVerifyInsuranceForAppointment(
-          appointmentId as string | Types.ObjectId,
-          (appointment as any).tenantId || tenantId!
-        );
-        if (result?.verified) {
-          verified++;
-        } else if (result && !result.verified) {
-          failed++;
-        }
-      }
-    }
-
-    return {
-      success: true,
-      appointmentsChecked: appointments.length,
-      verified,
-      failed,
-    };
+    return total;
   } catch (error: any) {
-    logger.error('Error verifying insurance for upcoming appointments', error as Error, { tenantId });
+    logger.error('Error verifying insurance for upcoming appointments', error as Error, { tenantId: String(tenantId ?? '') });
     return {
       success: false,
       appointmentsChecked: 0,
@@ -337,4 +282,3 @@ export async function verifyInsuranceForUpcomingAppointments(
     };
   }
 }
-

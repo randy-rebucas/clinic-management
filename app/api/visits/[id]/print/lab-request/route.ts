@@ -1,27 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { getSettings } from '@/lib/settings';
-import { getTenantContext } from '@/lib/tenant';
 import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
 import {
   escapeHtml as e,
   safeImageSrc,
   sealedDocumentParts,
   PROTECTED_DOCUMENT_HEADERS,
+  withScriptNonce,
 } from '@/lib/document-protection';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   const permissionCheck = await requirePermission(session, 'visits', 'read');
   if (permissionCheck) {
@@ -31,15 +30,13 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
 
     const query = tenantScopedQuery(id, tenantId);
     const visit = query
       ? await Visit.findOne(query)
-          .populate('patient', 'firstName lastName patientCode email phone dateOfBirth gender')
+          .populate({ path: 'patient', select: 'firstName lastName patientCode email phone dateOfBirth gender', match: { tenantIds: query.tenantId } })
           .populate('provider', 'name email')
-          .populate('labsOrdered')
+          .populate({ path: 'labsOrdered', match: { tenantId: query.tenantId } })
       : null;
 
     if (!visit) {
@@ -56,8 +53,9 @@ export async function GET(
       );
     }
 
-    const [settings, seal] = await Promise.all([
+    const [settings, tz, seal] = await Promise.all([
       getSettings(tenantId),
+      getTenantTimezone(tenantId),
       issueSeal({
         request,
         documentType: 'lab_request',
@@ -68,9 +66,9 @@ export async function GET(
     ]);
 
     // Generate HTML for printable lab request
-    const html = generateLabRequestHTML(visit, settings, seal);
+    const html = generateLabRequestHTML(visit, settings, seal, tz);
 
-    return new NextResponse(html, { headers: PROTECTED_DOCUMENT_HEADERS });
+    return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {
     console.error('Error generating lab request:', error);
     return NextResponse.json(
@@ -80,17 +78,19 @@ export async function GET(
   }
 }
 
-function generateLabRequestHTML(visit: any, settings: any, seal: IssuedSeal): string {
+function generateLabRequestHTML(visit: any, settings: any, seal: IssuedSeal, tz: string): string {
   const patient = visit.patient || {};
   const provider = visit.provider;
   const clinicName = settings?.clinicName || 'Clinic';
   const signatureSrc = safeImageSrc(visit.digitalSignature?.signatureData);
   const visitDate = new Date(visit.date).toLocaleDateString('en-US', {
+    timeZone: tz,
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
   const today = new Date().toLocaleDateString('en-US', {
+    timeZone: tz,
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -242,7 +242,7 @@ function generateLabRequestHTML(visit: any, settings: any, seal: IssuedSeal): st
     ${patient.dateOfBirth ? `
     <div class="info-row">
       <div class="info-label">Date of Birth:</div>
-      <div>${new Date(patient.dateOfBirth).toLocaleDateString()}</div>
+      <div>${new Date(patient.dateOfBirth).toLocaleDateString('en-US', { timeZone: tz })}</div>
     </div>
     ` : ''}
     ${patient.gender ? `

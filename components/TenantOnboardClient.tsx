@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { detectCountry } from '@/lib/country-detection';
@@ -16,6 +16,8 @@ interface FormErrors {
   general?: string;
 }
 
+const subscribeNoop = () => () => {};
+
 export default function TenantOnboardClient() {
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -24,8 +26,16 @@ export default function TenantOnboardClient() {
   const [success, setSuccess] = useState(false);
   const [tenantData, setTenantData] = useState<any>(null);
   const [detectingCountry, setDetectingCountry] = useState(true);
-  const [rootDomain, setRootDomain] = useState('localhost');
-  const [protocol, setProtocol] = useState('http');
+  const rootDomain = useSyncExternalStore(
+    subscribeNoop,
+    () => window.location.hostname.split('.').slice(-2).join('.'),
+    () => 'localhost'
+  );
+  const protocol = useSyncExternalStore(
+    subscribeNoop,
+    () => window.location.protocol.slice(0, -1),
+    () => 'http'
+  );
   const [lastGeneratedSubdomain, setLastGeneratedSubdomain] = useState('');
 
   const [formData, setFormData] = useState({
@@ -109,6 +119,15 @@ export default function TenantOnboardClient() {
       // Replace multiple consecutive hyphens with single hyphen
       normalized = normalized.replace(/-+/g, '-');
       setFormData(prev => ({ ...prev, [field]: normalized }));
+    } else if (field === 'tenantName') {
+      // Auto-generate the subdomain from the clinic name unless the user has edited it.
+      const generatedSubdomain = generateSubdomain(value);
+      if (!formData.subdomain || formData.subdomain === lastGeneratedSubdomain) {
+        setLastGeneratedSubdomain(generatedSubdomain);
+        setFormData(prev => ({ ...prev, tenantName: value, subdomain: generatedSubdomain }));
+      } else {
+        setFormData(prev => ({ ...prev, tenantName: value }));
+      }
     } else {
       setFormData(prev => ({ ...prev, [field]: value }));
     }
@@ -121,34 +140,6 @@ export default function TenantOnboardClient() {
       });
     }
   };
-
-  // Set root domain and protocol on mount (client-side only)
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      const root = hostname.split('.').slice(-2).join('.');
-      const proto = window.location.protocol.slice(0, -1);
-      setRootDomain(root);
-      setProtocol(proto);
-    }
-  }, []);
-
-  // Auto-generate subdomain from clinic name (only if subdomain is empty or matches previous generated value)
-  useEffect(() => {
-    const generatedSubdomain = generateSubdomain(formData.tenantName);
-    setFormData(prev => {
-      // Only auto-generate if subdomain is empty or if it matches the last generated value
-      // This allows users to manually edit the subdomain without it being overwritten
-      if (!prev.subdomain || prev.subdomain === lastGeneratedSubdomain) {
-        setLastGeneratedSubdomain(generatedSubdomain);
-        return {
-          ...prev,
-          subdomain: generatedSubdomain,
-        };
-      }
-      return prev;
-    });
-  }, [formData.tenantName, lastGeneratedSubdomain]);
 
   // Detect country and auto-fill form fields on mount
   useEffect(() => {
@@ -211,8 +202,8 @@ export default function TenantOnboardClient() {
       }
       if (!formData.adminPassword) {
         newErrors.adminPassword = ['Password is required'];
-      } else if (formData.adminPassword.length < 8) {
-        newErrors.adminPassword = ['Password must be at least 8 characters long'];
+      } else if (formData.adminPassword.length < 12) {
+        newErrors.adminPassword = ['Password must be at least 12 characters long'];
       } else if (formData.adminPassword !== formData.confirmPassword) {
         newErrors.adminPassword = ['Passwords do not match'];
       }
@@ -482,15 +473,17 @@ export default function TenantOnboardClient() {
               </h2>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Access URL</label>
+                  <label htmlFor="tenant-access-url" className="block text-sm font-medium text-gray-700 mb-1">Access URL</label>
                   <div className="flex items-center gap-2">
                     <input
+                      id="tenant-access-url"
                       type="text"
                       readOnly
                       value={accessUrl}
                       className="flex-1 px-4 py-3 bg-white border border-gray-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal"
                     />
                     <button
+                      type="button"
                       onClick={() => {
                         navigator.clipboard.writeText(accessUrl);
                         alert('URL copied to clipboard!');
@@ -502,7 +495,7 @@ export default function TenantOnboardClient() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Admin Email</label>
+                  <p className="block text-sm font-medium text-gray-700 mb-1">Admin Email</p>
                   <p className="text-sm text-gray-900 font-mono bg-white px-4 py-3 rounded-md border border-gray-300">
                     {tenantData.adminEmail}
                   </p>
@@ -603,9 +596,12 @@ export default function TenantOnboardClient() {
                   }`}
                 >
                   {step > n ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+                    <>
+                      <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="sr-only">Completed: </span>
+                    </>
                   ) : (
                     n
                   )}
@@ -661,11 +657,17 @@ export default function TenantOnboardClient() {
                   }`}
                 >
                   {step > s ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+                    <>
+                      <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="sr-only">Step {s} completed</span>
+                    </>
                   ) : (
-                    s
+                    <>
+                      {s}
+                      {step === s && <span className="sr-only"> (current step)</span>}
+                    </>
                   )}
                 </div>
                 {s < 3 && (
@@ -700,10 +702,11 @@ export default function TenantOnboardClient() {
               </h2>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="tenant-name" className="block text-sm font-medium text-gray-700 mb-2">
                   Clinic Name <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="tenant-name"
                   type="text"
                   value={formData.tenantName}
                   onChange={(e) => handleInputChange('tenantName', e.target.value)}
@@ -718,10 +721,11 @@ export default function TenantOnboardClient() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="tenant-display-name" className="block text-sm font-medium text-gray-700 mb-2">
                   Display Name (optional)
                 </label>
                 <input
+                  id="tenant-display-name"
                   type="text"
                   value={formData.displayName}
                   onChange={(e) => handleInputChange('displayName', e.target.value)}
@@ -731,11 +735,12 @@ export default function TenantOnboardClient() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="tenant-subdomain" className="block text-sm font-medium text-gray-700 mb-2">
                   Subdomain <span className="text-red-500">*</span>
                 </label>
                 <div className="flex items-center gap-2">
                   <input
+                    id="tenant-subdomain"
                     type="text"
                     value={formData.subdomain}
                     onChange={(e) => handleInputChange('subdomain', e.target.value)}
@@ -782,10 +787,11 @@ export default function TenantOnboardClient() {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="tenant-contact-email" className="block text-sm font-medium text-gray-700 mb-2">
                     Contact Email
                   </label>
                   <input
+                    id="tenant-contact-email"
                     type="email"
                     value={formData.email}
                     onChange={(e) => handleInputChange('email', e.target.value)}
@@ -800,10 +806,11 @@ export default function TenantOnboardClient() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="tenant-contact-phone" className="block text-sm font-medium text-gray-700 mb-2">
                     Contact Phone
                   </label>
                   <input
+                    id="tenant-contact-phone"
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => handleInputChange('phone', e.target.value)}
@@ -819,6 +826,7 @@ export default function TenantOnboardClient() {
                   <input
                     type="text"
                     value={formData.street}
+                    aria-label="Street address"
                     onChange={(e) => handleInputChange('street', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base"
                     placeholder="Street Address"
@@ -827,6 +835,7 @@ export default function TenantOnboardClient() {
                     <input
                       type="text"
                       value={formData.city}
+                      aria-label="City"
                       onChange={(e) => handleInputChange('city', e.target.value)}
                       className="px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base"
                       placeholder="City"
@@ -834,6 +843,7 @@ export default function TenantOnboardClient() {
                     <input
                       type="text"
                       value={formData.state}
+                      aria-label="State or province"
                       onChange={(e) => handleInputChange('state', e.target.value)}
                       className="px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base"
                       placeholder="State/Province"
@@ -843,6 +853,7 @@ export default function TenantOnboardClient() {
                     <input
                       type="text"
                       value={formData.zipCode}
+                      aria-label="Zip or postal code"
                       onChange={(e) => handleInputChange('zipCode', e.target.value)}
                       className="px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base"
                       placeholder="Zip/Postal Code"
@@ -850,6 +861,7 @@ export default function TenantOnboardClient() {
                     <input
                       type="text"
                       value={formData.country}
+                      aria-label="Country"
                       onChange={(e) => handleInputChange('country', e.target.value)}
                       disabled={detectingCountry}
                       className="px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base disabled:opacity-50 disabled:cursor-not-allowed"
@@ -872,8 +884,9 @@ export default function TenantOnboardClient() {
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Timezone</label>
+                    <label htmlFor="tenant-timezone" className="block text-sm font-medium text-gray-700 mb-2">Timezone</label>
                     <select
+                      id="tenant-timezone"
                       value={formData.timezone}
                       onChange={(e) => handleInputChange('timezone', e.target.value)}
                       disabled={detectingCountry}
@@ -912,8 +925,9 @@ export default function TenantOnboardClient() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
+                    <label htmlFor="tenant-currency" className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
                     <select
+                      id="tenant-currency"
                       value={formData.currency}
                       onChange={(e) => handleInputChange('currency', e.target.value)}
                       disabled={detectingCountry}
@@ -944,8 +958,9 @@ export default function TenantOnboardClient() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Date Format</label>
+                    <label htmlFor="tenant-date-format" className="block text-sm font-medium text-gray-700 mb-2">Date Format</label>
                     <select
+                      id="tenant-date-format"
                       value={formData.dateFormat}
                       onChange={(e) => handleInputChange('dateFormat', e.target.value)}
                       disabled={detectingCountry}
@@ -996,10 +1011,11 @@ export default function TenantOnboardClient() {
               </p>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="tenant-admin-name" className="block text-sm font-medium text-gray-700 mb-2">
                   Full Name <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="tenant-admin-name"
                   type="text"
                   value={formData.adminName}
                   onChange={(e) => handleInputChange('adminName', e.target.value)}
@@ -1014,10 +1030,11 @@ export default function TenantOnboardClient() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="tenant-admin-email" className="block text-sm font-medium text-gray-700 mb-2">
                   Email <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="tenant-admin-email"
                   type="email"
                   value={formData.adminEmail}
                   onChange={(e) => handleInputChange('adminEmail', e.target.value)}
@@ -1033,17 +1050,18 @@ export default function TenantOnboardClient() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="tenant-admin-password" className="block text-sm font-medium text-gray-700 mb-2">
                     Password <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="tenant-admin-password"
                     type="password"
                     value={formData.adminPassword}
                     onChange={(e) => handleInputChange('adminPassword', e.target.value)}
                     className={`w-full px-4 py-3 border rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base ${
                       errors.adminPassword ? 'border-red-300' : 'border-gray-300'
                     }`}
-                    placeholder="Min 8 characters"
+                    placeholder="Min 12 characters"
                   />
                   {errors.adminPassword && (
                     <p className="mt-1 text-sm text-red-600">{errors.adminPassword[0]}</p>
@@ -1051,10 +1069,11 @@ export default function TenantOnboardClient() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="tenant-admin-confirm-password" className="block text-sm font-medium text-gray-700 mb-2">
                     Confirm Password <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="tenant-admin-confirm-password"
                     type="password"
                     value={formData.confirmPassword}
                     onChange={(e) => handleInputChange('confirmPassword', e.target.value)}

@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import PrescriptionForm from './PrescriptionForm';
 import { Modal } from './ui/Modal';
+import { formatApiError } from './utils/apiError';
 
 interface Prescription {
   _id: string;
@@ -59,19 +60,38 @@ export default function PrescriptionsPageClient() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [requestedPage, setCurrentPage] = useState(1);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [patientQuery, setPatientQuery] = useState<string | null>(null);
   const router = useRouter();
 
+  // Server-side patient search for the form's picker (debounced); stale responses are aborted.
   useEffect(() => {
-    fetchData();
-    fetchUser();
-  }, []);
+    if (patientQuery === null) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ limit: '20' });
+        if (patientQuery.trim()) params.set('search', patientQuery.trim());
+        const res = await fetch(`/api/patients?${params}`, { signal: controller.signal });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success) setPatients(data.data);
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') console.error('Failed to search patients:', err);
+      }
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [patientQuery]);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [prescriptionsRes, patientsRes] = await Promise.all([
         fetch('/api/prescriptions'),
-        fetch('/api/patients'),
+        fetch('/api/patients?limit=20'),
       ]);
 
       if (prescriptionsRes.status === 401 || patientsRes.status === 401) {
@@ -97,9 +117,9 @@ export default function PrescriptionsPageClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
-  const fetchUser = async () => {
+  const fetchUser = useCallback(async () => {
     try {
       const res = await fetch('/api/user/me');
       if (res.ok) {
@@ -111,7 +131,14 @@ export default function PrescriptionsPageClient() {
     } catch (error) {
       console.error('Failed to fetch user:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      await Promise.all([fetchData(), fetchUser()]);
+    };
+    load();
+  }, [fetchData, fetchUser]);
 
   const showNotification = (message: string, type: 'error' | 'success') => {
     if (type === 'error') {
@@ -124,6 +151,7 @@ export default function PrescriptionsPageClient() {
   };
 
   const handleSubmit = async (formData: any) => {
+    setFormError(null);
     try {
       const res = await fetch('/api/prescriptions', {
         method: 'POST',
@@ -141,7 +169,7 @@ export default function PrescriptionsPageClient() {
       if (contentType && contentType.includes('application/json')) {
         data = await res.json();
       } else {
-        showNotification('Failed to create prescription: API error', 'error');
+        setFormError('Failed to create prescription: API error');
         return;
       }
 
@@ -150,11 +178,11 @@ export default function PrescriptionsPageClient() {
         fetchData();
         showNotification('Prescription created successfully!', 'success');
       } else {
-        showNotification('Error: ' + data.error, 'error');
+        setFormError(formatApiError(data, 'Failed to create prescription'));
       }
     } catch (error) {
       console.error('Failed to create prescription:', error);
-      showNotification('Failed to create prescription', 'error');
+      setFormError('Failed to create prescription');
     }
   };
 
@@ -173,20 +201,11 @@ export default function PrescriptionsPageClient() {
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredPrescriptions.length / PRESCRIPTIONS_PER_PAGE));
+  const currentPage = Math.min(requestedPage, totalPages);
   const paginatedPrescriptions = filteredPrescriptions.slice(
     (currentPage - 1) * PRESCRIPTIONS_PER_PAGE,
     currentPage * PRESCRIPTIONS_PER_PAGE
   );
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, filterStatus]);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [totalPages, currentPage]);
 
   const handlePrint = async (prescriptionId: string) => {
     window.open(`/api/prescriptions/${prescriptionId}/print`, '_blank');
@@ -289,24 +308,32 @@ export default function PrescriptionsPageClient() {
                 <div className="flex-1">
                   <div className="relative">
                     <div className="absolute left-4 top-1/2 transform -translate-y-1/2 p-1.5">
-                      <svg className="w-5 h-5 text-gray-400" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <svg className="w-5 h-5 text-gray-400" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                         <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
                       </svg>
                     </div>
                     <input
                       type="text"
                       placeholder="Search by patient name, prescription code, or medication..."
+                      aria-label="Search prescriptions"
                       value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setCurrentPage(1);
+                      }}
                       className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
                     />
                     {searchQuery && (
                       <button
                         type="button"
-                        onClick={() => setSearchQuery('')}
+                        onClick={() => {
+                          setSearchQuery('');
+                          setCurrentPage(1);
+                        }}
+                        aria-label="Clear search"
                         className="absolute right-4 top-1/2 transform -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                       >
-                        <svg width="14" height="14" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg width="14" height="14" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                           <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                         </svg>
                       </button>
@@ -316,7 +343,11 @@ export default function PrescriptionsPageClient() {
                 <div className="min-w-[200px]">
                   <select
                     value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
+                    onChange={(e) => {
+                      setFilterStatus(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    aria-label="Filter by status"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                   >
                     <option value="all">All Statuses</option>
@@ -332,6 +363,7 @@ export default function PrescriptionsPageClient() {
                     onClick={() => {
                       setSearchQuery('');
                       setFilterStatus('all');
+                      setCurrentPage(1);
                     }}
                     className="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold whitespace-nowrap"
                   >
@@ -358,11 +390,17 @@ export default function PrescriptionsPageClient() {
             <h2 className="text-2xl font-bold text-gray-900">New Prescription</h2>
           </div>
           <div className="py-4">
+            {formError && (
+              <div role="alert" className="mb-4 bg-red-50 border-l-4 border-red-500 rounded-lg p-3 text-sm text-red-700">
+                {formError}
+              </div>
+            )}
             <PrescriptionForm
               patients={patients}
               onSubmit={handleSubmit}
               onCancel={() => setShowForm(false)}
               providerName={providerName}
+              onPatientSearch={setPatientQuery}
             />
           </div>
         </div>
@@ -500,11 +538,13 @@ export default function PrescriptionsPageClient() {
                         <td className="px-5 py-4 text-right">
                           <div className="flex gap-2 justify-end">
                             <button
+                              type="button"
                               onClick={() => handlePrint(prescription._id)}
+                              aria-label={`Print prescription ${prescription.prescriptionCode}`}
                               className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors border border-indigo-200"
                               title="Print"
                             >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                               </svg>
                             </button>
@@ -530,7 +570,7 @@ export default function PrescriptionsPageClient() {
             </p>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
                 className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -540,7 +580,7 @@ export default function PrescriptionsPageClient() {
                 Page {currentPage} of {totalPages}
               </span>
               <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
                 className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >

@@ -4,9 +4,18 @@ import MedicalRepresentative from '@/models/MedicalRepresentative';
 import User from '@/models/User';
 import Role from '@/models/Role';
 import bcrypt from 'bcryptjs';
-import { createSession } from '@/app/lib/dal';
-import { sanitizeEmail, checkRateLimit, resetRateLimit } from '@/app/lib/security';
+import { createSession, createPending2fa } from '@/app/lib/dal';
+import { sanitizeEmail } from '@/app/lib/security';
 import { getTenantContext } from '@/lib/tenant';
+import { applyAuthRateLimits, getClientIp, rateLimiters, resetRateLimit } from '@/lib/middleware/rate-limit';
+
+const INVALID_CREDENTIALS = 'Invalid email or password.';
+
+let dummyHash: string | null = null;
+function getDummyHash(): string {
+	if (!dummyHash) dummyHash = bcrypt.hashSync('timing-equalizer-not-a-password', 12);
+	return dummyHash;
+}
 
 export async function POST(request: NextRequest) {
 	try {
@@ -21,8 +30,8 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
-		const email = body.email?.toString() || '';
-		const password = body.password?.toString() || '';
+		const email = typeof body.email === 'string' ? body.email : '';
+		const password = typeof body.password === 'string' ? body.password : '';
 
 		if (!email || !password) {
 			return NextResponse.json(
@@ -33,16 +42,9 @@ export async function POST(request: NextRequest) {
 
 		const sanitizedEmail = sanitizeEmail(email);
 
-		const rateLimitCheck = checkRateLimit(sanitizedEmail);
-		if (!rateLimitCheck.allowed) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: `Too many login attempts. Please try again in ${rateLimitCheck.remainingTime} minute(s).`,
-				},
-				{ status: 429 }
-			);
-		}
+		const accountKey = `medrep:${sanitizedEmail}`;
+		const limited = await applyAuthRateLimits(request, accountKey);
+		if (limited) return limited;
 
 		await connectDB();
 
@@ -55,24 +57,13 @@ export async function POST(request: NextRequest) {
 		}
 
 		const user = await User.findOne(userQuery).populate('role');
-		if (!user) {
-			return NextResponse.json(
-				{ success: false, error: 'Invalid email or password.' },
-				{ status: 401 }
-			);
-		}
 
-		if (!user.password) {
+		// Verify the password before revealing anything about the account
+		const passwordMatch = await bcrypt.compare(password, user?.password || getDummyHash());
+		if (!user || !user.password || !passwordMatch) {
 			return NextResponse.json(
-				{ success: false, error: 'Invalid email or password.' },
+				{ success: false, error: INVALID_CREDENTIALS },
 				{ status: 401 }
-			);
-		}
-
-		if (user.status !== 'active') {
-			return NextResponse.json(
-				{ success: false, error: 'Your account is not active. Please contact support.', code: 'USER_INACTIVE' },
-				{ status: 403 }
 			);
 		}
 
@@ -93,16 +84,22 @@ export async function POST(request: NextRequest) {
 
 		if (roleName !== 'medical-representative') {
 			return NextResponse.json(
-				{ success: false, error: 'Forbidden - Medical representative access only.', code: 'ROLE_MISMATCH' },
+				{ success: false, error: INVALID_CREDENTIALS },
+				{ status: 401 }
+			);
+		}
+
+		if (user.mustSetPassword) {
+			return NextResponse.json(
+				{ success: false, error: 'Check your email to set your password.', code: 'PASSWORD_SETUP_REQUIRED' },
 				{ status: 403 }
 			);
 		}
 
-		const passwordMatch = await bcrypt.compare(password, user.password);
-		if (!passwordMatch) {
+		if (user.status !== 'active') {
 			return NextResponse.json(
-				{ success: false, error: 'Invalid email or password.' },
-				{ status: 401 }
+				{ success: false, error: 'Your account is not active. Please contact support.', code: 'USER_INACTIVE' },
+				{ status: 403 }
 			);
 		}
 
@@ -124,7 +121,15 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
-		resetRateLimit(sanitizedEmail);
+		await resetRateLimit(rateLimiters.authAccount.config, getClientIp(request.headers), accountKey);
+
+		if (user.totpEnabled) {
+			await createPending2fa(user._id.toString(), tenantId ?? undefined);
+			return NextResponse.json(
+				{ success: false, requires2fa: true, redirectTo: '/login/2fa', error: 'Two-factor authentication required.' },
+				{ status: 401 }
+			);
+		}
 
 		// Update last login timestamps
 		await Promise.all([
@@ -138,7 +143,8 @@ export async function POST(request: NextRequest) {
 				user.email,
 				'medical-representative',
 				roleId,
-				undefined
+				undefined,
+				user.sessionVersion ?? 0
 			);
 		} catch (sessionError: any) {
 			console.error('Medical representative session creation error:', sessionError);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from './ui/Modal';
 import { useSetting } from './SettingsContext';
@@ -31,11 +31,7 @@ export default function ReportsPageClient() {
     }).format(amount);
   };
 
-  useEffect(() => {
-    fetchReports();
-  }, []);
-
-  const fetchReports = async (isRefresh = false) => {
+  const fetchReports = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -72,7 +68,14 @@ export default function ReportsPageClient() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchReports();
+    };
+    load();
+  }, [fetchReports]);
 
   const fetchReport = async (reportType: string, reportPeriod?: 'daily' | 'weekly' | 'monthly') => {
     setReportLoading(true);
@@ -510,6 +513,7 @@ export default function ReportsPageClient() {
                   </div>
                   {(selectedReport === 'consultations' || selectedReport === 'income') && (
                     <select
+                      aria-label="Report period"
                       value={period}
                       onChange={(e) => {
                         setPeriod(e.target.value as 'daily' | 'weekly' | 'monthly');
@@ -530,6 +534,7 @@ export default function ReportsPageClient() {
                 <div className="flex flex-col gap-3">
                   <button
                     onClick={() => fetchReport('consultations', period)}
+                    aria-pressed={selectedReport === 'consultations'}
                     className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
                       selectedReport === 'consultations'
                         ? 'border-violet-500 bg-violet-50'
@@ -552,6 +557,7 @@ export default function ReportsPageClient() {
                   </button>
                   <button
                     onClick={() => fetchReport('income', period)}
+                    aria-pressed={selectedReport === 'income'}
                     className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
                       selectedReport === 'income'
                         ? 'border-violet-500 bg-violet-50'
@@ -574,6 +580,7 @@ export default function ReportsPageClient() {
                   </button>
                   <button
                     onClick={() => fetchReport('demographics')}
+                    aria-pressed={selectedReport === 'demographics'}
                     className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
                       selectedReport === 'demographics'
                         ? 'border-violet-500 bg-violet-50'
@@ -596,6 +603,7 @@ export default function ReportsPageClient() {
                   </button>
                   <button
                     onClick={() => fetchReport('inventory')}
+                    aria-pressed={selectedReport === 'inventory'}
                     className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
                       selectedReport === 'inventory'
                         ? 'border-violet-500 bg-violet-50'
@@ -618,6 +626,7 @@ export default function ReportsPageClient() {
                   </button>
                   <button
                     onClick={() => fetchReport('hmo-claims')}
+                    aria-pressed={selectedReport === 'hmo-claims'}
                     className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
                       selectedReport === 'hmo-claims'
                         ? 'border-violet-500 bg-violet-50'

@@ -2,18 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import Visit from '@/models/Visit';
+import Doctor from '@/models/Doctor';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
-import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenantFilter, isValidId } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zObjectId, asString } from '@/lib/api/validate';
+import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
+import { invoiceEditableSchema, computeInvoiceTotals } from './_lib/totals';
+
+const INVOICE_STATUSES = ['unpaid', 'partial', 'paid', 'refunded'];
+const MAX_RESULTS = 1000;
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   // Check permission to read invoices
   const permissionCheck = await requirePermission(session, 'invoices', 'read');
@@ -23,74 +28,56 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    const searchParams = request.nextUrl.searchParams;
-    const patientId = searchParams.get('patientId');
-    const visitId = searchParams.get('visitId');
-    const status = searchParams.get('status');
 
-    const query: any = {};
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
+    const searchParams = request.nextUrl.searchParams;
+    const patientId = asString(searchParams.get('patientId'));
+    const visitId = asString(searchParams.get('visitId'));
+    const status = asString(searchParams.get('status'));
+
+    const query: Record<string, unknown> = tenantFilter(tenantId);
     if (patientId) {
-      query.patient = patientId;
+      if (!isValidId(patientId)) return NextResponse.json({ success: true, data: [] });
+      query.patient = new Types.ObjectId(patientId);
     }
     if (visitId) {
-      query.visit = visitId;
+      if (!isValidId(visitId)) return NextResponse.json({ success: true, data: [] });
+      query.visit = new Types.ObjectId(visitId);
     }
-    if (status) {
+    if (status && INVOICE_STATUSES.includes(status)) {
       query.status = status;
     }
 
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode email phone',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-
     const invoices = await Invoice.find(query)
-      .populate(patientPopulateOptions)
+      .populate({
+        path: 'patient',
+        select: 'firstName lastName patientCode email phone',
+        match: patientTenantFilter(tenantId),
+      })
       .populate('visit', 'visitCode date')
       .populate('professionalFeeDoctor', 'firstName lastName')
       .populate('createdBy', 'name email')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(MAX_RESULTS)
+      .lean();
 
     return NextResponse.json({ success: true, data: invoices });
   } catch (error: any) {
-    // Improved error logging and reporting
     console.error('Error fetching invoices:', error);
-    let errorMessage = 'Failed to fetch invoices';
-    if (error && error.message) {
-      errorMessage += `: ${error.message}`;
-    }
     return NextResponse.json(
-      { success: false, error: errorMessage, details: error?.stack || error },
+      { success: false, error: 'Failed to fetch invoices' },
       { status: 500 }
     );
   }
 }
 
-export async function POST(request: NextRequest) {
-  const session = await verifySession();
+const createInvoiceSchema = invoiceEditableSchema.extend({
+  patient: zObjectId,
+});
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+export async function POST(request: NextRequest) {
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
   // Check permission to write/create invoices
   const permissionCheck = await requirePermission(session, 'invoices', 'write');
@@ -100,93 +87,73 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
-    const body = await request.json();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Validate that the patient belongs to the tenant
+    const parsed = await parseBody(request, createInvoiceSchema);
+    if (isValidationError(parsed)) return parsed;
+    const body = parsed.data;
+
     // Patient model uses tenantIds (array) since patients can belong to multiple clinics
-    if (body.patient && tenantId) {
-      const patientQuery: any = {
-        _id: body.patient,
-        tenantIds: new Types.ObjectId(tenantId),
-      };
-      const patient = await Patient.findOne(patientQuery);
-      if (!patient) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
-          { status: 400 }
-        );
-      }
+    const patient = await Patient.exists(patientTenantFilter(tenantId, { _id: new Types.ObjectId(body.patient) }));
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
+        { status: 400 }
+      );
+    }
+    if (body.visit && !(await Visit.exists(tenantFilter(tenantId, { _id: new Types.ObjectId(body.visit) })))) {
+      return NextResponse.json({ success: false, error: 'Invalid visit selected' }, { status: 400 });
+    }
+    if (
+      body.professionalFeeDoctor &&
+      !(await Doctor.exists(tenantFilter(tenantId, { _id: new Types.ObjectId(body.professionalFeeDoctor) })))
+    ) {
+      return NextResponse.json({ success: false, error: 'Invalid doctor selected' }, { status: 400 });
     }
 
-    // Auto-generate invoice number using settings prefix (tenant-scoped)
-    const settings = await getSettings();
-    const invoicePrefix = settings.billingSettings?.invoicePrefix || 'INV';
-    
-    const codeQuery: any = { invoiceNumber: { $exists: true, $ne: null } };
-    if (tenantId) {
-      codeQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const lastInvoice = await Invoice.findOne(codeQuery)
-      .sort({ invoiceNumber: -1 })
-      .exec();
+    const settings = await getSettings(tenantId);
+    const invoicePrefix = String(settings.billingSettings?.invoicePrefix || 'INV').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 10) || 'INV';
 
-    let nextNumber = 1;
-    if (lastInvoice?.invoiceNumber) {
-      // Extract number from invoice number (handles any prefix)
-      const match = lastInvoice.invoiceNumber.match(/(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
-      }
-    }
+    const totals = computeInvoiceTotals({
+      items: body.items,
+      discounts: body.discounts,
+      professionalFee: body.professionalFee,
+      tax: body.tax,
+      taxRate: settings.billingSettings?.taxRate,
+      appliedBy: session.userId,
+    });
 
-    body.invoiceNumber = `${invoicePrefix}-${String(nextNumber).padStart(6, '0')}`;
+    const seq = await nextSequence(
+      tenantId,
+      'invoice',
+      maxCodeSeed(Invoice, 'invoiceNumber', tenantFilter(tenantId, { invoiceNumber: { $exists: true, $ne: null } }))
+    );
 
-    // Calculate totals
-    const subtotal = body.items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
-    const professionalFee = body.professionalFee || 0;
-    const discountTotal = body.discounts?.reduce((sum: number, disc: any) => sum + (disc.amount || 0), 0) || 0;
-    const afterDiscount = subtotal - discountTotal;
-    const tax = body.tax || 0;
-    const total = afterDiscount + professionalFee + tax;
+    const invoice = await Invoice.create({
+      tenantId: tenantObjectId,
+      patient: body.patient,
+      visit: body.visit || undefined,
+      invoiceNumber: formatCode(invoicePrefix, seq),
+      items: totals.items,
+      subtotal: totals.subtotal,
+      professionalFee: totals.professionalFee,
+      professionalFeeDoctor: body.professionalFeeDoctor || undefined,
+      professionalFeeType: body.professionalFeeType,
+      professionalFeeNotes: body.professionalFeeNotes,
+      discounts: totals.discounts,
+      tax: totals.tax,
+      total: totals.total,
+      insurance: body.insurance,
+      payments: [],
+      totalPaid: 0,
+      outstandingBalance: totals.total,
+      status: totals.total > 0 ? 'unpaid' : 'paid',
+      createdBy: session.userId,
+    });
 
-    body.subtotal = subtotal;
-    body.total = total;
-    body.outstandingBalance = total;
-    body.totalPaid = 0;
-    body.status = 'unpaid';
-
-    // Set createdBy
-    if (!body.createdBy) {
-      body.createdBy = session.userId;
-    }
-
-    // Ensure invoice is created with tenantId
-    const invoiceData: any = { ...body };
-    if (tenantId && !invoiceData.tenantId) {
-      invoiceData.tenantId = new Types.ObjectId(tenantId);
-    }
-
-    const invoice = await Invoice.create(invoiceData);
-    
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
+    await invoice.populate({
       path: 'patient',
       select: 'firstName lastName patientCode email phone',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    await invoice.populate(patientPopulateOptions);
+      match: patientTenantFilter(tenantId),
+    });
     await invoice.populate('visit', 'visitCode date');
     await invoice.populate('createdBy', 'name email');
 
@@ -195,7 +162,7 @@ export async function POST(request: NextRequest) {
     console.error('Error creating invoice:', error);
     if (error.name === 'ValidationError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid invoice data' },
         { status: 400 }
       );
     }
@@ -205,4 +172,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

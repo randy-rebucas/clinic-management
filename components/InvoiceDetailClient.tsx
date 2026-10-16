@@ -110,7 +110,8 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
-  const [newStatus, setNewStatus] = useState<string>('');
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusIssues, setStatusIssues] = useState<Array<{ path?: string; message: string }>>([]);
   const router = useRouter();
   const currency = useSetting('billingSettings.currency', 'PHP');
 
@@ -171,86 +172,84 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
   };
 
   useEffect(() => {
+    const fetchInvoice = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch(`/api/invoices/${invoiceId}`);
+
+        if (res.status === 401) {
+          router.push('/login');
+          return;
+        }
+
+        const contentType = res.headers.get('content-type');
+        let data;
+      
+        if (contentType && contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const text = await res.text();
+          console.error('API returned non-JSON response:', text.substring(0, 500));
+          setError(`API error: ${res.status} ${res.statusText}`);
+          return;
+        }
+
+        if (!res.ok) {
+          const errorMsg = data?.error || `Failed to load invoice: ${res.status} ${res.statusText}`;
+          setError(errorMsg);
+          return;
+        }
+
+        if (data.success && data.data) {
+          setInvoice(data.data);
+        } else {
+          setError(data.error || 'Failed to load invoice');
+        }
+      } catch (error: any) {
+        console.error('Failed to fetch invoice:', error);
+        setError(error.message || 'Failed to load invoice. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchInvoice();
-  }, [invoiceId]);
+  }, [invoiceId, router]);
 
-  useEffect(() => {
-    if (invoice && !newStatus) {
-      setNewStatus(invoice.status);
-    }
-  }, [invoice]);
+  const handlePrintReceipt = () => {
+    window.open(`/api/invoices/${invoiceId}/receipt`, '_blank');
+  };
 
-  const fetchInvoice = async () => {
+  // Payment status is derived server-side from recorded payments; the only manual transition is a refund.
+  const handleMarkRefunded = async () => {
+    if (updatingStatus || !invoice || invoice.status === 'refunded') return;
+    if (!confirm('Mark this invoice as refunded? This cannot be undone from this page.')) return;
+
+    setStatusError(null);
+    setStatusIssues([]);
     try {
-      setLoading(true);
-      setError(null);
-      const res = await fetch(`/api/invoices/${invoiceId}`);
+      setUpdatingStatus(true);
+      const res = await fetch(`/api/invoices/${invoiceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'refunded' }),
+      });
 
       if (res.status === 401) {
         router.push('/login');
         return;
       }
 
-      const contentType = res.headers.get('content-type');
-      let data;
-      
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        console.error('API returned non-JSON response:', text.substring(0, 500));
-        setError(`API error: ${res.status} ${res.statusText}`);
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        setStatusError(data?.error || 'Failed to mark invoice as refunded');
+        setStatusIssues(Array.isArray(data?.issues) ? data.issues : []);
         return;
       }
-
-      if (!res.ok) {
-        const errorMsg = data?.error || `Failed to load invoice: ${res.status} ${res.statusText}`;
-        setError(errorMsg);
-        return;
-      }
-
-      if (data.success && data.data) {
-        setInvoice(data.data);
-      } else {
-        setError(data.error || 'Failed to load invoice');
-      }
+      if (data.data) setInvoice(data.data);
     } catch (error: any) {
-      console.error('Failed to fetch invoice:', error);
-      setError(error.message || 'Failed to load invoice. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePrintReceipt = () => {
-    window.open(`/api/invoices/${invoiceId}/receipt`, '_blank');
-  };
-
-  const handleUpdateStatus = async () => {
-    if (!newStatus || newStatus === invoice?.status) return;
-
-    try {
-      setUpdatingStatus(true);
-      const res = await fetch(`/api/invoices/${invoiceId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to update status');
-      }
-
-      const data = await res.json();
-      if (data.success && data.data) {
-        setInvoice(data.data);
-        setNewStatus(data.data.status);
-        alert('Invoice status updated successfully');
-      }
-    } catch (error: any) {
-      console.error('Failed to update status:', error);
-      alert(error.message || 'Failed to update invoice status');
+      console.error('Failed to mark invoice refunded:', error);
+      setStatusError('Failed to mark invoice as refunded. Please try again.');
     } finally {
       setUpdatingStatus(false);
     }
@@ -527,52 +526,53 @@ export default function InvoiceDetailClient({ invoiceId }: { invoiceId: string }
             <div className="p-5">
               <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                 <div className="flex-1">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Update Invoice Status
-                  </label>
-                  <p className="text-xs text-gray-600 mb-3">
-                    Change the payment status of this invoice. This helps track outstanding balances and completed payments.
+                  <p className="block text-sm font-semibold text-gray-700 mb-2">
+                    Payment Status
                   </p>
-                  <select
-                    value={newStatus}
-                    onChange={(e) => setNewStatus(e.target.value)}
-                    className="w-full sm:w-64 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                  >
-                    <option value="unpaid">Unpaid</option>
-                    <option value="partial">Partially Paid</option>
-                    <option value="paid">Paid</option>
-                    <option value="refunded">Refunded</option>
-                  </select>
+                  <p className="text-xs text-gray-600 mb-3">
+                    Payment status is calculated from the payments recorded on this invoice. Record a payment to update it.
+                  </p>
+                  <span className={`inline-block px-3 py-1.5 rounded-full text-sm font-semibold border ${getStatusColor(invoice.status)}`}>
+                    {invoice.status === 'partial' ? 'Partially Paid' : invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                  </span>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <label className="block text-sm font-semibold text-gray-700 opacity-0 pointer-events-none sm:block hidden">
-                    Action
-                  </label>
-                  <button
-                    onClick={handleUpdateStatus}
-                    disabled={updatingStatus || newStatus === invoice.status}
-                    className={`px-5 py-2.5 rounded-lg transition-all flex items-center gap-2 text-sm font-semibold shadow-md whitespace-nowrap ${
-                      updatingStatus || newStatus === invoice.status
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700'
-                    }`}
-                  >
-                    {updatingStatus ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                        Updating...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Update Status
-                      </>
-                    )}
-                  </button>
-                </div>
+                {invoice.status !== 'refunded' && (
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={handleMarkRefunded}
+                      disabled={updatingStatus}
+                      aria-busy={updatingStatus}
+                      className={`px-5 py-2.5 rounded-lg transition-all flex items-center gap-2 text-sm font-semibold shadow-md whitespace-nowrap ${
+                        updatingStatus
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700'
+                      }`}
+                    >
+                      {updatingStatus ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" aria-hidden="true"></div>
+                          Updating...
+                        </>
+                      ) : (
+                        'Mark Refunded'
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
+              {statusError && (
+                <div role="alert" className="mt-4 bg-red-50 border-l-4 border-red-500 rounded-lg p-3 text-sm text-red-700">
+                  <p>{statusError}</p>
+                  {statusIssues.length > 0 && (
+                    <ul className="mt-1 list-disc list-inside">
+                      {statusIssues.map((issue, i) => (
+                        <li key={i}>{issue.path ? `${issue.path}: ` : ''}{issue.message}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               
               {/* Status Guide */}
               <div className="mt-5 pt-5 border-t border-gray-200">

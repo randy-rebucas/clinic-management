@@ -35,6 +35,17 @@ export const PROTECTED_DOCUMENT_HEADERS: Record<string, string> = {
   'X-Robots-Tag': 'noindex, nofollow, noarchive',
 };
 
+/**
+ * Stamps the per-request CSP nonce (set by proxy.ts as x-nonce) on every <script> tag of a
+ * server-built HTML document. Templates must escape all interpolated values, so the only
+ * literal <script> tags are our own. Use data-print instead of onclick for print buttons.
+ */
+export function withScriptNonce(html: string, request: Request): string {
+  const nonce = request.headers.get('x-nonce');
+  if (!nonce || !/^[A-Za-z0-9+/=]+$/.test(nonce)) return html;
+  return html.replace(/<script(?=[\s>])/gi, `<script nonce="${nonce}"`);
+}
+
 const strictAntiInspect = () =>
   process.env.NODE_ENV === 'production' && process.env.DOCUMENT_ANTI_INSPECT !== 'off';
 
@@ -109,6 +120,11 @@ export function protectionHead(options: { shieldOnBlur?: boolean } = {}): string
     function wipeClipboard() {
       try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText('').catch(function () {}); } catch (_) {}
     }
+
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      if (t && t.closest && t.closest('[data-print]')) { e.preventDefault(); window.print(); }
+    });
 
     ['contextmenu', 'copy', 'cut', 'dragstart', 'selectstart'].forEach(function (t) {
       document.addEventListener(t, block, true);

@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import InvoiceForm from './InvoiceForm';
+import { formatApiError } from './utils/apiError';
 
 interface Patient {
   _id: string;
@@ -33,6 +34,11 @@ interface Service {
   unit?: string;
 }
 
+function withLinkedPatient(list: Patient[], linked: Patient | null) {
+  if (!linked || list.some((p) => p._id === linked._id)) return list;
+  return [linked, ...list];
+}
+
 export default function InvoiceFormClient({ 
   patientId, 
   visitId 
@@ -45,16 +51,37 @@ export default function InvoiceFormClient({
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [patientQuery, setPatientQuery] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const linkedPatientRef = useRef<Patient | null>(null);
   const router = useRouter();
 
+  // Server-side patient search (debounced); stale responses are aborted.
   useEffect(() => {
-    fetchData();
-  }, [patientId, visitId]);
+    if (patientQuery === null) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ limit: '20' });
+        if (patientQuery.trim()) params.set('search', patientQuery.trim());
+        const res = await fetch(`/api/patients?${params}`, { signal: controller.signal });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success) setPatients(withLinkedPatient(data.data, linkedPatientRef.current));
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') console.error('Failed to search patients:', err);
+      }
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [patientQuery]);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [patientsRes, servicesRes, visitsRes] = await Promise.all([
-        fetch('/api/patients'),
+        fetch('/api/patients?limit=20'),
         fetch('/api/services?active=true'),
         patientId ? fetch(`/api/visits?patientId=${patientId}`) : Promise.resolve(null),
       ]);
@@ -71,7 +98,19 @@ export default function InvoiceFormClient({
       ]);
 
       if (patientsData.success) {
-        setPatients(patientsData.data);
+        let list: Patient[] = Array.isArray(patientsData.data) ? patientsData.data : [];
+        const linked = patientId ? list.find((p) => String(p._id) === String(patientId)) : undefined;
+        if (patientId && !linked) {
+          const linkedRes = await fetch(`/api/patients/${patientId}`);
+          const linkedData = linkedRes.ok ? await linkedRes.json() : null;
+          if (linkedData?.success && linkedData.data?._id) {
+            linkedPatientRef.current = linkedData.data;
+            list = [linkedData.data, ...list];
+          }
+        } else if (linked) {
+          linkedPatientRef.current = linked;
+        }
+        setPatients(list);
       }
       if (servicesData.success) {
         setServices(servicesData.data);
@@ -84,9 +123,18 @@ export default function InvoiceFormClient({
     } finally {
       setLoading(false);
     }
-  };
+  }, [patientId, router]);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchData();
+    };
+    load();
+  }, [fetchData]);
 
   const handleSubmit = async (formData: any) => {
+    if (submitting) return;
+    setError(null);
     setSubmitting(true);
     try {
       const res = await fetch('/api/invoices', {
@@ -106,11 +154,11 @@ export default function InvoiceFormClient({
       if (data.success) {
         router.push('/invoices');
       } else {
-        alert(data.error || 'Failed to create invoice');
+        setError(formatApiError(data, 'Failed to create invoice'));
       }
     } catch (error) {
       console.error('Failed to create invoice:', error);
-      alert('Failed to create invoice. Please try again.');
+      setError('Failed to create invoice. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -143,10 +191,12 @@ export default function InvoiceFormClient({
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex items-center gap-4">
               <button 
+                type="button"
                 onClick={handleCancel}
+                aria-label="Back to invoices"
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
@@ -164,25 +214,24 @@ export default function InvoiceFormClient({
             </div>
           </div>
 
+          {error && (
+            <div role="alert" className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm">
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+
           {/* Form Card */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            {submitting ? (
-              <div className="flex flex-col items-center gap-4 min-h-[200px] justify-center p-12">
-                <div className="relative">
-                  <div className="animate-spin rounded-full h-16 w-16 border-4 border-emerald-100 border-t-emerald-600"></div>
-                </div>
-                <p className="text-sm text-gray-600 font-medium">Creating invoice...</p>
-              </div>
-            ) : (
-              <InvoiceForm
-                initialData={patientId ? { patient: patientId, visit: visitId } : undefined}
-                patients={patients}
-                visits={visits}
-                services={services}
-                onSubmit={handleSubmit}
-                onCancel={handleCancel}
-              />
-            )}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden" aria-busy={submitting}>
+            <InvoiceForm
+              initialData={patientId ? { patient: patientId, visit: visitId } : undefined}
+              patients={patients}
+              visits={visits}
+              services={services}
+              onSubmit={handleSubmit}
+              onCancel={handleCancel}
+              submitting={submitting}
+              onPatientSearch={setPatientQuery}
+            />
           </div>
         </div>
       </div>

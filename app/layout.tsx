@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { connection } from "next/server";
 import WebVitals from "@/components/WebVitals";
 import "./globals.css";
 
@@ -65,11 +66,16 @@ export const metadata: Metadata = {
  * - (auth): Authentication pages (login)
  * - (app): Authenticated app pages with sidebar (dashboard, patients, etc.)
  */
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // The CSP in proxy.ts uses a per-request nonce, which Next.js can only stamp on its scripts
+  // when rendering at request time; a prerendered page would ship un-nonced scripts that the
+  // browser blocks. This opts every page into dynamic rendering.
+  await connection();
+
   return (
     <html lang="en" data-scroll-behavior="smooth">
       <head>

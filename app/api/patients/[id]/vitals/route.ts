@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, patientTenantFilter, tenantFilter } from '@/lib/api/tenant-session';
 import { Types } from 'mongoose';
 
 /**
@@ -16,8 +15,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-  if (!session) return unauthorizedResponse();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   const permissionCheck = await requirePermission(session, 'visits', 'read');
   if (permissionCheck) return permissionCheck;
@@ -26,26 +26,20 @@ export async function GET(
     await connectDB();
 
     const { id } = await params;
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
+    if (!isValidId(id)) return notFound('Patient');
 
     const limit = Math.min(
       100,
-      Math.max(1, parseInt(request.nextUrl.searchParams.get('limit') ?? '20', 10))
+      Math.max(1, parseInt(request.nextUrl.searchParams.get('limit') ?? '20', 10) || 20)
     );
 
-    const patient = await Patient.findById(id).lean();
-    if (!patient) {
-      return NextResponse.json({ success: false, error: 'Patient not found' }, { status: 404 });
-    }
+    const patient = await Patient.exists(patientTenantFilter(tenantId, { _id: id }));
+    if (!patient) return notFound('Patient');
 
-    const query: any = {
+    const visits = await Visit.find(tenantFilter(tenantId, {
       patient: new Types.ObjectId(id),
-      'vitals': { $exists: true },
-    };
-    if (tenantId) query.tenantId = new Types.ObjectId(tenantId);
-
-    const visits = await Visit.find(query)
+      vitals: { $exists: true },
+    }))
       .select('date vitals visitType visitCode')
       .sort({ date: -1 })
       .limit(limit)
@@ -65,6 +59,7 @@ export async function GET(
 
     return NextResponse.json({ success: true, data: vitalsHistory });
   } catch (error: any) {
+    console.error('Error fetching vitals history:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch vitals history' },
       { status: 500 }

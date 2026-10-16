@@ -4,11 +4,12 @@
 import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail, generateAppointmentReminderEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
 import { sendPushToPatientDevices } from '@/lib/push-notifications';
+import { buildAppointmentActionUrl } from '@/lib/appointment-links';
 import { Types } from 'mongoose';
+import { getTenantTimezone, displayDate, displayTime, delivered } from './shared';
 
 export interface AppointmentConfirmationOptions {
   appointmentId: string | Types.ObjectId;
@@ -16,6 +17,10 @@ export interface AppointmentConfirmationOptions {
   confirmationMethod?: 'sms' | 'email' | 'link';
   sendConfirmation?: boolean;
   sendPush?: boolean;
+}
+
+function appBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
 }
 
 /**
@@ -29,11 +34,14 @@ export async function sendConfirmationRequest(options: AppointmentConfirmationOp
   try {
     await connectDB();
 
-    const appointmentId = typeof options.appointmentId === 'string' 
-      ? new Types.ObjectId(options.appointmentId) 
+    const appointmentId = typeof options.appointmentId === 'string'
+      ? new Types.ObjectId(options.appointmentId)
       : options.appointmentId;
 
-    const appointment = await Appointment.findById(appointmentId)
+    const filter: Record<string, unknown> = { _id: appointmentId };
+    if (options.tenantId) filter.tenantId = new Types.ObjectId(String(options.tenantId));
+
+    const appointment = await Appointment.findOne(filter)
       .populate('patient', 'firstName lastName email phone')
       .populate('doctor', 'firstName lastName');
 
@@ -51,69 +59,43 @@ export async function sendConfirmationRequest(options: AppointmentConfirmationOp
       return { success: false, sent: false, error: 'Patient not found' };
     }
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : appointment.tenantId;
-
-    const appointmentDate = new Date(appointment.appointmentDate);
-    const appointmentTime = appointment.appointmentTime || 'TBD';
-    const [hours, minutes] = appointmentTime.split(':').map(Number);
-    const displayTime = hours >= 12 
-      ? `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} PM`
-      : `${hours}:${minutes.toString().padStart(2, '0')} AM`;
-
+    const tz = await getTenantTimezone(appointment.tenantId);
+    const dateText = displayDate(appointment.appointmentDate || appointment.scheduledAt, tz);
+    const timeText = displayTime(appointment.appointmentTime);
     const doctor = appointment.doctor as any;
-    const confirmationCode = generateConfirmationCode(appointment);
 
     let sent = false;
 
-    // Send SMS confirmation request
     if ((options.confirmationMethod === 'sms' || !options.confirmationMethod) && patient.phone) {
       try {
-        const message = `Please confirm your appointment on ${appointmentDate.toLocaleDateString()} at ${displayTime}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. Reply YES to confirm, NO to cancel, or RESCHEDULE to reschedule. Code: ${confirmationCode}`;
-
-        let phoneNumber = patient.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-        }
-
-        const smsResult = await sendSMS({
-          to: phoneNumber,
-          message,
-        });
-
-        if (smsResult.success) {
-          sent = true;
-        }
+        const confirmUrl = buildAppointmentActionUrl(appBaseUrl(), appointment._id.toString(), 'yes');
+        const message = `Please confirm your appointment on ${dateText} at ${timeText}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. Confirm: ${confirmUrl}`;
+        const smsResult = await sendSMS({ to: patient.phone, message });
+        if (delivered(smsResult)) sent = true;
       } catch (error) {
         console.error('Error sending confirmation SMS:', error);
       }
     }
 
-    // Send email confirmation request
     if ((options.confirmationMethod === 'email' || !options.confirmationMethod) && patient.email) {
       try {
-        const emailContent = generateConfirmationEmail(appointment, confirmationCode);
+        const emailContent = generateConfirmationEmail(appointment, dateText, timeText);
         const emailResult = await sendEmail({
           to: patient.email,
           subject: emailContent.subject,
           html: emailContent.html,
         });
-
-        if (emailResult.success) {
-          sent = true;
-        }
+        if (delivered(emailResult)) sent = true;
       } catch (error) {
         console.error('Error sending confirmation email:', error);
       }
     }
 
-    // Send push notification to patient's mobile devices
     if (options.sendPush !== false && patient._id) {
       try {
         const pushResult = await sendPushToPatientDevices(patient._id.toString(), {
           title: 'Confirm Your Appointment',
-          body: `${appointmentDate.toLocaleDateString()} at ${displayTime}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. Tap to confirm.`,
+          body: `${dateText} at ${timeText}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. Tap to confirm.`,
           tag: `appointment-confirm-${appointment._id}`,
           url: `/appointments/${appointment._id}`,
         });
@@ -126,16 +108,17 @@ export async function sendConfirmationRequest(options: AppointmentConfirmationOp
     return { success: true, sent };
   } catch (error: any) {
     console.error('Error sending confirmation request:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send confirmation request' 
+      error: 'Failed to send confirmation request',
     };
   }
 }
 
 /**
- * Process patient confirmation response
+ * Process patient confirmation response.
+ * Callers must have authenticated the request (signed link token or staff session).
  */
 export async function processConfirmationResponse(
   appointmentId: string | Types.ObjectId,
@@ -149,95 +132,54 @@ export async function processConfirmationResponse(
   try {
     await connectDB();
 
-    const appointmentIdObj = typeof appointmentId === 'string' 
-      ? new Types.ObjectId(appointmentId) 
-      : appointmentId;
+    if (!Types.ObjectId.isValid(String(appointmentId))) {
+      return { success: false, error: 'Appointment not found' };
+    }
+    const filter: Record<string, unknown> = { _id: new Types.ObjectId(String(appointmentId)) };
+    if (tenantId) filter.tenantId = new Types.ObjectId(String(tenantId));
 
-    const appointment = await Appointment.findById(appointmentIdObj)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('doctor', 'firstName lastName');
-
+    const appointment = await Appointment.findOne(filter);
     if (!appointment) {
       return { success: false, error: 'Appointment not found' };
     }
 
+    const open = ['pending', 'scheduled', 'confirmed', 'rescheduled'];
+    if (!open.includes(appointment.status)) {
+      return { success: false, status: appointment.status, error: 'This appointment can no longer be changed' };
+    }
+
     if (response === 'yes') {
-      // Confirm appointment
-      appointment.status = 'confirmed';
-      await appointment.save();
-
-      // Send confirmation notification
-      const patient = appointment.patient as any;
-      if (patient && patient._id) {
-        await createNotification({
-          userId: patient._id,
-          tenantId: tenantId || appointment.tenantId,
-          type: 'appointment',
-          priority: 'normal',
-          title: 'Appointment Confirmed',
-          message: `Your appointment on ${new Date(appointment.appointmentDate).toLocaleDateString()} has been confirmed.`,
-          relatedEntity: {
-            type: 'appointment',
-            id: appointment._id,
-          },
-          actionUrl: `/appointments/${appointment._id}`,
-        }).catch(console.error);
+      if (appointment.status !== 'confirmed') {
+        appointment.status = 'confirmed';
+        await appointment.save();
       }
-
       return { success: true, status: 'confirmed' };
     } else if (response === 'no') {
-      // Cancel appointment
       appointment.status = 'cancelled';
       await appointment.save();
-
       return { success: true, status: 'cancelled' };
     } else if (response === 'reschedule') {
-      // Mark for rescheduling
-      // In a full implementation, you might want to send a rescheduling link
       return { success: true, status: 'reschedule_requested' };
     }
 
     return { success: false, error: 'Invalid response' };
   } catch (error: any) {
     console.error('Error processing confirmation response:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to process confirmation response' 
+    return {
+      success: false,
+      error: 'Failed to process confirmation response',
     };
   }
 }
 
-/**
- * Generate confirmation code for appointment
- */
-function generateConfirmationCode(appointment: any): string {
-  // Use appointment code or generate a short code
-  if (appointment.appointmentCode) {
-    return appointment.appointmentCode.substring(0, 6).toUpperCase();
-  }
-  return appointment._id.toString().substring(0, 6).toUpperCase();
-}
-
-/**
- * Generate confirmation email
- */
-function generateConfirmationEmail(appointment: any, confirmationCode: string): { subject: string; html: string } {
+function generateConfirmationEmail(appointment: any, dateText: string, timeText: string): { subject: string; html: string } {
   const patient = appointment.patient as any;
   const doctor = appointment.doctor as any;
-  const appointmentDate = new Date(appointment.appointmentDate);
-  const appointmentTime = appointment.appointmentTime || 'TBD';
-  const [hours, minutes] = appointmentTime.split(':').map(Number);
-  const displayTime = hours >= 12 
-    ? `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} PM`
-    : `${hours}:${minutes.toString().padStart(2, '0')} AM`;
+  const id = appointment._id.toString();
+  const confirmUrl = buildAppointmentActionUrl(appBaseUrl(), id, 'yes');
+  const cancelUrl = buildAppointmentActionUrl(appBaseUrl(), id, 'no');
 
-  const subject = `Please Confirm Your Appointment - ${appointmentDate.toLocaleDateString()}`;
-  
-  // Generate confirmation URLs (these would be actual endpoints in production)
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
-  const confirmUrl = `${baseUrl}/api/appointments/${appointment._id}/confirm?code=${confirmationCode}&action=yes`;
-  const cancelUrl = `${baseUrl}/api/appointments/${appointment._id}/confirm?code=${confirmationCode}&action=no`;
-  const rescheduleUrl = `${baseUrl}/api/appointments/${appointment._id}/confirm?code=${confirmationCode}&action=reschedule`;
+  const subject = `Please Confirm Your Appointment - ${dateText}`;
 
   const html = `
     <!DOCTYPE html>
@@ -252,7 +194,6 @@ function generateConfirmationEmail(appointment: any, confirmationCode: string): 
         .button { display: inline-block; padding: 12px 24px; margin: 10px 5px; text-decoration: none; border-radius: 4px; font-weight: bold; }
         .button-confirm { background-color: #4CAF50; color: white; }
         .button-cancel { background-color: #f44336; color: white; }
-        .button-reschedule { background-color: #ff9800; color: white; }
         .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
       </style>
     </head>
@@ -262,20 +203,19 @@ function generateConfirmationEmail(appointment: any, confirmationCode: string): 
           <h1>Please Confirm Your Appointment</h1>
         </div>
         <div class="content">
-          <p>Dear ${patient.firstName} ${patient.lastName},</p>
+          <p>Dear ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)},</p>
           <p>Please confirm your upcoming appointment:</p>
           <div class="info-box">
-            <p><strong>Date:</strong> ${appointmentDate.toLocaleDateString()}</p>
-            <p><strong>Time:</strong> ${displayTime}</p>
-            <p><strong>Doctor:</strong> ${doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : 'TBD'}</p>
-            <p><strong>Appointment Code:</strong> ${appointment.appointmentCode || confirmationCode}</p>
+            <p><strong>Date:</strong> ${escapeHtml(dateText)}</p>
+            <p><strong>Time:</strong> ${escapeHtml(timeText)}</p>
+            <p><strong>Doctor:</strong> ${doctor ? `Dr. ${escapeHtml(doctor.firstName)} ${escapeHtml(doctor.lastName)}` : 'TBD'}</p>
+            ${appointment.appointmentCode ? `<p><strong>Appointment Code:</strong> ${escapeHtml(appointment.appointmentCode)}</p>` : ''}
           </div>
           <p style="text-align: center;">
-            <a href="${confirmUrl}" class="button button-confirm">Confirm Appointment</a>
-            <a href="${cancelUrl}" class="button button-cancel">Cancel</a>
-            <a href="${rescheduleUrl}" class="button button-reschedule">Reschedule</a>
+            <a href="${escapeHtml(confirmUrl)}" class="button button-confirm">Confirm Appointment</a>
+            <a href="${escapeHtml(cancelUrl)}" class="button button-cancel">Cancel</a>
           </p>
-          <p>Or reply to this email with "YES" to confirm, "NO" to cancel, or "RESCHEDULE" to reschedule.</p>
+          <p>To reschedule, please contact the clinic.</p>
         </div>
         <div class="footer">
           <p>This is an automated message. Please do not reply to this email.</p>
@@ -292,20 +232,19 @@ function generateConfirmationEmail(appointment: any, confirmationCode: string): 
  * Enhance appointment reminders with confirmation requests
  */
 export async function enhanceReminderWithConfirmation(appointment: any): Promise<void> {
-  const settings = await getSettings();
+  if (!appointment?.tenantId) return;
+  const settings = await getSettings(appointment.tenantId);
   const autoConfirmation = (settings.automationSettings as any)?.autoAppointmentConfirmation !== false;
 
   if (!autoConfirmation) {
     return;
   }
 
-  // Only send confirmation request for scheduled appointments
   if (appointment.status === 'scheduled' || appointment.status === 'pending') {
     await sendConfirmationRequest({
       appointmentId: appointment._id,
       tenantId: appointment.tenantId,
-      confirmationMethod: 'email', // Prefer email for confirmation links
+      confirmationMethod: 'email',
     }).catch(console.error);
   }
 }
-

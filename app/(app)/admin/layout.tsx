@@ -44,20 +44,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+        <nav aria-label="Admin navigation" className="flex-1 overflow-y-auto p-3 space-y-1">
           {adminNavItems.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={isActive ? 'page' : undefined}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg font-semibold transition-all ${
                   isActive
                     ? 'bg-blue-50 text-blue-700 border border-blue-200'
                     : 'text-gray-700 hover:bg-gray-100 border border-transparent'
                 }`}
               >
-                <span className="flex-shrink-0">{iconMap[item.icon]}</span>
+                <span className="flex-shrink-0" aria-hidden="true">{iconMap[item.icon]}</span>
                 <span className="text-sm">{item.label}</span>
               </Link>
             );
@@ -70,7 +71,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             href="/dashboard"
             className="flex items-center gap-2 w-full px-3 py-2.5 text-gray-700 rounded-lg font-semibold hover:bg-gray-100 hover:text-gray-900 transition-colors text-sm border border-gray-200"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
             Back to App

@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
 const AppointmentCalendar = dynamic(() => import('./AppointmentCalendar'));
 import { Modal } from './ui/Modal';
 import { useSetting } from './SettingsContext';
+import { toDateKey } from './utils/dateKey';
+import { formatApiError } from './utils/apiError';
 
 interface Appointment {
   _id: string;
@@ -56,6 +58,13 @@ interface Doctor {
   specialization: string;
 }
 
+function getCurrentTime() {
+  const now = new Date();
+  const hours = now.getHours().toString().padStart(2, '0');
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
 export default function AppointmentsPageClient({ patientId }: { patientId?: string } = {}) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -71,7 +80,6 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   // Appointments and queue state
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(true);
-  const [appointmentsError, setAppointmentsError] = useState<Error | null>(null);
   const [queue, setQueue] = useState<any[]>([]);
   const [loadingQueue, setLoadingQueue] = useState(true);
 
@@ -104,28 +112,9 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [busyAppointmentId, setBusyAppointmentId] = useState<string | null>(null);
   const router = useRouter();
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  // Fetch appointments when filters change
-  useEffect(() => {
-    fetchAppointments();
-  }, [selectedDate, filterDoctor]);
-
-  // Fetch queue data
-  useEffect(() => {
-    fetchQueue();
-  }, []);
-
-  // Redirect on auth error
-  useEffect(() => {
-    if (appointmentsError && typeof appointmentsError === 'object' && 'message' in appointmentsError && (appointmentsError as any).message.includes('401')) {
-      router.push('/login');
-    }
-  }, [appointmentsError, router]);
 
   // Debounce patient search input
   useEffect(() => {
@@ -134,47 +123,6 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
     }, 300);
     return () => clearTimeout(timer);
   }, [patientSearch]);
-
-  // Fetch patients from server when debounced search changes
-  useEffect(() => {
-    if (selectedPatient) return;
-    fetchPatients(debouncedPatientSearch);
-  }, [debouncedPatientSearch]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Handle patientId prop - open form and pre-select patient
-  useEffect(() => {
-    if (patientId && patients.length > 0 && !showForm && !showWalkInForm) {
-      // Check if patient exists in the list
-      const patientExists = patients.some(p => p._id === patientId);
-      if (patientExists) {
-        const patient = patients.find(p => p._id === patientId);
-        const selectedDateStr = selectedDate.toISOString().split('T')[0];
-        const todayStr = new Date().toISOString().split('T')[0];
-        setFormData(prev => ({
-          ...prev,
-          patient: patientId,
-          appointmentDate: selectedDateStr,
-          appointmentTime: selectedDateStr === todayStr ? getCurrentTime() : '',
-        }));
-        if (patient) {
-          setSelectedPatient(patient);
-          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-        }
-        setShowForm(true);
-        setShowWalkInForm(false);
-      }
-    }
-  }, [patientId, patients.length]);
-
-  useEffect(() => {
-    if (formData.patient) {
-      const patient = patients.find((p) => p._id === formData.patient);
-      setSelectedPatient(patient || null);
-      if (patient) {
-        setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-      }
-    }
-  }, [formData.patient, patients]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -191,13 +139,12 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
     }
   }, [showPatientSearch]);
 
-  const fetchAppointments = async () => {
+  const fetchAppointments = useCallback(async () => {
     try {
       setLoadingAppointments(true);
-      setAppointmentsError(null);
       
       const params = new URLSearchParams();
-      params.append('date', selectedDate.toISOString().split('T')[0]);
+      params.append('date', toDateKey(selectedDate));
       if (filterDoctor) {
         params.append('doctorId', filterDoctor);
       }
@@ -218,13 +165,13 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
       setAppointments(data.data || data.appointments || []);
     } catch (error) {
       console.error('Failed to fetch appointments:', error);
-      setAppointmentsError(error instanceof Error ? error : new Error('Failed to fetch appointments'));
+      setError(error instanceof Error ? error.message : 'Failed to fetch appointments');
     } finally {
       setLoadingAppointments(false);
     }
-  };
+  }, [selectedDate, filterDoctor, router]);
 
-  const fetchQueue = async () => {
+  const fetchQueue = useCallback(async () => {
     try {
       setLoadingQueue(true);
       
@@ -244,9 +191,9 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
     } finally {
       setLoadingQueue(false);
     }
-  };
+  }, [router]);
 
-  const fetchPatients = async (search?: string) => {
+  const fetchPatients = useCallback(async (search?: string) => {
     try {
       const params = new URLSearchParams({ limit: '500' });
       if (search?.trim()) params.set('search', search.trim());
@@ -258,9 +205,9 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
     } catch (error) {
       console.error('Failed to fetch patients:', error);
     }
-  };
+  }, []);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [patientsRes, doctorsRes] = await Promise.all([
         fetch('/api/patients?limit=500'),
@@ -283,14 +230,55 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
       const patientsData = await parseResponse(patientsRes);
       const doctorsData = await parseResponse(doctorsRes);
 
-      if (patientsData.success) setPatients(patientsData.data);
+      if (patientsData.success) {
+        setPatients(patientsData.data);
+        // Opened with ?patientId: start a new appointment for that patient.
+        const patient = patientId
+          ? (patientsData.data as Patient[]).find((p) => p._id === patientId)
+          : undefined;
+        if (patient) {
+          setFormData((prev) => ({
+            ...prev,
+            patient: patient._id,
+            appointmentDate: toDateKey(new Date()),
+            appointmentTime: getCurrentTime(),
+          }));
+          setSelectedPatient(patient);
+          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
+          setShowForm(true);
+          setShowWalkInForm(false);
+        }
+      }
       if (doctorsData.success) setDoctors(doctorsData.data);
     } catch (error) {
       console.error('Failed to fetch data:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [patientId, router]);
+
+  useEffect(() => {
+    const load = async () => {
+      await Promise.all([fetchData(), fetchQueue()]);
+    };
+    load();
+  }, [fetchData, fetchQueue]);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchAppointments();
+    };
+    load();
+  }, [fetchAppointments]);
+
+  // Server-side patient search; skipped while a patient is selected.
+  useEffect(() => {
+    if (selectedPatient) return;
+    const load = async () => {
+      await fetchPatients(debouncedPatientSearch);
+    };
+    load();
+  }, [debouncedPatientSearch, selectedPatient, fetchPatients]);
 
   const filteredPatients = patients.filter((patient) => {
     if (!patientSearch.trim()) return true;
@@ -317,13 +305,15 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
       setShowPatientSearch(true);
       return;
     }
+    if (submitting) return;
+    setSubmitting(true);
     try {
       const isWalkIn = formData.isWalkIn;
 
       // For walk-ins, get next queue number
       let queueNumber;
       if (isWalkIn) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = toDateKey(new Date());
         const todayRes = await fetch(`/api/appointments?date=${today}&status=scheduled,confirmed`);
         if (todayRes.ok) {
           const todayData = await todayRes.json();
@@ -385,20 +375,24 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         // Refresh data
         fetchAppointments();
         if (isWalkIn) fetchQueue();
-        setSuccess(isWalkIn ? `Walk-in appointment created! Queue number: ${queueNumber}` : 'Appointment scheduled successfully!');
+        setSuccess(isWalkIn ? `Walk-in appointment created! Queue number: ${data.data?.queueNumber ?? queueNumber}` : 'Appointment scheduled successfully!');
         setTimeout(() => setSuccess(null), 5000);
       } else {
-        setError('Error: ' + data.error);
+        setError(formatApiError(data, 'Request failed'));
         setTimeout(() => setError(null), 5000);
       }
     } catch (error) {
       console.error('Failed to create appointment:', error);
       setError('Failed to create appointment');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleStatusUpdate = async (id: string, status: string) => {
+    if (busyAppointmentId) return;
+    setBusyAppointmentId(id);
     try {
       const res = await fetch(`/api/appointments/${id}`, {
         method: 'PUT',
@@ -431,17 +425,21 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
           // Trigger reminder (will be implemented)
         }
       } else {
-        setError('Error: ' + data.error);
+        setError(formatApiError(data, 'Request failed'));
         setTimeout(() => setError(null), 5000);
       }
     } catch (error) {
       console.error('Failed to update appointment:', error);
       setError('Failed to update appointment');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setBusyAppointmentId(null);
     }
   };
 
   const handleMoveToQueue = async (id: string, autoConfirm: boolean = false) => {
+    if (busyAppointmentId) return;
+    setBusyAppointmentId(id);
     try {
       // Find the appointment to get patient and doctor info
       const appointment = appointments.find((apt: any) => apt._id === id) as Appointment | undefined;
@@ -530,6 +528,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
       console.error('Failed to move to queue:', error);
       setError('Failed to move to queue');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setBusyAppointmentId(null);
     }
   };
 
@@ -548,13 +548,6 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour % 12 || 12;
     return `${displayHour}:${minutes} ${ampm}`;
-  };
-
-  const getCurrentTime = () => {
-    const now = new Date();
-    const hours = now.getHours().toString().padStart(2, '0');
-    const minutes = now.getMinutes().toString().padStart(2, '0');
-    return `${hours}:${minutes}`;
   };
 
   const getStatusColor = (status: string): 'green' | 'blue' | 'gray' | 'red' | 'yellow' | 'purple' | 'orange' => {
@@ -579,9 +572,9 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   };
 
   const getSelectedDateAppointments = () => {
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    const dateStr = toDateKey(selectedDate);
     return appointments.filter((apt: Appointment) => {
-      const aptDate = new Date(apt.appointmentDate).toISOString().split('T')[0];
+      const aptDate = toDateKey(apt.appointmentDate);
       return aptDate === dateStr;
     }).sort((a: Appointment, b: Appointment) => {
       const timeA = a.appointmentTime || '00:00';
@@ -591,10 +584,10 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
   };
 
   const getWalkInQueue = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = toDateKey(new Date());
     return appointments
       .filter((apt: Appointment) => {
-        const aptDate = new Date(apt.appointmentDate).toISOString().split('T')[0];
+        const aptDate = toDateKey(apt.appointmentDate);
         return apt.isWalkIn && aptDate === today && ['scheduled', 'confirmed'].includes(apt.status);
       })
       .sort((a: Appointment, b: Appointment) => (a.queueNumber || 0) - (b.queueNumber || 0));
@@ -624,7 +617,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
         <div className="flex flex-col gap-6">
           {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
+            <div role="alert" className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
               <div className="flex items-start gap-3">
                 <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -637,7 +630,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
             </div>
           )}
           {success && (
-            <div className="bg-green-50 border-l-4 border-green-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
+            <div role="status" className="bg-green-50 border-l-4 border-green-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
               <div className="flex items-start gap-3">
                 <svg className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -685,8 +678,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                 </button>
                 <button
                   onClick={() => {
-                    const selectedDateStr = selectedDate.toISOString().split('T')[0];
-                    const todayStr = new Date().toISOString().split('T')[0];
+                    const selectedDateStr = toDateKey(selectedDate);
+                    const todayStr = toDateKey(new Date());
                     setFormData({
                       ...formData,
                       isWalkIn: false,
@@ -705,7 +698,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                 </button>
                 <button
                   onClick={() => {
-                    const todayStr = new Date().toISOString().split('T')[0];
+                    const todayStr = toDateKey(new Date());
                     setFormData({
                       ...formData,
                       isWalkIn: true,
@@ -731,6 +724,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
             <div className="border-b border-gray-200 bg-gray-50/50">
               <div className="flex">
                 <button
+                  type="button"
+                  aria-pressed={viewMode === 'calendar'}
                   onClick={() => setViewMode('calendar')}
                   className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all relative ${viewMode === 'calendar'
                     ? 'text-blue-600 bg-white'
@@ -748,6 +743,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                   </span>
                 </button>
                 <button
+                  type="button"
+                  aria-pressed={viewMode === 'list'}
                   onClick={() => setViewMode('list')}
                   className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all relative ${viewMode === 'list'
                     ? 'text-blue-600 bg-white'
@@ -765,6 +762,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                   </span>
                 </button>
                 <button
+                  type="button"
+                  aria-pressed={viewMode === 'queue'}
                   onClick={() => setViewMode('queue')}
                   className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center ${viewMode === 'queue'
                     ? 'text-blue-600 bg-white'
@@ -812,8 +811,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                     </div>
                     <div className="flex flex-col gap-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Doctor</label>
-                        <select
+                        <label htmlFor="appt-filter-doctor" className="block text-sm font-semibold text-gray-700 mb-2">Doctor</label>
+                        <select id="appt-filter-doctor"
                           value={filterDoctor || ''}
                           onChange={(e) => setFilterDoctor(e.target.value === 'all' ? '' : e.target.value)}
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm transition-all bg-white"
@@ -827,8 +826,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Room</label>
-                        <input
+                        <label htmlFor="appt-filter-room" className="block text-sm font-semibold text-gray-700 mb-2">Room</label>
+                        <input id="appt-filter-room"
                           type="text"
                           placeholder="Filter by room..."
                           value={filterRoom}
@@ -949,12 +948,14 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                   <>
                                     <button
                                       onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
+                                      disabled={busyAppointmentId === appointment._id}
                                       className="px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-xs font-semibold border border-green-200"
                                     >
                                       Confirm
                                     </button>
                                     <button
                                       onClick={() => handleStatusUpdate(appointment._id, 'cancelled')}
+                                      disabled={busyAppointmentId === appointment._id}
                                       className="px-3 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors text-xs font-semibold border border-red-200"
                                     >
                                       Cancel
@@ -965,6 +966,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                   <>
                                     <button
                                       onClick={() => handleStatusUpdate(appointment._id, 'completed')}
+                                      disabled={busyAppointmentId === appointment._id}
                                       className="px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-xs font-semibold border border-gray-200"
                                     >
                                       Complete
@@ -976,6 +978,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                     ) : (
                                       <button
                                         onClick={() => handleMoveToQueue(appointment._id, true)}
+                                        disabled={busyAppointmentId === appointment._id}
                                         className="px-3 py-1.5 text-orange-700 hover:bg-orange-50 rounded-lg transition-colors text-xs font-semibold border border-orange-200"
                                       >
                                         Move to Queue
@@ -983,6 +986,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                     )}
                                     <button
                                       onClick={() => handleStatusUpdate(appointment._id, 'no-show')}
+                                      disabled={busyAppointmentId === appointment._id}
                                       className="px-3 py-2 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 transition-colors text-xs font-semibold border border-yellow-200"
                                     >
                                       No-Show
@@ -1076,12 +1080,14 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                 <>
                                   <button
                                     onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
+                                    disabled={busyAppointmentId === appointment._id}
                                     className="px-3 py-1.5 text-green-700 hover:bg-green-50 rounded-lg transition-colors text-xs font-semibold border border-green-200"
                                   >
                                     Confirm
                                   </button>
                                   <button
                                     onClick={() => handleStatusUpdate(appointment._id, 'cancelled')}
+                                    disabled={busyAppointmentId === appointment._id}
                                     className="px-3 py-1.5 text-red-700 hover:bg-red-50 rounded-lg transition-colors text-xs font-semibold border border-red-200"
                                   >
                                     Cancel
@@ -1092,6 +1098,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                 <>
                                   <button
                                     onClick={() => handleStatusUpdate(appointment._id, 'completed')}
+                                    disabled={busyAppointmentId === appointment._id}
                                     className="px-3 py-1.5 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-xs font-semibold border border-gray-200"
                                   >
                                     Complete
@@ -1103,6 +1110,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                   ) : (
                                     <button
                                       onClick={() => handleMoveToQueue(appointment._id)}
+                                      disabled={busyAppointmentId === appointment._id}
                                       className="px-3 py-1.5 text-orange-700 hover:bg-orange-50 rounded-lg transition-colors text-xs font-semibold border border-orange-200"
                                     >
                                       Move to Queue
@@ -1110,6 +1118,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                                   )}
                                   <button
                                     onClick={() => handleStatusUpdate(appointment._id, 'no-show')}
+                                    disabled={busyAppointmentId === appointment._id}
                                     className="px-3 py-1.5 text-yellow-700 hover:bg-yellow-50 rounded-lg transition-colors text-xs font-semibold border border-yellow-200"
                                   >
                                     No-Show
@@ -1183,6 +1192,7 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                             {appointment.status !== 'confirmed' && (
                             <button
                               onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
+                              disabled={busyAppointmentId === appointment._id}
                               className="px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-xs font-semibold border border-green-200"
                             >
                               Confirm
@@ -1233,9 +1243,9 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                 <div className="flex flex-col gap-5">
                   <div className="flex flex-col md:flex-row gap-4">
                     <div className="flex-1">
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Patient <span className="text-red-500">*</span></label>
+                      <label htmlFor="appt-patient" className="block text-sm font-semibold text-gray-700 mb-2">Patient <span className="text-red-500">*</span></label>
                       <div className="relative patient-search-container">
-                        <input
+                        <input id="appt-patient"
                           type="text"
                           required
                           value={patientSearch}
@@ -1324,8 +1334,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                       )}
                     </div>
                     <div className="flex-1">
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Doctor/Provider <span className="text-red-500">*</span></label>
-                      <select
+                      <label htmlFor="appt-doctor" className="block text-sm font-semibold text-gray-700 mb-2">Doctor/Provider <span className="text-red-500">*</span></label>
+                      <select id="appt-doctor"
                         required
                         value={formData.doctor || ''}
                         onChange={(e) => setFormData({ ...formData, doctor: e.target.value })}
@@ -1342,27 +1352,27 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                   </div>
                   <div className="flex flex-col md:flex-row gap-4">
                     <div className="flex-1">
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Date <span className="text-red-500">*</span></label>
-                      <input
+                      <label htmlFor="appt-date" className="block text-sm font-semibold text-gray-700 mb-2">Date <span className="text-red-500">*</span></label>
+                      <input id="appt-date"
                         type="date"
                         required
                         value={formData.appointmentDate}
                         onChange={(e) => {
                           const selectedDateStr = e.target.value;
-                          const todayStr = new Date().toISOString().split('T')[0];
+                          const todayStr = toDateKey(new Date());
                           setFormData({
                             ...formData,
                             appointmentDate: selectedDateStr,
                             appointmentTime: selectedDateStr === todayStr && !formData.appointmentTime ? getCurrentTime() : formData.appointmentTime
                           });
                         }}
-                        min={new Date().toISOString().split('T')[0]}
+                        min={toDateKey(new Date())}
                         className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                       />
                     </div>
                     <div className="flex-1">
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Time <span className="text-red-500">*</span></label>
-                      <input
+                      <label htmlFor="appt-time" className="block text-sm font-semibold text-gray-700 mb-2">Time <span className="text-red-500">*</span></label>
+                      <input id="appt-time"
                         type="time"
                         required
                         value={formData.appointmentTime}
@@ -1373,8 +1383,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                   </div>
                   <div className="flex flex-col md:flex-row gap-4">
                     <div className="flex-1">
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Duration (minutes)</label>
-                      <input
+                      <label htmlFor="appt-duration" className="block text-sm font-semibold text-gray-700 mb-2">Duration (minutes)</label>
+                      <input id="appt-duration"
                         type="number"
                         min="15"
                         max="240"
@@ -1385,8 +1395,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                       />
                     </div>
                     <div className="flex-1">
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Room (Optional)</label>
-                      <input
+                      <label htmlFor="appt-room" className="block text-sm font-semibold text-gray-700 mb-2">Room (Optional)</label>
+                      <input id="appt-room"
                         type="text"
                         value={formData.room}
                         onChange={(e) => setFormData({ ...formData, room: e.target.value })}
@@ -1396,8 +1406,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
-                    <select
+                    <label htmlFor="appt-status" className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
+                    <select id="appt-status"
                       value={formData.status}
                       onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -1408,8 +1418,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Reason</label>
-                    <input
+                    <label htmlFor="appt-reason" className="block text-sm font-semibold text-gray-700 mb-2">Reason</label>
+                    <input id="appt-reason"
                       type="text"
                       value={formData.reason}
                       onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
@@ -1418,8 +1428,8 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
-                    <textarea
+                    <label htmlFor="appt-notes" className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
+                    <textarea id="appt-notes"
                       value={formData.notes}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                       rows={3}
@@ -1441,11 +1451,11 @@ export default function AppointmentsPageClient({ patientId }: { patientId?: stri
                     >
                       Cancel
                     </button>
-                    <button type="submit" className={`px-5 py-2.5 text-white rounded-lg transition-all text-sm font-semibold shadow-md ${showWalkInForm
+                    <button type="submit" disabled={submitting} aria-busy={submitting} className={`px-5 py-2.5 text-white rounded-lg transition-all text-sm font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed ${showWalkInForm
                       ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
                       : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
                       }`}>
-                      {showWalkInForm ? 'Add Walk-In' : 'Schedule Appointment'}
+                      {submitting ? 'Saving…' : showWalkInForm ? 'Add Walk-In' : 'Schedule Appointment'}
                     </button>
                   </div>
                 </div>

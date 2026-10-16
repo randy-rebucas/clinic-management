@@ -1,6 +1,8 @@
 // SMS service using Twilio
 // Set environment variables: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
 
+import { normalizePhone } from './phone';
+
 let twilioClient: any = null;
 
 function getTwilioClient() {
@@ -34,7 +36,24 @@ export interface SMSOptions {
   from?: string;
 }
 
-export async function sendSMS(options: SMSOptions): Promise<{ success: boolean; sid?: string; error?: string }> {
+export interface SMSResult {
+  success: boolean;
+  sid?: string;
+  error?: string;
+  /** True when nothing was actually sent (SMS not configured). */
+  skipped?: boolean;
+}
+
+/**
+ * Send an SMS. The recipient is normalized to E.164 here (Philippine numbers by
+ * default), so callers pass the phone exactly as stored.
+ */
+export async function sendSMS(options: SMSOptions): Promise<SMSResult> {
+  const to = normalizePhone(options.to);
+  if (!to) {
+    return { success: false, error: 'Invalid phone number' };
+  }
+
   const client = getTwilioClient();
   const fromNumber = options.from || process.env.TWILIO_PHONE_NUMBER;
 
@@ -42,6 +61,7 @@ export async function sendSMS(options: SMSOptions): Promise<{ success: boolean; 
     // Twilio not configured - message logged only
     return {
       success: true,
+      skipped: true,
       error: 'Twilio not configured - message logged only',
     };
   }
@@ -57,7 +77,7 @@ export async function sendSMS(options: SMSOptions): Promise<{ success: boolean; 
     const result = await client.messages.create({
       body: options.message,
       from: fromNumber,
-      to: options.to,
+      to,
     });
 
     return {

@@ -1,28 +1,27 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Visit from '@/models/Visit';
 import Queue from '@/models/Queue';
+import Patient from '@/models/Patient';
+import User from '@/models/User';
 import Prescription from '@/models/Prescription';
 import LabResult from '@/models/LabResult';
 import Imaging from '@/models/Imaging';
 import Procedure from '@/models/Procedure';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+import { updateVisitSchema, signatureWithMetadata } from '@/lib/visit-schema';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to read visits
   const permissionCheck = await requirePermission(session, 'visits', 'read');
   if (permissionCheck) {
     return permissionCheck;
@@ -30,72 +29,33 @@ export async function GET(
 
   try {
     await connectDB();
-    
+
     // Ensure all models are registered before populate
-    if (!mongoose.models.Prescription) {
-      const _ = Prescription;
-    }
-    if (!mongoose.models.LabResult) {
-      const _ = LabResult;
-    }
-    if (!mongoose.models.Imaging) {
-      const _ = Imaging;
-    }
-    if (!mongoose.models.Procedure) {
-      const _ = Procedure;
-    }
-    
+    void [Prescription, LabResult, Imaging, Procedure, mongoose.models];
+
     const { id } = await params;
-    
-    if (!id || id === 'undefined') {
+    if (!isValidId(id)) {
       return NextResponse.json(
         { success: false, error: 'Invalid visit ID' },
         { status: 400 }
       );
     }
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode email phone',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-
-    const visit = await Visit.findOne(query)
-      .populate(patientPopulateOptions)
+    const sameTenant = { tenantId: tenantObjectId };
+    const visit = await Visit.findOne(tenantFilter(tenantId, { _id: id }))
+      .populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } })
       .populate('provider', 'name email')
-      .populate('prescriptions')
-      .populate('labsOrdered')
-      .populate('imagingOrdered')
-      .populate('proceduresPerformed');
-    
-    if (!visit) {
-      return NextResponse.json(
-        { success: false, error: 'Visit not found' },
-        { status: 404 }
-      );
-    }
+      .populate({ path: 'prescriptions', match: sameTenant })
+      .populate({ path: 'labsOrdered', match: sameTenant })
+      .populate({ path: 'imagingOrdered', match: sameTenant })
+      .populate({ path: 'proceduresPerformed', match: sameTenant });
+
+    if (!visit) return notFound('Visit');
     return NextResponse.json({ success: true, data: visit });
   } catch (error: any) {
     console.error('Error fetching visit:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to fetch visit' },
+      { success: false, error: 'Failed to fetch visit' },
       { status: 500 }
     );
   }
@@ -105,13 +65,10 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to update visits
   const permissionCheck = await requirePermission(session, 'visits', 'update');
   if (permissionCheck) {
     return permissionCheck;
@@ -120,131 +77,83 @@ export async function PUT(
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    // Auto-generate visitCode if creating new visit (tenant-scoped)
-    if (!body.visitCode) {
-      const codeQuery: any = { visitCode: { $exists: true, $ne: null } };
-      if (tenantId) {
-        codeQuery.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    if (!isValidId(id)) return notFound('Visit');
+
+    const parsed = await parseBody(request, updateVisitSchema);
+    if (isValidationError(parsed)) return parsed;
+    const body = parsed.data;
+
+    const query = tenantFilter(tenantId, { _id: id });
+    const oldVisit = await Visit.findOne(query).select('status').lean() as any;
+    if (!oldVisit) return notFound('Visit');
+
+    if (body.patient) {
+      const patient = await Patient.exists({ _id: body.patient, tenantIds: tenantObjectId });
+      if (!patient) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
+          { status: 400 }
+        );
       }
-      
-      const lastVisit = await Visit.findOne(codeQuery)
-        .sort({ visitCode: -1 })
-        .exec();
-      
-      let nextNumber = 1;
-      if (lastVisit?.visitCode) {
-        const match = lastVisit.visitCode.match(/(\d+)$/);
-        if (match) {
-          nextNumber = parseInt(match[1], 10) + 1;
-        }
-      }
-      
-      body.visitCode = `VISIT-${String(nextNumber).padStart(6, '0')}`;
     }
-    
-    // Get old visit to check status change
-    const oldVisit = await Visit.findOne(query);
-    const statusChangedToClosed = oldVisit && oldVisit.status !== 'closed' && body.status === 'closed';
-    
-    // Handle digital signature - add provider ID and IP address
+    if (body.provider && body.provider !== session.userId) {
+      const provider = await User.exists({ _id: body.provider, tenantId: tenantObjectId });
+      if (!provider) {
+        return NextResponse.json({ success: false, error: 'Invalid provider' }, { status: 400 });
+      }
+    }
+
+    const update: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (value !== undefined) update[key] = value;
+    }
     if (body.digitalSignature) {
-      const clientIp = request.headers.get('x-forwarded-for') || 
-                       request.headers.get('x-real-ip') || 
-                       'unknown';
-      body.digitalSignature = {
-        ...body.digitalSignature,
-        providerId: session.userId,
-        signedAt: new Date(),
-        ipAddress: clientIp,
-      };
+      update.digitalSignature = signatureWithMetadata(body.digitalSignature, session.userId, request);
     }
-    
-    const visit = await Visit.findOneAndUpdate(query, body, {
+
+    const statusChangedToClosed = oldVisit.status !== 'closed' && body.status === 'closed';
+
+    const visit = await Visit.findOneAndUpdate(query, { $set: update }, {
       new: true,
       runValidators: true,
     });
-    
-    if (!visit) {
-      return NextResponse.json(
-        { success: false, error: 'Visit not found' },
-        { status: 404 }
-      );
-    }
-    
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode email phone',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    await visit.populate(patientPopulateOptions);
+
+    if (!visit) return notFound('Visit');
+
+    await visit.populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } });
     await visit.populate('provider', 'name email');
-    
+
     // Update queue status based on visit status change
-    if (oldVisit && oldVisit.status !== body.status) {
+    if (body.status && oldVisit.status !== body.status) {
       const queueStatusMap: Record<string, string> = {
         'open': 'in-progress',
         'closed': 'completed',
         'cancelled': 'cancelled'
       };
-      
+
       const newQueueStatus = queueStatusMap[body.status];
-      
+
       if (newQueueStatus) {
         try {
-          // Find and update queue entry for this patient
-          const queueQuery: any = {
-            patient: visit.patient._id || visit.patient,
-            status: { $in: ['waiting', 'in-progress'] } // Only update active queue entries
-          };
-          
-          if (tenantId) {
-            queueQuery.tenantId = new Types.ObjectId(tenantId);
-          } else {
-            queueQuery.tenantId = { $in: [null, undefined] };
-          }
-          
           const updateData: any = { status: newQueueStatus };
-          
-          // Add completion timestamp if status is completed
           if (newQueueStatus === 'completed') {
             updateData.completedAt = new Date();
           }
-          
-          const updatedQueue = await Queue.findOneAndUpdate(
-            queueQuery,
-            updateData,
+
+          await Queue.findOneAndUpdate(
+            tenantFilter(tenantId, {
+              patient: (visit.patient as any)?._id || visit.patient,
+              status: { $in: ['waiting', 'in-progress'] },
+            }),
+            { $set: updateData },
             { new: true, sort: { queuedAt: -1 } } // Update most recent queue entry
           );
-          
         } catch (queueError) {
           console.error('Error updating queue status:', queueError);
-          // Don't fail visit update if queue update fails
         }
       }
     }
-    
+
     // Auto-create or update prescription if medications are present in treatment plan
     let prescriptionId: string | undefined;
     if (body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {
@@ -252,7 +161,7 @@ export async function PUT(
         const { updatePrescriptionFromVisit } = await import('@/lib/automations/prescription-from-visit');
         const prescription = await updatePrescriptionFromVisit({
           visitId: visit._id,
-          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          tenantId: tenantObjectId,
           createdBy: session.userId,
           shouldSendNotification: false,
         });
@@ -261,75 +170,64 @@ export async function PUT(
         }
       } catch (error) {
         console.error('Error auto-updating prescription from visit:', error);
-        // Don't fail the visit update if prescription update fails
       }
     }
-    
-    // Check if visit status changed to 'closed' - trigger automatic invoice generation
-    if (statusChangedToClosed) {
-      // Import and trigger automatic invoice generation (async, don't wait)
-      import('@/lib/automations/invoice-generation').then(({ generateInvoiceForVisit }) => {
-        generateInvoiceForVisit({
-          visitId: visit._id,
-          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
-          createdBy: session.userId,
-          sendNotification: true,
-          sendEmail: true,
-        }).catch((error) => {
-          console.error('Error generating automatic invoice:', error);
-          // Don't fail the visit update if invoice generation fails
-        });
-      }).catch((error) => {
-        console.error('Error loading invoice generation module:', error);
-      });
 
-      // Check if visit has follow-up date - trigger automatic follow-up scheduling
-      if (visit.followUpDate) {
-        import('@/lib/automations/followup-scheduling').then(({ scheduleFollowupAppointment }) => {
-          scheduleFollowupAppointment({
-            visitId: visit._id,
-            tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+    // Closing a visit triggers billing, follow-up scheduling and the visit summary.
+    // after() keeps the work alive past the response on serverless runtimes.
+    if (statusChangedToClosed) {
+      const visitId = visit._id;
+      const hasFollowUp = !!visit.followUpDate;
+      after(async () => {
+        try {
+          const { generateInvoiceForVisit } = await import('@/lib/automations/invoice-generation');
+          await generateInvoiceForVisit({
+            visitId,
+            tenantId: tenantObjectId,
+            createdBy: session.userId,
             sendNotification: true,
             sendEmail: true,
-            sendSMS: true,
-          }).catch((error) => {
-            console.error('Error scheduling follow-up appointment:', error);
-            // Don't fail the visit update if follow-up scheduling fails
           });
-        }).catch((error) => {
-          console.error('Error loading follow-up scheduling module:', error);
-        });
-      }
+        } catch (error) {
+          console.error('Error generating automatic invoice:', error);
+        }
 
-      // Send visit summary to patient (async, don't wait)
-      import('@/lib/automations/visit-summaries').then(({ sendVisitSummary }) => {
-        sendVisitSummary({
-          visitId: visit._id,
-          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
-          sendSMS: true,
-          sendEmail: true,
-          sendNotification: true,
-        }).catch((error) => {
+        if (hasFollowUp) {
+          try {
+            const { scheduleFollowupAppointment } = await import('@/lib/automations/followup-scheduling');
+            await scheduleFollowupAppointment({
+              visitId,
+              tenantId: tenantObjectId,
+              sendNotification: true,
+              sendEmail: true,
+              sendSMS: true,
+            });
+          } catch (error) {
+            console.error('Error scheduling follow-up appointment:', error);
+          }
+        }
+
+        try {
+          const { sendVisitSummary } = await import('@/lib/automations/visit-summaries');
+          await sendVisitSummary({
+            visitId,
+            tenantId: tenantObjectId,
+            sendSMS: true,
+            sendEmail: true,
+            sendNotification: true,
+          });
+        } catch (error) {
           console.error('Error sending visit summary:', error);
-          // Don't fail the visit update if summary sending fails
-        });
-      }).catch((error) => {
-        console.error('Error loading visit summaries module:', error);
+        }
       });
     }
-    
-    // Send follow-up reminder if followUpDate is set and not sent yet
-    if (visit.followUpDate && !visit.followUpReminderSent) {
-      // Schedule reminder (async, don't wait)
-      sendFollowUpReminder(visit).catch(console.error);
-    }
-    
+
     return NextResponse.json({ success: true, data: visit, prescriptionId });
   } catch (error: any) {
     console.error('Error updating visit:', error);
-    if (error.name === 'ValidationError') {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid visit data' },
         { status: 400 }
       );
     }
@@ -344,14 +242,10 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to delete visits
-  const permissionCheck = await requirePermission(session, 'visits', 'delete');
+  const permissionCheck = await requirePermission(ctx.session, 'visits', 'delete');
   if (permissionCheck) {
     return permissionCheck;
   }
@@ -359,26 +253,10 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const visit = await Visit.findOneAndDelete(query);
-    if (!visit) {
-      return NextResponse.json(
-        { success: false, error: 'Visit not found' },
-        { status: 404 }
-      );
-    }
+    if (!isValidId(id)) return notFound('Visit');
+
+    const visit = await Visit.findOneAndDelete(tenantFilter(ctx.tenantId, { _id: id }));
+    if (!visit) return notFound('Visit');
     return NextResponse.json({ success: true, data: {} });
   } catch (error) {
     console.error('Error deleting visit:', error);
@@ -388,15 +266,3 @@ export async function DELETE(
     );
   }
 }
-
-// Follow-up reminder function (placeholder - implement with your email service)
-async function sendFollowUpReminder(visit: any) {
-  const patient = visit.patient;
-  const followUpDate = visit.followUpDate;
-  
-  // TODO: Implement email service integration
-  
-  // TODO: Implement actual email sending
-  // Update reminderSent flag after sending
-}
-

@@ -27,16 +27,21 @@ export async function notifyQueuePatient(options: QueueNotificationOptions): Pro
   try {
     await connectDB();
 
-    const settings = await getSettings(options.tenantId?.toString());
+    if (!options.tenantId) return;
+    const tenantObjectId = new Types.ObjectId(String(options.tenantId));
+
+    const settings = await getSettings(tenantObjectId.toString());
     const clinicName = (settings as any).clinicName ?? 'The Clinic';
 
     const queueId =
       typeof options.queueId === 'string' ? new Types.ObjectId(options.queueId) : options.queueId;
 
-    const queueEntry = await Queue.findById(queueId).lean() as any;
+    const queueEntry = await Queue.findOne({ _id: queueId, tenantId: tenantObjectId }).lean() as any;
     if (!queueEntry) return;
 
-    const patient = await Patient.findById(queueEntry.patient).select('firstName phone').lean() as any;
+    const patient = await Patient.findOne({ _id: queueEntry.patient, tenantIds: tenantObjectId })
+      .select('firstName phone')
+      .lean() as any;
     if (!patient) return;
 
     const firstName = patient.firstName ?? 'Patient';
@@ -52,8 +57,7 @@ export async function notifyQueuePatient(options: QueueNotificationOptions): Pro
       pushBody = `${clinicName}: Please proceed to your assigned room.`;
     } else if (options.newStatus === 'waiting') {
       // Patient just entered the queue — check their position
-      const tenantQuery: any = { status: 'waiting' };
-      if (options.tenantId) tenantQuery.tenantId = typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId;
+      const tenantQuery: any = { status: 'waiting', tenantId: tenantObjectId };
 
       const waitingAhead = await Queue.countDocuments({
         ...tenantQuery,
@@ -76,9 +80,7 @@ export async function notifyQueuePatient(options: QueueNotificationOptions): Pro
 
     // SMS
     if (message && patient.phone) {
-      let phone = patient.phone.trim();
-      if (!phone.startsWith('+')) phone = `+1${phone.replace(/\D/g, '')}`;
-      sendSMS({ to: phone, message }).catch((e) =>
+      sendSMS({ to: patient.phone, message }).catch((e) =>
         console.error('[queue-notifications] SMS error:', e)
       );
     }

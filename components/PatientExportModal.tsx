@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useId } from 'react';
 import { usePatientExport } from './hooks/usePatientExport';
+import { useModalA11y } from './hooks/useModalA11y';
 
 interface PatientExportModalProps {
   open: boolean;
@@ -38,6 +39,8 @@ export default function PatientExportModal({
     DEFAULT_COLUMNS.slice(0, 8).map((c) => c.value) // Default: first 8 columns
   );
   const { loading, error, exportPatients } = usePatientExport();
+  const uid = useId();
+  const dialogRef = useModalA11y<HTMLDivElement>(open, () => onOpenChange(false));
 
   const selectAllColumns = () => {
     setSelectedColumns(DEFAULT_COLUMNS.map((c) => c.value));
@@ -77,18 +80,24 @@ export default function PatientExportModal({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 z-40"
+        className="fixed inset-0 bg-black/50 z-40"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
 
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`${uid}-title`}
+          className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        >
           {/* Header */}
           <div className="sticky top-0 bg-gradient-to-r from-blue-50 to-blue-100 border-b border-gray-200 px-6 py-4 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-gray-900">Export Patients</h2>
+              <h2 id={`${uid}-title`} className="text-lg font-bold text-gray-900">Export Patients</h2>
               <p className="text-sm text-gray-600 mt-1">
                 Exporting <span className="font-semibold">{patientCount}</span> patient{patientCount !== 1 ? 's' : ''}
               </p>
@@ -98,7 +107,7 @@ export default function PatientExportModal({
               className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-white/50 transition-colors"
               aria-label="Close modal"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -108,8 +117,8 @@ export default function PatientExportModal({
           <div className="p-6 space-y-6">
             {/* Format Selection */}
             <div>
-              <label className="block text-sm font-semibold text-gray-900 mb-3">Export Format</label>
-              <div className="grid grid-cols-2 gap-4">
+              <p id={`${uid}-format-label`} className="block text-sm font-semibold text-gray-900 mb-3">Export Format</p>
+              <div className="grid grid-cols-2 gap-4" role="group" aria-labelledby={`${uid}-format-label`}>
                 {[
                   { value: 'csv', label: 'CSV', description: 'Spreadsheet format (Excel, Sheets)' },
                   { value: 'json', label: 'JSON', description: 'Structured data format' },
@@ -117,6 +126,7 @@ export default function PatientExportModal({
                   <button
                     key={option.value}
                     onClick={() => setFormat(option.value as 'csv' | 'json')}
+                    aria-pressed={format === option.value}
                     className={`p-4 rounded-lg border-2 transition-all text-left ${
                       format === option.value
                         ? 'border-blue-500 bg-blue-50'
@@ -134,7 +144,7 @@ export default function PatientExportModal({
             {format === 'csv' && (
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-semibold text-gray-900">Columns to Include</label>
+                  <p className="block text-sm font-semibold text-gray-900">Columns to Include</p>
                   <div className="flex gap-2">
                     <button
                       onClick={selectAllColumns}

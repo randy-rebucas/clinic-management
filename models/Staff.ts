@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
-import bcrypt from 'bcryptjs';
+import { ensureStaffUser } from './staff-user-link';
 
 export interface IStaff extends Document {
   // Tenant reference for multi-tenant support
@@ -121,153 +121,19 @@ StaffSchema.index({ tenantId: 1, status: 1 }); // For status-based queries
 // Post-save hook to automatically create a User when a Staff is created
 // IMPORTANT: Hook must be added BEFORE model registration
 StaffSchema.post('save', async function (doc: IStaff) {
-  try {
-    // Ensure models are registered by importing them first
-    if (!mongoose.models.User) {
-      await import('./User');
-    }
-    if (!mongoose.models.Role) {
-      await import('./Role');
-    }
-
-    // Now get the models from mongoose.models (they should be registered now)
-    const User = mongoose.models.User;
-    const Role = mongoose.models.Role;
-
-    if (!User || !Role) {
-      console.warn(`⚠️  Required models not registered. User: ${!!User}, Role: ${!!Role}`);
-      return;
-    }
-
-    // Check if a User with this staffInfo already exists (to avoid duplicates on updates)
-    const existingUserByProfile = await User.findOne({ staffInfo: doc._id });
-    if (existingUserByProfile) {
-      // User already linked to this staff, skip
-      return;
-    }
-
-    // Check if a User with this email already exists
-    const existingUserByEmail = await User.findOne({ email: doc.email.toLowerCase().trim() });
-    if (!existingUserByEmail) {
-      // Find the staff role based on staffType (tenant-scoped if tenantId exists)
-      let staffRole = null;
-      let roleName = null;
-      
-      // Determine role name from staffType or position
-      if (doc.staffType) {
-        roleName = doc.staffType;
-      } else if (doc.position) {
-        const positionLower = doc.position.toLowerCase();
-        if (positionLower.includes('nurse')) {
-          roleName = 'nurse';
-        } else if (positionLower.includes('receptionist')) {
-          roleName = 'receptionist';
-        } else if (positionLower.includes('accountant')) {
-          roleName = 'accountant';
-        }
-      }
-      
-      // If no role name determined, use fallbacks
-      if (!roleName) {
-        roleName = 'staff'; // First fallback
-      }
-      
-      // Try to find role (tenant-scoped if applicable)
-      if (doc.tenantId) {
-        // First try to find tenant-scoped role
-        staffRole = await Role.findOne({ 
-          name: roleName,
-          tenantId: doc.tenantId 
-        });
-        
-        // If no tenant-scoped role, try global role
-        if (!staffRole) {
-          staffRole = await Role.findOne({ 
-            name: roleName,
-            $or: [
-              { tenantId: { $exists: false } },
-              { tenantId: null }
-            ]
-          });
-        }
-        
-        // If still no role and roleName was 'staff', try 'employee' as last fallback
-        if (!staffRole && roleName === 'staff') {
-          staffRole = await Role.findOne({ 
-            name: 'employee',
-            tenantId: doc.tenantId 
-          });
-          
-          if (!staffRole) {
-            staffRole = await Role.findOne({ 
-              name: 'employee',
-              $or: [
-                { tenantId: { $exists: false } },
-                { tenantId: null }
-              ]
-            });
-          }
-        }
-      } else {
-        // No tenant, look for global role
-        staffRole = await Role.findOne({ 
-          name: roleName,
-          $or: [
-            { tenantId: { $exists: false } },
-            { tenantId: null }
-          ]
-        });
-        
-        // If no role and roleName was 'staff', try 'employee' as last fallback
-        if (!staffRole && roleName === 'staff') {
-          staffRole = await Role.findOne({ 
-            name: 'employee',
-            $or: [
-              { tenantId: { $exists: false } },
-              { tenantId: null }
-            ]
-          });
-        }
-      }
-      
-      if (!staffRole) {
-        console.warn(`⚠️  Staff role not found. User not created for staff: ${doc.email}`);
-        return;
-      }
-
-      // Generate a default password (can be changed on first login)
-      const defaultPassword = `Staff${doc.employeeId?.slice(-4) || doc.phone.slice(-4)}!`;
-      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-      
-      // Create the user with tenantId if staff has one
-      const userData: any = {
-        name: `${doc.firstName} ${doc.lastName}`.trim(),
-        email: doc.email.toLowerCase().trim(),
-        password: hashedPassword,
-        role: staffRole._id,
-        staffInfo: doc._id,
-        status: doc.status === 'active' ? 'active' : 'inactive',
-      };
-      
-      // Add tenantId if staff has one
-      if (doc.tenantId) {
-        userData.tenantId = doc.tenantId;
-      }
-      
-      const user = await User.create(userData);
-      console.log(`✅ Created user account for staff: ${doc.email} (default password: ${defaultPassword})`);
-    } else {
-      // User exists, but update the staffInfo reference if not set
-      if (!existingUserByEmail.staffInfo) {
-        existingUserByEmail.staffInfo = doc._id;
-        await existingUserByEmail.save();
-        console.log(`✅ Linked existing user to staff: ${doc.email}`);
-      }
-    }
-  } catch (error: any) {
-    // Log error but don't throw - we don't want to prevent staff creation if user creation fails
-    console.error(`⚠️  Error creating user for staff ${doc.email}:`, error.message);
+  let roleName: string | null = doc.staffType || null;
+  if (!roleName && doc.position) {
+    const position = doc.position.toLowerCase();
+    if (position.includes('nurse')) roleName = 'nurse';
+    else if (position.includes('receptionist')) roleName = 'receptionist';
+    else if (position.includes('accountant')) roleName = 'accountant';
   }
+  await ensureStaffUser({
+    doc,
+    profileField: 'staffInfo',
+    roleNames: roleName ? [roleName] : ['staff', 'employee'],
+    label: 'staff',
+  });
 });
 
 // Register Staff model immediately to ensure it's available when other models reference it

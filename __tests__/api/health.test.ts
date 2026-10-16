@@ -18,16 +18,38 @@ vi.mock('mongoose', async (importOriginal) => {
   };
 });
 
+// Anonymous callers: no session, so only the minimal response is returned.
+vi.mock('@/app/lib/dal', () => ({
+  verifySession: vi.fn().mockResolvedValue(null),
+}));
+
+const CRON_SECRET = 'test-cron-secret';
+const monitoringRequest = () =>
+  new NextRequest('http://localhost:3000/api/health', {
+    headers: { authorization: `Bearer ${CRON_SECRET}` },
+  });
+
 describe('Health Check API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.MONGODB_URI = 'mongodb://localhost:27017/test';
     process.env.SESSION_SECRET = 'test-secret';
+    process.env.CRON_SECRET = CRON_SECRET;
   });
 
-  it('should return healthy status when database is connected', async () => {
+  it('should return only a minimal status to anonymous callers', async () => {
     const request = new NextRequest('http://localhost:3000/api/health');
     const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.status).toBe('healthy');
+    expect(data).toHaveProperty('timestamp');
+    expect(data).not.toHaveProperty('checks');
+  });
+
+  it('should return healthy status with checks to monitoring (cron bearer)', async () => {
+    const response = await GET(monitoringRequest());
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -41,8 +63,7 @@ describe('Health Check API', () => {
     const { default: connectDB } = await import('@/lib/mongodb');
     vi.mocked(connectDB).mockRejectedValue(new Error('Connection failed'));
 
-    const request = new NextRequest('http://localhost:3000/api/health');
-    const response = await GET(request);
+    const response = await GET(monitoringRequest());
     const data = await response.json();
 
     expect(response.status).toBe(503);

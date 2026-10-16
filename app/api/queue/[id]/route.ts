@@ -1,26 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
 import Room from '@/models/Room';
 import Doctor from '@/models/Doctor';
 import Patient from '@/models/Patient';
 import Appointment from '@/models/Appointment';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { Types } from 'mongoose';
+import { requireTenantSession, isTenantSessionError, isValidId, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
+import { vitalsSchema } from '@/lib/visit-schema';
+
+const updateQueueSchema = z.object({
+  status: z.enum(['waiting', 'in-progress', 'completed', 'cancelled', 'no-show']).optional(),
+  priority: z.coerce.number().int().min(0).max(100).optional(),
+  doctor: zObjectId.nullable().optional(),
+  room: zObjectId.nullable().optional(),
+  estimatedWaitTime: z.coerce.number().min(0).max(1440).optional(),
+  checkedIn: z.boolean().optional(),
+  checkInMethod: z.enum(['manual', 'qr_code', 'kiosk']).optional(),
+  completionNotes: z.string().max(5000).optional(),
+  nextAction: z.enum(['billing', 'pharmacy', 'lab', 'checkout']).optional(),
+  notes: z.string().max(5000).optional(),
+  vitals: vitalsSchema.optional(),
+  _skipAutomation: z.boolean().optional(),
+});
+
+function badId() {
+  return NextResponse.json({ success: false, error: 'Invalid queue ID' }, { status: 400 });
+}
+
+function notFoundResponse() {
+  return NextResponse.json({ success: false, error: 'Queue entry not found' }, { status: 404 });
+}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to read queue
   const permissionCheck = await requirePermission(session, 'queue', 'read');
   if (permissionCheck) {
     return permissionCheck;
@@ -28,72 +50,24 @@ export async function GET(
 
   try {
     await connectDB();
-    
-    // Ensure models are registered
-    await Promise.all([
-      import('@/models/Doctor'),
-      import('@/models/Patient'),
-      import('@/models/Room'),
-      import('@/models/Appointment'),
-    ]);
-    
+    void [Doctor, Patient, Room, Appointment];
+
     const { id } = await params;
+    if (!isValidId(id)) return badId();
 
-    // Validate ObjectId
-    if (!Types.ObjectId.isValid(id)) {
-      console.error('[GET /api/queue/[id]] Invalid ObjectId:', id);
-      return NextResponse.json(
-        { success: false, error: 'Invalid queue ID' },
-        { status: 400 }
-      );
-    }
+    const queue = await Queue.findOne(tenantFilter(tenantId, { _id: new Types.ObjectId(id) }))
+      .populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } })
+      .populate({ path: 'doctor', select: 'firstName lastName', match: { tenantId: tenantObjectId } })
+      .populate({ path: 'appointment', select: 'appointmentCode appointmentDate appointmentTime', match: { tenantId: tenantObjectId } })
+      .lean();
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    // Build query with tenant filter
-    const query: any = { _id: new Types.ObjectId(id) };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.tenantId = { $in: [null, undefined] };
-    }
-
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-
-    const doctorPopulateOptions: any = {
-      path: 'doctor',
-      select: 'firstName lastName',
-    };
-
-    const queue = await Queue.findOne(query)
-      .populate(patientPopulateOptions)
-      .populate(doctorPopulateOptions)
-      // .populate('room', 'name roomNumber')
-      .populate('appointment', 'appointmentCode appointmentDate appointmentTime')
-      .lean() as any;
-
-    //   console.log('[GET /api/queue/[id]] Queue found:', { found: !!queue, id: queue?._id });
-
-    if (!queue) {
-      return NextResponse.json(
-        { success: false, error: 'Queue entry not found' },
-        { status: 404 }
-      );
-    }
+    if (!queue) return notFoundResponse();
 
     return NextResponse.json({ success: true, data: queue });
-
   } catch (error: any) {
     console.error('[GET /api/queue/[id]] Error:', error);
-    console.error('[GET /api/queue/[id]] Error stack:', error.stack);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch queue entry', details: error.message },
+      { success: false, error: 'Failed to fetch queue entry' },
       { status: 500 }
     );
   }
@@ -103,13 +77,10 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to update queue
   const permissionCheck = await requirePermission(session, 'queue', 'update');
   if (permissionCheck) {
     return permissionCheck;
@@ -118,105 +89,61 @@ export async function PUT(
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
+    if (!isValidId(id)) return badId();
 
-    // Validate ObjectId
-    if (!Types.ObjectId.isValid(id)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid queue ID' },
-        { status: 400 }
-      );
+    const parsed = await parseBody(request, updateQueueSchema);
+    if (isValidationError(parsed)) return parsed;
+    const { _skipAutomation, vitals, ...fields } = parsed.data;
+
+    if (fields.doctor && !(await Doctor.exists({ _id: fields.doctor, tenantId: tenantObjectId }))) {
+      return NextResponse.json({ success: false, error: 'Doctor not found' }, { status: 404 });
+    }
+    if (fields.room && !(await Room.exists({ _id: fields.room, tenantId: tenantObjectId }))) {
+      return NextResponse.json({ success: false, error: 'Room not found' }, { status: 404 });
     }
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
+    const currentQueue = await Queue.findOne(tenantFilter(tenantId, { _id: new Types.ObjectId(id) }));
+    if (!currentQueue) return notFoundResponse();
 
-    // Build query with tenant filter
-    const query: any = { _id: new Types.ObjectId(id) };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.tenantId = { $in: [null, undefined] };
-    }
+    const oldStatus = currentQueue.status;
 
-    // Update status timestamps
-    if (body.status === 'in-progress' && !body.startedAt) {
-      body.startedAt = new Date();
-      body.calledAt = body.calledAt || new Date();
-    }
-    if (body.status === 'completed' && !body.completedAt) {
-      body.completedAt = new Date();
-    }
-
-    // First, get the current queue entry to see what we're updating
-    const currentQueue = await Queue.findOne(query);
-
-    if (!currentQueue) {
-      return NextResponse.json(
-        { success: false, error: 'Queue entry not found' },
-        { status: 404 }
-      );
-    }
-
-    // Update fields - explicitly handle vitals for nested object (merge to preserve existing fields)
-    if (body.vitals) {
-      currentQueue.vitals = {
-        ...(currentQueue.vitals || {}),
-        ...body.vitals
-      };
+    if (vitals) {
+      currentQueue.vitals = { ...(currentQueue.vitals || {}), ...vitals };
       currentQueue.markModified('vitals');
     }
-
-    // Update other fields
-    Object.keys(body).forEach(key => {
-      if (key !== 'vitals') {
-        (currentQueue as any)[key] = body[key];
-      }
-    });
-
-    // Save the updated document
-    await currentQueue.save();
-
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-
-    const doctorPopulateOptions: any = {
-      path: 'doctor',
-      select: 'firstName lastName',
-    };
-
-    // Refetch with lean() to get plain object with vitals preserved
-    const updatedQueue = await Queue.findOne({ _id: new Types.ObjectId(id) })
-      .populate(patientPopulateOptions)
-      .populate(doctorPopulateOptions)
-      .populate('room', 'name roomNumber')
-      .lean();
-
-    if (!updatedQueue) {
-      return NextResponse.json(
-        { success: false, error: 'Queue entry not found after update' },
-        { status: 404 }
-      );
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) (currentQueue as any)[key] = value;
+    }
+    if (fields.checkedIn && !currentQueue.checkedInAt) {
+      currentQueue.checkedInAt = new Date();
+    }
+    if (fields.status === 'in-progress' && !currentQueue.startedAt) {
+      currentQueue.startedAt = new Date();
+      currentQueue.calledAt = currentQueue.calledAt || new Date();
+    }
+    if (fields.status === 'completed' && !currentQueue.completedAt) {
+      currentQueue.completedAt = new Date();
     }
 
-    // Trigger appointment status update automation if status changed
-    const oldStatus = currentQueue.status;
-    const newStatus = body.status;
-    const skipAutomation = body._skipAutomation === true;
-    
-    if (oldStatus !== newStatus && newStatus && !skipAutomation) {
-      // Import and trigger appointment update automation (async, don't wait)
+    await currentQueue.save();
+
+    const updatedQueue = await Queue.findOne(tenantFilter(tenantId, { _id: new Types.ObjectId(id) }))
+      .populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } })
+      .populate({ path: 'doctor', select: 'firstName lastName', match: { tenantId: tenantObjectId } })
+      .populate({ path: 'room', select: 'name roomNumber', match: { tenantId: tenantObjectId } })
+      .lean();
+
+    if (!updatedQueue) return notFoundResponse();
+
+    const newStatus = fields.status;
+    if (oldStatus !== newStatus && newStatus && _skipAutomation !== true) {
       import('@/lib/automations/appointment-from-queue').then(({ updateAppointmentFromQueue }) => {
         updateAppointmentFromQueue({
           queueId: currentQueue._id,
           patientId: currentQueue.patient,
           appointmentId: currentQueue.appointment,
           newQueueStatus: newStatus,
-          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          tenantId: tenantObjectId,
         }).catch((error) => {
           console.error('[Queue API] Error in appointment automation:', error);
         });
@@ -224,11 +151,10 @@ export async function PUT(
         console.error('[Queue API] Error loading appointment automation module:', error);
       });
 
-      // Notify patient of queue status change (SMS + push)
       import('@/lib/automations/queue-notifications').then(({ notifyQueuePatient }) => {
         notifyQueuePatient({
           queueId: currentQueue._id,
-          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          tenantId: tenantObjectId,
           newStatus,
         }).catch((error) => {
           console.error('[Queue API] Error sending queue notification:', error);
@@ -241,9 +167,9 @@ export async function PUT(
     return NextResponse.json({ success: true, data: updatedQueue });
   } catch (error: any) {
     console.error('Error updating queue entry:', error);
-    if (error.name === 'ValidationError') {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid queue entry data' },
         { status: 400 }
       );
     }
@@ -258,14 +184,10 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to delete queue entries
-  const permissionCheck = await requirePermission(session, 'queue', 'delete');
+  const permissionCheck = await requirePermission(ctx.session, 'queue', 'delete');
   if (permissionCheck) {
     return permissionCheck;
   }
@@ -273,47 +195,22 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-
-    // Validate ObjectId
-    if (!Types.ObjectId.isValid(id)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid queue ID' },
-        { status: 400 }
-      );
-    }
-
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    // Build query with tenant filter
-    const query: any = { _id: new Types.ObjectId(id) };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.tenantId = { $in: [null, undefined] };
-    }
+    if (!isValidId(id)) return badId();
 
     const queue = await Queue.findOneAndUpdate(
-      query,
-      { status: 'cancelled' },
+      tenantFilter(ctx.tenantId, { _id: new Types.ObjectId(id) }),
+      { $set: { status: 'cancelled' } },
       { new: true }
     );
 
-    if (!queue) {
-      return NextResponse.json(
-        { success: false, error: 'Queue entry not found' },
-        { status: 404 }
-      );
-    }
+    if (!queue) return notFoundResponse();
 
     return NextResponse.json({ success: true, data: queue });
   } catch (error: any) {
     console.error('Error cancelling queue entry:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to cancel queue entry', details: error.message },
+      { success: false, error: 'Failed to cancel queue entry' },
       { status: 500 }
     );
   }
 }
-

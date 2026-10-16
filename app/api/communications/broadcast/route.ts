@@ -1,62 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Notification from '@/models/Notification';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import User from '@/models/User';
+import { isAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, patientTenantFilter, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+import { escapeHtml } from '@/lib/document-protection';
 import { sendSMS } from '@/lib/sms';
 import { sendEmail } from '@/lib/email';
 import { sanitizeSearch } from '@/lib/utils';
 
+const broadcastSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  message: z.string().trim().min(1).max(5000),
+  channels: z.array(z.enum(['sms', 'email', 'in-app'])).min(1).max(3),
+  filters: z
+    .object({
+      ageGroup: z.string().max(50).optional(),
+      city: z.string().trim().max(100).optional(),
+      hasInsurance: z.boolean().optional(),
+    })
+    .optional(),
+});
+
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
+  if (!isAdmin(ctx.session)) {
+    return forbiddenResponse('Admin access required to send broadcasts');
   }
 
-  // Only admin can send broadcast messages
-  if (session.role !== 'admin') {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    );
-  }
+  const parsed = await parseBody(request, broadcastSchema);
+  if (isValidationError(parsed)) return parsed;
+  const { title, message, channels, filters } = parsed.data;
 
   try {
     await connectDB();
-    const body = await request.json();
-    const {
-      title,
-      message,
-      channels, // ['sms', 'email', 'in-app'] or combination
-      filters, // { ageGroup, city, hasInsurance, etc. }
-    } = body;
 
-    if (!title || !message || !channels || channels.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Title, message, and at least one channel required' },
-        { status: 400 }
-      );
-    }
-
-    // Build patient query based on filters
-    const patientQuery: any = {};
+    const patientQuery: Record<string, unknown> = patientTenantFilter(ctx.tenantId);
     if (filters) {
-      if (filters.ageGroup) {
-        // Age group filtering would require date calculation
-        // For now, we'll skip complex age filtering
-      }
       if (filters.city) {
         patientQuery['address.city'] = { $regex: sanitizeSearch(filters.city), $options: 'i' };
       }
-      if (filters.hasInsurance !== undefined) {
-        if (filters.hasInsurance) {
-          patientQuery.$or = [
-            { 'identifiers.philHealth': { $exists: true, $ne: null } },
-            { 'identifiers.other': { $exists: true, $ne: null } },
-          ];
-        }
+      if (filters.hasInsurance) {
+        patientQuery.$or = [
+          { 'identifiers.philHealth': { $exists: true, $ne: null } },
+          { 'identifiers.other': { $exists: true, $ne: null } },
+        ];
       }
     }
 
@@ -70,27 +63,25 @@ export async function POST(request: NextRequest) {
       errors: [] as string[],
     };
 
-    // Send messages to each patient
+    const safeTitle = escapeHtml(title);
+    const safeMessage = escapeHtml(message).replace(/\n/g, '<br>');
+
     for (const patient of patients) {
+      const patientName = `${patient.firstName} ${patient.lastName}`;
       try {
-        // SMS
         if (channels.includes('sms') && patient.phone) {
-          let phoneNumber = patient.phone.trim();
-          if (!phoneNumber.startsWith('+')) {
-            phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-          }
           const smsResult = await sendSMS({
-            to: phoneNumber,
+            to: patient.phone,
             message: `${title}\n\n${message}`,
           });
           if (smsResult.success) {
             results.smsSent++;
           } else {
-            results.errors.push(`SMS failed for ${patient.firstName} ${patient.lastName}: ${smsResult.error}`);
+            console.error('Broadcast SMS failed', { patientId: String(patient._id), error: smsResult.error });
+            results.errors.push(`SMS failed for ${patientName}`);
           }
         }
 
-        // Email
         if (channels.includes('email') && patient.email) {
           const emailResult = await sendEmail({
             to: patient.email,
@@ -111,12 +102,12 @@ export async function POST(request: NextRequest) {
               <body>
                 <div class="container">
                   <div class="header">
-                    <h1>${title}</h1>
+                    <h1>${safeTitle}</h1>
                   </div>
                   <div class="content">
-                    <p>Dear ${patient.firstName} ${patient.lastName},</p>
+                    <p>Dear ${escapeHtml(patientName)},</p>
                     <div class="message">
-                      ${message.replace(/\n/g, '<br>')}
+                      ${safeMessage}
                     </div>
                   </div>
                   <div class="footer">
@@ -130,18 +121,17 @@ export async function POST(request: NextRequest) {
           if (emailResult.success) {
             results.emailSent++;
           } else {
-            results.errors.push(`Email failed for ${patient.firstName} ${patient.lastName}: ${emailResult.error}`);
+            console.error('Broadcast email failed', { patientId: String(patient._id), error: emailResult.error });
+            results.errors.push(`Email failed for ${patientName}`);
           }
         }
 
-        // In-app notification
-        if (channels.includes('in-app')) {
-          // Find user account for this patient (if linked)
-          const User = (await import('@/models/User')).default;
-          const user = await User.findOne({ email: patient.email }).select('_id');
-          
+        if (channels.includes('in-app') && patient.email) {
+          // Only notify a linked user account in this clinic.
+          const user = await User.findOne(tenantFilter(ctx.tenantId, { email: patient.email })).select('_id');
           if (user) {
             await Notification.create({
+              tenantId: ctx.tenantObjectId,
               user: user._id,
               type: 'broadcast',
               priority: 'normal',
@@ -152,8 +142,9 @@ export async function POST(request: NextRequest) {
             results.inAppCreated++;
           }
         }
-      } catch (error: any) {
-        results.errors.push(`Error processing ${patient.firstName} ${patient.lastName}: ${error.message}`);
+      } catch (error) {
+        console.error('Broadcast processing error', { patientId: String(patient._id), error });
+        results.errors.push(`Error processing ${patientName}`);
       }
     }
 
@@ -162,7 +153,7 @@ export async function POST(request: NextRequest) {
       data: results,
       message: `Broadcast sent to ${patients.length} patients`,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error sending broadcast:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to send broadcast' },
@@ -170,4 +161,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

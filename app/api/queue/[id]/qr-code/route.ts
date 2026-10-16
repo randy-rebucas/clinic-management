@@ -2,19 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
 import QRCode from 'qrcode';
+import { Types } from 'mongoose';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
+import { escapeHtml as e } from '@/lib/document-protection';
 
 /**
- * Generate QR code for queue check-in
- * Public endpoint - no authentication required
+ * Generate QR code for queue check-in. Staff print/show it to the patient; the QR
+ * content carries the patient id, so it is not served anonymously.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const permissionCheck = await requirePermission(ctx.session, 'queue', 'read');
+  if (permissionCheck) return permissionCheck;
+
   try {
     await connectDB();
     const { id } = await params;
-    const queue = await Queue.findById(id);
+    const queue = isValidId(id)
+      ? await Queue.findOne({ _id: new Types.ObjectId(id), tenantId: ctx.tenantObjectId })
+      : null;
 
     if (!queue) {
       return NextResponse.json(
@@ -87,13 +98,13 @@ export async function GET(
       <body>
         <div class="container">
           <h1>Check-in QR Code</h1>
-          <div class="queue-number">${queue.queueNumber}</div>
+          <div class="queue-number">${e(queue.queueNumber)}</div>
           <div class="qr-code">
             <img src="${qrCodeImage}" alt="QR Code" />
           </div>
           <div class="instructions">
             <p>Scan this QR code at the clinic reception to check in</p>
-            <p>Queue Number: <strong>${queue.queueNumber}</strong></p>
+            <p>Queue Number: <strong>${e(queue.queueNumber)}</strong></p>
           </div>
         </div>
       </body>
@@ -102,7 +113,9 @@ export async function GET(
 
     return new NextResponse(html, {
       headers: {
-        'Content-Type': 'text/html',
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
       },
     });
   } catch (error: any) {

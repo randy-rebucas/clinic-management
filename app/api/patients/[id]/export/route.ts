@@ -3,9 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
 import Prescription from '@/models/Prescription';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, patientTenantFilter, tenantFilter } from '@/lib/api/tenant-session';
 import { logDataExport } from '@/lib/audit';
 import {
   buildFHIRPatient,
@@ -29,8 +28,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-  if (!session) return unauthorizedResponse();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   const permissionCheck = await requirePermission(session, 'patients', 'read');
   if (permissionCheck) return permissionCheck;
@@ -45,16 +45,12 @@ export async function GET(
   try {
     await connectDB();
 
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    const patient = await Patient.findById(id).lean();
+    const patient = await Patient.findOne(patientTenantFilter(tenantId, { _id: id })).lean();
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found' }, { status: 404 });
     }
 
-    const patientQuery: any = { patient: new Types.ObjectId(id) };
-    if (tenantId) patientQuery.tenantId = new Types.ObjectId(tenantId);
+    const patientQuery = tenantFilter(tenantId, { patient: new Types.ObjectId(id) });
 
     const [visits, prescriptions] = await Promise.all([
       Visit.find(patientQuery).lean(),

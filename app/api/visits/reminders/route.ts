@@ -1,35 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { dayRangeInTz, dayRangeOffsetInTz } from '@/lib/tz';
 
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(ctx.session, 'visits', 'update');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
-    const body = await request.json();
-    const { visitId } = body;
+    const body = await request.json().catch(() => ({}));
+    const visitId = body?.visitId;
 
-    if (!visitId) {
+    if (!isValidId(visitId)) {
       return NextResponse.json(
         { success: false, error: 'Visit ID required' },
         { status: 400 }
       );
     }
 
-    const visit = await Visit.findById(visitId).populate('patient', 'firstName lastName email phone');
-    if (!visit) {
-      return NextResponse.json(
-        { success: false, error: 'Visit not found' },
-        { status: 404 }
-      );
-    }
+    const visit = await Visit.findOne(tenantFilter(ctx.tenantId, { _id: visitId }));
+    if (!visit) return notFound('Visit');
 
     if (!visit.followUpDate) {
       return NextResponse.json(
@@ -38,17 +35,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Send reminder email/SMS
-    const patient = visit.patient as any;
     // TODO: Implement actual email/SMS sending
-    // Example:
-    // await sendEmail({
-    //   to: patient.email,
-    //   subject: 'Follow-up Appointment Reminder',
-    //   body: `Dear ${patient.firstName}, your follow-up appointment is scheduled for ${visit.followUpDate.toLocaleDateString()}...`
-    // });
-
-    // Update reminder sent flag
     visit.followUpReminderSent = true;
     await visit.save();
 
@@ -66,30 +53,31 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(ctx.session, 'visits', 'read');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
     const searchParams = request.nextUrl.searchParams;
-    const daysAhead = parseInt(searchParams.get('daysAhead') || '7');
+    const daysAhead = Math.min(Math.max(parseInt(searchParams.get('daysAhead') || '7') || 7, 0), 90);
 
-    // Find visits with follow-up dates in the next N days that haven't had reminders sent
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const futureDate = new Date(today);
-    futureDate.setDate(futureDate.getDate() + daysAhead);
+    const tz = await getTenantTimezone(tenantId);
+    const { start } = dayRangeInTz(new Date(), tz);
+    const { end } = dayRangeOffsetInTz(daysAhead, new Date(), tz);
 
-    const visitsNeedingReminders = await Visit.find({
-      followUpDate: { $gte: today, $lte: futureDate },
+    const visitsNeedingReminders = await Visit.find(tenantFilter(tenantId, {
+      followUpDate: { $gte: start, $lte: end },
       followUpReminderSent: { $ne: true },
       status: { $ne: 'cancelled' },
-    })
-      .populate('patient', 'firstName lastName email phone')
-      .populate('provider', 'name email');
+    }))
+      .limit(500)
+      .populate({ path: 'patient', select: 'firstName lastName email phone', match: { tenantIds: tenantObjectId } })
+      .populate({ path: 'provider', select: 'name email', match: { tenantId: tenantObjectId } })
+      .lean();
 
     return NextResponse.json({
       success: true,
@@ -104,4 +92,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

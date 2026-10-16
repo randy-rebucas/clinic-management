@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useId, FormEvent } from 'react';
 
 interface AllergyEntry {
   substance: string;
@@ -55,6 +55,7 @@ interface PatientFormProps {
 }
 
 export default function PatientForm({ initialData, onSubmit, onCancel }: PatientFormProps) {
+  const uid = useId();
   // Parse initial allergies - support both string array and structured objects
   const parseInitialAllergies = (): AllergyEntry[] => {
     if (!initialData?.allergies) return [];
@@ -193,10 +194,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
             {/* Name Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                <label htmlFor={`${uid}-first-name`} className="block text-sm font-semibold text-gray-700 mb-1.5">
                   First Name <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id={`${uid}-first-name`}
                   required
                   value={formData.firstName}
                   onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
@@ -204,18 +206,20 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Middle Name</label>
+                <label htmlFor={`${uid}-middle-name`} className="block text-sm font-semibold text-gray-700 mb-1.5">Middle Name</label>
                 <input
+                  id={`${uid}-middle-name`}
                   value={formData.middleName}
                   onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                <label htmlFor={`${uid}-last-name`} className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Last Name <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id={`${uid}-last-name`}
                   required
                   value={formData.lastName}
                   onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
@@ -223,8 +227,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Suffix</label>
+                <label htmlFor={`${uid}-suffix`} className="block text-sm font-semibold text-gray-700 mb-1.5">Suffix</label>
                 <input
+                  id={`${uid}-suffix`}
                   value={formData.suffix}
                   onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
                   placeholder="Jr., Sr., III"
@@ -236,10 +241,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
             {/* Demographics */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                <label htmlFor={`${uid}-dob`} className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Date of Birth <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id={`${uid}-dob`}
                   type="date"
                   required
                   value={formData.dateOfBirth}
@@ -248,10 +254,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                <label htmlFor={`${uid}-sex`} className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Sex <span className="text-red-500">*</span>
                 </label>
                 <select
+                  id={`${uid}-sex`}
                   required
                   value={formData.sex}
                   onChange={(e) => setFormData({ ...formData, sex: e.target.value as any })}
@@ -264,8 +271,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Civil Status</label>
+                <label htmlFor={`${uid}-civil-status`} className="block text-sm font-semibold text-gray-700 mb-1.5">Civil Status</label>
                 <input
+                  id={`${uid}-civil-status`}
                   value={formData.civilStatus}
                   onChange={(e) => setFormData({ ...formData, civilStatus: e.target.value })}
                   placeholder="Single, Married, Divorced, etc."
@@ -273,16 +281,18 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nationality</label>
+                <label htmlFor={`${uid}-nationality`} className="block text-sm font-semibold text-gray-700 mb-1.5">Nationality</label>
                 <input
+                  id={`${uid}-nationality`}
                   value={formData.nationality}
                   onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Occupation</label>
+                <label htmlFor={`${uid}-occupation`} className="block text-sm font-semibold text-gray-700 mb-1.5">Occupation</label>
                 <input
+                  id={`${uid}-occupation`}
                   value={formData.occupation}
                   onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
@@ -308,8 +318,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
             {/* Contact Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email</label>
+                <label htmlFor={`${uid}-email`} className="block text-sm font-semibold text-gray-700 mb-1.5">Email</label>
                 <input
+                  id={`${uid}-email`}
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -317,10 +328,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                <label htmlFor={`${uid}-phone`} className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Phone <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id={`${uid}-phone`}
                   type="tel"
                   required
                   value={formData.phone}
@@ -335,10 +347,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               <span className="text-sm font-semibold text-gray-700 mb-3 block">Address</span>
               <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  <label htmlFor={`${uid}-street`} className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Street Address <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id={`${uid}-street`}
                     required
                     value={formData.address.street}
                     onChange={(e) =>
@@ -352,10 +365,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    <label htmlFor={`${uid}-city`} className="block text-sm font-semibold text-gray-700 mb-1.5">
                       City <span className="text-red-500">*</span>
                     </label>
                     <input
+                    id={`${uid}-city`}
                     required
                     value={formData.address.city}
                     onChange={(e) =>
@@ -368,10 +382,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    <label htmlFor={`${uid}-state`} className="block text-sm font-semibold text-gray-700 mb-1.5">
                       State <span className="text-red-500">*</span>
                     </label>
                     <input
+                    id={`${uid}-state`}
                     required
                     value={formData.address.state}
                     onChange={(e) =>
@@ -384,10 +399,11 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    <label htmlFor={`${uid}-zip`} className="block text-sm font-semibold text-gray-700 mb-1.5">
                       Zip Code <span className="text-red-500">*</span>
                     </label>
                     <input
+                    id={`${uid}-zip`}
                     required
                     value={formData.address.zipCode}
                     onChange={(e) =>
@@ -423,8 +439,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               <span className="text-sm font-semibold text-gray-700 mb-3 block">Emergency Contact</span>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Name</label>
+                  <label htmlFor={`${uid}-ec-name`} className="block text-sm font-semibold text-gray-700 mb-1.5">Name</label>
                   <input
+                    id={`${uid}-ec-name`}
                     value={(formData.emergencyContact ?? {}).name}
                     onChange={(e) =>
                       setFormData({
@@ -436,8 +453,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Phone</label>
+                  <label htmlFor={`${uid}-ec-phone`} className="block text-sm font-semibold text-gray-700 mb-1.5">Phone</label>
                   <input
+                    id={`${uid}-ec-phone`}
                     type="tel"
                     value={(formData.emergencyContact ?? { phone: '' }).phone}
                     onChange={(e) =>
@@ -450,8 +468,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Relationship</label>
+                  <label htmlFor={`${uid}-ec-relationship`} className="block text-sm font-semibold text-gray-700 mb-1.5">Relationship</label>
                   <input
+                    id={`${uid}-ec-relationship`}
                     value={formData.emergencyContact?.relationship || ''}
                     onChange={(e) =>
                       setFormData({
@@ -473,8 +492,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
               <span className="text-sm font-semibold text-gray-700 mb-3 block">Identifiers</span>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">PhilHealth ID</label>
+                  <label htmlFor={`${uid}-philhealth`} className="block text-sm font-semibold text-gray-700 mb-1.5">PhilHealth ID</label>
                   <input
+                    id={`${uid}-philhealth`}
                     value={formData.identifiers?.philHealth || ''}
                     onChange={(e) =>
                       setFormData({
@@ -486,8 +506,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Government ID</label>
+                  <label htmlFor={`${uid}-gov-id`} className="block text-sm font-semibold text-gray-700 mb-1.5">Government ID</label>
                   <input
+                    id={`${uid}-gov-id`}
                     value={formData.identifiers?.govId || ''}
                     onChange={(e) =>
                       setFormData({
@@ -517,8 +538,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
           </div>
           <div className="flex flex-col gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Medical History</label>
+              <label htmlFor={`${uid}-medical-history`} className="block text-sm font-semibold text-gray-700 mb-1.5">Medical History</label>
               <textarea
+                id={`${uid}-medical-history`}
                 value={formData.medicalHistory}
                 onChange={(e) => setFormData({ ...formData, medicalHistory: e.target.value })}
                 rows={4}
@@ -530,7 +552,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
             {/* Allergies */}
             <div>
               <div className="flex justify-between items-center mb-3">
-                <label className="text-sm font-semibold text-gray-700">Allergies</label>
+                <span className="text-sm font-semibold text-gray-700">Allergies</span>
                 <button type="button" onClick={addAllergy} className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-semibold transition-colors text-sm inline-flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -551,8 +573,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                     <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Substance</label>
+                          <label htmlFor={`${uid}-allergy-${index}-substance`} className="block text-xs font-semibold text-gray-700 mb-1.5">Substance</label>
                           <input
+                              id={`${uid}-allergy-${index}-substance`}
                               value={allergy.substance}
                               onChange={(e) => updateAllergy(index, 'substance', e.target.value)}
                               placeholder="e.g., Penicillin"
@@ -560,8 +583,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                             />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Reaction</label>
+                          <label htmlFor={`${uid}-allergy-${index}-reaction`} className="block text-xs font-semibold text-gray-700 mb-1.5">Reaction</label>
                           <input
+                              id={`${uid}-allergy-${index}-reaction`}
                               value={allergy.reaction}
                               onChange={(e) => updateAllergy(index, 'reaction', e.target.value)}
                               placeholder="e.g., Rash"
@@ -569,8 +593,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                             />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Severity</label>
+                          <label htmlFor={`${uid}-allergy-${index}-severity`} className="block text-xs font-semibold text-gray-700 mb-1.5">Severity</label>
                           <select
+                  id={`${uid}-allergy-${index}-severity`}
                   value={allergy.severity}
                   onChange={(e) => updateAllergy(index, 'severity', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -601,7 +626,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
             {/* Pre-existing Conditions */}
             <div>
               <div className="flex justify-between items-center mb-3">
-                <label className="text-sm font-semibold text-gray-700">Pre-existing Conditions</label>
+                <span className="text-sm font-semibold text-gray-700">Pre-existing Conditions</span>
                 <button
                   type="button"
                   onClick={() => {
@@ -634,8 +659,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                     <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <div className="md:col-span-2">
-                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Condition</label>
+                          <label htmlFor={`${uid}-condition-${index}-name`} className="block text-xs font-semibold text-gray-700 mb-1.5">Condition</label>
                           <input
+                              id={`${uid}-condition-${index}-name`}
                               value={condition.condition}
                               onChange={(e) => {
                                 const updated = [...(formData.preExistingConditions ?? [])];
@@ -647,8 +673,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                             />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Status</label>
+                          <label htmlFor={`${uid}-condition-${index}-status`} className="block text-xs font-semibold text-gray-700 mb-1.5">Status</label>
                           <select
+                  id={`${uid}-condition-${index}-status`}
                   value={condition.status}
                   onChange={(e) => {
                               const updated = [...(formData.preExistingConditions ?? [])];
@@ -663,8 +690,9 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
                         </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Date</label>
+                          <label htmlFor={`${uid}-condition-${index}-date`} className="block text-xs font-semibold text-gray-700 mb-1.5">Date</label>
                   <input
+                    id={`${uid}-condition-${index}-date`}
                     type="date"
                     value={condition.diagnosisDate || ''}
                     onChange={(e) => {
@@ -699,7 +727,7 @@ export default function PatientForm({ initialData, onSubmit, onCancel }: Patient
             {/* Family History */}
             <div>
               <div className="flex justify-between items-center mb-3">
-                <label className="text-sm font-semibold text-gray-700">Family History</label>
+                <span className="text-sm font-semibold text-gray-700">Family History</span>
                 <button
                   type="button"
                   onClick={() => {

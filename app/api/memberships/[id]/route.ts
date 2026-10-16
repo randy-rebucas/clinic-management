@@ -1,83 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Membership from '@/models/Membership';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import {
+  requireTenantSession,
+  isTenantSessionError,
+  tenantFilter,
+  patientTenantFilter,
+  isValidId,
+  notFound,
+} from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+
+// Points, totals, benefits, discount and transactions are deliberately not editable here:
+// points go through /points, benefits/discount are derived from tier in the model's save hook.
+const membershipUpdateSchema = z.object({
+  tier: z.enum(['bronze', 'silver', 'gold', 'platinum']).optional(),
+  status: z.enum(['active', 'inactive', 'expired', 'suspended']).optional(),
+  expiryDate: z.coerce.date().nullable().optional(),
+  renewalDate: z.coerce.date().nullable().optional(),
+  notes: z.string().max(10000).optional(),
+});
+
+function patientPopulate(path: string, tenantId: string, select = 'firstName lastName patientCode') {
+  return { path, select, match: patientTenantFilter(tenantId) };
+}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(ctx.session, 'patients', 'read');
+  if (permissionCheck) return permissionCheck;
+
+  const { id } = await params;
+  if (!isValidId(id)) return notFound('Membership');
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    const { id } = await params;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode email phone',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    const referredByPopulateOptions: any = {
-      path: 'referredBy',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      referredByPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      referredByPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    const referralsPopulateOptions: any = {
-      path: 'referrals',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      referralsPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      referralsPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    const membership = await Membership.findOne(query)
-      .populate(patientPopulateOptions)
-      .populate(referredByPopulateOptions)
-      .populate(referralsPopulateOptions);
 
-    if (!membership) {
-      return NextResponse.json(
-        { success: false, error: 'Membership not found' },
-        { status: 404 }
-      );
-    }
+    const membership = await Membership.findOne(tenantFilter(ctx.tenantId, { _id: id }))
+      .populate(patientPopulate('patient', ctx.tenantId, 'firstName lastName patientCode email phone'))
+      .populate(patientPopulate('referredBy', ctx.tenantId))
+      .populate(patientPopulate('referrals', ctx.tenantId));
+
+    if (!membership) return notFound('Membership');
 
     return NextResponse.json({ success: true, data: membership });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching membership:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch membership' },
@@ -90,76 +64,37 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(ctx.session, 'memberships', 'write');
+  if (permissionCheck) return permissionCheck;
+
+  const { id } = await params;
+  if (!isValidId(id)) return notFound('Membership');
+
+  const parsed = await parseBody(request, membershipUpdateSchema);
+  if (isValidationError(parsed)) return parsed;
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    const { id } = await params;
-    const body = await request.json();
 
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    // Ensure tenantId is preserved in update
-    if (tenantId && !body.tenantId) {
-      body.tenantId = new Types.ObjectId(tenantId);
-    }
+    const membership = await Membership.findOne(tenantFilter(ctx.tenantId, { _id: id }));
+    if (!membership) return notFound('Membership');
 
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    const referredByPopulateOptions: any = {
-      path: 'referredBy',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      referredByPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      referredByPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
+    // Load + save (rather than findOneAndUpdate) so the save hook re-derives tier benefits/discount.
+    membership.set(parsed.data);
+    await membership.save();
 
-    const membership = await Membership.findOneAndUpdate(query, body, {
-      new: true,
-      runValidators: true,
-    })
-      .populate(patientPopulateOptions)
-      .populate(referredByPopulateOptions);
-
-    if (!membership) {
-      return NextResponse.json(
-        { success: false, error: 'Membership not found' },
-        { status: 404 }
-      );
-    }
+    await membership.populate(patientPopulate('patient', ctx.tenantId));
+    await membership.populate(patientPopulate('referredBy', ctx.tenantId));
 
     return NextResponse.json({ success: true, data: membership });
   } catch (error: any) {
     console.error('Error updating membership:', error);
-    if (error.name === 'ValidationError') {
+    if (error?.name === 'ValidationError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid membership data' },
         { status: 400 }
       );
     }
@@ -169,4 +104,3 @@ export async function PUT(
     );
   }
 }
-

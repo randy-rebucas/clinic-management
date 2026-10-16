@@ -1,25 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
 import Appointment from '@/models/Appointment';
 import Room from '@/models/Room';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
-import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
+import { getSettings } from '@/lib/settings';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { nextQueueNumber } from '@/lib/queue-number';
+
+const QUEUE_STATUSES = ['waiting', 'in-progress', 'completed', 'cancelled', 'no-show'];
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to read queue
   const permissionCheck = await requirePermission(session, 'queue', 'read');
   if (permissionCheck) {
     return permissionCheck;
@@ -27,87 +27,46 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
-    
-    // Ensure all models are registered (imports ensure this, but double-check)
-    if (!mongoose.models.Patient) {
-      await import('@/models/Patient');
-    }
-    if (!mongoose.models.Doctor) {
-      await import('@/models/Doctor');
-    }
-    if (!mongoose.models.Room) {
-      await import('@/models/Room');
-    }
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
-    
-    // Validate tenantId is present (required for multi-tenant support)
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'Tenant context is required' },
-        { status: 400 }
-      );
-    }
-    
+    // Models referenced by populate below
+    void [Patient, Doctor, Room];
+
     const searchParams = request.nextUrl.searchParams;
     const doctorId = searchParams.get('doctorId');
     const roomId = searchParams.get('roomId');
     const status = searchParams.get('status') || 'waiting';
     const display = searchParams.get('display') === 'true'; // For TV display
 
-    const query: any = {
-      tenantId: new Types.ObjectId(tenantId)
-    };
-    
+    const query: any = { tenantId: tenantObjectId };
+
     // Handle status filter - support comma-separated values
     if (status && status !== 'all') {
-      const statusArray = status.includes(',') ? status.split(',') : [status];
-      query.status = { $in: statusArray };
+      query.status = { $in: status.split(',').filter((s) => QUEUE_STATUSES.includes(s)) };
     } else {
-      // Default to active statuses if not specified
       query.status = { $in: ['waiting', 'in-progress'] };
     }
-    
+
     if (doctorId) {
-      query.doctor = doctorId;
+      if (!isValidId(doctorId)) return NextResponse.json({ success: true, data: [] });
+      query.doctor = new Types.ObjectId(doctorId);
     }
     if (roomId) {
-      query.room = roomId;
+      if (!isValidId(roomId)) return NextResponse.json({ success: true, data: [] });
+      query.room = new Types.ObjectId(roomId);
     }
 
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-      match: { tenantIds: new Types.ObjectId(tenantId) }
-    };
-    
-    const doctorPopulateOptions: any = {
-      path: 'doctor',
-      select: 'firstName lastName',
-      match: { tenantId: new Types.ObjectId(tenantId) }
-    };
-
-    // Find queues - populate will work if models are registered
     const queues = await Queue.find(query)
-      .populate(patientPopulateOptions)
-      .populate(doctorPopulateOptions)
-      .populate('room', 'name roomNumber')
+      .populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } })
+      .populate({ path: 'doctor', select: 'firstName lastName', match: { tenantId: tenantObjectId } })
+      .populate({ path: 'room', select: 'name roomNumber', match: { tenantId: tenantObjectId } })
       .sort({ priority: 1, queuedAt: 1 }) // Priority first, then by time
       .limit(display ? 20 : 100)
       .lean();
 
-    // Calculate estimated wait times
-    const queuesWithWaitTime = queues.map((queue: any, index: number) => {
-      const estimatedWaitTime = index * 15; // 15 minutes per patient (adjustable)
-      return {
-        ...queue,
-        estimatedWaitTime,
-        position: index + 1,
-      };
-    });
+    const queuesWithWaitTime = queues.map((queue: any, index: number) => ({
+      ...queue,
+      estimatedWaitTime: index * 15, // 15 minutes per patient (adjustable)
+      position: index + 1,
+    }));
 
     return NextResponse.json({
       success: true,
@@ -115,121 +74,73 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Error fetching queue:', error);
-    console.error('Error stack:', error?.stack);
-    console.error('Error name:', error?.name);
-    const errorMessage = error?.message || error?.toString() || 'Failed to fetch queue';
     return NextResponse.json(
-      { 
-        success: false, 
-        error: process.env.NODE_ENV === 'development' ? errorMessage : 'Failed to fetch queue',
-        ...(process.env.NODE_ENV === 'development' && { 
-          details: error?.stack,
-          errorName: error?.name 
-        })
-      },
+      { success: false, error: 'Failed to fetch queue' },
       { status: 500 }
     );
   }
 }
 
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
+  const permissionCheck = await requirePermission(session, 'queue', 'write');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {
     await connectDB();
-    const body = await request.json();
-    const { patientId, appointmentId, visitId, doctorId, roomId, queueType, priority } = body;
+    const body = await request.json().catch(() => ({}));
+    const { patientId, appointmentId, visitId, doctorId, roomId, queueType, priority } = body ?? {};
 
-    if (!patientId) {
+    if (!isValidId(patientId)) {
       return NextResponse.json(
         { success: false, error: 'Patient ID required' },
         { status: 400 }
       );
     }
-
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
-    
-    // Validate tenantId is present (required for multi-tenant support)
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'Tenant context is required' },
-        { status: 400 }
-      );
+    for (const [label, value] of [['appointment', appointmentId], ['visit', visitId], ['doctor', doctorId], ['room', roomId]] as const) {
+      if (value && !isValidId(value)) {
+        return NextResponse.json({ success: false, error: `Invalid ${label}` }, { status: 400 });
+      }
+    }
+    if (queueType && !['appointment', 'walk-in', 'follow-up'].includes(queueType)) {
+      return NextResponse.json({ success: false, error: 'Invalid queue type' }, { status: 400 });
     }
 
-    // Always validate patient exists first
-    const PatientModel = (await import('@/models/Patient')).default;
-    const patientQuery: any = { 
-      _id: patientId,
-      tenantIds: new Types.ObjectId(tenantId) // Check if tenantId is in tenantIds array
-    };
-    
-    const patient = await PatientModel.findOne(patientQuery).select('firstName lastName').lean();
-    
-    if (!patient || Array.isArray(patient) || !('firstName' in patient) || !('lastName' in patient)) {
+    const patient = await Patient.findOne({ _id: patientId, tenantIds: tenantObjectId })
+      .select('firstName lastName')
+      .lean() as any;
+    if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
         { status: 404 }
       );
     }
-
     const patientName = `${patient.firstName} ${patient.lastName}`;
-    
-    // Validate appointment if provided
-    if (appointmentId) {
-      const AppointmentModel = (await import('@/models/Appointment')).default;
-      const appointmentQuery: any = { 
-        _id: appointmentId,
-        tenantId: new Types.ObjectId(tenantId)
-      };
-      
-      const appointment = await AppointmentModel.findOne(appointmentQuery).lean();
-      
-      if (!appointment) {
-        return NextResponse.json(
-          { success: false, error: 'Appointment not found' },
-          { status: 404 }
-        );
-      }
+
+    if (appointmentId && !(await Appointment.exists({ _id: appointmentId, tenantId: tenantObjectId }))) {
+      return NextResponse.json(
+        { success: false, error: 'Appointment not found' },
+        { status: 404 }
+      );
+    }
+    if (doctorId && !(await Doctor.exists({ _id: doctorId, tenantId: tenantObjectId }))) {
+      return NextResponse.json({ success: false, error: 'Doctor not found' }, { status: 404 });
+    }
+    if (roomId && !(await Room.exists({ _id: roomId, tenantId: tenantObjectId }))) {
+      return NextResponse.json({ success: false, error: 'Room not found' }, { status: 404 });
     }
 
-    // Generate queue number before creating the queue (tenant-scoped)
     const finalQueueType = queueType || 'appointment';
-    const prefix = finalQueueType === 'appointment' ? 'A' : finalQueueType === 'walk-in' ? 'W' : 'F';
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
-    
-    // Count today's queues of this type (tenant-scoped)
-    const startOfDay = new Date(today);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(today);
-    endOfDay.setHours(23, 59, 59, 999);
-    
-    const countQuery: any = {
-      tenantId: new Types.ObjectId(tenantId),
-      queueType: finalQueueType,
-      queuedAt: { $gte: startOfDay, $lte: endOfDay },
-    };
-    
-    const count = await Queue.countDocuments(countQuery);
-    
-    const queueNumber = `${prefix}${dateStr}-${String(count + 1).padStart(3, '0')}`;
+    const tz = await getTenantTimezone(tenantId);
+    const queueNumber = await nextQueueNumber(tenantId, finalQueueType, tz);
 
-    // Generate QR code for check-in
-    const qrCodeData = JSON.stringify({
-      queueId: null, // Will be set after creation
-      patientId,
-      appointmentId: appointmentId || null,
-      timestamp: Date.now(),
-    });
-
-    const queueData: any = {
+    const queue = await Queue.create({
+      tenantId: tenantObjectId,
       queueNumber,
       patient: patientId,
       patientName,
@@ -238,18 +149,12 @@ export async function POST(request: NextRequest) {
       doctor: doctorId || undefined,
       room: roomId || undefined,
       queueType: finalQueueType,
-      priority: priority || 0,
-      qrCode: qrCodeData,
+      priority: Number.isFinite(Number(priority)) ? Number(priority) : 0,
       checkedIn: false,
       status: 'waiting',
-    };
-    
-    // Always set tenantId for multi-tenant support
-    queueData.tenantId = new Types.ObjectId(tenantId);
+    });
 
-    const queue = await Queue.create(queueData);
-
-    // Update QR code with actual queue ID
+    // QR code for check-in (needs the queue id)
     queue.qrCode = JSON.stringify({
       queueId: queue._id.toString(),
       patientId,
@@ -258,24 +163,10 @@ export async function POST(request: NextRequest) {
     });
     await queue.save();
 
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-      match: { tenantIds: new Types.ObjectId(tenantId) }
-    };
-    
-    const doctorPopulateOptions: any = {
-      path: 'doctor',
-      select: 'firstName lastName',
-      match: { tenantId: new Types.ObjectId(tenantId) }
-    };
-    
-    await queue.populate(patientPopulateOptions);
-    await queue.populate(doctorPopulateOptions);
-    await queue.populate('room', 'name roomNumber');
+    await queue.populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } });
+    await queue.populate({ path: 'doctor', select: 'firstName lastName', match: { tenantId: tenantObjectId } });
+    await queue.populate({ path: 'room', select: 'name roomNumber', match: { tenantId: tenantObjectId } });
 
-    // Log queue creation
     await createAuditLog({
       userId: session.userId,
       userEmail: session.email,
@@ -287,22 +178,18 @@ export async function POST(request: NextRequest) {
       description: `Added patient to queue: ${queue.queueNumber}`,
     });
 
-    // Auto-optimize queue if enabled (async, don't block response)
-    if (tenantId) {
-      const { getSettings } = await import('@/lib/settings');
-      const settings = await getSettings(tenantId.toString());
-      if (settings?.automationSettings?.autoQueueOptimization) {
-        const { autoOptimizeQueueOnJoin } = await import('@/lib/automations/queue-optimization');
-        autoOptimizeQueueOnJoin(queue._id, tenantId).catch(console.error);
-      }
+    const settings = await getSettings(tenantId);
+    if (settings?.automationSettings?.autoQueueOptimization) {
+      const { autoOptimizeQueueOnJoin } = await import('@/lib/automations/queue-optimization');
+      autoOptimizeQueueOnJoin(queue._id, tenantId).catch(console.error);
     }
 
     return NextResponse.json({ success: true, data: queue }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating queue entry:', error);
-    if (error.name === 'ValidationError') {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid queue entry data' },
         { status: 400 }
       );
     }
@@ -312,4 +199,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

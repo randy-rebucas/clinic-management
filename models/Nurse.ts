@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
-import bcrypt from 'bcryptjs';
+import { ensureStaffUser } from './staff-user-link';
 
 export interface INurse extends Document {
   // Tenant reference for multi-tenant support
@@ -203,176 +203,12 @@ NurseSchema.index({ tenantId: 1, createdAt: -1 }); // For sorting by creation da
 // Post-save hook to automatically create a User when a Nurse is created
 // IMPORTANT: Hook must be added BEFORE model registration
 NurseSchema.post('save', async function (doc: INurse) {
-  try {
-    console.log('\n🔵 [NURSE POST-SAVE HOOK] Starting...');
-    console.log('📋 Nurse Details:', {
-      id: doc._id,
-      email: doc.email,
-      name: `${doc.firstName} ${doc.lastName}`,
-      tenantId: doc.tenantId?.toString() || 'none',
-      status: doc.status,
-      employeeId: doc.employeeId || 'none',
-      licenseNumber: doc.licenseNumber || 'none'
-    });
-    
-    // Ensure models are registered by importing them first
-    if (!mongoose.models.User) {
-      console.log('⚙️  Importing User model...');
-      await import('./User');
-    }
-    if (!mongoose.models.Role) {
-      console.log('⚙️  Importing Role model...');
-      await import('./Role');
-    }
-    
-    // Now get the models from mongoose.models (they should be registered now)
-    const User = mongoose.models.User;
-    const Role = mongoose.models.Role;
-    
-    if (!User || !Role) {
-      console.warn(`⚠️  Required models not registered. User: ${!!User}, Role: ${!!Role}`);
-      return;
-    }
-    console.log('✅ Models registered successfully');
-
-    // Check if a User with this nurseProfile already exists (to avoid duplicates on updates)
-    console.log('🔍 Checking if user with nurseProfile already exists...');
-    const existingUserByProfile = await User.findOne({ nurseProfile: doc._id });
-    
-    if (existingUserByProfile) {
-      console.log('⏭️  User already linked to this nurse profile. Skipping creation.');
-      return;
-    }
-    console.log('✅ No existing user with this profile found');
-
-    // Check if a User with this email already exists
-    console.log(`🔍 Checking if user with email ${doc.email} already exists...`);
-    const existingUserByEmail = await User.findOne({ email: doc.email.toLowerCase().trim() });
-    
-    if (!existingUserByEmail) {
-      console.log('✅ No existing user with this email found. Proceeding to create new user...');
-      
-      // Find the nurse role (tenant-scoped if tenantId exists)
-      let nurseRole;
-      console.log('🔍 Looking for nurse role...');
-      
-      if (doc.tenantId) {
-        console.log(`🏢 Tenant-scoped search for tenant: ${doc.tenantId}`);
-        
-        // First try to find tenant-scoped nurse role
-        nurseRole = await Role.findOne({ 
-          name: 'nurse',
-          tenantId: doc.tenantId 
-        });
-        
-        if (nurseRole) {
-          console.log('✅ Found tenant-scoped nurse role:', {
-            roleId: nurseRole._id,
-            roleName: nurseRole.name,
-            tenantId: nurseRole.tenantId?.toString()
-          });
-        } else {
-          console.log('⚠️  No tenant-scoped role found, trying global role...');
-          
-          // If no tenant-scoped role, try global nurse role
-          nurseRole = await Role.findOne({ 
-            name: 'nurse',
-            $or: [
-              { tenantId: { $exists: false } },
-              { tenantId: null }
-            ]
-          });
-          
-          if (nurseRole) {
-            console.log('✅ Found global nurse role:', {
-              roleId: nurseRole._id,
-              roleName: nurseRole.name
-            });
-          }
-        }
-      } else {
-        console.log('🌍 No tenant context, searching for global role...');
-        
-        // No tenant, look for global nurse role
-        nurseRole = await Role.findOne({ 
-          name: 'nurse',
-          $or: [
-            { tenantId: { $exists: false } },
-            { tenantId: null }
-          ]
-        });
-        
-        if (nurseRole) {
-          console.log('✅ Found global nurse role:', {
-            roleId: nurseRole._id,
-            roleName: nurseRole.name
-          });
-        }
-      }
-      
-      if (!nurseRole) {
-        console.warn(`❌ Nurse role not found. User not created for nurse: ${doc.email}`);
-        console.warn('💡 Make sure nurse role exists in the database');
-        return;
-      }
-
-      // Generate a default password (can be changed on first login)
-      const defaultPassword = `Password1234!`;
-      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-      console.log('🔐 Generated default password');
-
-      // Create the user with tenantId if nurse has one
-      const userData: any = {
-        name: `${doc.firstName} ${doc.lastName}`.trim(),
-        email: doc.email.toLowerCase().trim(),
-        password: hashedPassword,
-        role: nurseRole._id,
-        nurseProfile: doc._id,
-        status: doc.status === 'active' ? 'active' : 'inactive',
-      };
-      
-      // Add tenantId if nurse has one
-      if (doc.tenantId) {
-        userData.tenantId = doc.tenantId;
-      }
-
-      console.log('👤 Creating user with data:', {
-        name: userData.name,
-        email: userData.email,
-        role: userData.role.toString(),
-        nurseProfile: userData.nurseProfile.toString(),
-        tenantId: userData.tenantId?.toString() || 'none',
-        status: userData.status
-      });
-
-      const user = await User.create(userData);
-
-      console.log('✅ SUCCESS! Created user account for nurse');
-      console.log('📧 Email:', doc.email);
-      console.log('🔑 Default Password:', defaultPassword);
-      console.log('🆔 User ID:', user._id.toString());
-      console.log('💡 User should change password on first login\n');
-    } else {
-      console.log('ℹ️  User with this email already exists:', existingUserByEmail.email);
-      
-      // User exists, but update the nurseProfile reference if not set
-      if (!existingUserByEmail.nurseProfile) {
-        console.log('🔗 Linking existing user to nurse profile...');
-        existingUserByEmail.nurseProfile = doc._id;
-        await existingUserByEmail.save();
-        console.log(`✅ Linked existing user to nurse: ${doc.email}\n`);
-      } else {
-        console.log('ℹ️  User already has nurseProfile linked. No action needed.\n');
-      }
-    }
-  } catch (error: any) {
-    // Log error but don't throw - we don't want to prevent nurse creation if user creation fails
-    console.error('\n❌ [ERROR] Failed to create/link user for nurse');
-    console.error('📧 Nurse email:', doc.email);
-    console.error('🔴 Error message:', error.message);
-    console.error('🔍 Error stack:', error.stack);
-    console.error('\n');
-  }
+  await ensureStaffUser({
+    doc,
+    profileField: 'nurseProfile',
+    roleNames: ['nurse'],
+    label: 'nurse',
+  });
 });
 
 // Register Nurse model immediately to ensure it's available when other models reference it

@@ -5,14 +5,12 @@
 
 import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
-import User from '@/models/User';
 import { getSubscriptionUsage } from '@/lib/subscription-limits';
-import { getStorageUsageSummary } from '@/lib/storage-tracking';
 import { checkSubscriptionStatus } from '@/lib/subscription';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { getSettings } from '@/lib/settings';
 import { Types } from 'mongoose';
+import { getTenantStaff, safeNotify } from './shared';
 
 export interface UsageAlert {
   tenantId: Types.ObjectId;
@@ -53,7 +51,6 @@ export async function checkAndSendUsageAlerts(tenantId: string | Types.ObjectId)
 
     // Get usage statistics
     const usage = await getSubscriptionUsage(tenantIdObj);
-    const storageSummary = await getStorageUsageSummary(tenantIdObj);
 
     const alerts: UsageAlert[] = [];
 
@@ -110,30 +107,19 @@ export async function checkAndSendUsageAlerts(tenantId: string | Types.ObjectId)
     checkLimit(usage.visitsThisMonth.current, usage.visitsThisMonth.limit, 'visits', 'Monthly visits');
     checkLimit(usage.storage.currentGB, usage.storage.limitGB, 'storage', 'Storage');
 
-    // Send alerts
+    // Only alert when a limit crosses a higher threshold than last reported; usage that
+    // drops back below 80% resets that type so a later climb alerts again.
+    const previousLevels: Record<string, number> = { ...((tenant.subscription as any)?.usageAlertLevels || {}) };
+    const nextLevels: Record<string, number> = {};
+    for (const type of ['patients', 'users', 'doctors', 'appointments', 'visits', 'storage']) {
+      const alert = alerts.find((a) => a.alertType === type);
+      nextLevels[type] = alert ? Math.max(alert.threshold, previousLevels[type] || 0) : 0;
+    }
+    const newAlerts = alerts.filter((a) => a.threshold > (previousLevels[a.alertType] || 0));
+
     let alertsSent = 0;
-    if (alerts.length > 0) {
-      // Get admin users
-      const adminUsers = await User.find({
-        tenantId: tenantIdObj,
-        role: { $exists: true },
-        active: true,
-      }).populate('role', 'name').select('email firstName lastName');
-
-      // Filter to actual admins (you may need to adjust this based on your role structure)
-      const admins = adminUsers.filter((user: any) => 
-        user.role?.name?.toLowerCase().includes('admin') || 
-        user.role?.name?.toLowerCase().includes('administrator')
-      );
-
-      if (admins.length === 0) {
-        // Fallback: use all users with tenantId
-        const allUsers = await User.find({
-          tenantId: tenantIdObj,
-          active: true,
-        }).limit(5).select('email firstName lastName');
-        admins.push(...allUsers);
-      }
+    if (newAlerts.length > 0) {
+      const admins = await getTenantStaff(tenantIdObj, ['admin'], '_id email name');
 
       const settings = await getSettings(tenantIdObj.toString());
       const clinicName = settings?.clinicName || tenant.name || 'Clinic';
@@ -141,9 +127,9 @@ export async function checkAndSendUsageAlerts(tenantId: string | Types.ObjectId)
       const subscriptionUrl = `${baseUrl}/subscription`;
 
       // Group alerts by threshold
-      const criticalAlerts = alerts.filter(a => a.threshold === 100);
-      const warningAlerts = alerts.filter(a => a.threshold === 90);
-      const infoAlerts = alerts.filter(a => a.threshold === 80);
+      const criticalAlerts = newAlerts.filter(a => a.threshold === 100);
+      const warningAlerts = newAlerts.filter(a => a.threshold === 90);
+      const infoAlerts = newAlerts.filter(a => a.threshold === 80);
 
       for (const admin of admins) {
         // Send email
@@ -167,25 +153,24 @@ export async function checkAndSendUsageAlerts(tenantId: string | Types.ObjectId)
           }
         }
 
-        // Send in-app notification
-        try {
-          const alertMessages = alerts.map(a => a.message).join('\n');
-          await createNotification({
-            userId: admin._id,
-            tenantId: tenantIdObj,
-            type: 'system',
-            priority: criticalAlerts.length > 0 ? 'high' : warningAlerts.length > 0 ? 'normal' : 'low',
-            title: 'Usage Alert',
-            message: alertMessages,
-            actionUrl: subscriptionUrl,
-          });
-        } catch (error) {
-          console.error(`Error creating usage alert notification:`, error);
-        }
+        await safeNotify({
+          userId: admin._id,
+          tenantId: tenantIdObj,
+          type: 'system',
+          priority: criticalAlerts.length > 0 ? 'high' : warningAlerts.length > 0 ? 'normal' : 'low',
+          title: 'Usage Alert',
+          message: newAlerts.map(a => a.message).join('\n'),
+          actionUrl: subscriptionUrl,
+        });
       }
     }
 
-    return { success: true, alertsSent, alerts };
+    const changed = Object.keys(nextLevels).some((k) => (nextLevels[k] || 0) !== (previousLevels[k] || 0));
+    if (changed) {
+      await Tenant.updateOne({ _id: tenantIdObj }, { $set: { 'subscription.usageAlertLevels': nextLevels } });
+    }
+
+    return { success: true, alertsSent, alerts: newAlerts };
   } catch (error: any) {
     console.error('Error checking and sending usage alerts:', error);
     return { success: false, alertsSent: 0, alerts: [] };
@@ -266,7 +251,7 @@ function generateUsageAlertEmail(
       <div style="background-color: ${color}15; border-left: 4px solid ${color}; padding: 15px; margin: 10px 0;">
         <h3 style="color: ${color}; margin-top: 0;">${title}</h3>
         <ul>
-          ${alerts.map(a => `<li>${a.message}</li>`).join('')}
+          ${alerts.map(a => `<li>${escapeHtml(a.message)}</li>`).join('')}
         </ul>
       </div>
     `;
@@ -291,7 +276,7 @@ function generateUsageAlertEmail(
           <h1>${hasCritical ? '⚠️ URGENT' : hasWarnings ? '⚠️ Warning' : 'ℹ️ Alert'}</h1>
         </div>
         <div class="content">
-          <p>Dear ${clinicName} Administrator,</p>
+          <p>Dear ${escapeHtml(clinicName)} Administrator,</p>
           <p>Your subscription usage has reached the following thresholds:</p>
           
           ${alertSection(criticalAlerts, 'Critical (100% - Limit Reached)', '#dc2626')}

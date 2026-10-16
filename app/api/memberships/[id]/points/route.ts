@@ -1,83 +1,108 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Membership from '@/models/Membership';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
+
+const MAX_POINTS = 1_000_000;
+
+const pointsSchema = z
+  .object({
+    points: z.number().int().refine((n) => n !== 0 && Math.abs(n) <= MAX_POINTS, 'Invalid points value'),
+    description: z.string().trim().min(1).max(500),
+    type: z.enum(['earn', 'redeem', 'adjustment']).optional(),
+    relatedEntity: z
+      .object({
+        type: z.enum(['visit', 'appointment', 'invoice']),
+        id: zObjectId,
+      })
+      .optional(),
+  })
+  .refine((b) => b.type === 'adjustment' || b.type === undefined || b.points > 0, {
+    message: 'Points must be positive for earn/redeem',
+    path: ['points'],
+  });
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const { id } = await params;
+  if (!isValidId(id)) return notFound('Membership');
+
+  const parsed = await parseBody(request, pointsSchema);
+  if (isValidationError(parsed)) return parsed;
+  const { points, description, relatedEntity } = parsed.data;
+  const transactionType = parsed.data.type || (points > 0 ? 'earn' : 'redeem');
+
+  // Earning/redeeming is a billing-desk action; arbitrary adjustments are admin-level.
+  const permissionCheck = await requirePermission(
+    ctx.session,
+    transactionType === 'adjustment' ? 'memberships' : 'invoices',
+    'write'
+  );
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    const { id } = await params;
-    const body = await request.json();
-    const { points, description, type, relatedEntity } = body;
 
-    if (!points || !description) {
-      return NextResponse.json(
-        { success: false, error: 'Points and description required' },
-        { status: 400 }
-      );
-    }
-
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    const membership = await Membership.findOne(query);
-    if (!membership) {
-      return NextResponse.json(
-        { success: false, error: 'Membership not found' },
-        { status: 404 }
-      );
-    }
-
-    const transactionType = type || (points > 0 ? 'earn' : 'redeem');
-
+    const amount = Math.abs(points);
+    let balanceChange: number;
+    const inc: Record<string, number> = {};
     if (transactionType === 'earn') {
-      membership.points += points;
-      membership.totalPointsEarned += points;
+      balanceChange = amount;
+      inc.totalPointsEarned = amount;
     } else if (transactionType === 'redeem') {
-      if (membership.points < points) {
-        return NextResponse.json(
-          { success: false, error: 'Insufficient points' },
-          { status: 400 }
-        );
-      }
-      membership.points -= points;
-      membership.totalPointsRedeemed += points;
+      balanceChange = -amount;
+      inc.totalPointsRedeemed = amount;
+    } else {
+      balanceChange = points;
+    }
+    inc.points = balanceChange;
+
+    const filter: Record<string, unknown> = tenantFilter(ctx.tenantId, { _id: id });
+    // Guard decrements in the filter so concurrent redemptions can't take the balance negative.
+    if (balanceChange < 0) {
+      filter.points = { $gte: -balanceChange };
     }
 
-    membership.transactions.push({
-      type: transactionType,
-      points: Math.abs(points),
-      description,
-      relatedEntity: relatedEntity || undefined,
-      createdAt: new Date(),
-    });
+    const membership = await Membership.findOneAndUpdate(
+      filter,
+      {
+        $inc: inc,
+        $push: {
+          transactions: {
+            type: transactionType,
+            points: transactionType === 'adjustment' ? points : amount,
+            description,
+            relatedEntity: relatedEntity || undefined,
+            createdAt: new Date(),
+          },
+        },
+      },
+      { new: true, runValidators: true }
+    );
 
-    await membership.save();
+    if (!membership) {
+      if (balanceChange < 0) {
+        const exists = await Membership.exists(tenantFilter(ctx.tenantId, { _id: id }));
+        if (exists) {
+          return NextResponse.json(
+            { success: false, error: 'Insufficient points' },
+            { status: 400 }
+          );
+        }
+      }
+      return notFound('Membership');
+    }
 
     return NextResponse.json({ success: true, data: membership });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error updating points:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update points' },
@@ -85,4 +110,3 @@ export async function POST(
     );
   }
 }
-

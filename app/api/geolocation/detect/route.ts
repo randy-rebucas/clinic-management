@@ -1,4 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isIP } from 'net';
+
+function isPublicIp(ip: string): boolean {
+  const version = isIP(ip);
+  if (version === 4) {
+    const [a, b] = ip.split('.').map(Number);
+    if (a === 0 || a === 10 || a === 127) return false;
+    if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT
+    if (a === 169 && b === 254) return false;
+    if (a === 172 && b >= 16 && b <= 31) return false;
+    if (a === 192 && b === 168) return false;
+    if (a >= 224) return false; // multicast / reserved
+    return true;
+  }
+  if (version === 6) {
+    const lower = ip.toLowerCase();
+    if (lower === '::' || lower === '::1') return false;
+    if (lower.startsWith('fe80:') || lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('ff')) {
+      return false;
+    }
+    const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped) return isPublicIp(mapped[1]);
+    return true;
+  }
+  return false;
+}
+
+function clientIpFrom(request: NextRequest): string | null {
+  const forwarded = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  const realIp = request.headers.get('x-real-ip')?.trim();
+  for (const candidate of [forwarded, realIp]) {
+    if (candidate && isIP(candidate) && isPublicIp(candidate)) return candidate;
+  }
+  return null;
+}
+
+const unavailable = () =>
+  NextResponse.json({
+    success: false,
+    error: 'Unable to detect location via IP. Using browser fallback.',
+  });
 
 /**
  * API route to detect user's country based on IP address
@@ -6,99 +47,50 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get client IP from request headers
-    const forwarded = request.headers.get('x-forwarded-for');
-    const realIp = request.headers.get('x-real-ip');
-    const clientIp = forwarded?.split(',')[0]?.trim() || realIp?.trim() || '';
+    // Without a public client IP, a lookup would only describe the server's own address.
+    const clientIp = clientIpFrom(request);
+    if (!clientIp) return unavailable();
 
-    // Try ipapi.co first (free tier: 1000 requests/day)
     try {
-      const ipapiUrl = clientIp && clientIp !== '::1' && !clientIp.startsWith('127.')
-        ? `https://ipapi.co/${clientIp}/json/`
-        : 'https://ipapi.co/json/';
-      
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      const response = await fetch(ipapiUrl, {
+
+      const response = await fetch(`https://ipapi.co/${encodeURIComponent(clientIp)}/json/`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
         },
         signal: controller.signal,
+        redirect: 'error',
       });
-      
+
       clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
-        if (data.country_code && !data.error) {
+        if (typeof data?.country_code === 'string' && /^[A-Z]{2}$/.test(data.country_code) && !data.error) {
           return NextResponse.json({
             success: true,
             countryCode: data.country_code,
-            country: data.country_name,
-            timezone: data.timezone,
-            currency: data.currency,
+            country: typeof data.country_name === 'string' ? data.country_name : undefined,
+            timezone: typeof data.timezone === 'string' ? data.timezone : undefined,
+            currency: typeof data.currency === 'string' ? data.currency : undefined,
           });
         }
       }
     } catch (error: any) {
-      // Only log if it's not a timeout or abort
       if (error.name !== 'AbortError' && error.name !== 'TimeoutError') {
         console.warn('ipapi.co failed:', error.message);
       }
     }
 
-    // Fallback to ip-api.com (free tier: 45 requests/minute)
-    try {
-      const ipApiUrl = clientIp && clientIp !== '::1' && !clientIp.startsWith('127.')
-        ? `http://ip-api.com/json/${clientIp}`
-        : 'http://ip-api.com/json/';
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      const response = await fetch(ipApiUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.status === 'success' && data.countryCode) {
-          return NextResponse.json({
-            success: true,
-            countryCode: data.countryCode,
-            country: data.country,
-            timezone: data.timezone,
-            currency: data.currency || null,
-          });
-        }
-      }
-    } catch (error: any) {
-      // Only log if it's not a timeout or abort
-      if (error.name !== 'AbortError' && error.name !== 'TimeoutError') {
-        console.warn('ip-api.com failed:', error.message);
-      }
-    }
-
-    // If both APIs fail, return a graceful response (not 500)
-    // The client will handle this and use fallback detection
-    return NextResponse.json({
-      success: false,
-      error: 'Unable to detect location via IP. Using browser fallback.',
-    });
+    // The client handles this and falls back to browser-based detection.
+    return unavailable();
   } catch (error: any) {
     console.error('Geolocation detection error:', error);
-    // Return a graceful error response instead of 500
     return NextResponse.json({
       success: false,
-      error: error.message || 'Internal server error',
+      error: 'Internal server error',
     });
   }
 }

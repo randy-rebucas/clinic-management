@@ -1,65 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Document from '@/models/Document';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { deleteFromCloudinary, extractPublicIdFromUrl } from '@/lib/cloudinary';
-import { getTenantContext } from '@/lib/tenant';
+import Patient from '@/models/Patient';
+import Visit from '@/models/Visit';
+import Appointment from '@/models/Appointment';
+import LabResult from '@/models/LabResult';
+import Invoice from '@/models/Invoice';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { deleteFromCloudinary } from '@/lib/cloudinary';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+import { updateDocumentSchema } from '@/lib/document-schema';
+import { cloudinaryRefForDocument, withStreamUrls } from '@/lib/document-file';
 import { Types } from 'mongoose';
+
+function populateFor(tenantObjectId: Types.ObjectId) {
+  const same = { tenantId: tenantObjectId };
+  return [
+    { path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } },
+    { path: 'uploadedBy', select: 'name' },
+    { path: 'visit', select: 'visitCode date', match: same },
+    { path: 'appointment', select: 'appointmentCode', match: same },
+    { path: 'labResult', select: 'requestCode', match: same },
+    { path: 'invoice', select: 'invoiceNumber', match: same },
+  ];
+}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(ctx.session, 'documents', 'read');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
     const { id } = await params;
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    if (!isValidId(id)) return notFound('Document');
 
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
+    const document = await Document.findOne(tenantFilter(ctx.tenantId, { _id: id }))
+      .select('-ocrText')
+      .populate(populateFor(ctx.tenantObjectId))
+      .lean();
 
-    const document = await Document.findOne(query)
-      .populate(patientPopulateOptions)
-      .populate('uploadedBy', 'name')
-      .populate('visit', 'visitCode date')
-      .populate('appointment', 'appointmentCode')
-      .populate('labResult', 'requestCode')
-      .populate('invoice', 'invoiceNumber');
+    if (!document) return notFound('Document');
 
-    if (!document) {
-      return NextResponse.json(
-        { success: false, error: 'Document not found' },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({ success: true, data: document });
+    return NextResponse.json({ success: true, data: withStreamUrls(document as any) });
   } catch (error: any) {
     console.error('Error fetching document:', error);
     return NextResponse.json(
@@ -73,72 +62,63 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(session, 'documents', 'update');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
+    if (!isValidId(id)) return notFound('Document');
 
-    // Update last modified info
-    body.lastModifiedBy = session.userId;
-    body.lastModifiedDate = new Date();
+    const parsed = await parseBody(request, updateDocumentSchema);
+    if (isValidationError(parsed)) return parsed;
+    const body = parsed.data;
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    // Linked records must belong to this clinic.
+    const refChecks: Array<[unknown, () => Promise<unknown>]> = [
+      [body.patient, () => Patient.exists({ _id: body.patient, tenantIds: tenantObjectId })],
+      [body.visit, () => Visit.exists({ _id: body.visit, tenantId: tenantObjectId })],
+      [body.appointment, () => Appointment.exists({ _id: body.appointment, tenantId: tenantObjectId })],
+      [body.labResult, () => LabResult.exists({ _id: body.labResult, tenantId: tenantObjectId })],
+      [body.invoice, () => Invoice.exists({ _id: body.invoice, tenantId: tenantObjectId })],
+    ];
+    for (const [value, check] of refChecks) {
+      if (value && !(await check())) {
+        return NextResponse.json({ success: false, error: 'Linked record not found' }, { status: 400 });
+      }
     }
 
-    const document = await Document.findOneAndUpdate(query, body, {
-      new: true,
-      runValidators: true,
-    });
-    
-    if (!document) {
-      return NextResponse.json(
-        { success: false, error: 'Document not found' },
-        { status: 404 }
-      );
+    const set: Record<string, unknown> = {};
+    const unset: Record<string, 1> = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (value === undefined) continue;
+      if (value === null) unset[key] = 1;
+      else set[key] = value;
     }
-    
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    await document.populate(patientPopulateOptions);
-    await document.populate('uploadedBy', 'name');
+    set.lastModifiedBy = session.userId;
+    set.lastModifiedDate = new Date();
 
-    if (!document) {
-      return NextResponse.json(
-        { success: false, error: 'Document not found' },
-        { status: 404 }
-      );
-    }
+    const document = await Document.findOneAndUpdate(
+      tenantFilter(tenantId, { _id: id, status: { $ne: 'deleted' } }),
+      { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
+      { new: true, runValidators: true }
+    )
+      .select('-ocrText')
+      .populate(populateFor(tenantObjectId))
+      .lean();
 
-    return NextResponse.json({ success: true, data: document });
+    if (!document) return notFound('Document');
+
+    return NextResponse.json({ success: true, data: withStreamUrls(document as any) });
   } catch (error: any) {
     console.error('Error updating document:', error);
-    if (error.name === 'ValidationError') {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid document data' },
         { status: 400 }
       );
     }
@@ -153,51 +133,34 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  // Soft delete; default staff roles only hold read/write/update on documents.
+  const permissionCheck = await requirePermission(session, 'documents', 'update');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
     const { id } = await params;
+    if (!isValidId(id)) return notFound('Document');
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    const query = tenantFilter(tenantId, { _id: id });
+    const document = await Document.findOne(query).lean() as any;
+    if (!document) return notFound('Document');
 
-    const document = await Document.findOne(query);
-    
-    if (!document) {
-      return NextResponse.json(
-        { success: false, error: 'Document not found' },
-        { status: 404 }
-      );
-    }
-
-    // Delete from Cloudinary if stored there
-    if (document.url.startsWith('http')) {
-      const publicId = (document.metadata as any)?.cloudinaryPublicId || extractPublicIdFromUrl(document.url);
-      if (publicId) {
-        await deleteFromCloudinary(publicId);
-      }
+    const ref = cloudinaryRefForDocument(document);
+    if (ref) {
+      await deleteFromCloudinary(ref.publicId, { resourceType: ref.resourceType, deliveryType: ref.deliveryType });
     }
 
     // Soft delete by setting status to 'deleted'
     const deletedDocument = await Document.findOneAndUpdate(
       query,
-      { status: 'deleted', lastModifiedBy: session.userId, lastModifiedDate: new Date() },
+      { $set: { status: 'deleted', lastModifiedBy: session.userId, lastModifiedDate: new Date() } },
       { new: true }
-    );
+    ).select('_id documentCode status').lean();
 
     return NextResponse.json({ success: true, data: deletedDocument });
   } catch (error: any) {
@@ -208,4 +171,3 @@ export async function DELETE(
     );
   }
 }
-

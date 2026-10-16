@@ -2,23 +2,57 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
+import { z } from 'zod';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
 
-// Fields patients are NOT allowed to update themselves
-const BLOCKED_FIELDS = new Set([
-  'patientCode',
-  'tenantIds',
-  'attachments',
-  'password',
-  'otp',
-  'otpExpiry',
-  'otpAttempts',
-  'active',
-  '_id',
-  '__v',
-  'createdAt',
-  'updatedAt',
-]);
+const optionalText = (max: number) => z.string().trim().max(max).optional();
+
+/**
+ * Fields a patient may edit about themselves. Everything else (clinical data, tenant
+ * membership, login identifiers, auth state) is staff-managed. Primary email/phone and
+ * contacts.phone are login identifiers (password / OTP) and change via dedicated flows.
+ */
+const PatientSelfUpdateSchema = z
+  .object({
+    contacts: z
+      .object({
+        email: z.string().trim().toLowerCase().email().max(254).optional(),
+        address: optionalText(500),
+      })
+      .strict()
+      .optional(),
+    address: z
+      .object({
+        street: optionalText(200),
+        city: optionalText(100),
+        state: optionalText(100),
+        zipCode: optionalText(20),
+      })
+      .strict()
+      .optional(),
+    emergencyContact: z
+      .object({
+        name: optionalText(200),
+        phone: z.string().trim().max(20).regex(/^[+0-9 ()-]*$/, 'Invalid phone number').optional(),
+        relationship: optionalText(100),
+        relation: optionalText(100),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+/** Flatten parsed input into dotted $set paths so untouched sub-fields are preserved. */
+function toSetPaths(input: Record<string, Record<string, string | undefined> | undefined>) {
+  const set: Record<string, string> = {};
+  for (const [group, fields] of Object.entries(input)) {
+    if (!fields) continue;
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) set[`${group}.${key}`] = value;
+    }
+  }
+  return set;
+}
 
 /**
  * GET /api/patients/me
@@ -77,8 +111,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * PATCH /api/patients/me
- * Allows the patient to update their own profile (safe fields only)
- * Blocked: patientCode, tenantIds, attachments, password, otp*, active
+ * Allows the patient to update their own contact details, address and emergency contact.
  */
 export async function PATCH(request: NextRequest) {
   const session = await verifyPatientAuth(request);
@@ -110,14 +143,19 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Strip blocked fields
-    const updates: Record<string, any> = {};
-    for (const [key, value] of Object.entries(body)) {
-      if (!BLOCKED_FIELDS.has(key)) {
-        updates[key] = value;
-      }
+    const parsed = PatientSelfUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Validation failed',
+          issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        },
+        { status: 400 }
+      );
     }
 
+    const updates = toSetPaths(parsed.data);
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
         { success: false, error: 'No valid fields to update' },
@@ -125,16 +163,13 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Normalize email if provided
-    if (typeof updates.email === 'string') {
-      updates.email = updates.email.toLowerCase().trim();
-    }
-
     const patient = await Patient.findByIdAndUpdate(
       session.patientId,
       { $set: updates },
       { new: true, runValidators: true }
-    ).lean();
+    )
+      .select('-otp -otpExpiry -otpAttempts')
+      .lean();
 
     if (!patient) {
       return NextResponse.json(

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Modal, AlertDialog } from './ui/Modal';
 
 interface Permission {
@@ -39,6 +39,7 @@ export default function RolesManagementClient() {
   const [showPermissionsDialog, setShowPermissionsDialog] = useState(false);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -48,11 +49,7 @@ export default function RolesManagementClient() {
     isActive: true,
   });
 
-  useEffect(() => {
-    fetchRoles();
-  }, []);
-
-  const fetchRoles = async () => {
+  const fetchRoles = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -93,7 +90,14 @@ export default function RolesManagementClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchRoles();
+    };
+    load();
+  }, [fetchRoles]);
 
   const handleCreate = () => {
     setEditingRole(null);
@@ -120,6 +124,8 @@ export default function RolesManagementClient() {
   };
 
   const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
     try {
       setError(null);
       const url = editingRole ? `/api/roles/${editingRole._id}` : '/api/roles';
@@ -157,12 +163,15 @@ export default function RolesManagementClient() {
     } catch (err: any) {
       setError(err.message || 'Failed to save role');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!roleToDelete) return;
+    if (!roleToDelete || saving) return;
 
+    setSaving(true);
     try {
       setError(null);
       const response = await fetch(`/api/roles/${roleToDelete}`, {
@@ -196,6 +205,8 @@ export default function RolesManagementClient() {
     } catch (err: any) {
       setError(err.message || 'Failed to delete role');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -206,8 +217,9 @@ export default function RolesManagementClient() {
   };
 
   const handleSavePermissions = async () => {
-    if (!selectedRole) return;
+    if (!selectedRole || saving) return;
 
+    setSaving(true);
     try {
       setError(null);
       const response = await fetch(`/api/roles/${selectedRole._id}/permissions`, {
@@ -242,6 +254,8 @@ export default function RolesManagementClient() {
     } catch (err: any) {
       setError(err.message || 'Failed to update permissions');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -465,8 +479,8 @@ export default function RolesManagementClient() {
             
             <div className="flex flex-col gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Role Name</label>
-                <select
+                <label htmlFor="role-name" className="block text-sm font-semibold text-gray-700 mb-2">Role Name</label>
+                <select id="role-name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
@@ -482,8 +496,8 @@ export default function RolesManagementClient() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Display Name</label>
-                <input
+                <label htmlFor="role-display-name" className="block text-sm font-semibold text-gray-700 mb-2">Display Name</label>
+                <input id="role-display-name"
                   type="text"
                   value={formData.displayName}
                   onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
@@ -493,8 +507,8 @@ export default function RolesManagementClient() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
-                <input
+                <label htmlFor="role-description" className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
+                <input id="role-description"
                   type="text"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -504,8 +518,8 @@ export default function RolesManagementClient() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Level</label>
-                <input
+                <label htmlFor="role-level" className="block text-sm font-semibold text-gray-700 mb-2">Level</label>
+                <input id="role-level"
                   type="number"
                   value={formData.level.toString()}
                   onChange={(e) => setFormData({ ...formData, level: parseInt(e.target.value) || 0 })}
@@ -517,12 +531,12 @@ export default function RolesManagementClient() {
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  id="isActive"
+                  id="role-is-active"
                   checked={formData.isActive}
                   onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
                   className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
-                <label htmlFor="isActive" className="text-sm font-semibold cursor-pointer text-gray-700">Active</label>
+                <label htmlFor="role-is-active" className="text-sm font-semibold cursor-pointer text-gray-700">Active</label>
               </div>
             </div>
 
@@ -535,9 +549,10 @@ export default function RolesManagementClient() {
               </button>
               <button
                 onClick={handleSave}
+                disabled={saving}
                 className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
               >
-                {editingRole ? 'Update' : 'Create'}
+                {saving ? 'Saving…' : editingRole ? 'Update' : 'Create'}
               </button>
             </div>
           </div>
@@ -586,6 +601,8 @@ export default function RolesManagementClient() {
                             <td key={action} className="px-6 py-4 whitespace-nowrap text-center">
                               <button
                                 onClick={() => togglePermission(resource, action)}
+                                aria-label={`${action} ${resource}`}
+                                aria-pressed={hasPermission(resource, action)}
                                 className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                                   hasPermission(resource, action)
                                     ? 'bg-green-600 text-white hover:bg-green-700 shadow-sm'
@@ -593,11 +610,11 @@ export default function RolesManagementClient() {
                                 }`}
                               >
                                 {hasPermission(resource, action) ? (
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                   </svg>
                                 ) : (
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                   </svg>
                                 )}
@@ -621,9 +638,10 @@ export default function RolesManagementClient() {
               </button>
               <button
                 onClick={handleSavePermissions}
+                disabled={saving}
                 className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
               >
-                Save Permissions
+                {saving ? 'Saving…' : 'Save Permissions'}
               </button>
             </div>
           </div>
@@ -644,9 +662,10 @@ export default function RolesManagementClient() {
           </button>
           <button
             onClick={handleDelete}
+            disabled={saving}
             className="px-5 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition-all text-sm font-semibold shadow-md"
           >
-            Delete
+            {saving ? 'Deleting…' : 'Delete'}
           </button>
         </AlertDialog>
         </div>

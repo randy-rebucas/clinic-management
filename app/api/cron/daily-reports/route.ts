@@ -1,49 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import { sendDailyReport } from '@/lib/automations/daily-reports';
 
-// This endpoint should be called by a cron job service (e.g., Vercel Cron, cron-job.org, etc.)
-// For security, you should add authentication via a secret token
-// Typically runs at end of day (e.g., 11:00 PM) to report on the day's activities
+export const maxDuration = 300;
+
+/**
+ * Emails each tenant's admins/accountants the report for the previous clinic-local day.
+ * Optional `?date=yyyy-MM-dd` reports on that clinic-local day instead.
+ */
 export async function GET(request: NextRequest) {
-  // Authenticate request
-  // Vercel Cron sends 'x-vercel-cron' header for internal authentication
-  // External cron services should use 'Authorization: Bearer CRON_SECRET'
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-  
-  // If CRON_SECRET is set, require authentication (unless it's Vercel Cron)
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-  }
+  const denied = requireCron(request);
+  if (denied) return denied;
 
   try {
-    // Get date from query params or use yesterday (since this runs at end of day)
-    const searchParams = request.nextUrl.searchParams;
-    const dateParam = searchParams.get('date');
-    const reportDate = dateParam ? new Date(dateParam) : new Date();
+    const dateParam = request.nextUrl.searchParams.get('date');
+    if (dateParam && !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      return NextResponse.json({ success: false, error: 'date must be yyyy-MM-dd' }, { status: 400 });
+    }
 
     const result = await sendDailyReport({
-      date: reportDate,
+      day: dateParam || undefined,
       sendEmail: true,
     });
 
     return NextResponse.json({
-      success: true,
+      success: result.success,
       message: 'Daily report processed',
       data: result,
     });
-  } catch (error: any) {
-    console.error('Error processing daily report:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to process daily report' },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('[Cron] daily-reports error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to process daily report' }, { status: 500 });
   }
 }
-

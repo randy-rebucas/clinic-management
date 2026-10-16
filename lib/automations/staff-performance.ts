@@ -9,8 +9,10 @@ import Visit from '@/models/Visit';
 import Invoice from '@/models/Invoice';
 import Prescription from '@/models/Prescription';
 import { getSettings } from '@/lib/settings';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
+import { previousWeekRangeInTz, previousMonthRangeInTz, formatInTz } from '@/lib/tz';
 import { Types } from 'mongoose';
+import { forEachTenant, automationEnabled, getTenantTimezone, getTenantStaff, displayDate } from './shared';
 
 export interface StaffPerformanceReportOptions {
   period: 'weekly' | 'monthly';
@@ -20,8 +22,11 @@ export interface StaffPerformanceReportOptions {
   doctorId?: string | Types.ObjectId; // Optional: specific doctor
 }
 
+const MAX_DOCTORS = 200;
+
 /**
- * Generate staff performance report
+ * Generate staff performance report for one tenant.
+ * Covers the previous full Monday–Sunday week / previous calendar month (clinic-local).
  */
 export async function generateStaffPerformanceReport(
   options: StaffPerformanceReportOptions
@@ -33,117 +38,64 @@ export async function generateStaffPerformanceReport(
   try {
     await connectDB();
 
-    const settings = await getSettings();
-    const autoStaffPerformanceReports = (settings.automationSettings as any)?.autoStaffPerformanceReports !== false;
+    if (!options.tenantId) {
+      return { success: false, error: 'Tenant is required' };
+    }
+    const tenantId = new Types.ObjectId(String(options.tenantId));
 
-    if (!autoStaffPerformanceReports) {
+    const settings = await getSettings(tenantId.toString());
+    if (!automationEnabled(settings, 'autoStaffPerformanceReports')) {
       return { success: true };
     }
 
     const { period } = options;
-    const now = new Date();
-    
-    // Calculate date range
-    let startDate: Date;
-    const endDate: Date = new Date(now);
-    endDate.setHours(23, 59, 59, 999);
+    const tz = await getTenantTimezone(tenantId);
+    const range = period === 'weekly' ? previousWeekRangeInTz(new Date(), tz) : previousMonthRangeInTz(new Date(), tz);
+    const startDate = range.start;
+    const endDate = range.end;
+    const inRange = { $gte: startDate, $lte: endDate };
 
-    if (period === 'weekly') {
-      startDate = new Date(now);
-      const dayOfWeek = now.getDay();
-      const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-      startDate.setDate(diff);
-      startDate.setHours(0, 0, 0, 0);
-    } else {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      startDate.setHours(0, 0, 0, 0);
+    const doctorQuery: Record<string, unknown> = { tenantId, status: 'active' };
+    if (options.doctorId && Types.ObjectId.isValid(String(options.doctorId))) {
+      doctorQuery._id = new Types.ObjectId(String(options.doctorId));
     }
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : undefined;
-
-    // Build tenant filter
-    const tenantFilter: any = {};
-    if (tenantId) {
-      tenantFilter.tenantId = tenantId;
-    } else {
-      tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    // Get all doctors
-    const doctorQuery: any = { ...tenantFilter, status: 'active' };
-    if (options.doctorId) {
-      doctorQuery._id = typeof options.doctorId === 'string' 
-        ? new Types.ObjectId(options.doctorId) 
-        : options.doctorId;
-    }
-
-    const doctors = await Doctor.find(doctorQuery);
+    const doctors = await Doctor.find(doctorQuery).limit(MAX_DOCTORS).lean<any[]>();
 
     const performanceData = [];
 
     for (const doctor of doctors) {
-      // Get appointments
-      const appointments = await Appointment.find({
-        ...tenantFilter,
-        $or: [
-          { doctor: doctor._id },
-          { provider: doctor._id },
-        ],
-        appointmentDate: { $gte: startDate, $lte: endDate },
-      });
+      // Visits and prescriptions reference the doctor's User account, appointments the Doctor record.
+      const user = await User.findOne({ tenantId, doctorProfile: doctor._id }).select('_id').lean<any>();
+      const ids = [doctor._id, ...(user ? [user._id] : [])];
 
-      const totalAppointments = appointments.length;
-      const completedAppointments = appointments.filter(a => a.status === 'completed').length;
-      const cancelledAppointments = appointments.filter(a => a.status === 'cancelled').length;
-      const noShowAppointments = appointments.filter(a => a.status === 'no-show').length;
+      const appointmentStats = await Appointment.aggregate([
+        { $match: { tenantId, appointmentDate: inRange, $or: [{ doctor: { $in: ids } }, { provider: { $in: ids } }] } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]);
+      const count = (s: string) => appointmentStats.find((a: any) => a._id === s)?.count || 0;
+      const totalAppointments = appointmentStats.reduce((sum: number, a: any) => sum + a.count, 0);
+      const completedAppointments = count('completed');
+      const cancelledAppointments = count('cancelled');
+      const noShowAppointments = count('no-show');
 
-      // Get visits
-      const visits = await Visit.find({
-        ...tenantFilter,
-        $or: [
-          { doctor: doctor._id },
-          { provider: doctor._id },
-        ],
-        date: { $gte: startDate, $lte: endDate },
-      });
+      const visits = user
+        ? await Visit.find({ tenantId, provider: user._id, date: inRange }).select('_id status').lean<any[]>()
+        : [];
+      const completedVisits = visits.filter((v) => v.status === 'closed').length;
 
-      const completedVisits = visits.filter(v => v.status === 'closed').length;
-
-      // Get revenue from visits
-      const visitIds = visits.map(v => v._id);
-      const invoices = await Invoice.find({
-        ...tenantFilter,
-        visit: { $in: visitIds },
-      });
-
+      const invoices = visits.length
+        ? await Invoice.find({ tenantId, visit: { $in: visits.map((v) => v._id) } }).select('total totalPaid').lean<any[]>()
+        : [];
       const totalRevenue = invoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
       const totalBilled = invoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
 
-      // Get prescriptions
-      const prescriptions = await Prescription.find({
-        ...tenantFilter,
-        prescribedBy: doctor._id,
-        issuedAt: { $gte: startDate, $lte: endDate },
-      });
+      const prescriptionCount = user
+        ? await Prescription.countDocuments({ tenantId, prescribedBy: user._id, issuedAt: inRange })
+        : 0;
 
-      // Calculate metrics
-      const completionRate = totalAppointments > 0
-        ? ((completedAppointments / totalAppointments) * 100).toFixed(1)
-        : '0';
-
-      const noShowRate = totalAppointments > 0
-        ? ((noShowAppointments / totalAppointments) * 100).toFixed(1)
-        : '0';
-
-      const cancellationRate = totalAppointments > 0
-        ? ((cancelledAppointments / totalAppointments) * 100).toFixed(1)
-        : '0';
-
-      const avgRevenuePerVisit = completedVisits > 0
-        ? (totalRevenue / completedVisits).toFixed(2)
-        : '0';
+      const rate = (n: number) => (totalAppointments > 0 ? ((n / totalAppointments) * 100).toFixed(1) : '0');
+      const avgRevenuePerVisit = completedVisits > 0 ? (totalRevenue / completedVisits).toFixed(2) : '0';
 
       performanceData.push({
         doctorId: doctor._id,
@@ -155,9 +107,9 @@ export async function generateStaffPerformanceReport(
             completed: completedAppointments,
             cancelled: cancelledAppointments,
             noShow: noShowAppointments,
-            completionRate: `${completionRate}%`,
-            noShowRate: `${noShowRate}%`,
-            cancellationRate: `${cancellationRate}%`,
+            completionRate: `${rate(completedAppointments)}%`,
+            noShowRate: `${rate(noShowAppointments)}%`,
+            cancellationRate: `${rate(cancelledAppointments)}%`,
           },
           visits: {
             total: visits.length,
@@ -169,13 +121,12 @@ export async function generateStaffPerformanceReport(
             avgPerVisit: parseFloat(avgRevenuePerVisit),
           },
           prescriptions: {
-            total: prescriptions.length,
+            total: prescriptionCount,
           },
         },
       });
     }
 
-    // Sort by revenue (descending)
     performanceData.sort((a, b) => b.metrics.revenue.totalPaid - a.metrics.revenue.totalPaid);
 
     const report = {
@@ -190,27 +141,21 @@ export async function generateStaffPerformanceReport(
         totalAppointments: performanceData.reduce((sum, d) => sum + d.metrics.appointments.total, 0),
         totalRevenue: performanceData.reduce((sum, d) => sum + d.metrics.revenue.totalPaid, 0),
         avgCompletionRate: performanceData.length > 0
-          ? (performanceData.reduce((sum, d) => 
+          ? (performanceData.reduce((sum, d) =>
               sum + parseFloat(d.metrics.appointments.completionRate), 0) / performanceData.length).toFixed(1)
           : '0',
       },
       generatedAt: new Date().toISOString(),
     };
 
-    // Send email if enabled
     if (options.sendEmail !== false) {
-      const recipients = options.recipients || await getReportRecipients(tenantId);
-      
+      const recipients = options.recipients || (await getReportRecipients(tenantId));
+      const emailContent = generateStaffPerformanceEmail(report, period, settings, tz);
       for (const recipient of recipients) {
         try {
-          const emailContent = generateStaffPerformanceEmail(report, period, settings);
-          await sendEmail({
-            to: recipient,
-            subject: emailContent.subject,
-            html: emailContent.html,
-          });
+          await sendEmail({ to: recipient, subject: emailContent.subject, html: emailContent.html });
         } catch (error) {
-          console.error(`Error sending staff performance report to ${recipient}:`, error);
+          console.error('Error sending staff performance report:', error);
         }
       }
     }
@@ -220,28 +165,17 @@ export async function generateStaffPerformanceReport(
     console.error('Error generating staff performance report:', error);
     return {
       success: false,
-      error: error.message || 'Failed to generate staff performance report',
+      error: 'Failed to generate staff performance report',
     };
   }
 }
 
 /**
- * Get report recipients (admins only)
+ * Get report recipients (active admins of the tenant)
  */
-async function getReportRecipients(tenantId?: Types.ObjectId): Promise<string[]> {
+async function getReportRecipients(tenantId: Types.ObjectId): Promise<string[]> {
   try {
-    const query: any = {
-      role: 'admin',
-      active: true,
-    };
-
-    if (tenantId) {
-      query.tenantId = tenantId;
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    const users = await User.find(query).select('email');
+    const users = await getTenantStaff(tenantId, ['admin'], 'email');
     return users.map((user: any) => user.email).filter(Boolean);
   } catch (error) {
     console.error('Error getting report recipients:', error);
@@ -249,17 +183,16 @@ async function getReportRecipients(tenantId?: Types.ObjectId): Promise<string[]>
   }
 }
 
-/**
- * Generate staff performance email
- */
 function generateStaffPerformanceEmail(
   report: any,
   period: 'weekly' | 'monthly',
-  settings: any
+  settings: any,
+  tz: string
 ): { subject: string; html: string } {
-  const clinicName = settings.clinicName || 'Clinic';
+  const rawClinicName = settings.clinicName || 'Clinic';
+  const clinicName = escapeHtml(rawClinicName);
   const periodLabel = period === 'weekly' ? 'Weekly' : 'Monthly';
-  const subject = `${periodLabel} Staff Performance Report - ${clinicName}`;
+  const subject = `${periodLabel} Staff Performance Report - ${rawClinicName}`;
 
   const html = `
     <!DOCTYPE html>
@@ -283,7 +216,7 @@ function generateStaffPerformanceEmail(
         <div class="header">
           <h1>${periodLabel} Staff Performance Report</h1>
           <p>${clinicName}</p>
-          <p>${new Date(report.dateRange.start).toLocaleDateString()} - ${new Date(report.dateRange.end).toLocaleDateString()}</p>
+          <p>${escapeHtml(displayDate(report.dateRange.start, tz))} - ${escapeHtml(displayDate(report.dateRange.end, tz))}</p>
         </div>
         <div class="content">
           <div class="section">
@@ -310,8 +243,8 @@ function generateStaffPerformanceEmail(
               </tr>
               ${report.staffPerformance.map((staff: any) => `
                 <tr>
-                  <td>${staff.doctorName}</td>
-                  <td>${staff.specialization}</td>
+                  <td>${escapeHtml(staff.doctorName)}</td>
+                  <td>${escapeHtml(staff.specialization)}</td>
                   <td>${staff.metrics.appointments.total}</td>
                   <td>${staff.metrics.appointments.completed}</td>
                   <td>${staff.metrics.appointments.completionRate}</td>
@@ -325,7 +258,7 @@ function generateStaffPerformanceEmail(
           </div>
         </div>
         <div class="footer">
-          <p>Report generated on ${new Date(report.generatedAt).toLocaleString()}</p>
+          <p>Report generated on ${escapeHtml(formatInTz(report.generatedAt, 'yyyy-MM-dd HH:mm', tz))}</p>
           <p>This is an automated report. Please do not reply to this email.</p>
         </div>
       </div>
@@ -336,63 +269,40 @@ function generateStaffPerformanceEmail(
   return { subject, html };
 }
 
-/**
- * Process weekly staff performance reports
- */
-export async function processWeeklyStaffPerformance(tenantId?: string | Types.ObjectId): Promise<{
+type ProcessResult = {
   success: boolean;
   processed: boolean;
   error?: string;
-}> {
-  try {
-    const result = await generateStaffPerformanceReport({
-      period: 'weekly',
-      tenantId,
-      sendEmail: true,
-    });
+  tenants?: Array<{ tenantId: string; success: boolean; error?: string }>;
+};
 
+async function processStaffPerformance(period: 'weekly' | 'monthly', tenantId?: string | Types.ObjectId): Promise<ProcessResult> {
+  try {
+    await connectDB();
+    const runs = await forEachTenant(tenantId, (t) =>
+      generateStaffPerformanceReport({ period, tenantId: t.tenantObjectId, sendEmail: true })
+    );
     return {
-      success: result.success,
-      processed: !!result.report,
-      error: result.error,
+      success: runs.every((r) => r.success && r.result?.success),
+      processed: runs.some((r) => !!r.result?.report),
+      tenants: runs.map((r) => ({ tenantId: r.tenantId, success: r.success && !!r.result?.success, error: r.error || r.result?.error })),
     };
   } catch (error: any) {
-    console.error('Error processing weekly staff performance:', error);
-    return {
-      success: false,
-      processed: false,
-      error: error.message,
-    };
+    console.error(`Error processing ${period} staff performance:`, error);
+    return { success: false, processed: false, error: `Failed to process ${period} staff performance` };
   }
 }
 
 /**
- * Process monthly staff performance reports
+ * Process weekly staff performance reports. Without a tenantId every active tenant is processed.
  */
-export async function processMonthlyStaffPerformance(tenantId?: string | Types.ObjectId): Promise<{
-  success: boolean;
-  processed: boolean;
-  error?: string;
-}> {
-  try {
-    const result = await generateStaffPerformanceReport({
-      period: 'monthly',
-      tenantId,
-      sendEmail: true,
-    });
-
-    return {
-      success: result.success,
-      processed: !!result.report,
-      error: result.error,
-    };
-  } catch (error: any) {
-    console.error('Error processing monthly staff performance:', error);
-    return {
-      success: false,
-      processed: false,
-      error: error.message,
-    };
-  }
+export async function processWeeklyStaffPerformance(tenantId?: string | Types.ObjectId): Promise<ProcessResult> {
+  return processStaffPerformance('weekly', tenantId);
 }
 
+/**
+ * Process monthly staff performance reports. Without a tenantId every active tenant is processed.
+ */
+export async function processMonthlyStaffPerformance(tenantId?: string | Types.ObjectId): Promise<ProcessResult> {
+  return processStaffPerformance('monthly', tenantId);
+}

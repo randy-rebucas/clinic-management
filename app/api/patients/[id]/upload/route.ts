@@ -1,94 +1,69 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, patientTenantFilter } from '@/lib/api/tenant-session';
+import { validateUpload } from '@/lib/upload-validation';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // User authentication check
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(session, 'patients', 'update');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
-    
-    const { id } = await params;
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const notes = formData.get('notes') as string | null;
 
-    if (!file) {
+    const { id } = await params;
+    if (!isValidId(id)) return notFound('Patient');
+
+    const formData = await request.formData();
+    const file = formData.get('file');
+    const notes = formData.get('notes');
+
+    const check = await validateUpload(file instanceof File ? file : null);
+    if (!check.ok) {
+      return NextResponse.json({ success: false, error: check.error }, { status: check.status });
+    }
+
+    const exists = await Patient.exists(patientTenantFilter(tenantId, { _id: id }));
+    if (!exists) return notFound('Patient');
+
+    const { checkStorageLimit } = await import('@/lib/storage-tracking');
+    const storageCheck = await checkStorageLimit(tenantId, check.buffer.length);
+    if (!storageCheck.allowed) {
       return NextResponse.json(
-        { success: false, error: 'No file provided' },
-        { status: 400 }
+        {
+          success: false,
+          error: storageCheck.reason || 'Storage limit exceeded',
+          storageUsage: storageCheck.currentUsage,
+        },
+        { status: 403 }
       );
     }
 
-    // Check storage limit before uploading
-    if (tenantId) {
-      const { checkStorageLimit } = await import('@/lib/storage-tracking');
-      const storageCheck = await checkStorageLimit(tenantId, file.size);
-      if (!storageCheck.allowed) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: storageCheck.reason || 'Storage limit exceeded',
-            storageUsage: storageCheck.currentUsage,
-          },
-          { status: 403 }
-        );
-      }
-    }
-
-    // In a production environment, you would upload to S3, Cloudinary, or similar
-    // For now, we'll store file metadata and a data URL
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    const base64 = buffer.toString('base64');
-    const dataUrl = `data:${file.type};base64,${base64}`;
-
     const attachment = {
-      filename: file.name,
-      contentType: file.type,
-      size: file.size,
-      url: dataUrl, // In production, this would be an S3/CDN URL
+      filename: check.filename,
+      contentType: check.contentType,
+      size: check.buffer.length,
+      url: `data:${check.contentType};base64,${check.buffer.toString('base64')}`,
       uploadDate: new Date(),
-      notes: notes || undefined,
+      notes: typeof notes === 'string' && notes ? notes.slice(0, 2000) : undefined,
       uploadedBy: session.userId,
     };
 
-    // Build query with tenant filter (Patient uses tenantIds array)
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantIds = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-    }
-
     const patient = await Patient.findOneAndUpdate(
-      query,
+      patientTenantFilter(tenantId, { _id: id }),
       { $push: { attachments: attachment } },
       { new: true }
     );
 
-    if (!patient) {
-      return NextResponse.json(
-        { success: false, error: 'Patient not found' },
-        { status: 404 }
-      );
-    }
+    if (!patient) return notFound('Patient');
 
     return NextResponse.json({ success: true, data: patient });
   } catch (error: any) {
@@ -99,4 +74,3 @@ export async function POST(
     );
   }
 }
-

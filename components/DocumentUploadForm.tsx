@@ -237,11 +237,12 @@ export default function DocumentUploadForm({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
               </div>
-              <label className="block text-sm font-bold text-gray-900">
+              <label htmlFor="doc-upload-file" className="block text-sm font-bold text-gray-900">
                 File <span className="text-red-600">*</span>
               </label>
             </div>
             <input
+              id="doc-upload-file"
               type="file"
               onChange={handleFileChange}
               required
@@ -278,10 +279,11 @@ export default function DocumentUploadForm({
             <div className="flex flex-col gap-4">
               {/* Title */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
+                <label htmlFor="doc-upload-title" className="block text-xs font-semibold text-gray-700 mb-2">
                   Title <span className="text-red-600">*</span>
                 </label>
                 <input
+                  id="doc-upload-title"
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -292,8 +294,9 @@ export default function DocumentUploadForm({
 
               {/* Description */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Description</label>
+                <label htmlFor="doc-upload-description" className="block text-xs font-semibold text-gray-700 mb-2">Description</label>
                 <textarea
+                  id="doc-upload-description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={2}
@@ -303,10 +306,11 @@ export default function DocumentUploadForm({
 
               {/* Category */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
+                <label htmlFor="doc-upload-category" className="block text-xs font-semibold text-gray-700 mb-2">
                   Category <span className="text-red-600">*</span>
                 </label>
                 <select
+                  id="doc-upload-category"
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                   required
@@ -336,9 +340,10 @@ export default function DocumentUploadForm({
             <div className="flex flex-col gap-4">
               {/* Patient Selection */}
               <div className="patient-search-container relative">
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Patient (Optional)</label>
+                <label htmlFor="doc-upload-patient" className="block text-xs font-semibold text-gray-700 mb-2">Patient (Optional)</label>
                 <div className="relative">
                   <input
+                    id="doc-upload-patient"
                     type="text"
                     value={patientSearch}
                     onChange={(e) => {
@@ -391,8 +396,9 @@ export default function DocumentUploadForm({
               {/* Visit Selection */}
               {formData.patient && visits.length > 0 && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Visit (Optional)</label>
+                  <label htmlFor="doc-upload-visit" className="block text-xs font-semibold text-gray-700 mb-2">Visit (Optional)</label>
                   <select
+                    id="doc-upload-visit"
                     value={formData.visit}
                     onChange={(e) => setFormData({ ...formData, visit: e.target.value })}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -422,8 +428,9 @@ export default function DocumentUploadForm({
             <div className="flex flex-col gap-4">
               {/* Tags */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Tags (comma-separated)</label>
+                <label htmlFor="doc-upload-tags" className="block text-xs font-semibold text-gray-700 mb-2">Tags (comma-separated)</label>
                 <input
+                  id="doc-upload-tags"
                   type="text"
                   value={formData.tags}
                   onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
@@ -434,8 +441,9 @@ export default function DocumentUploadForm({
 
               {/* Notes */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Notes</label>
+                <label htmlFor="doc-upload-notes" className="block text-xs font-semibold text-gray-700 mb-2">Notes</label>
                 <textarea
+                  id="doc-upload-notes"
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows={2}
@@ -472,8 +480,9 @@ export default function DocumentUploadForm({
               </div>
               <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referring Doctor</label>
+                  <label htmlFor="doc-upload-referring-doctor" className="block text-xs font-semibold text-gray-700 mb-2">Referring Doctor</label>
                   <input
+                    id="doc-upload-referring-doctor"
                     type="text"
                     value={formData.referringDoctor}
                     onChange={(e) => setFormData({ ...formData, referringDoctor: e.target.value })}
@@ -481,8 +490,9 @@ export default function DocumentUploadForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referring Clinic</label>
+                  <label htmlFor="doc-upload-referring-clinic" className="block text-xs font-semibold text-gray-700 mb-2">Referring Clinic</label>
                   <input
+                    id="doc-upload-referring-clinic"
                     type="text"
                     value={formData.referringClinic}
                     onChange={(e) => setFormData({ ...formData, referringClinic: e.target.value })}
@@ -490,8 +500,9 @@ export default function DocumentUploadForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referral Date</label>
+                  <label htmlFor="doc-upload-referral-date" className="block text-xs font-semibold text-gray-700 mb-2">Referral Date</label>
                   <input
+                    id="doc-upload-referral-date"
                     type="date"
                     value={formData.referralDate}
                     onChange={(e) => setFormData({ ...formData, referralDate: e.target.value })}
@@ -499,8 +510,9 @@ export default function DocumentUploadForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Reason</label>
+                  <label htmlFor="doc-upload-referral-reason" className="block text-xs font-semibold text-gray-700 mb-2">Reason</label>
                   <textarea
+                    id="doc-upload-referral-reason"
                     value={formData.referralReason}
                     onChange={(e) => setFormData({ ...formData, referralReason: e.target.value })}
                     rows={2}
@@ -523,8 +535,9 @@ export default function DocumentUploadForm({
               </div>
               <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Modality</label>
+                  <label htmlFor="doc-upload-modality" className="block text-xs font-semibold text-gray-700 mb-2">Modality</label>
                   <input
+                    id="doc-upload-modality"
                     type="text"
                     value={formData.modality}
                     onChange={(e) => setFormData({ ...formData, modality: e.target.value })}
@@ -533,8 +546,9 @@ export default function DocumentUploadForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Body Part</label>
+                  <label htmlFor="doc-upload-body-part" className="block text-xs font-semibold text-gray-700 mb-2">Body Part</label>
                   <input
+                    id="doc-upload-body-part"
                     type="text"
                     value={formData.bodyPart}
                     onChange={(e) => setFormData({ ...formData, bodyPart: e.target.value })}
@@ -542,8 +556,9 @@ export default function DocumentUploadForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Study Date</label>
+                  <label htmlFor="doc-upload-study-date" className="block text-xs font-semibold text-gray-700 mb-2">Study Date</label>
                   <input
+                    id="doc-upload-study-date"
                     type="date"
                     value={formData.studyDate}
                     onChange={(e) => setFormData({ ...formData, studyDate: e.target.value })}
@@ -551,8 +566,9 @@ export default function DocumentUploadForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Radiologist</label>
+                  <label htmlFor="doc-upload-radiologist" className="block text-xs font-semibold text-gray-700 mb-2">Radiologist</label>
                   <input
+                    id="doc-upload-radiologist"
                     type="text"
                     value={formData.radiologist}
                     onChange={(e) => setFormData({ ...formData, radiologist: e.target.value })}
@@ -575,8 +591,9 @@ export default function DocumentUploadForm({
               </div>
               <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Issue Date</label>
+                  <label htmlFor="doc-upload-issue-date" className="block text-xs font-semibold text-gray-700 mb-2">Issue Date</label>
                   <input
+                    id="doc-upload-issue-date"
                     type="date"
                     value={formData.issueDate}
                     onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
@@ -584,8 +601,9 @@ export default function DocumentUploadForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Valid Until</label>
+                  <label htmlFor="doc-upload-valid-until" className="block text-xs font-semibold text-gray-700 mb-2">Valid Until</label>
                   <input
+                    id="doc-upload-valid-until"
                     type="date"
                     value={formData.validUntil}
                     onChange={(e) => setFormData({ ...formData, validUntil: e.target.value })}
@@ -593,8 +611,9 @@ export default function DocumentUploadForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Purpose</label>
+                  <label htmlFor="doc-upload-purpose" className="block text-xs font-semibold text-gray-700 mb-2">Purpose</label>
                   <input
+                    id="doc-upload-purpose"
                     type="text"
                     value={formData.purpose}
                     onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
@@ -603,8 +622,9 @@ export default function DocumentUploadForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Restrictions</label>
+                  <label htmlFor="doc-upload-restrictions" className="block text-xs font-semibold text-gray-700 mb-2">Restrictions</label>
                   <textarea
+                    id="doc-upload-restrictions"
                     value={formData.restrictions}
                     onChange={(e) => setFormData({ ...formData, restrictions: e.target.value })}
                     rows={2}
@@ -627,8 +647,9 @@ export default function DocumentUploadForm({
               </div>
               <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Test Type</label>
+                  <label htmlFor="doc-upload-test-type" className="block text-xs font-semibold text-gray-700 mb-2">Test Type</label>
                   <input
+                    id="doc-upload-test-type"
                     type="text"
                     value={formData.testType}
                     onChange={(e) => setFormData({ ...formData, testType: e.target.value })}
@@ -636,8 +657,9 @@ export default function DocumentUploadForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Test Date</label>
+                  <label htmlFor="doc-upload-test-date" className="block text-xs font-semibold text-gray-700 mb-2">Test Date</label>
                   <input
+                    id="doc-upload-test-date"
                     type="date"
                     value={formData.testDate}
                     onChange={(e) => setFormData({ ...formData, testDate: e.target.value })}
@@ -645,8 +667,9 @@ export default function DocumentUploadForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Lab Name</label>
+                  <label htmlFor="doc-upload-lab-name" className="block text-xs font-semibold text-gray-700 mb-2">Lab Name</label>
                   <input
+                    id="doc-upload-lab-name"
                     type="text"
                     value={formData.labName}
                     onChange={(e) => setFormData({ ...formData, labName: e.target.value })}

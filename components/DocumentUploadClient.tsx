@@ -32,38 +32,37 @@ export default function DocumentUploadClient({
   const router = useRouter();
 
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [patientsRes, visitsRes] = await Promise.all([
+          fetch('/api/patients'),
+          patientId ? fetch(`/api/visits?patientId=${patientId}`) : Promise.resolve(null),
+        ]);
+
+        if (patientsRes.status === 401) {
+          router.push('/login');
+          return;
+        }
+
+        const [patientsData, visitsData] = await Promise.all([
+          patientsRes.json(),
+          visitsRes ? visitsRes.json() : Promise.resolve({ success: true, data: [] }),
+        ]);
+
+        if (patientsData.success) {
+          setPatients(patientsData.data);
+        }
+        if (visitsData.success) {
+          setVisits(visitsData.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchData();
-  }, [patientId, visitId]);
-
-  const fetchData = async () => {
-    try {
-      const [patientsRes, visitsRes] = await Promise.all([
-        fetch('/api/patients'),
-        patientId ? fetch(`/api/visits?patientId=${patientId}`) : Promise.resolve(null),
-      ]);
-
-      if (patientsRes.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const [patientsData, visitsData] = await Promise.all([
-        patientsRes.json(),
-        visitsRes ? visitsRes.json() : Promise.resolve({ success: true, data: [] }),
-      ]);
-
-      if (patientsData.success) {
-        setPatients(patientsData.data);
-      }
-      if (visitsData.success) {
-        setVisits(visitsData.data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [patientId, visitId, router]);
 
   const handleSubmit = async (formData: FormData) => {
     setSubmitting(true);
@@ -119,10 +118,12 @@ export default function DocumentUploadClient({
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex items-center gap-4">
               <button 
+                type="button"
                 onClick={handleCancel}
+                aria-label="Back to documents"
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>

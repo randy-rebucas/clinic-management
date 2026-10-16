@@ -1,6 +1,6 @@
 export default function PatientEditLoading() {
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+    <section role="status" aria-busy="true" aria-label="Loading" className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6 animate-pulse">
 

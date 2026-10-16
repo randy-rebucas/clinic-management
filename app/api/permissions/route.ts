@@ -1,55 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Permission from '@/models/Permission';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, forbiddenResponse } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zObjectId, asString } from '@/lib/api/validate';
+
+const createPermissionSchema = z.object({
+  user: zObjectId.optional(),
+  role: zObjectId.optional(),
+  resource: z.string().trim().min(1).max(100),
+  actions: z.array(z.string().trim().min(1).max(50)).max(20),
+});
 
 // GET all permissions - admin only
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-  
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (session.role !== 'admin') {
+  if (!isAdmin(session)) {
     return forbiddenResponse('Admin access required');
   }
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     const searchParams = request.nextUrl.searchParams;
     const userId = searchParams.get('userId');
     const roleId = searchParams.get('roleId');
-    const resource = searchParams.get('resource');
+    const resource = asString(searchParams.get('resource'));
 
-    const query: any = {};
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
+    const query: Record<string, unknown> = {};
     if (userId) {
+      if (!isValidId(userId)) return NextResponse.json({ success: true, data: [] });
       query.user = userId;
     }
     if (roleId) {
+      if (!isValidId(roleId)) return NextResponse.json({ success: true, data: [] });
       query.role = roleId;
     }
     if (resource) {
       query.resource = resource;
     }
 
-    const permissions = await Permission.find(query)
+    const permissions = await Permission.find(tenantFilter(tenantId, query))
       .populate('user', 'name email')
       .populate('role', 'name displayName')
       .sort({ createdAt: -1 })
@@ -67,25 +62,20 @@ export async function GET(request: NextRequest) {
 
 // POST create permission - admin only
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
-  
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (session.role !== 'admin') {
+  if (!isAdmin(session)) {
     return forbiddenResponse('Admin access required');
   }
 
   try {
     await connectDB();
-    const body = await request.json();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
+    const parsed = await parseBody(request, createPermissionSchema);
+    if (isValidationError(parsed)) return parsed;
+    const body = parsed.data;
 
-    // Validate that either user or role is provided, but not both
     if (!body.user && !body.role) {
       return NextResponse.json(
         { success: false, error: 'Either user or role must be provided' },
@@ -100,29 +90,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Ensure permission is created with tenantId
-    const permissionData: any = { ...body };
-    if (tenantId && !permissionData.tenantId) {
-      permissionData.tenantId = new Types.ObjectId(tenantId);
+    const User = (await import('@/models/User')).default;
+    const Role = (await import('@/models/Role')).default;
+
+    // The target user/role must belong to the caller's clinic.
+    if (body.user && !(await User.exists(tenantFilter(tenantId, { _id: body.user })))) {
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    }
+    if (body.role && !(await Role.exists(tenantFilter(tenantId, { _id: body.role })))) {
+      return NextResponse.json({ success: false, error: 'Role not found' }, { status: 404 });
     }
 
-    const permission = await Permission.create(permissionData);
+    const permission = await Permission.create({ ...body, tenantId: tenantObjectId });
     await permission.populate('user', 'name email');
     await permission.populate('role', 'name displayName');
 
-    // If permission is for a user, add it to user's permissions array
     if (body.user) {
-      const User = (await import('@/models/User')).default;
-      await User.findByIdAndUpdate(body.user, {
-        $addToSet: { permissions: permission._id }
+      await User.updateOne(tenantFilter(tenantId, { _id: body.user }), {
+        $addToSet: { permissions: permission._id },
       });
     }
 
-    // If permission is for a role, add it to role's permissions array
     if (body.role) {
-      const Role = (await import('@/models/Role')).default;
-      await Role.findByIdAndUpdate(body.role, {
-        $addToSet: { permissions: permission._id }
+      await Role.updateOne(tenantFilter(tenantId, { _id: body.role }), {
+        $addToSet: { permissions: permission._id },
       });
     }
 
@@ -131,7 +122,7 @@ export async function POST(request: NextRequest) {
     console.error('Error creating permission:', error);
     if (error.name === 'ValidationError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid permission data' },
         { status: 400 }
       );
     }
@@ -141,4 +132,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

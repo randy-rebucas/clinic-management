@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -146,6 +146,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
   const [showQR, setShowQR] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<string | null>(null);
   const [deleteFileDialogOpen, setDeleteFileDialogOpen] = useState(false);
+  const [deletingFile, setDeletingFile] = useState(false);
 
   // App-access credential state
   const [credEmail, setCredEmail] = useState('');
@@ -160,17 +161,7 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
   // Call hooks before any conditional returns
   const currency = useSetting('billingSettings.currency', 'PHP');
 
-  useEffect(() => {
-    fetchPatient();
-    fetchVisits();
-    fetchAppointments();
-    fetchPrescriptions();
-    fetchInvoices();
-    fetchLabResults();
-    fetchAlerts();
-  }, [patientId]);
-
-  const fetchPatient = async () => {
+  const fetchPatient = useCallback(async () => {
     try {
       const res = await fetch(`/api/patients/${patientId}`);
       if (res.status === 401) {
@@ -186,9 +177,9 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     } finally {
       setLoading(false);
     }
-  };
+  }, [patientId, router]);
 
-  const fetchVisits = async () => {
+  const fetchVisits = useCallback(async () => {
     try {
       const res = await fetch(`/api/visits?patientId=${patientId}`);
       if (res.ok) {
@@ -200,9 +191,9 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     } catch (error) {
       console.error('Failed to fetch visits:', error);
     }
-  };
+  }, [patientId]);
 
-  const fetchAppointments = async () => {
+  const fetchAppointments = useCallback(async () => {
     try {
       const res = await fetch(`/api/appointments?patientId=${patientId}`);
       if (res.ok) {
@@ -214,9 +205,9 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     } catch (error) {
       console.error('Failed to fetch appointments:', error);
     }
-  };
+  }, [patientId]);
 
-  const fetchPrescriptions = async () => {
+  const fetchPrescriptions = useCallback(async () => {
     try {
       const res = await fetch(`/api/prescriptions?patientId=${patientId}`);
       if (res.ok) {
@@ -228,9 +219,9 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     } catch (error) {
       console.error('Failed to fetch prescriptions:', error);
     }
-  };
+  }, [patientId]);
 
-  const fetchInvoices = async () => {
+  const fetchInvoices = useCallback(async () => {
     try {
       const res = await fetch(`/api/invoices?patientId=${patientId}`);
       if (res.ok) {
@@ -242,9 +233,9 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     } catch (error) {
       console.error('Failed to fetch invoices:', error);
     }
-  };
+  }, [patientId]);
 
-  const fetchLabResults = async () => {
+  const fetchLabResults = useCallback(async () => {
     try {
       const res = await fetch(`/api/lab-results?patientId=${patientId}`);
       if (res.ok) {
@@ -256,9 +247,9 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     } catch (error) {
       console.error('Failed to fetch lab results:', error);
     }
-  };
+  }, [patientId]);
 
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     try {
       const res = await fetch(`/api/patients/${patientId}/alerts`);
       if (res.ok) {
@@ -270,7 +261,14 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     } catch (error) {
       console.error('Failed to fetch alerts:', error);
     }
-  };
+  }, [patientId]);
+
+  useEffect(() => {
+    const load = async () => {
+      await Promise.all([fetchPatient(), fetchVisits(), fetchAppointments(), fetchPrescriptions(), fetchInvoices(), fetchLabResults(), fetchAlerts()]);
+    };
+    load();
+  }, [fetchPatient, fetchVisits, fetchAppointments, fetchPrescriptions, fetchInvoices, fetchLabResults, fetchAlerts]);
 
   const handleFileUpload = async (file: File, notes?: string) => {
     try {
@@ -304,8 +302,9 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
   };
 
   const handleDeleteFile = async () => {
-    if (!fileToDelete) return;
+    if (!fileToDelete || deletingFile) return;
 
+    setDeletingFile(true);
     try {
       const res = await fetch(`/api/patients/${patientId}/files/${fileToDelete}`, {
         method: 'DELETE',
@@ -321,6 +320,8 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
     } catch (error) {
       console.error('Failed to delete file:', error);
       alert('Failed to delete file');
+    } finally {
+      setDeletingFile(false);
     }
   };
 
@@ -573,9 +574,10 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
             <div className="flex items-start gap-4">
               <Link 
                 href="/patients"
+                aria-label="Back to patients"
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
@@ -1554,10 +1556,11 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
 
                   {/* Login email */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    <label htmlFor="patient-app-email" className="block text-sm font-semibold text-gray-700 mb-1.5">
                       Login Email <span className="font-normal text-gray-500">(optional)</span>
                     </label>
                     <input
+                      id="patient-app-email"
                       type="email"
                       value={credEmail}
                       onChange={(e) => setCredEmail(e.target.value)}
@@ -1572,10 +1575,11 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
 
                   {/* New password */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    <label htmlFor="patient-app-password" className="block text-sm font-semibold text-gray-700 mb-1.5">
                       {credStatus?.hasPassword ? 'Reset Password' : 'Set Password'} <span className="text-red-500">*</span>
                     </label>
                     <input
+                      id="patient-app-password"
                       type="password"
                       value={credPassword}
                       onChange={(e) => setCredPassword(e.target.value)}
@@ -1589,10 +1593,11 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
 
                   {/* Confirm */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    <label htmlFor="patient-app-password-confirm" className="block text-sm font-semibold text-gray-700 mb-1.5">
                       Confirm Password <span className="text-red-500">*</span>
                     </label>
                     <input
+                      id="patient-app-password-confirm"
                       type="password"
                       value={credConfirm}
                       onChange={(e) => setCredConfirm(e.target.value)}
@@ -1716,9 +1721,10 @@ export default function PatientDetailClient({ patientId }: { patientId: string }
           </button>
           <button
             onClick={handleDeleteFile}
+            disabled={deletingFile}
             className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold shadow-md"
           >
-            Delete
+            {deletingFile ? 'Deleting…' : 'Delete'}
           </button>
         </AlertDialog>
         </div>
@@ -1761,7 +1767,7 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
+          <label htmlFor="file-input" className="block text-sm font-semibold text-gray-700 mb-2">
             Select File (Lab Results, Prescriptions, Documents)
           </label>
           <input
@@ -1773,8 +1779,9 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
           />
         </div>
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">Notes (Optional)</label>
+          <label htmlFor="file-notes" className="block text-sm font-semibold text-gray-700 mb-2">Notes (Optional)</label>
           <input
+            id="file-notes"
             type="text"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}

@@ -82,29 +82,28 @@ export default function ReferralDetailClient({ referralId }: { referralId: strin
   const router = useRouter();
 
   useEffect(() => {
+    const fetchReferral = async () => {
+      try {
+        const res = await fetch(`/api/referrals/${referralId}`);
+        if (res.status === 401) {
+          router.push('/login');
+          return;
+        }
+        const data = await res.json();
+        if (data.success) {
+          setReferral(data.data);
+        } else {
+          setError(data.error || 'Failed to fetch referral');
+        }
+      } catch (error) {
+        console.error('Failed to fetch referral:', error);
+        setError('Failed to fetch referral');
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchReferral();
-  }, [referralId]);
-
-  const fetchReferral = async () => {
-    try {
-      const res = await fetch(`/api/referrals/${referralId}`);
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      const data = await res.json();
-      if (data.success) {
-        setReferral(data.data);
-      } else {
-        setError(data.error || 'Failed to fetch referral');
-      }
-    } catch (error) {
-      console.error('Failed to fetch referral:', error);
-      setError('Failed to fetch referral');
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [referralId, router]);
 
   const getStatusColor = (status: string): string => {
     switch (status) {
@@ -203,9 +202,10 @@ export default function ReferralDetailClient({ referralId }: { referralId: strin
             <div className="flex items-center gap-4 mb-6">
               <Link 
                 href="/referrals"
+                aria-label="Back to referrals"
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
@@ -382,40 +382,40 @@ export default function ReferralDetailClient({ referralId }: { referralId: strin
               </div>
               <div className="p-6 space-y-5">
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</label>
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</span>
                   <p className="mt-1.5 text-sm font-bold text-gray-900 capitalize">{referral.type.replace(/_/g, ' ')}</p>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Reason for Referral</label>
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Reason for Referral</span>
                   <p className="mt-1.5 text-sm font-medium text-gray-900">{referral.reason}</p>
                 </div>
                 {referral.specialty && (
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Required Specialty</label>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Required Specialty</span>
                     <p className="mt-1.5 text-sm font-medium text-gray-900">{referral.specialty}</p>
                   </div>
                 )}
                 {referral.chiefComplaint && (
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Chief Complaint</label>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Chief Complaint</span>
                     <p className="mt-1.5 text-sm font-medium text-gray-900">{referral.chiefComplaint}</p>
                   </div>
                 )}
                 {referral.diagnosis && (
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Diagnosis</label>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Diagnosis</span>
                     <p className="mt-1.5 text-sm font-medium text-gray-900">{referral.diagnosis}</p>
                   </div>
                 )}
                 {referral.relevantHistory && (
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Relevant History</label>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Relevant History</span>
                     <p className="mt-1.5 text-sm font-medium text-gray-900 whitespace-pre-wrap">{referral.relevantHistory}</p>
                   </div>
                 )}
                 {referral.medications && referral.medications.length > 0 && (
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Current Medications</label>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Current Medications</span>
                     <div className="flex gap-2 flex-wrap mt-2">
                       {referral.medications.map((med, idx) => (
                         <span key={idx} className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-sm font-semibold border border-purple-200">
@@ -427,7 +427,7 @@ export default function ReferralDetailClient({ referralId }: { referralId: strin
                 )}
                 {referral.notes && (
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Additional Notes</label>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Additional Notes</span>
                     <p className="mt-1.5 text-sm font-medium text-gray-900 whitespace-pre-wrap">{referral.notes}</p>
                   </div>
                 )}
@@ -563,24 +563,24 @@ export default function ReferralDetailClient({ referralId }: { referralId: strin
               </div>
               <div className="p-6 space-y-5">
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Referred Date</label>
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Referred Date</span>
                   <p className="mt-1.5 text-sm font-bold text-gray-900">{formatDate(referral.referredDate)}</p>
                 </div>
                 {referral.acceptedDate && (
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Accepted Date</label>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Accepted Date</span>
                     <p className="mt-1.5 text-sm font-bold text-gray-900">{formatDate(referral.acceptedDate)}</p>
                   </div>
                 )}
                 {referral.completedDate && (
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Completed Date</label>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Completed Date</span>
                     <p className="mt-1.5 text-sm font-bold text-gray-900">{formatDate(referral.completedDate)}</p>
                   </div>
                 )}
                 {referral.declinedDate && (
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Declined Date</label>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Declined Date</span>
                     <p className="mt-1.5 text-sm font-bold text-gray-900">{formatDate(referral.declinedDate)}</p>
                     {referral.declinedReason && (
                       <p className="mt-2 text-sm font-semibold text-red-600 bg-red-50 p-2 rounded-lg border border-red-200">{referral.declinedReason}</p>
@@ -654,13 +654,13 @@ export default function ReferralDetailClient({ referralId }: { referralId: strin
                 <div className="p-6 space-y-4">
                   {referral.followUpDate && (
                     <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Follow-up Date</label>
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Follow-up Date</span>
                       <p className="mt-1.5 text-sm font-bold text-gray-900">{formatDate(referral.followUpDate)}</p>
                     </div>
                   )}
                   {referral.followUpNotes && (
                     <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Follow-up Notes</label>
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Follow-up Notes</span>
                       <p className="mt-1.5 text-sm font-medium text-gray-900 whitespace-pre-wrap">{referral.followUpNotes}</p>
                     </div>
                   )}
@@ -684,11 +684,13 @@ export default function ReferralDetailClient({ referralId }: { referralId: strin
                 <div className="p-6 space-y-4">
                   {referral.feedback.rating && (
                     <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Rating</label>
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Rating</span>
                       <div className="flex items-center gap-1">
+                        <span className="sr-only">{referral.feedback.rating} out of 5</span>
                         {[...Array(5)].map((_, i) => (
                           <svg
                             key={i}
+                            aria-hidden="true"
                             className={`w-6 h-6 ${i < referral.feedback!.rating! ? 'text-yellow-400' : 'text-gray-300'}`}
                             fill="currentColor"
                             viewBox="0 0 20 20"
@@ -701,7 +703,7 @@ export default function ReferralDetailClient({ referralId }: { referralId: strin
                   )}
                   {referral.feedback.comments && (
                     <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Comments</label>
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Comments</span>
                       <p className="mt-1.5 text-sm font-medium text-gray-900 whitespace-pre-wrap">{referral.feedback.comments}</p>
                     </div>
                   )}

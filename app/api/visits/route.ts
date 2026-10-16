@@ -2,20 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import User from '@/models/User';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { Types } from 'mongoose';
+import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+import { createVisitSchema, signatureWithMetadata } from '@/lib/visit-schema';
+import { nextVisitCode } from '@/lib/clinical-codes';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { dayRangeInTz, combineDateAndTimeInTz } from '@/lib/tz';
+
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 500;
 
 export async function GET(request: NextRequest) {
-  // User authentication check
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to read visits
   const permissionCheck = await requirePermission(session, 'visits', 'read');
   if (permissionCheck) {
     return permissionCheck;
@@ -23,78 +27,57 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
     const providerId = searchParams.get('providerId');
     const status = searchParams.get('status');
     const date = searchParams.get('date');
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '', 10) || DEFAULT_LIMIT, 1), MAX_LIMIT);
 
-    const query: any = {};
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
+    const query: any = { tenantId: tenantObjectId };
+
     if (patientId) {
-      query.patient = patientId;
+      if (!isValidId(patientId)) return NextResponse.json({ success: true, data: [] });
+      query.patient = new Types.ObjectId(patientId);
     }
     if (providerId) {
-      query.provider = providerId;
+      if (!isValidId(providerId)) return NextResponse.json({ success: true, data: [] });
+      query.provider = new Types.ObjectId(providerId);
     }
-    if (status) {
+    if (status && ['draft', 'open', 'closed', 'cancelled'].includes(status)) {
       query.status = status;
     }
     if (date) {
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
-      query.date = { $gte: startOfDay, $lte: endOfDay };
-    }
-
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
+      const tz = await getTenantTimezone(tenantId);
+      const { start, end } = /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? dayRangeInTz(combineDateAndTimeInTz(date, '12:00', tz), tz)
+        : dayRangeInTz(date, tz);
+      query.date = { $gte: start, $lte: end };
     }
 
     const visits = await Visit.find(query)
-      .populate(patientPopulateOptions)
+      .populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } })
       .populate('provider', 'name email')
       .sort({ date: -1 })
-      .limit(searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 0);
+      .limit(limit)
+      .lean();
 
     return NextResponse.json({ success: true, data: visits });
   } catch (error: any) {
     console.error('Error fetching visits:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to fetch visits' },
+      { success: false, error: 'Failed to fetch visits' },
       { status: 500 }
     );
   }
 }
 
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to write/create visits
   const permissionCheck = await requirePermission(session, 'visits', 'write');
   if (permissionCheck) {
     return permissionCheck;
@@ -102,109 +85,51 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
-    const body = await request.json();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
+    const parsed = await parseBody(request, createVisitSchema);
+    if (isValidationError(parsed)) return parsed;
+    const body = parsed.data;
 
-    // Check subscription limit for creating visits
-    if (tenantId) {
-      const { checkSubscriptionLimit } = await import('@/lib/subscription-limits');
-      const limitCheck = await checkSubscriptionLimit(tenantId, 'createVisit');
-      if (!limitCheck.allowed) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: limitCheck.reason || 'Subscription limit exceeded',
-            limit: limitCheck.limit,
-            current: limitCheck.current,
-            remaining: limitCheck.remaining,
-          },
-          { status: 403 }
-        );
-      }
-    }
-    
-    // Validate that the patient belongs to the tenant
-    // Patient model uses tenantIds (array) since patients can belong to multiple clinics
-    if (body.patient && tenantId) {
-      const patientQuery: any = {
-        _id: body.patient,
-        tenantIds: new Types.ObjectId(tenantId),
-      };
-      const patient = await Patient.findOne(patientQuery);
-      if (!patient) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
-          { status: 400 }
-        );
-      }
-    }
-    
-    // Auto-generate visitCode if not provided (tenant-scoped)
-    if (!body.visitCode) {
-      const codeQuery: any = { visitCode: { $exists: true, $ne: null } };
-      if (tenantId) {
-        codeQuery.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const lastVisit = await Visit.findOne(codeQuery)
-        .sort({ visitCode: -1 })
-        .exec();
-      
-      let nextNumber = 1;
-      if (lastVisit?.visitCode) {
-        const match = lastVisit.visitCode.match(/(\d+)$/);
-        if (match) {
-          nextNumber = parseInt(match[1], 10) + 1;
-        }
-      }
-      
-      body.visitCode = `VISIT-${String(nextNumber).padStart(6, '0')}`;
-    }
-    
-    // Set provider to current user if not specified
-    if (!body.provider) {
-      body.provider = session.userId;
-    }
-    
-    // Handle digital signature - add provider ID and IP address
-    if (body.digitalSignature) {
-      const clientIp = request.headers.get('x-forwarded-for') || 
-                       request.headers.get('x-real-ip') || 
-                       'unknown';
-      body.digitalSignature = {
-        ...body.digitalSignature,
-        providerId: session.userId,
-        signedAt: new Date(),
-        ipAddress: clientIp,
-      };
-    }
-    
-    // Ensure visit is created with tenantId
-    const visitData: any = { ...body };
-    if (tenantId && !visitData.tenantId) {
-      visitData.tenantId = new Types.ObjectId(tenantId);
+    const { checkSubscriptionLimit } = await import('@/lib/subscription-limits');
+    const limitCheck = await checkSubscriptionLimit(tenantId, 'createVisit');
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: limitCheck.reason || 'Subscription limit exceeded',
+          limit: limitCheck.limit,
+          current: limitCheck.current,
+          remaining: limitCheck.remaining,
+        },
+        { status: 403 }
+      );
     }
 
-    const visit = await Visit.create(visitData);
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
+    const patient = await Patient.exists({ _id: body.patient, tenantIds: tenantObjectId });
+    if (!patient) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
+        { status: 400 }
+      );
     }
-    
-    await visit.populate(patientPopulateOptions);
+
+    if (body.provider && body.provider !== session.userId) {
+      const provider = await User.exists({ _id: body.provider, tenantId: tenantObjectId });
+      if (!provider) {
+        return NextResponse.json({ success: false, error: 'Invalid provider' }, { status: 400 });
+      }
+    }
+
+    const visit = await Visit.create({
+      ...body,
+      digitalSignature: signatureWithMetadata(body.digitalSignature, session.userId, request),
+      provider: body.provider || session.userId,
+      visitCode: await nextVisitCode(tenantObjectId),
+      tenantId: tenantObjectId,
+    });
+
+    await visit.populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } });
     await visit.populate('provider', 'name email');
-    
+
     // Auto-create prescription if medications are present in treatment plan
     let prescriptionId: string | undefined;
     if (body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {
@@ -212,7 +137,7 @@ export async function POST(request: NextRequest) {
         const { createPrescriptionFromVisit } = await import('@/lib/automations/prescription-from-visit');
         const prescription = await createPrescriptionFromVisit({
           visitId: visit._id,
-          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+          tenantId: tenantObjectId,
           createdBy: session.userId,
           shouldSendNotification: true,
         });
@@ -221,16 +146,15 @@ export async function POST(request: NextRequest) {
         }
       } catch (error) {
         console.error('Error auto-creating prescription from visit:', error);
-        // Don't fail the visit creation if prescription creation fails
       }
     }
-    
+
     return NextResponse.json({ success: true, data: visit, prescriptionId }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating visit:', error);
-    if (error.name === 'ValidationError') {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid visit data' },
         { status: 400 }
       );
     }
@@ -240,4 +164,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
