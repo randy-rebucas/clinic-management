@@ -1,830 +1,620 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
+import { FIELD, FOCUS_RING, ICON, Svg } from './appointments/shared';
+import { SERIES } from './dashboards/charts';
+import EnrolDialog from './memberships/EnrolDialog';
+import { StateBadge, TierMark, ValidUntil, memberName, pts, type MembershipRow } from './memberships/shared';
+import {
+  MEMBERSHIP_TIERS,
+  RENEWAL_DAYS,
+  SORTS,
+  SORT_LABEL,
+  STATUS_FILTERS,
+  STATUS_FILTER_LABEL,
+  TIER,
+  membershipState,
+  type MembershipSort,
+  type MembershipStatusFilter,
+  type MembershipTier,
+} from '@/lib/memberships';
+import type { MembershipPagePermissions } from '@/lib/memberships-page';
 
-interface Membership {
-  _id: string;
-  patient: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-  } | string;
-  membershipNumber: string;
-  tier: 'bronze' | 'silver' | 'gold' | 'platinum';
-  status: 'active' | 'inactive' | 'expired' | 'suspended';
-  points: number;
-  totalPointsEarned: number;
-  totalPointsRedeemed: number;
-  discountPercentage: number;
-  benefits: string[];
-  joinDate: string;
-  expiryDate?: string;
-  renewalDate?: string;
-  transactions?: Array<{
-    type: 'earn' | 'redeem' | 'expire' | 'adjustment';
-    points: number;
-    description: string;
-    createdAt: string;
-  }>;
-  createdAt: string;
+interface Insights {
+  inDate: number;
+  byTier: Partial<Record<MembershipTier, number>>;
+  byStatus: Partial<Record<'active' | 'expired' | 'suspended' | 'inactive', number>>;
+  due: { count: number; next: { _id: string; name: string; tier: MembershipTier; expiryDate: string }[] };
+  lapsedRecently: number;
+  joinedRecently: number;
+  points: { held: number; windowDays: number; earned: number; used: number; corrections: number; top: { _id: string; name: string; points: number; tier: MembershipTier }[] };
 }
 
-interface MembershipsPageClientProps {
-  user: { role: string; [key: string]: any };
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
 }
 
-const TIERS = [
-  { value: 'bronze', label: 'Bronze', color: 'bg-amber-100 text-amber-800', discount: 5 },
-  { value: 'silver', label: 'Silver', color: 'bg-gray-200 text-gray-800', discount: 10 },
-  { value: 'gold', label: 'Gold', color: 'bg-yellow-100 text-yellow-800', discount: 15 },
-  { value: 'platinum', label: 'Platinum', color: 'bg-purple-100 text-purple-800', discount: 20 },
-];
+const PAGE_SIZE = 25;
+const ROW_GRID = 'lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_7rem_minmax(0,1.1fr)_7rem] lg:items-center lg:gap-4';
 
-const STATUS_OPTIONS = [
-  { value: 'active', label: 'Active', color: 'bg-green-100 text-green-800' },
-  { value: 'inactive', label: 'Inactive', color: 'bg-gray-100 text-gray-800' },
-  { value: 'expired', label: 'Expired', color: 'bg-red-100 text-red-800' },
-  { value: 'suspended', label: 'Suspended', color: 'bg-orange-100 text-orange-800' },
-];
+const ICONS = {
+  ...ICON,
+  plus: 'M12 4v16m8-8H4',
+  ticket: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z',
+};
 
-export default function MembershipsPageClient({ user }: MembershipsPageClientProps) {
-  const [memberships, setMemberships] = useState<Membership[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [tierFilter, setTierFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+function pageWindow(page: number, pages: number): (number | 'gap')[] {
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+  const nums = [...new Set([1, pages, page - 1, page, page + 1])].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b);
+  const out: (number | 'gap')[] = [];
+  nums.forEach((n, i) => {
+    if (i > 0 && n - nums[i - 1] > 1) out.push('gap');
+    out.push(n);
+  });
+  return out;
+}
+
+const isStatus = (v: string | null): v is MembershipStatusFilter => !!v && (STATUS_FILTERS as readonly string[]).includes(v);
+const isTier = (v: string | null): v is MembershipTier => !!v && (MEMBERSHIP_TIERS as readonly string[]).includes(v);
+
+export default function MembershipsPageClient({
+  permissions,
+  initialStatus,
+  initialTier,
+}: {
+  permissions: MembershipPagePermissions;
+  initialStatus: string | null;
+  initialTier: string | null;
+}) {
+  const router = useRouter();
   const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [selectedMembership, setSelectedMembership] = useState<Membership | null>(null);
-  const [showPointsModal, setShowPointsModal] = useState(false);
-  const [pointsForm, setPointsForm] = useState({ type: 'earn', points: 0, description: '' });
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [currentUserMembership, setCurrentUserMembership] = useState<Membership | null>(null);
-  const [loadingUserMembership, setLoadingUserMembership] = useState(true);
-
-  const fetchMemberships = useCallback(async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (tierFilter) params.set('tier', tierFilter);
-      if (statusFilter) params.set('status', statusFilter);
-      if (search) params.set('search', search);
-
-      const response = await fetch(`/api/memberships?${params.toString()}`);
-      if (response.ok) {
-        const data = await response.json();
-        setMemberships(data.success ? (Array.isArray(data.data) ? data.data : []) : []);
-      }
-    } catch (error) {
-      console.error('Error fetching memberships:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [tierFilter, statusFilter, search]);
-
-  const fetchCurrentUserMembership = useCallback(async () => {
-    try {
-      setLoadingUserMembership(true);
-      // First, get the current user's email
-      const userRes = await fetch('/api/user/me');
-      if (!userRes.ok) {
-        setLoadingUserMembership(false);
-        return;
-      }
-      
-      const userData = await userRes.json();
-      if (!userData.success || !userData.user?.email) {
-        setLoadingUserMembership(false);
-        return;
-      }
-
-      // Find patient by email using search parameter
-      const patientRes = await fetch(`/api/patients?search=${encodeURIComponent(userData.user.email)}`);
-      if (!patientRes.ok) {
-        setLoadingUserMembership(false);
-        return;
-      }
-
-      const patientData = await patientRes.json();
-      if (!patientData.success || !patientData.data || patientData.data.length === 0) {
-        setLoadingUserMembership(false);
-        return;
-      }
-
-      const patient = Array.isArray(patientData.data) ? patientData.data[0] : patientData.data;
-      const patientId = patient._id || patient.id;
-
-      // Fetch membership for this patient
-      const membershipRes = await fetch(`/api/memberships?patientId=${patientId}&status=active`);
-      if (membershipRes.ok) {
-        const membershipData = await membershipRes.json();
-        if (membershipData.success && membershipData.data) {
-          const memberships = Array.isArray(membershipData.data) ? membershipData.data : [membershipData.data];
-          if (memberships.length > 0) {
-            // Ensure we have the full membership object with all fields
-            const membership = memberships[0];
-            setCurrentUserMembership(membership);
-          } else {
-            setCurrentUserMembership(null);
-          }
-        } else {
-          setCurrentUserMembership(null);
-        }
-      } else {
-        setCurrentUserMembership(null);
-      }
-    } catch (error) {
-      console.error('Error fetching current user membership:', error);
-    } finally {
-      setLoadingUserMembership(false);
-    }
-  }, []);
+  const [debounced, setDebounced] = useState('');
+  const [tier, setTier] = useState<MembershipTier | ''>(isTier(initialTier) ? initialTier : '');
+  const [status, setStatus] = useState<MembershipStatusFilter | ''>(isStatus(initialStatus) ? initialStatus : '');
+  const [sort, setSort] = useState<MembershipSort>(initialStatus === 'due' ? 'expiry' : 'newest');
+  const [page, setPage] = useState(1);
+  const [enrolling, setEnrolling] = useState(false);
 
   useEffect(() => {
-    fetchMemberships();
-  }, [fetchMemberships]);
+    if (search === debounced) return;
+    const t = setTimeout(() => {
+      setDebounced(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search, debounced]);
 
-  useEffect(() => {
-    fetchCurrentUserMembership();
-  }, []);
+  const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE), sort });
+  if (debounced.trim()) params.set('search', debounced.trim());
+  if (tier) params.set('tier', tier);
+  if (status) params.set('status', status);
+  const listUrl = `/api/memberships?${params}`;
+  const list = useKeyedFetch<MembershipRow[]>(listUrl);
+  const insights = useKeyedFetch<Insights>('/api/memberships/insights');
 
-  const handleViewDetails = async (membership: Membership) => {
-    try {
-      const response = await fetch(`/api/memberships/${membership._id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setSelectedMembership(data.success ? data.data : data);
-        setShowModal(true);
-      }
-    } catch (error) {
-      console.error('Error fetching membership details:', error);
-    }
+  const rows = list.value ?? [];
+  const loaded = list.value !== null;
+  const refreshing = list.loading && loaded;
+  const pagination = (list.raw?.pagination as Pagination | undefined) ?? null;
+  const total = pagination?.total ?? rows.length;
+  const pages = pagination?.pages ?? 1;
+  const firstRow = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const lastRow = Math.min(page * PAGE_SIZE, total);
+
+  const reset = () => setPage(1);
+  const pickStatus = (s: MembershipStatusFilter | '') => {
+    setStatus(s);
+    if (s === 'due' || s === 'expired') setSort('expiry');
+    reset();
   };
-
-  const handleAddPoints = async () => {
-    if (!selectedMembership) return;
-
-    try {
-      const response = await fetch(`/api/memberships/${selectedMembership._id}/points`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pointsForm),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // Update the current user membership if it's the one being updated
-        if (currentUserMembership && selectedMembership && currentUserMembership._id === selectedMembership._id) {
-          // Fetch updated membership details
-          const updatedRes = await fetch(`/api/memberships/${selectedMembership._id}`);
-          if (updatedRes.ok) {
-            const updatedData = await updatedRes.json();
-            if (updatedData.success && updatedData.data) {
-              setCurrentUserMembership(updatedData.data);
-            }
-          }
-        }
-        setMessage({ type: 'success', text: 'Points updated successfully' });
-        setTimeout(() => setMessage(null), 5000);
-        setShowPointsModal(false);
-        setPointsForm({ type: 'earn', points: 0, description: '' });
-        fetchMemberships();
-        fetchCurrentUserMembership(); // Refresh current user's membership
-        handleViewDetails(selectedMembership);
-      } else {
-        const data = await response.json();
-        setMessage({ type: 'error', text: data.error || 'Failed to update points' });
-        setTimeout(() => setMessage(null), 5000);
-      }
-    } catch (error) {
-      setMessage({ type: 'error', text: 'An error occurred' });
-      setTimeout(() => setMessage(null), 5000);
-    }
+  const chips: { key: string; label: string; clear: () => void }[] = [];
+  if (tier) chips.push({ key: 'tier', label: `${TIER[tier].label} tier`, clear: () => (setTier(''), reset()) });
+  if (status) chips.push({ key: 'status', label: STATUS_FILTER_LABEL[status], clear: () => (setStatus(''), reset()) });
+  const narrowed = chips.length > 0 || debounced.trim() !== '';
+  const clearAll = () => {
+    setTier('');
+    setStatus('');
+    setSearch('');
+    setDebounced('');
+    setPage(1);
   };
-
-  const handleUpgradeTier = async (membership: Membership, newTier: string) => {
-    try {
-      const response = await fetch(`/api/memberships/${membership._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier: newTier }),
-      });
-
-      const data = await response.json();
-      
-      if (response.ok && data.success && data.data) {
-        // Immediately update the current user membership if it's the one being upgraded
-        if (currentUserMembership && currentUserMembership._id === membership._id) {
-          setCurrentUserMembership(data.data);
-        }
-        setMessage({ type: 'success', text: 'Membership tier updated successfully' });
-        setTimeout(() => setMessage(null), 5000);
-        // Refresh the memberships list
-        fetchMemberships();
-        // Also refresh current user membership to ensure we have the latest data
-        await fetchCurrentUserMembership();
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to update tier' });
-        setTimeout(() => setMessage(null), 5000);
-      }
-    } catch (error) {
-      console.error('Error upgrading tier:', error);
-      setMessage({ type: 'error', text: 'An error occurred while upgrading tier' });
-      setTimeout(() => setMessage(null), 5000);
-    }
-  };
-
-  const getTierBadge = (tier: string) => {
-    const t = TIERS.find(ti => ti.value === tier);
-    return t ? (
-      <span className={`px-2 py-1 text-xs font-medium rounded-full ${t.color}`}>
-        {t.label}
-      </span>
-    ) : tier;
-  };
-
-  const getStatusBadge = (status: string) => {
-    const s = STATUS_OPTIONS.find(st => st.value === status);
-    return s ? (
-      <span className={`px-2 py-1 text-xs font-medium rounded-full ${s.color}`}>
-        {s.label}
-      </span>
-    ) : status;
-  };
-
-  const getPatientName = (patient: Membership['patient']) => {
-    if (typeof patient === 'string') return 'Unknown';
-    return `${patient.firstName} ${patient.lastName}`;
-  };
-
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
-  // Stats
-  const stats = {
-    total: memberships.length,
-    active: memberships.filter(m => m.status === 'active').length,
-    totalPoints: memberships.reduce((sum, m) => sum + m.points, 0),
-    byTier: TIERS.reduce((acc, tier) => {
-      acc[tier.value] = memberships.filter(m => m.tier === tier.value).length;
-      return acc;
-    }, {} as Record<string, number>),
-  };
-
-  if (loading) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-emerald-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-emerald-100 border-t-emerald-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading memberships...</p>
-          </div>
-        </div>
-      </section>
-    );
-  }
+  const empty = insights.value && insights.value.inDate === 0 && Object.values(insights.value.byStatus).every((n) => !n);
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-emerald-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
-          {/* Error/Success Messages */}
-          {message && (
-            <div className={`rounded-xl p-4 shadow-sm ${message.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-              <div className="flex items-start gap-3">
-                {message.type === 'success' ? (
-                  <div className="p-2 bg-green-500 rounded-lg flex-shrink-0">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                ) : (
-                  <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
-                    <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                )}
-                <p className={`text-sm font-semibold ${message.type === 'success' ? 'text-green-800' : 'text-red-800'}`}>{message.text}</p>
-              </div>
-            </div>
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-7xl mx-auto flex flex-col gap-6">
+        <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Memberships</h1>
+            <p className="text-sm sm:text-base text-gray-600 mt-1">Who is in the clinic’s loyalty programme, the discount their tier gives, their points, and renewals coming due.</p>
+          </div>
+          {permissions.canEnrol && (
+            <button
+              type="button"
+              onClick={() => setEnrolling(true)}
+              className={`inline-flex w-fit items-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.plus} />
+              Enrol a patient
+            </button>
           )}
+        </header>
 
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-md">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Memberships</h1>
-                <p className="text-sm sm:text-base text-gray-600 mt-1">Manage patient loyalty program memberships</p>
-              </div>
+        {insights.value ? (
+          !empty && (
+            <MembershipInsights
+              data={insights.value}
+              tier={tier}
+              status={status}
+              onTier={(t) => {
+                setTier((cur) => (cur === t ? '' : t));
+                if (!status) setStatus('active');
+                reset();
+              }}
+              onStatus={(s) => pickStatus(status === s ? '' : s)}
+            />
+          )
+        ) : insights.error ? (
+          <p className="rounded-lg border border-gray-200 bg-white px-5 py-3 text-sm text-gray-500">
+            The membership figures didn&apos;t load ({insights.error}).{' '}
+            <button type="button" onClick={insights.reload} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+              Try again
+            </button>
+          </p>
+        ) : (
+          <div className="h-[244px] animate-pulse rounded-lg border border-gray-200 bg-white" aria-hidden="true" />
+        )}
+
+        {/* Toolbar */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 lg:flex-row">
+            <form
+              role="search"
+              className="relative flex-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setDebounced(search);
+                setPage(1);
+              }}
+            >
+              <label htmlFor="mem-search" className="sr-only">
+                Search members
+              </label>
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <Svg d={ICONS.search} />
+              </span>
+              <input
+                id="mem-search"
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, patient code or membership number"
+                autoComplete="off"
+                className={`${FIELD} pl-9`}
+              />
+            </form>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:flex">
+              <label htmlFor="mem-tier" className="sr-only">
+                Tier
+              </label>
+              <select
+                id="mem-tier"
+                value={tier}
+                onChange={(e) => {
+                  setTier(e.target.value as MembershipTier | '');
+                  reset();
+                }}
+                className={`${FIELD} lg:w-40`}
+              >
+                <option value="">Any tier</option>
+                {MEMBERSHIP_TIERS.map((t) => (
+                  <option key={t} value={t}>
+                    {TIER[t].label}
+                  </option>
+                ))}
+              </select>
+              <label htmlFor="mem-status" className="sr-only">
+                Status
+              </label>
+              <select id="mem-status" value={status} onChange={(e) => pickStatus(e.target.value as MembershipStatusFilter | '')} className={`${FIELD} lg:w-56`}>
+                <option value="">Any status</option>
+                {STATUS_FILTERS.map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_FILTER_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+              <label htmlFor="mem-sort" className="sr-only">
+                Sort
+              </label>
+              <select
+                id="mem-sort"
+                value={sort}
+                onChange={(e) => {
+                  setSort(e.target.value as MembershipSort);
+                  reset();
+                }}
+                className={`${FIELD} lg:w-44`}
+              >
+                {SORTS.map((s) => (
+                  <option key={s} value={s}>
+                    {SORT_LABEL[s]}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-
-          {/* Current User's Active Membership */}
-          {!loadingUserMembership && currentUserMembership && (
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-2 border-emerald-200 rounded-xl shadow-lg p-6 sm:p-8">
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl shadow-md">
-                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Your Active Membership</h2>
-                    <p className="text-sm text-gray-600 mt-1">Membership #{currentUserMembership.membershipNumber}</p>
-                  </div>
-                </div>
+          {chips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {chips.map((c) => (
                 <button
-                  onClick={() => {
-                    setSelectedMembership(currentUserMembership);
-                    setShowModal(true);
-                  }}
-                  className="px-4 py-2 text-sm font-semibold bg-white text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors border border-emerald-200"
+                  key={c.key}
+                  type="button"
+                  onClick={c.clear}
+                  aria-label={`Remove filter ${c.label}`}
+                  className={`motion-chip-in inline-flex max-w-full items-center gap-1.5 rounded-md bg-brand-teal-light py-1 pl-2.5 pr-1.5 text-sm font-medium text-brand-teal-deep transition-colors hover:bg-brand-teal-light/60 ${FOCUS_RING}`}
                 >
-                  View Details
+                  <span className="truncate">{c.label}</span>
+                  <Svg d={ICONS.x} className="h-3.5 w-3.5 shrink-0" />
                 </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div className="bg-white rounded-lg p-4 border border-emerald-200">
-                  <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Tier</div>
-                  <div className="text-lg font-bold text-gray-900">{getTierBadge(currentUserMembership.tier)}</div>
-                </div>
-                <div className="bg-white rounded-lg p-4 border border-emerald-200">
-                  <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Current Points</div>
-                  <div className="text-2xl font-bold text-emerald-600">{currentUserMembership.points.toLocaleString()}</div>
-                </div>
-                <div className="bg-white rounded-lg p-4 border border-emerald-200">
-                  <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Discount</div>
-                  <div className="text-2xl font-bold text-green-600">{currentUserMembership.discountPercentage}%</div>
-                </div>
-                <div className="bg-white rounded-lg p-4 border border-emerald-200">
-                  <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Status</div>
-                  <div className="text-lg font-bold">{getStatusBadge(currentUserMembership.status)}</div>
-                </div>
-              </div>
-
-              {/* Upgrade Section */}
-              {currentUserMembership.tier !== 'platinum' && (
-                <div className="bg-white rounded-lg p-6 border border-emerald-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900 mb-1">Upgrade Your Membership</h3>
-                      <p className="text-sm text-gray-600">Unlock more benefits and higher discounts</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {TIERS.filter(tier => {
-                      const currentTierIndex = TIERS.findIndex(t => t.value === currentUserMembership.tier);
-                      const tierIndex = TIERS.findIndex(t => t.value === tier.value);
-                      return tierIndex > currentTierIndex;
-                    }).map(tier => (
-                      <div key={tier.value} className="border-2 border-gray-200 rounded-lg p-4 hover:border-emerald-300 transition-colors">
-                        <div className="flex items-center justify-between mb-3">
-                          <span className={`px-3 py-1 text-sm font-semibold rounded-full ${tier.color}`}>
-                            {tier.label}
-                          </span>
-                          <span className="text-sm font-bold text-gray-700">{tier.discount}% OFF</span>
-                        </div>
-                        <div className="space-y-2 mb-4">
-                          <div className="text-xs text-gray-600">• Higher discount rate</div>
-                          <div className="text-xs text-gray-600">• Priority booking</div>
-                          <div className="text-xs text-gray-600">• Exclusive benefits</div>
-                        </div>
-                        <button
-                          onClick={() => handleUpgradeTier(currentUserMembership, tier.value)}
-                          className="w-full px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold text-sm shadow-md"
-                        >
-                          Upgrade to {tier.label}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {currentUserMembership.tier === 'platinum' && (
-                <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-6 border border-purple-200">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-500 rounded-lg">
-                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900">You&apos;re at the Highest Tier!</h3>
-                      <p className="text-sm text-gray-600">You&apos;re already enjoying all the premium benefits of Platinum membership.</p>
-                    </div>
-                  </div>
-                </div>
-              )}
+              ))}
+              <button type="button" onClick={clearAll} className={`rounded px-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+                Clear all
+              </button>
             </div>
           )}
+        </div>
 
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-emerald-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-                <div className="text-xs font-semibold text-gray-500 uppercase">Total</div>
-              </div>
-              <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-green-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="text-xs font-semibold text-gray-500 uppercase">Active</div>
-              </div>
-              <div className="text-2xl font-bold text-green-600">{stats.active}</div>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-amber-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                  </svg>
-                </div>
-                <div className="text-xs font-semibold text-gray-500 uppercase">Bronze</div>
-              </div>
-              <div className="text-2xl font-bold text-amber-600">{stats.byTier.bronze || 0}</div>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-gray-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                  </svg>
-                </div>
-                <div className="text-xs font-semibold text-gray-500 uppercase">Silver</div>
-              </div>
-              <div className="text-2xl font-bold text-gray-600">{stats.byTier.silver || 0}</div>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-yellow-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                  </svg>
-                </div>
-                <div className="text-xs font-semibold text-gray-500 uppercase">Gold</div>
-              </div>
-              <div className="text-2xl font-bold text-yellow-600">{stats.byTier.gold || 0}</div>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-purple-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                  </svg>
-                </div>
-                <div className="text-xs font-semibold text-gray-500 uppercase">Platinum</div>
-              </div>
-              <div className="text-2xl font-bold text-purple-600">{stats.byTier.platinum || 0}</div>
-            </div>
+        {list.error && (
+          <div role="alert" className="flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 p-4">
+            <p className="text-sm font-medium text-red-800">The members didn&apos;t load ({list.error}).</p>
+            <button type="button" onClick={list.reload} className={`inline-flex shrink-0 items-center gap-1.5 rounded text-sm font-semibold text-red-800 hover:text-red-900 ${FOCUS_RING}`}>
+              <Svg d={ICONS.refresh} />
+              Try again
+            </button>
+          </div>
+        )}
+        <p className="sr-only" aria-live="polite">
+          {loaded && !list.loading ? `${total} members${narrowed ? ' match' : ''}.` : ''}
+        </p>
+
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white" aria-busy={list.loading}>
+          <div className={`hidden ${ROW_GRID} border-b border-gray-200 bg-gray-50/60 px-4 py-2.5 text-sm font-medium text-gray-500`}>
+            <span>Member</span>
+            <span>Tier</span>
+            <span className="text-right">Points</span>
+            <span>Membership</span>
+            <span className="sr-only">Status</span>
           </div>
 
-          {/* Search and Filter Bar */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-            <div className="p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-emerald-500 rounded-lg">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <h2 className="text-lg font-bold text-gray-900">Search & Filter</h2>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="flex-1" style={{ minWidth: 0 }}>
-                  <div className="relative w-full">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                      <svg className="w-5 h-5 text-gray-400" viewBox="0 0 16 16" fill="none">
-                        <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
-                      </svg>
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="Search by member name..."
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      className="w-full pl-12 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                </div>
-                <div style={{ minWidth: '160px' }}>
-                  <select
-                    value={tierFilter}
-                    onChange={(e) => setTierFilter(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
-                  >
-                    <option value="">All Tiers</option>
-                    {TIERS.map(tier => (
-                      <option key={tier.value} value={tier.value}>{tier.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ minWidth: '160px' }}>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
-                  >
-                    <option value="">All Status</option>
-                    {STATUS_OPTIONS.map(status => (
-                      <option key={status.value} value={status.value}>{status.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Memberships Table */}
-          {memberships.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-12 text-center">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">No memberships found</h2>
-                <p className="text-sm text-gray-600 font-medium">No membership records match your filters.</p>
-              </div>
-            </div>
+          {!loaded ? (
+            list.error ? null : (
+              <ul aria-hidden="true" className="divide-y divide-gray-100 animate-pulse">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <li key={i} className="flex items-center gap-4 px-4 py-3.5">
+                    <span className="flex-1 space-y-1.5">
+                      <span className="block h-3.5 w-48 rounded bg-gray-100" />
+                      <span className="block h-3 w-28 rounded bg-gray-50" />
+                    </span>
+                    <span className="hidden h-3 w-24 rounded bg-gray-100 lg:block" />
+                    <span className="h-3 w-16 rounded bg-gray-100" />
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : rows.length === 0 ? (
+            <Empty narrowed={narrowed} canEnrol={permissions.canEnrol} onClear={clearAll} onEnrol={() => setEnrolling(true)} />
           ) : (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Member</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Membership #</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Tier</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Points</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Discount</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Expiry</th>
-                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {memberships.map((membership) => (
-                    <tr key={membership._id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {getPatientName(membership.patient)}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          Since {formatDate(membership.joinDate)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">
-                        {membership.membershipNumber}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {getTierBadge(membership.tier)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{membership.points.toLocaleString()}</div>
-                        <div className="text-xs text-gray-500">
-                          Earned: {membership.totalPointsEarned.toLocaleString()}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                        {membership.discountPercentage}%
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(membership.status)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(membership.expiryDate)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => handleViewDetails(membership)}
-                          className="px-3 py-1.5 text-xs font-semibold bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors mr-2"
-                        >
-                          View
-                        </button>
-                        <select
-                          onChange={(e) => {
-                            if (e.target.value) handleUpgradeTier(membership, e.target.value);
-                            e.target.value = '';
-                          }}
-                          className="px-3 py-1.5 text-xs font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
-                          defaultValue=""
-                        >
-                          <option value="">Upgrade</option>
-                          {TIERS.filter(t => t.value !== membership.tier).map(tier => (
-                            <option key={tier.value} value={tier.value}>{tier.label}</option>
-                          ))}
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul key={listUrl} className={`divide-y divide-gray-100 transition-opacity duration-200 ${refreshing ? 'opacity-60' : ''}`}>
+              {rows.map((m, i) => (
+                <MemberRow key={m._id} m={m} index={i} onOpen={() => router.push(`/memberships/${m._id}`)} />
+              ))}
+            </ul>
           )}
 
-          {/* Membership Details Modal */}
-          {showModal && selectedMembership && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-                <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-emerald-100/50 flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-900">Membership Details</h2>
-                  </div>
-                  <button onClick={() => setShowModal(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+          {loaded && total > 0 && (
+            <nav aria-label="Pagination" className="flex flex-col gap-3 border-t border-gray-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-600">
+                <span className="font-mono text-gray-900">
+                  {firstRow.toLocaleString('en-US')}–{lastRow.toLocaleString('en-US')}
+                </span>{' '}
+                of <span className="font-mono text-gray-900">{total.toLocaleString('en-US')}</span>
+                {narrowed ? ' matching members' : ' members'}, {SORT_LABEL[sort].toLowerCase()}
+              </p>
+              {pages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1 || list.loading}
+                    aria-label="Previous page"
+                    className={`rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent ${FOCUS_RING}`}
+                  >
+                    <Svg d={ICONS.chevL} />
                   </button>
-                </div>
-                <div className="p-6">
-                  <div className="grid grid-cols-2 gap-6 mb-6">
-                    <div>
-                      <h3 className="text-lg font-medium mb-4">Member Information</h3>
-                      <div className="space-y-2">
-                        <div><span className="text-gray-500">Name:</span> {getPatientName(selectedMembership.patient)}</div>
-                        <div><span className="text-gray-500">Membership #:</span> {selectedMembership.membershipNumber}</div>
-                        <div><span className="text-gray-500">Tier:</span> {getTierBadge(selectedMembership.tier)}</div>
-                        <div><span className="text-gray-500">Status:</span> {getStatusBadge(selectedMembership.status)}</div>
-                        <div><span className="text-gray-500">Join Date:</span> {formatDate(selectedMembership.joinDate)}</div>
-                        <div><span className="text-gray-500">Expiry Date:</span> {formatDate(selectedMembership.expiryDate)}</div>
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-medium mb-4">Points Summary</h3>
-                      <div className="space-y-2">
-                        <div className="text-3xl font-bold text-blue-600">{selectedMembership.points.toLocaleString()} pts</div>
-                        <div><span className="text-gray-500">Total Earned:</span> {selectedMembership.totalPointsEarned.toLocaleString()}</div>
-                        <div><span className="text-gray-500">Total Redeemed:</span> {selectedMembership.totalPointsRedeemed.toLocaleString()}</div>
-                        <div><span className="text-gray-500">Discount:</span> <span className="text-green-600 font-medium">{selectedMembership.discountPercentage}%</span></div>
-                      </div>
+                  {pageWindow(page, pages).map((n, i) =>
+                    n === 'gap' ? (
+                      <span key={`g${i}`} className="px-1.5 text-gray-400" aria-hidden="true">
+                        …
+                      </span>
+                    ) : (
                       <button
-                        onClick={() => setShowPointsModal(true)}
-                        className="mt-4 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-md"
+                        key={n}
+                        type="button"
+                        onClick={() => setPage(n)}
+                        disabled={list.loading}
+                        aria-current={page === n ? 'page' : undefined}
+                        aria-label={`Page ${n}`}
+                        className={`min-w-9 rounded-md px-2 py-1.5 font-mono text-sm transition-colors ${FOCUS_RING} ${page === n ? 'bg-brand-teal-dark font-semibold text-white' : 'text-gray-700 hover:bg-gray-100'}`}
                       >
-                        Adjust Points
+                        {n}
                       </button>
-                    </div>
-                  </div>
-
-                  {selectedMembership.benefits && selectedMembership.benefits.length > 0 && (
-                    <div className="mb-6">
-                      <h3 className="text-lg font-medium mb-2">Benefits</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedMembership.benefits.map((benefit, i) => (
-                          <span key={i} className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                            {benefit.replace('_', ' ')}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+                    )
                   )}
-
-                  {selectedMembership.transactions && selectedMembership.transactions.length > 0 && (
-                    <div>
-                      <h3 className="text-lg font-medium mb-2">Recent Transactions</h3>
-                      <div className="border rounded-lg overflow-hidden">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Points</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-200">
-                            {selectedMembership.transactions.slice(0, 10).map((tx, i) => (
-                              <tr key={i}>
-                                <td className="px-4 py-2 text-sm text-gray-500">{formatDate(tx.createdAt)}</td>
-                                <td className="px-4 py-2">
-                                  <span className={`px-2 py-0.5 text-xs rounded ${
-                                    tx.type === 'earn' ? 'bg-green-100 text-green-800' :
-                                    tx.type === 'redeem' ? 'bg-blue-100 text-blue-800' :
-                                    tx.type === 'expire' ? 'bg-red-100 text-red-800' :
-                                    'bg-gray-100 text-gray-800'
-                                  }`}>
-                                    {tx.type}
-                                  </span>
-                                </td>
-                                <td className={`px-4 py-2 text-sm font-medium ${
-                                  tx.type === 'earn' ? 'text-green-600' : 
-                                  tx.type === 'redeem' || tx.type === 'expire' ? 'text-red-600' : ''
-                                }`}>
-                                  {tx.type === 'earn' ? '+' : '-'}{Math.abs(tx.points)}
-                                </td>
-                                <td className="px-4 py-2 text-sm text-gray-600">{tx.description}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Points Adjustment Modal */}
-          {showPointsModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-                <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-emerald-100/50">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-900">Adjust Points</h2>
-                  </div>
-                </div>
-                <div className="p-6 space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Transaction Type</label>
-                    <select
-                      value={pointsForm.type}
-                      onChange={(e) => setPointsForm({ ...pointsForm, type: e.target.value as any })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
-                    >
-                      <option value="earn">Earn (Add Points)</option>
-                      <option value="redeem">Redeem (Use Points)</option>
-                      <option value="adjustment">Adjustment</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Points</label>
-                    <input
-                      type="number"
-                      value={pointsForm.points}
-                      onChange={(e) => setPointsForm({ ...pointsForm, points: parseInt(e.target.value) || 0 })}
-                      min="0"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
-                    <input
-                      type="text"
-                      value={pointsForm.description}
-                      onChange={(e) => setPointsForm({ ...pointsForm, description: e.target.value })}
-                      placeholder="e.g., Visit reward, Manual adjustment"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                </div>
-                <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
                   <button
-                    onClick={() => setShowPointsModal(false)}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-semibold"
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(pages, p + 1))}
+                    disabled={page === pages || list.loading}
+                    aria-label="Next page"
+                    className={`rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent ${FOCUS_RING}`}
                   >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleAddPoints}
-                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-md"
-                  >
-                    Save
+                    <Svg d={ICONS.chevR} />
                   </button>
                 </div>
-              </div>
-            </div>
+              )}
+            </nav>
           )}
         </div>
       </div>
+
+      {enrolling && <EnrolDialog canChooseTier={permissions.canManage} onClose={() => setEnrolling(false)} />}
     </section>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Pieces
+// ---------------------------------------------------------------------------
+
+function MemberRow({ m, index, onOpen }: { m: MembershipRow; index: number; onOpen: () => void }) {
+  const state = membershipState(m);
+  const onRowClick = (e: React.MouseEvent<HTMLLIElement>) => {
+    if ((e.target as HTMLElement).closest('a,button')) return;
+    onOpen();
+  };
+
+  return (
+    <li
+      onClick={onRowClick}
+      className={`motion-row-in group flex cursor-pointer flex-col gap-1.5 px-4 py-3 transition-colors hover:bg-gray-50 ${ROW_GRID}`}
+      style={{ animationDelay: `${Math.min(index * 18, 220)}ms` }}
+    >
+      <span className="min-w-0">
+        <Link href={`/memberships/${m._id}`} className={`block truncate rounded font-semibold text-gray-900 hover:text-brand-teal-deep ${FOCUS_RING}`}>
+          {memberName(m)}
+        </Link>
+        <span className="mt-0.5 block truncate font-mono text-xs text-gray-500">
+          {m.membershipNumber}
+          {m.patient?.patientCode && ` · ${m.patient.patientCode}`}
+        </span>
+      </span>
+
+      <span className="text-sm">
+        <TierMark tier={m.tier} showDiscount />
+      </span>
+
+      <span className="text-sm lg:text-right">
+        <span className="font-mono tabular-nums text-gray-900">{pts(m.points)}</span>
+        <span className="text-gray-500"> pts</span>
+      </span>
+
+      <span className="min-w-0 text-sm">
+        <ValidUntil iso={m.expiryDate} className="block truncate" />
+        <span className="block truncate text-xs text-gray-500">
+          Member since <span className="font-mono">{new Date(m.joinDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+        </span>
+      </span>
+
+      <span className="flex items-center gap-2 lg:justify-end">
+        {state !== 'active' && <StateBadge state={state} />}
+        <Svg d={ICONS.chevR} className="hidden h-4 w-4 text-gray-400 transition-colors group-hover:text-gray-700 lg:block" />
+      </span>
+    </li>
+  );
+}
+
+/**
+ * Three questions whoever runs the programme asks: who is a member now (by tier, which filters
+ * the list), whose membership needs renewing, and how many points the clinic owes its members.
+ * Figures are clinic-wide and never shrink with the filters.
+ */
+function MembershipInsights({
+  data,
+  tier,
+  status,
+  onTier,
+  onStatus,
+}: {
+  data: Insights;
+  tier: MembershipTier | '';
+  status: MembershipStatusFilter | '';
+  onTier: (t: MembershipTier) => void;
+  onStatus: (s: MembershipStatusFilter) => void;
+}) {
+  const max = Math.max(1, ...MEMBERSHIP_TIERS.map((t) => data.byTier[t] ?? 0));
+  const held = data.byStatus.suspended ?? 0;
+  const inactive = data.byStatus.inactive ?? 0;
+  const p = data.points;
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className="grid -mr-px -mb-px grid-cols-1 lg:grid-cols-3">
+        <section className="border-r border-b border-gray-200 p-5" aria-labelledby="mem-tiers-h">
+          <h2 id="mem-tiers-h" className="text-sm text-gray-600">
+            Members in date
+          </h2>
+          <p className={`mt-2 font-mono text-3xl font-semibold tabular-nums ${data.inDate ? 'text-gray-900' : 'text-gray-500'}`}>{data.inDate.toLocaleString('en-US')}</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {data.joinedRecently > 0 ? (
+              <>
+                <span className="font-mono">{data.joinedRecently}</span> joined in the last 30 days
+              </>
+            ) : (
+              'Nobody joined in the last 30 days'
+            )}
+            {(held > 0 || inactive > 0) && (
+              <>
+                {'; '}
+                {[held && `${held} suspended`, inactive && `${inactive} inactive`].filter(Boolean).join(', ')}
+              </>
+            )}
+          </p>
+          <ul className="mt-3 space-y-1" role="group" aria-label="Filter by tier">
+            {MEMBERSHIP_TIERS.map((t, i) => {
+              const n = data.byTier[t] ?? 0;
+              const on = tier === t;
+              return (
+                <li key={t}>
+                  <button
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => onTier(t)}
+                    aria-label={`${TIER[t].label}, ${TIER[t].discount}% off: ${n} ${n === 1 ? 'member' : 'members'}${on ? ', filtering' : ''}`}
+                    className={`-mx-2 block w-[calc(100%+1rem)] rounded px-2 py-1.5 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal ${on ? 'bg-brand-teal-light/60' : ''}`}
+                  >
+                    <span className="flex items-baseline justify-between gap-3 text-sm">
+                      <TierMark tier={t} showDiscount className={on ? 'font-semibold' : ''} />
+                      <span className="shrink-0 font-mono tabular-nums text-gray-900">{n.toLocaleString('en-US')}</span>
+                    </span>
+                    <span className="mt-1 block h-1.5 rounded-r bg-gray-100" aria-hidden="true">
+                      <span
+                        className="motion-bar-grow block h-full rounded-r"
+                        style={{ width: `${(n / max) * 100}%`, background: on ? '#0A7F7E' : SERIES.teal, opacity: tier && !on ? 0.3 : 1, animationDelay: `${i * 60}ms` }}
+                      />
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+
+        <section className="border-r border-b border-gray-200 p-5" aria-labelledby="mem-due-h">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 id="mem-due-h" className="text-sm text-gray-600">
+              Renewals due in {RENEWAL_DAYS} days
+            </h2>
+            {data.due.count > 0 && (
+              <button type="button" aria-pressed={status === 'due'} onClick={() => onStatus('due')} className={`rounded text-xs font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                {status === 'due' ? 'Show all' : 'List them'}
+              </button>
+            )}
+          </div>
+          <p className={`mt-2 font-mono text-3xl font-semibold tabular-nums ${data.due.count ? 'text-gray-900' : 'text-gray-500'}`}>{data.due.count.toLocaleString('en-US')}</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {data.lapsedRecently > 0 ? (
+              <button type="button" aria-pressed={status === 'expired'} onClick={() => onStatus('expired')} className={`rounded text-left font-medium text-red-700 hover:text-red-800 hover:underline ${FOCUS_RING}`}>
+                <span className="font-mono">{data.lapsedRecently}</span> ended in the last {RENEWAL_DAYS} days without renewing
+              </button>
+            ) : data.due.count === 0 ? (
+              'No membership ends in the next 30 days.'
+            ) : (
+              'Patients are reminded by text and email as the date nears.'
+            )}
+          </p>
+          {data.due.next.length > 0 && (
+            <ul className="mt-3 space-y-1">
+              {data.due.next.map((d) => (
+                <li key={d._id}>
+                  <Link href={`/memberships/${d._id}`} className={`-mx-2 block rounded px-2 py-1 text-sm hover:bg-gray-50 ${FOCUS_RING}`}>
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className="min-w-0 truncate text-gray-700">{d.name}</span>
+                      <ValidUntil iso={d.expiryDate} className="shrink-0 text-xs" />
+                    </span>
+                    <span className="block text-xs text-gray-500">{TIER[d.tier]?.label ?? d.tier}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="border-r border-b border-gray-200 p-5" aria-labelledby="mem-points-h">
+          <h2 id="mem-points-h" className="text-sm text-gray-600">
+            Points members hold
+          </h2>
+          <p className={`mt-2 font-mono text-3xl font-semibold tabular-nums ${p.held ? 'text-gray-900' : 'text-gray-500'}`}>{pts(p.held)}</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {p.earned || p.used ? (
+              <>
+                <span className="font-mono">+{pts(p.earned)}</span> added, <span className="font-mono">−{pts(p.used)}</span> used in the last {p.windowDays} days
+              </>
+            ) : (
+              `No points added or used in the last ${p.windowDays} days.`
+            )}
+          </p>
+          {p.top.length > 0 && (
+            <>
+              <h3 className="mt-3 text-xs font-medium text-gray-500">Highest balances</h3>
+              <ul className="mt-1 space-y-1">
+                {p.top.map((t) => (
+                  <li key={t._id}>
+                    <Link href={`/memberships/${t._id}`} className={`-mx-2 flex items-baseline justify-between gap-3 rounded px-2 py-1 text-sm hover:bg-gray-50 ${FOCUS_RING}`}>
+                      <span className="min-w-0 truncate text-gray-700">{t.name}</span>
+                      <span className="shrink-0 font-mono text-xs tabular-nums text-gray-900">{pts(t.points)} pts</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function Empty({ narrowed, canEnrol, onClear, onEnrol }: { narrowed: boolean; canEnrol: boolean; onClear: () => void; onEnrol: () => void }) {
+  let body: ReactNode;
+  if (narrowed) {
+    body = (
+      <>
+        <p className="font-semibold text-gray-900">No members match</p>
+        <p className="mt-1 text-sm text-gray-500">Check the spelling, search by membership number, or loosen a filter.</p>
+        <button type="button" onClick={onClear} className={`mt-5 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+          Clear search and filters
+        </button>
+      </>
+    );
+  } else {
+    body = (
+      <>
+        <p className="font-semibold text-gray-900">No members yet</p>
+        <p className="mt-1 text-sm text-gray-500">
+          Enrol a patient to give them their tier’s discount on every bill: Bronze <span className="font-mono">{TIER.bronze.discount}%</span> up to Platinum{' '}
+          <span className="font-mono">{TIER.platinum.discount}%</span>.
+        </p>
+        {canEnrol && (
+          <button type="button" onClick={onEnrol} className={`mt-5 inline-flex items-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+            <Svg d={ICONS.plus} />
+            Enrol a patient
+          </button>
+        )}
+      </>
+    );
+  }
+  return (
+    <div className="px-6 py-14 text-center">
+      <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md bg-gray-100 text-gray-500">
+        <Svg d={narrowed ? ICONS.search : ICONS.ticket} className="h-5 w-5" />
+      </div>
+      {body}
+    </div>
+  );
+}

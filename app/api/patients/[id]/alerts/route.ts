@@ -2,40 +2,28 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Invoice from '@/models/Invoice';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, patientTenantFilter, tenantFilter } from '@/lib/api/tenant-session';
 import { getSettings } from '@/lib/settings';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(session, 'patients', 'read');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
-    
+
     const { id } = await params;
-    
-    // Build query with tenant filter
-    const patientQuery: any = { _id: id };
-    if (tenantId) {
-      patientQuery.tenantIds = new Types.ObjectId(tenantId);
-    } else {
-      patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-    }
-    
-    const patient = await Patient.findOne(patientQuery);
+    if (!isValidId(id)) return notFound('Patient');
+
+    const patient = await Patient.findOne(patientTenantFilter(tenantId, { _id: id }));
 
     if (!patient) {
       return NextResponse.json(
@@ -82,17 +70,10 @@ export async function GET(
     }
 
     // Check for unpaid balances (tenant-scoped)
-    const invoiceQuery: any = {
-      patient: id,
+    const unpaidInvoices = await Invoice.find(tenantFilter(tenantId, {
+      patient: patient._id,
       status: { $in: ['unpaid', 'partial'] },
-    };
-    if (tenantId) {
-      invoiceQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      invoiceQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const unpaidInvoices = await Invoice.find(invoiceQuery);
+    }));
 
     if (unpaidInvoices.length > 0) {
       const totalUnpaid = unpaidInvoices.reduce((sum: number, invoice: any) => {
@@ -102,7 +83,7 @@ export async function GET(
       }, 0);
 
       if (totalUnpaid > 0) {
-        const settings = await getSettings();
+        const settings = await getSettings(tenantId);
         const currency = settings.billingSettings?.currency || 'PHP';
         const formattedAmount = new Intl.NumberFormat('en-PH', {
           style: 'currency',

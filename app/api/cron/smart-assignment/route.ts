@@ -1,49 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import { processUnassignedAppointments } from '@/lib/automations/smart-assignment';
-import { getTenantContext } from '@/lib/tenant';
+
+export const maxDuration = 300;
 
 /**
- * Cron job to automatically assign doctors to unassigned appointments
- * Runs hourly
+ * Assigns doctors to upcoming unassigned appointments for every active tenant.
+ * Schedule: see vercel.json. Auth: Authorization: Bearer $CRON_SECRET.
  */
 export async function GET(request: NextRequest) {
-  // Authenticate request
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-  
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-  }
-  
+  const denied = requireCron(request);
+  if (denied) return denied;
+
   try {
-    const tenantContext = await getTenantContext();
-    const tenantId = tenantContext.tenantId;
-    
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'No tenant context found' },
-        { status: 400 }
-      );
-    }
-    
-    const result = await processUnassignedAppointments(tenantId);
-    
+    const result = await processUnassignedAppointments();
     return NextResponse.json({
       success: result.success,
-      message: 'Smart appointment assignment processed',
+      message: 'Smart assignment processed',
       data: result,
     });
-  } catch (error: any) {
-    console.error('Error in smart assignment cron:', error);
-    return NextResponse.json(
-      { success: false, error: error.message || 'Failed to process smart assignment' },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('[Cron] smart-assignment error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to process smart-assignment' }, { status: 500 });
   }
 }

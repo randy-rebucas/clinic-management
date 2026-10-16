@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState, useCallback } from 'react';
 
 interface Settings {
   _id?: string;
@@ -177,10 +177,13 @@ const LabeledTextField = ({
   type?: string;
   step?: string;
   placeholder?: string;
-}) => (
+}) => {
+  const id = useId();
+  return (
   <div>
-    <label className="block text-sm font-medium mb-1">{label}</label>
+    <label htmlFor={id} className="block text-sm font-medium mb-1">{label}</label>
     <input
+      id={id}
       type={type}
       step={step}
       value={value}
@@ -190,7 +193,8 @@ const LabeledTextField = ({
       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
     />
   </div>
-);
+  );
+};
 
 export default function SettingsPageClient({ user }: SettingsPageClientProps) {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -200,11 +204,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
   const [activeTab, setActiveTab] = useState('clinic');
   const isAdmin = user.role === 'admin';
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/settings');
@@ -225,7 +225,14 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchSettings();
+    };
+    load();
+  }, [fetchSettings]);
 
   const handleSave = async () => {
     if (!settings || !isAdmin) return;
@@ -291,7 +298,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
       <section className="py-12 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="flex justify-center items-center" style={{ minHeight: '400px' }}>
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-teal-dark"></div>
           </div>
         </div>
       </section>
@@ -311,21 +318,21 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-slate-50/30 min-h-screen">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6">
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-slate-500 to-slate-600 rounded-lg shadow-md">
+                <div className="p-2 bg-brand-teal-dark rounded-md">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Settings</h1>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Settings</h1>
                   <p className="text-sm sm:text-base text-gray-600 mt-1">Manage clinic settings and preferences</p>
                 </div>
               </div>
@@ -333,7 +340,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 <button 
                   onClick={handleSave} 
                   disabled={saving} 
-                  className="px-5 py-2.5 bg-gradient-to-r from-slate-500 to-slate-600 text-white rounded-lg hover:from-slate-600 hover:to-slate-700 disabled:from-slate-400 disabled:to-slate-500 disabled:cursor-not-allowed transition-all text-sm font-semibold flex items-center gap-2 shadow-md"
+                  className="px-5 py-2.5 bg-slate-500 text-white rounded-lg hover:bg-slate-600 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all text-sm font-semibold flex items-center gap-2 shadow-md"
                 >
                   {saving ? (
                     <>
@@ -355,7 +362,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
 
         {/* Messages */}
         {message && (
-          <div className={`rounded-xl p-4 shadow-sm ${
+          <div className={`rounded-lg p-4 shadow-sm ${
             message.type === 'success' 
               ? 'bg-green-50 border border-green-200' 
               : 'bg-red-50 border border-red-200'
@@ -380,7 +387,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
         )}
 
         {!isAdmin && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 shadow-sm">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 shadow-sm">
             <div className="flex items-start gap-3">
               <div className="p-1.5 bg-yellow-500 rounded-lg flex-shrink-0">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -399,9 +406,10 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
+                  aria-pressed={activeTab === tab}
                   className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                     activeTab === tab
-                      ? 'border-blue-500 text-blue-600'
+                      ? 'border-brand-teal text-brand-teal-dark'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
@@ -422,9 +430,9 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
 
           <div className="p-6">
             {activeTab === 'clinic' && (
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+              <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-5">
                 <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 bg-blue-500 rounded-lg">
+                  <div className="p-2 bg-brand-teal-dark rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                     </svg>
@@ -494,7 +502,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'hours' && (
-              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-5">
                 <div className="flex items-center gap-3 mb-5">
                   <div className="p-2 bg-emerald-500 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -517,6 +525,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                           <label className="relative inline-flex items-center cursor-pointer">
                             <input
                               type="checkbox"
+                              aria-label={`${day.label} open`}
                               checked={!hours.closed}
                               onChange={(e) => updateBusinessHours(day.value, 'closed', !e.target.checked)}
                               disabled={!isAdmin}
@@ -532,6 +541,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                           <div className="flex gap-2 items-center flex-1 min-w-[200px]">
                             <input
                               type="time"
+                              aria-label={`${day.label} opening time`}
                               value={hours.open}
                               onChange={(e) => updateBusinessHours(day.value, 'open', e.target.value)}
                               disabled={!isAdmin}
@@ -540,6 +550,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                             <p className="text-sm text-gray-600">to</p>
                             <input
                               type="time"
+                              aria-label={`${day.label} closing time`}
                               value={hours.close}
                               onChange={(e) => updateBusinessHours(day.value, 'close', e.target.value)}
                               disabled={!isAdmin}
@@ -617,7 +628,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'communication' && (
-              <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 border border-cyan-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-lg p-5">
                 <div className="flex items-center gap-3 mb-5">
                   <div className="p-2 bg-cyan-500 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -740,7 +751,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'queue' && (
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-lg p-5">
                 <div className="flex items-center gap-3 mb-5">
                   <div className="p-2 bg-purple-500 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -804,12 +815,12 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     placeholder="UTC"
                   />
                   <div>
-                    <label className="block text-sm font-medium mb-1">Date Format</label>
-                    <select
+                    <label htmlFor="settings-date-format" className="block text-sm font-medium mb-1">Date Format</label>
+                    <select id="settings-date-format"
                       value={settings.generalSettings.dateFormat}
                       onChange={(e) => updateSettings('generalSettings.dateFormat', e.target.value)}
                       disabled={!isAdmin}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                     >
                       <option value="MM/DD/YYYY">MM/DD/YYYY</option>
                       <option value="DD/MM/YYYY">DD/MM/YYYY</option>
@@ -817,12 +828,12 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Time Format</label>
-                    <select
+                    <label htmlFor="settings-time-format" className="block text-sm font-medium mb-1">Time Format</label>
+                    <select id="settings-time-format"
                       value={settings.generalSettings.timeFormat}
                       onChange={(e) => updateSettings('generalSettings.timeFormat', e.target.value as '12h' | '24h')}
                       disabled={!isAdmin}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                     >
                       <option value="12h">12 Hour</option>
                       <option value="24h">24 Hour</option>
@@ -859,7 +870,7 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'display' && (
-              <div className="bg-gradient-to-br from-violet-50 to-violet-100/50 border border-violet-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-lg p-5">
                 <div className="flex items-center gap-3 mb-5">
                   <div className="p-2 bg-violet-500 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -870,12 +881,12 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
                 <div className="flex flex-col gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1">Theme</label>
-                    <select
+                    <label htmlFor="settings-theme" className="block text-sm font-medium mb-1">Theme</label>
+                    <select id="settings-theme"
                       value={settings.displaySettings.theme}
                       onChange={(e) => updateSettings('displaySettings.theme', e.target.value as 'light' | 'dark' | 'auto')}
                       disabled={!isAdmin}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                     >
                       <option value="light">Light</option>
                       <option value="dark">Dark</option>
@@ -907,9 +918,9 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             )}
 
             {activeTab === 'prescriptions' && (
-              <div className="bg-gradient-to-br from-teal-50 to-teal-100/50 border border-teal-200 rounded-xl p-5">
+              <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-5">
                 <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 bg-teal-500 rounded-lg">
+                  <div className="p-2 bg-brand-teal-dark rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                     </svg>
@@ -918,12 +929,12 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
                 <div className="flex flex-col gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1">Paper Size</label>
-                    <select
+                    <label htmlFor="settings-paper-size" className="block text-sm font-medium mb-1">Paper Size</label>
+                    <select id="settings-paper-size"
                       value={settings.prescriptionPaperSize || 'A5'}
                       onChange={(e) => updateSettings('prescriptionPaperSize', e.target.value as 'A5' | 'A4')}
                       disabled={!isAdmin}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                     >
                       <option value="A5">A5 (148 × 210 mm)</option>
                       <option value="A4">A4 (210 × 297 mm)</option>
@@ -937,11 +948,11 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
             {activeTab === 'integrations' && (
               <div className="flex flex-col gap-4">
                 {/* Twilio Integration */}
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+                <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-5">
                   <div className="flex flex-col gap-4">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-500 rounded-lg">
+                        <div className="p-2 bg-brand-teal-dark rounded-lg">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                           </svg>
@@ -984,9 +995,9 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <p className="text-xs font-medium text-blue-800">
-                        Add these variables to your <code className="font-mono text-xs bg-blue-100 px-1 py-0.5 rounded">.env.local</code> file and restart the server.
+                    <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-3">
+                      <p className="text-xs font-medium text-brand-teal-deep">
+                        Add these variables to your <code className="font-mono text-xs bg-brand-teal-light px-1 py-0.5 rounded">.env.local</code> file and restart the server.
                       </p>
                     </div>
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -1003,11 +1014,11 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
 
                 {/* SMTP Integration */}
-                <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 rounded-xl p-5">
+                <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-5">
                   <div className="flex flex-col gap-4">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-500 rounded-lg">
+                        <div className="p-2 bg-brand-teal-dark rounded-lg">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                           </svg>
@@ -1056,9 +1067,9 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <p className="text-xs font-medium text-blue-800">
-                        Add these variables to your <code className="font-mono text-xs bg-blue-100 px-1 py-0.5 rounded">.env.local</code> file and restart the server.
+                    <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-3">
+                      <p className="text-xs font-medium text-brand-teal-deep">
+                        Add these variables to your <code className="font-mono text-xs bg-brand-teal-light px-1 py-0.5 rounded">.env.local</code> file and restart the server.
                       </p>
                     </div>
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -1075,11 +1086,11 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                 </div>
 
                 {/* Cloudinary Integration */}
-                <div className="bg-gradient-to-br from-teal-50 to-teal-100/50 border border-teal-200 rounded-xl p-5">
+                <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-5">
                   <div className="flex flex-col gap-4">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-teal-500 rounded-lg">
+                        <div className="p-2 bg-brand-teal-dark rounded-lg">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                           </svg>
@@ -1122,9 +1133,9 @@ export default function SettingsPageClient({ user }: SettingsPageClientProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <p className="text-xs font-medium text-blue-800">
-                        Add these variables to your <code className="font-mono text-xs bg-blue-100 px-1 py-0.5 rounded">.env.local</code> file and restart the server.
+                    <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-3">
+                      <p className="text-xs font-medium text-brand-teal-deep">
+                        Add these variables to your <code className="font-mono text-xs bg-brand-teal-light px-1 py-0.5 rounded">.env.local</code> file and restart the server.
                       </p>
                     </div>
                     <label className="flex items-center gap-2 cursor-pointer">

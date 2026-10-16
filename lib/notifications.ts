@@ -7,7 +7,20 @@ import { Types } from 'mongoose';
 export interface CreateNotificationOptions {
   userId: string | Types.ObjectId;
   tenantId?: string | Types.ObjectId; // Tenant ID for multi-tenant support
-  type: 'appointment' | 'visit' | 'prescription' | 'lab_result' | 'invoice' | 'reminder' | 'system' | 'broadcast';
+  type:
+    | 'appointment'
+    | 'visit'
+    | 'prescription'
+    | 'lab_result'
+    | 'invoice'
+    | 'reminder'
+    | 'system'
+    | 'broadcast'
+    | 'visit_followup_reminder'
+    | 'membership_expiry_reminder'
+    | 'referral_followup_reminder'
+    | 'referral_escalation'
+    | 'patient_reengagement';
   priority?: 'low' | 'normal' | 'high' | 'urgent';
   title: string;
   message: string;
@@ -70,13 +83,15 @@ export async function createNotification(options: CreateNotificationOptions): Pr
  */
 export async function createAppointmentReminderNotification(
   userId: string | Types.ObjectId,
-  appointment: any
+  appointment: any,
+  tenantId?: string | Types.ObjectId
 ): Promise<any> {
   const doctor = appointment.doctor as any;
   const appointmentDate = new Date(appointment.appointmentDate);
   
   return createNotification({
     userId,
+    tenantId: tenantId ?? appointment.tenantId,
     type: 'appointment',
     priority: 'normal',
     title: 'Appointment Reminder',
@@ -94,12 +109,14 @@ export async function createAppointmentReminderNotification(
  */
 export async function createLabResultNotification(
   userId: string | Types.ObjectId,
-  labResult: any
+  labResult: any,
+  tenantId?: string | Types.ObjectId
 ): Promise<any> {
   const testType = labResult.request?.testType || 'Lab Test';
   
   return createNotification({
     userId,
+    tenantId: tenantId ?? labResult.tenantId,
     type: 'lab_result',
     priority: 'normal',
     title: 'Lab Results Available',
@@ -117,10 +134,12 @@ export async function createLabResultNotification(
  */
 export async function createPrescriptionNotification(
   userId: string | Types.ObjectId,
-  prescription: any
+  prescription: any,
+  tenantId?: string | Types.ObjectId
 ): Promise<any> {
   return createNotification({
     userId,
+    tenantId: tenantId ?? prescription.tenantId,
     type: 'prescription',
     priority: 'normal',
     title: 'New Prescription',
@@ -138,10 +157,12 @@ export async function createPrescriptionNotification(
  */
 export async function createInvoiceNotification(
   userId: string | Types.ObjectId,
-  invoice: any
+  invoice: any,
+  tenantId?: string | Types.ObjectId
 ): Promise<any> {
   return createNotification({
     userId,
+    tenantId: tenantId ?? invoice.tenantId,
     type: 'invoice',
     priority: invoice.outstandingBalance > 0 ? 'high' : 'normal',
     title: invoice.outstandingBalance > 0 ? 'Outstanding Balance' : 'Payment Received',

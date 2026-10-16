@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 
 export interface Settings {
   _id?: string;
@@ -150,7 +150,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshSettings = async () => {
+  const refreshSettings = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -170,14 +170,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    refreshSettings();
   }, []);
 
+  useEffect(() => {
+    const load = async () => {
+      await refreshSettings();
+    };
+    load();
+  }, [refreshSettings]);
+
+  const value = useMemo(
+    () => ({ settings, loading, error, refreshSettings }),
+    [settings, loading, error, refreshSettings]
+  );
+
   return (
-    <SettingsContext.Provider value={{ settings, loading, error, refreshSettings }}>
+    <SettingsContext.Provider value={value}>
       {children}
     </SettingsContext.Provider>
   );

@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
 import Medicine from '@/models/Medicine';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { sanitizeSearch } from '@/lib/utils';
 
 export interface MedicineSuggestion {
@@ -18,17 +15,15 @@ export interface MedicineSuggestion {
 
 // GET /api/medications/autocomplete?search=amox
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-  if (!session) return unauthorizedResponse();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
   try {
     await connectDB();
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
     const searchParams = request.nextUrl.searchParams;
-    const search = searchParams.get('search') || '';
+    const search = (searchParams.get('search') || '').slice(0, 100);
 
-    const tenantFilter: any = tenantId ? { tenantId: new Types.ObjectId(tenantId) } : {};
+    const tenantFilter: any = { tenantId: ctx.tenantObjectId };
     const safeSearch = search ? sanitizeSearch(search) : '';
     const searchRegex = safeSearch ? { $regex: safeSearch, $options: 'i' } : undefined;
 
@@ -75,6 +70,8 @@ export async function GET(request: NextRequest) {
     if (search) visitMatch['treatmentPlan.medications.name'] = searchRegex;
     const visitPipeline: any[] = [
       { $match: visitMatch },
+      { $sort: { date: -1 } },
+      { $limit: 2000 },
       { $unwind: '$treatmentPlan.medications' },
       ...(search ? [{ $match: { 'treatmentPlan.medications.name': searchRegex } }] : []),
       { $group: { _id: '$treatmentPlan.medications.name', dosage: { $first: '$treatmentPlan.medications.dosage' }, frequency: { $first: '$treatmentPlan.medications.frequency' }, duration: { $first: '$treatmentPlan.medications.duration' } } },

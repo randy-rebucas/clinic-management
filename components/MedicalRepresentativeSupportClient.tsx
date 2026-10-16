@@ -68,7 +68,7 @@ export default function MedicalRepresentativeSupportClient() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-8 px-4">
+    <div className="min-h-screen bg-brand-teal-light/60 py-8 px-4">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
@@ -77,7 +77,7 @@ export default function MedicalRepresentativeSupportClient() {
             className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
             aria-label="Go back"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
+            <ArrowLeft aria-hidden="true" className="w-5 h-5 text-gray-600" />
           </button>
           <h1 className="text-3xl font-bold text-gray-900">Help & Support</h1>
         </div>
@@ -85,13 +85,13 @@ export default function MedicalRepresentativeSupportClient() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Contact Info */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-sm p-6 space-y-6">
+            <div className="bg-white rounded-lg shadow-sm p-6 space-y-6">
               <h2 className="text-xl font-semibold text-gray-900">Contact Us</h2>
 
               {/* Email */}
               <div className="flex items-start gap-4">
-                <div className="p-3 bg-blue-100 rounded-lg">
-                  <Mail className="w-5 h-5 text-blue-600" />
+                <div className="p-3 bg-brand-teal-light rounded-lg">
+                  <Mail className="w-5 h-5 text-brand-teal-dark" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900">Email</h3>
@@ -129,17 +129,17 @@ export default function MedicalRepresentativeSupportClient() {
                 <h3 className="font-semibold text-gray-900 mb-3">Quick Links</h3>
                 <ul className="space-y-2">
                   <li>
-                    <a href="#faq" className="text-sm text-blue-600 hover:text-blue-700 underline">
+                    <a href="#faq" className="text-sm text-brand-teal-dark hover:text-brand-teal-deep underline">
                       Frequently Asked Questions
                     </a>
                   </li>
                   <li>
-                    <a href="#documentation" className="text-sm text-blue-600 hover:text-blue-700 underline">
+                    <a href="#documentation" className="text-sm text-brand-teal-dark hover:text-brand-teal-deep underline">
                       Documentation
                     </a>
                   </li>
                   <li>
-                    <a href="#guides" className="text-sm text-blue-600 hover:text-blue-700 underline">
+                    <a href="#guides" className="text-sm text-brand-teal-dark hover:text-brand-teal-deep underline">
                       Getting Started Guides
                     </a>
                   </li>
@@ -150,7 +150,7 @@ export default function MedicalRepresentativeSupportClient() {
 
           {/* Support Form */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl shadow-sm p-8">
+            <div className="bg-white rounded-lg shadow-sm p-8">
               <h2 className="text-xl font-semibold text-gray-900 mb-6">Send us a Message</h2>
 
               {submitSuccess && (
@@ -175,7 +175,7 @@ export default function MedicalRepresentativeSupportClient() {
                     onChange={handleInputChange}
                     required
                     placeholder="your.email@example.com"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent"
                   />
                 </div>
 
@@ -189,7 +189,7 @@ export default function MedicalRepresentativeSupportClient() {
                     name="category"
                     value={formData.category}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent"
                   >
                     <option value="general">General Inquiry</option>
                     <option value="technical">Technical Issue</option>
@@ -213,7 +213,7 @@ export default function MedicalRepresentativeSupportClient() {
                     onChange={handleInputChange}
                     required
                     placeholder="Brief description of your issue"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent"
                   />
                 </div>
 
@@ -230,7 +230,7 @@ export default function MedicalRepresentativeSupportClient() {
                     required
                     placeholder="Please provide as much detail as possible..."
                     rows={6}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent resize-none"
                   />
                 </div>
 
@@ -238,7 +238,7 @@ export default function MedicalRepresentativeSupportClient() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-brand-teal-dark hover:bg-brand-teal-deep disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
                 >
                   <Send className="w-4 h-4" />
                   {isSubmitting ? 'Sending...' : 'Send Support Request'}
@@ -254,28 +254,28 @@ export default function MedicalRepresentativeSupportClient() {
             Frequently Asked Questions
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-lg shadow-sm p-6">
               <h3 className="font-semibold text-gray-900 mb-2">How do I reset my password?</h3>
               <p className="text-sm text-gray-600">
                 Click on the &quot;Forgot Password&quot; link on the login page and follow the instructions sent to your email.
               </p>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-lg shadow-sm p-6">
               <h3 className="font-semibold text-gray-900 mb-2">What payment methods do you accept?</h3>
               <p className="text-sm text-gray-600">
                 We accept credit cards, debit cards, and bank transfers. Contact us for more payment options.
               </p>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-lg shadow-sm p-6">
               <h3 className="font-semibold text-gray-900 mb-2">How long does onboarding take?</h3>
               <p className="text-sm text-gray-600">
                 Most onboarding is completed within 24-48 hours. Premium verification may take up to 5 business days.
               </p>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-lg shadow-sm p-6">
               <h3 className="font-semibold text-gray-900 mb-2">Can I update my profile information?</h3>
               <p className="text-sm text-gray-600">
                 Yes, you can update most profile information in your account settings. Contact support for legal name changes.

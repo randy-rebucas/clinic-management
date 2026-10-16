@@ -1,27 +1,23 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { FIELD, FOCUS_RING, ICON, Svg } from './appointments/shared';
+import { ADD_BUTTON, FieldError, Label, REMOVE_BUTTON, Section } from './visits/form/parts';
+import PatientSearch, { type PatientOption } from './patients/PatientSearch';
+import { ageFrom } from './visits/form/PatientSummary';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
+import { useUnsavedChanges } from './hooks/useUnsavedChanges';
 import { useSetting } from './SettingsContext';
+import { formatApiError } from './utils/apiError';
+import { DISCOUNT_LABEL, PF_TYPES, shortDate, useMoney } from './invoices/shared';
+import { computeInvoiceTotals, roundMoney, type DiscountType } from '@/lib/invoice-totals';
+import { TIER, type MembershipTier } from '@/lib/memberships';
 
-interface Patient {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  dateOfBirth?: string;
-  patientCode?: string;
-  discountEligibility?: {
-    pwd?: { eligible: boolean; idNumber?: string };
-    senior?: { eligible: boolean; idNumber?: string };
-    membership?: { eligible: boolean; membershipType?: string; discountPercentage?: number };
-  };
-}
-
-interface Visit {
-  _id: string;
-  visitCode: string;
-  date: string;
-  visitType?: string;
-}
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface Service {
   _id: string;
@@ -32,866 +28,1006 @@ interface Service {
   unit?: string;
 }
 
-interface Doctor {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  specializationId?: {
-    name: string;
-  };
-}
-
-interface InvoiceItem {
-  serviceId?: string;
-  code?: string;
-  description: string;
-  category?: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-}
-
-interface Discount {
-  type: 'pwd' | 'senior' | 'membership' | 'promotional' | 'other';
-  reason?: string;
-  percentage?: number;
-  amount: number;
-}
-
-interface InvoiceFormProps {
-  initialData?: {
-    patient?: string;
-    visit?: string;
-  };
-  patients: Patient[];
-  visits: Visit[];
+interface FormContext {
   services: Service[];
-  onSubmit: (data: any) => void;
-  onCancel?: () => void;
+  doctors: { _id: string; firstName: string; lastName: string }[];
 }
 
+interface PatientContext {
+  patient: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    patientCode?: string;
+    dateOfBirth?: string;
+    discountEligibility?: {
+      pwd?: { eligible?: boolean; idNumber?: string };
+      senior?: { eligible?: boolean; idNumber?: string };
+      membership?: { eligible?: boolean; membershipType?: string; discountPercentage?: number };
+    };
+  };
+  /** Loyalty membership; `discountPercentage` is null unless it is in date. */
+  membership: { _id: string; membershipNumber: string; tier: string; state: string; discountPercentage: number | null; points: number } | null;
+  openInvoices: { _id: string; invoiceNumber: string; createdAt: string; outstandingBalance?: number }[];
+  openBalance: number;
+  visits: { _id: string; visitCode: string; date: string; visitType?: string; status?: string; doctor: string | null; invoice: { _id: string; invoiceNumber: string } | null }[];
+}
+
+interface ItemRow {
+  _key: string;
+  serviceId?: string;
+  code: string;
+  category: string;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+}
+
+interface DiscountRow {
+  _key: string;
+  type: DiscountType;
+  mode: 'percent' | 'amount';
+  value: string;
+  reason: string;
+}
+
+type PfType = '' | 'consultation' | 'procedure' | 'reading' | 'other';
+
+const ITEM_COLS = 'sm:grid-cols-[minmax(0,1fr)_4.5rem_7.5rem_7rem_2.25rem]';
+const DISCOUNT_COLS = 'sm:grid-cols-[9rem_10.5rem_6.5rem_minmax(0,1fr)_2.25rem]';
+
+let seq = 0;
+const key = () => `r${++seq}`;
+const num = (s: string) => (s.trim() === '' ? NaN : Number(s));
+const isSixty = (dob?: string) => {
+  if (!dob) return false;
+  const b = new Date(dob);
+  const now = new Date();
+  let age = now.getUTCFullYear() - b.getUTCFullYear();
+  if (now.getUTCMonth() < b.getUTCMonth() || (now.getUTCMonth() === b.getUTCMonth() && now.getUTCDate() < b.getUTCDate())) age--;
+  return age >= 60;
+};
+
+/**
+ * Write an invoice: who it is for (and which visit), the services from the price list, a
+ * doctor's professional fee, discounts, and an insurer or HMO. The bill beside the form is worked
+ * out with the same arithmetic the server uses, so the total shown is the total saved.
+ */
 export default function InvoiceForm({
-  initialData,
-  patients,
-  visits,
-  services,
-  onSubmit,
+  initialPatient,
+  initialVisitId,
   onCancel,
-}: InvoiceFormProps) {
-  const currency = useSetting('billingSettings.currency', 'PHP');
-  const defaultTaxRate = useSetting('billingSettings.taxRate', 0);
-  
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  };
-  
-  const [formData, setFormData] = useState({
-    patient: initialData?.patient || '',
-    visit: initialData?.visit || '',
-    items: [] as InvoiceItem[],
-    professionalFee: 0,
-    professionalFeeType: '' as 'consultation' | 'procedure' | 'reading' | 'other' | '',
-    professionalFeeDoctor: '',
-    professionalFeeNotes: '',
-    discounts: [] as Discount[],
-    tax: defaultTaxRate,
-    insurance: {
-      provider: '',
-      policyNumber: '',
-      memberId: '',
-      coverageType: '' as 'full' | 'partial' | 'co-pay' | '',
-      coverageAmount: 0,
-      claimNumber: '',
-      status: '' as 'pending' | 'approved' | 'rejected' | 'paid' | '',
-      notes: '',
-    },
+}: {
+  initialPatient: PatientOption | null;
+  initialVisitId?: string;
+  onCancel: () => void;
+}) {
+  const ids = useId();
+  const router = useRouter();
+  const { money } = useMoney();
+  const taxRate = Number(useSetting('billingSettings.taxRate', 0)) || 0;
+
+  const [patient, setPatient] = useState<PatientOption | null>(initialPatient);
+  const [visitId, setVisitId] = useState(initialVisitId ?? '');
+  const [items, setItems] = useState<ItemRow[]>([]);
+  const [discounts, setDiscounts] = useState<DiscountRow[]>([]);
+  const [pfAmount, setPfAmount] = useState('');
+  const [pfType, setPfType] = useState<PfType>('');
+  const [pfDoctor, setPfDoctor] = useState('');
+  const [pfNotes, setPfNotes] = useState('');
+  const [tax, setTax] = useState('');
+  const [insuranceOn, setInsuranceOn] = useState(false);
+  const [insurance, setInsurance] = useState({ provider: '', memberId: '', policyNumber: '', coverageType: '' as '' | 'full' | 'partial' | 'co-pay', coverageAmount: '' });
+  const [attempted, setAttempted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const focusRow = useRef<string | null>(null);
+
+  const ctx = useKeyedFetch<FormContext>('/api/invoices/form-context');
+  const pctx = useKeyedFetch<PatientContext>(patient ? `/api/invoices/patient-context?patientId=${patient._id}` : null);
+  const pc = pctx.value && pctx.value.patient._id === patient?._id ? pctx.value : null;
+  const services = ctx.value?.services ?? [];
+  const doctors = ctx.value?.doctors ?? [];
+
+  const dirty = Boolean(patient && patient._id !== initialPatient?._id) || items.length > 0 || discounts.length > 0 || pfAmount !== '' || insurance.provider !== '';
+  useUnsavedChanges(dirty && !busy, 'This invoice is not saved yet. Leave anyway?');
+
+  // --- Problems --------------------------------------------------------------
+
+  const itemProblems = useMemo(() => {
+    const out: Record<string, { field: 'd' | 'q' | 'p'; text: string }> = {};
+    for (const r of items) {
+      const q = num(r.quantity);
+      const pr = num(r.unitPrice);
+      if (!r.description.trim()) out[r._key] = { field: 'd', text: 'Describe the charge, or remove this row.' };
+      else if (!Number.isFinite(q) || q <= 0) out[r._key] = { field: 'q', text: 'Quantity must be more than 0.' };
+      else if (!Number.isFinite(pr) || pr < 0) out[r._key] = { field: 'p', text: 'Enter a price of 0 or more.' };
+    }
+    return out;
+  }, [items]);
+
+  const discountProblems = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const d of discounts) {
+      const v = num(d.value);
+      if (!Number.isFinite(v) || v <= 0) out[d._key] = d.mode === 'percent' ? 'Enter the percentage.' : 'Enter the amount.';
+      else if (d.mode === 'percent' && v > 100) out[d._key] = 'A percentage can’t be over 100.';
+    }
+    return out;
+  }, [discounts]);
+
+  const pfValue = pfAmount.trim() === '' ? 0 : num(pfAmount);
+  const pfProblem = !Number.isFinite(pfValue) || pfValue < 0 ? 'Enter an amount of 0 or more.' : null;
+  const taxValue = taxRate > 0 || tax.trim() === '' ? 0 : num(tax);
+  const taxProblem = !Number.isFinite(taxValue) || taxValue < 0 ? 'Enter an amount of 0 or more.' : null;
+  const coverValue = insurance.coverageAmount.trim() === '' ? 0 : num(insurance.coverageAmount);
+  const insuranceProblem = insuranceOn && !insurance.provider.trim() ? 'Name the insurer or HMO, or remove it.' : insuranceOn && (!Number.isFinite(coverValue) || coverValue < 0) ? 'Enter a covered amount of 0 or more.' : null;
+  const patientProblem = patient ? null : 'Choose the patient to bill.';
+  const noCharges = items.length === 0 && !(pfValue > 0);
+
+  const problemCount =
+    (patientProblem ? 1 : 0) +
+    (noCharges ? 1 : 0) +
+    Object.keys(itemProblems).length +
+    Object.keys(discountProblems).length +
+    (pfProblem ? 1 : 0) +
+    (taxProblem ? 1 : 0) +
+    (insuranceProblem ? 1 : 0);
+
+  // --- Totals (same function as the API) -----------------------------------------
+
+  const totals = computeInvoiceTotals({
+    items: items.map((r) => ({ quantity: Math.max(0, num(r.quantity) || 0), unitPrice: Math.max(0, num(r.unitPrice) || 0) })),
+    discounts: discounts.map((d) => {
+      const v = Math.max(0, num(d.value) || 0);
+      return d.mode === 'percent' ? { type: d.type, percentage: Math.min(100, v) } : { type: d.type, amount: v };
+    }),
+    professionalFee: pfProblem ? 0 : pfValue,
+    tax: taxProblem ? 0 : taxValue,
+    taxRate,
   });
 
-  const [patientSearch, setPatientSearch] = useState('');
-  const [showPatientSearch, setShowPatientSearch] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [serviceSearch, setServiceSearch] = useState('');
-  const [showServiceSearch, setShowServiceSearch] = useState(false);
-  const [filteredServices, setFilteredServices] = useState<Service[]>([]);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [loadingDoctors, setLoadingDoctors] = useState(false);
+  // --- Rows ---------------------------------------------------------------------
 
-  useEffect(() => {
-    if (formData.patient) {
-      const patient = patients.find((p) => p._id === formData.patient);
-      setTimeout(() => {
-        setSelectedPatient(patient || null);
-        if (patient) {
-          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-        }
-      }, 0);
+  const updateItem = (k: string, patch: Partial<ItemRow>) => setItems((rs) => rs.map((r) => (r._key === k ? { ...r, ...patch } : r)));
+  const addService = (s: Service) => {
+    // The same service again raises the quantity instead of adding a second row.
+    const existing = items.find((r) => r.serviceId === s._id);
+    if (existing) {
+      updateItem(existing._key, { quantity: String((num(existing.quantity) || 0) + 1) });
+      return;
     }
-  }, [formData.patient, patients]);
-
-  // Fetch doctors for professional fee selection
-  useEffect(() => {
-    const fetchDoctors = async () => {
-      setLoadingDoctors(true);
-      try {
-        const res = await fetch('/api/doctors');
-        const data = await res.json();
-        if (data.success) {
-          setDoctors(data.data);
-        }
-      } catch (error) {
-        console.error('Error fetching doctors:', error);
-      } finally {
-        setLoadingDoctors(false);
-      }
-    };
-    fetchDoctors();
-  }, []);
-
-  useEffect(() => {
-    if (serviceSearch.length >= 2) {
-      const filtered = services.filter((service) => {
-        const searchLower = serviceSearch.toLowerCase();
-        return (
-          service.name.toLowerCase().includes(searchLower) ||
-          (service.code && service.code.toLowerCase().includes(searchLower)) ||
-          (service.category && service.category.toLowerCase().includes(searchLower))
-        );
-      });
-      setTimeout(() => {
-        setFilteredServices(filtered.slice(0, 10));
-      }, 0);
-    } else {
-      setTimeout(() => {
-        setFilteredServices([]);
-      }, 0);
-    }
-  }, [serviceSearch, services]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.patient-search-container') && !target.closest('.service-search-container')) {
-        setShowPatientSearch(false);
-        setShowServiceSearch(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const calculateTotals = () => {
-    const subtotal = formData.items.reduce((sum, item) => sum + item.total, 0);
-    const professionalFee = formData.professionalFee || 0;
-    const discountTotal = formData.discounts.reduce((sum, disc) => sum + disc.amount, 0);
-    const afterDiscount = subtotal - discountTotal;
-    // Calculate tax as percentage of after-discount amount if tax rate is set, otherwise use manual tax
-    const taxAmount = defaultTaxRate > 0 
-      ? (afterDiscount * defaultTaxRate / 100)
-      : (formData.tax || 0);
-    const total = afterDiscount + professionalFee + taxAmount;
-
-    return { subtotal, professionalFee, discountTotal, afterDiscount, tax: taxAmount, total };
+    setItems((rs) => [...rs, { _key: key(), serviceId: s._id, code: s.code ?? '', category: s.category ?? '', description: s.name, quantity: '1', unitPrice: String(s.unitPrice ?? 0) }]);
   };
-  
-  // Update formData.tax when defaultTaxRate changes (for display purposes)
-  useEffect(() => {
-    if (defaultTaxRate > 0) {
-      const subtotal = formData.items.reduce((sum, item) => sum + item.total, 0);
-      const discountTotal = formData.discounts.reduce((sum, disc) => sum + disc.amount, 0);
-      const afterDiscount = subtotal - discountTotal;
-      const calculatedTax = afterDiscount * defaultTaxRate / 100;
-      // Don't update if user manually set tax to 0
-      if (formData.tax !== calculatedTax) {
-        setTimeout(() => {
-          setFormData(prev => ({ ...prev, tax: calculatedTax }));
-        }, 0);
-      }
-    }
-  }, [defaultTaxRate, formData.items, formData.discounts]);
+  const addCustom = () => {
+    const row: ItemRow = { _key: key(), code: '', category: '', description: '', quantity: '1', unitPrice: '' };
+    focusRow.current = row._key;
+    setItems((rs) => [...rs, row]);
+  };
 
-  const { subtotal, professionalFee, discountTotal, afterDiscount, tax, total } = calculateTotals();
+  const elig = pc?.patient.discountEligibility;
+  const seniorAge = isSixty(pc?.patient.dateOfBirth);
+  const quick: { type: DiscountType; label: string; percent: number; reason: string }[] = [];
+  if (elig?.senior?.eligible || seniorAge) quick.push({ type: 'senior', label: 'Senior citizen 20%', percent: 20, reason: elig?.senior?.idNumber ? `Senior citizen ID ${elig.senior.idNumber}` : 'Senior citizen' });
+  if (elig?.pwd?.eligible) quick.push({ type: 'pwd', label: 'PWD 20%', percent: 20, reason: elig.pwd.idNumber ? `PWD ID ${elig.pwd.idNumber}` : 'PWD' });
+  const member = pc?.membership;
+  if (member?.discountPercentage) {
+    const tier = TIER[member.tier as MembershipTier]?.label ?? 'Member';
+    quick.push({ type: 'membership', label: `${tier} member ${member.discountPercentage}%`, percent: member.discountPercentage, reason: `${tier} member ${member.membershipNumber}` });
+  } else if (elig?.membership?.eligible && (elig.membership.discountPercentage ?? 0) > 0)
+    quick.push({ type: 'membership', label: `${elig.membership.membershipType ? `${elig.membership.membershipType} member` : 'Member'} ${elig.membership.discountPercentage}%`, percent: elig.membership.discountPercentage!, reason: elig.membership.membershipType ?? 'Membership' });
+  const hasDiscount = (t: DiscountType) => discounts.some((d) => d.type === t);
 
-  const addItem = (service?: Service) => {
-    const newItem: InvoiceItem = {
-      serviceId: service?._id,
-      code: service?.code || '',
-      description: service?.name || '',
-      category: service?.category || '',
-      quantity: 1,
-      unitPrice: service?.unitPrice || 0,
-      total: service?.unitPrice || 0,
-    };
-    setFormData({
-      ...formData,
-      items: [...formData.items, newItem],
+  const visits = pc?.visits ?? [];
+  const chosenVisit = visits.find((v) => v._id === visitId);
+
+  // --- Submit -------------------------------------------------------------------
+
+  const focusFirstProblem = () =>
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>('[data-invoice-form] [aria-invalid="true"], [data-invoice-form] [data-invalid="true"] input');
+      el?.focus();
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     });
-    setServiceSearch('');
-    setShowServiceSearch(false);
-  };
 
-  const updateItem = (index: number, field: keyof InvoiceItem, value: any) => {
-    const updated = [...formData.items];
-    updated[index] = { ...updated[index], [field]: value };
-    if (field === 'quantity' || field === 'unitPrice') {
-      updated[index].total = updated[index].quantity * updated[index].unitPrice;
-    }
-    setFormData({ ...formData, items: updated });
-  };
-
-  const removeItem = (index: number) => {
-    setFormData({
-      ...formData,
-      items: formData.items.filter((_, i) => i !== index),
-    });
-  };
-
-  const addDiscount = (type: Discount['type']) => {
-    let amount = 0;
-    let percentage = 0;
-
-    if (type === 'pwd' || type === 'senior') {
-      percentage = 20; // Default 20% for PWD/Senior
-      amount = (subtotal * percentage) / 100;
-    } else if (type === 'membership' && selectedPatient?.discountEligibility?.membership?.discountPercentage) {
-      percentage = selectedPatient.discountEligibility.membership.discountPercentage;
-      amount = (subtotal * percentage) / 100;
-    }
-
-    const newDiscount: Discount = {
-      type,
-      amount,
-      percentage: percentage > 0 ? percentage : undefined,
-      reason: type === 'pwd' ? 'PWD Discount' : type === 'senior' ? 'Senior Citizen Discount' : undefined,
-    };
-    setFormData({
-      ...formData,
-      discounts: [...formData.discounts, newDiscount],
-    });
-  };
-
-  const updateDiscount = (index: number, field: keyof Discount, value: any) => {
-    const updated = [...formData.discounts];
-    updated[index] = { ...updated[index], [field]: value };
-    if (field === 'percentage' && value > 0) {
-      updated[index].amount = (subtotal * value) / 100;
-    }
-    setFormData({ ...formData, discounts: updated });
-  };
-
-  const removeDiscount = (index: number) => {
-    setFormData({
-      ...formData,
-      discounts: formData.discounts.filter((_, i) => i !== index),
-    });
-  };
-
-  const handleSubmit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!formData.patient || !selectedPatient) {
-      alert('Please select a valid patient');
-      setShowPatientSearch(true);
+    if (busy) return;
+    setAttempted(true);
+    if (problemCount > 0 || !patient) {
+      focusFirstProblem();
       return;
     }
-    if (formData.items.length === 0) {
-      alert('Please add at least one invoice item');
-      return;
+    setBusy(true);
+    setFailure(null);
+    try {
+      const res = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient: patient._id,
+          ...(visitId ? { visit: visitId } : {}),
+          items: items.map((r) => ({
+            ...(r.serviceId ? { serviceId: r.serviceId } : {}),
+            ...(r.code.trim() ? { code: r.code.trim() } : {}),
+            ...(r.category.trim() ? { category: r.category.trim() } : {}),
+            description: r.description.trim(),
+            quantity: num(r.quantity),
+            unitPrice: roundMoney(num(r.unitPrice)),
+          })),
+          ...(pfValue > 0
+            ? {
+                professionalFee: roundMoney(pfValue),
+                ...(pfType ? { professionalFeeType: pfType } : {}),
+                ...(pfDoctor ? { professionalFeeDoctor: pfDoctor } : {}),
+                ...(pfNotes.trim() ? { professionalFeeNotes: pfNotes.trim() } : {}),
+              }
+            : {}),
+          discounts: discounts.map((d) => ({
+            type: d.type,
+            ...(d.reason.trim() ? { reason: d.reason.trim() } : {}),
+            ...(d.mode === 'percent' ? { percentage: num(d.value) } : { amount: roundMoney(num(d.value)) }),
+          })),
+          ...(taxRate > 0 ? {} : { tax: roundMoney(taxValue) }),
+          ...(insuranceOn
+            ? {
+                insurance: {
+                  provider: insurance.provider.trim(),
+                  ...(insurance.memberId.trim() ? { memberId: insurance.memberId.trim() } : {}),
+                  ...(insurance.policyNumber.trim() ? { policyNumber: insurance.policyNumber.trim() } : {}),
+                  ...(insurance.coverageType ? { coverageType: insurance.coverageType } : {}),
+                  ...(coverValue > 0 ? { coverageAmount: roundMoney(coverValue) } : {}),
+                  status: 'pending',
+                },
+              }
+            : {}),
+        }),
+      });
+      if (res.status === 401) {
+        router.push('/login');
+        return;
+      }
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        setFailure(formatApiError(json, 'The invoice could not be saved'));
+        setBusy(false);
+        return;
+      }
+      // Straight to the invoice, where the payment is taken.
+      router.push(`/invoices/${json.data._id}?created=1`);
+    } catch {
+      setFailure('The server couldn’t be reached. Nothing was saved; try again.');
+      setBusy(false);
     }
-
-    const submitData = {
-      patient: formData.patient,
-      visit: formData.visit || undefined,
-      items: formData.items.map((item) => ({
-        serviceId: item.serviceId || undefined,
-        code: item.code || undefined,
-        description: item.description,
-        category: item.category || undefined,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        total: item.total,
-      })),
-      professionalFee: formData.professionalFee || undefined,
-      professionalFeeType: formData.professionalFeeType || undefined,
-      professionalFeeNotes: formData.professionalFeeNotes || undefined,
-      discounts: formData.discounts.length > 0 ? formData.discounts : undefined,
-      tax: formData.tax || 0,
-      insurance: formData.insurance.provider
-        ? {
-            provider: formData.insurance.provider,
-            policyNumber: formData.insurance.policyNumber || undefined,
-            memberId: formData.insurance.memberId || undefined,
-            coverageType: formData.insurance.coverageType || undefined,
-            coverageAmount: formData.insurance.coverageAmount || undefined,
-            claimNumber: formData.insurance.claimNumber || undefined,
-            status: formData.insurance.status || undefined,
-            notes: formData.insurance.notes || undefined,
-          }
-        : undefined,
-    };
-
-    onSubmit(submitData);
   };
 
-  const filteredPatients = patients.filter((patient) => {
-    const searchLower = patientSearch.toLowerCase();
-    const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
-    const patientCode = (patient.patientCode || '').toLowerCase();
-    return fullName.includes(searchLower) || patientCode.includes(searchLower);
-  });
-
-  const selectPatient = (patient: Patient) => {
-    setFormData({ ...formData, patient: patient._id });
-    setSelectedPatient(patient);
-    setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-    setShowPatientSearch(false);
-  };
+  const status = busy
+    ? 'Saving the invoice…'
+    : attempted && problemCount > 0
+      ? `${problemCount === 1 ? 'One thing needs' : `${problemCount} things need`} fixing before the invoice can be saved.`
+      : noCharges
+        ? 'Add what the patient is being billed for.'
+        : `Saving bills ${patient ? `${patient.firstName} ${patient.lastName}` : 'the patient'} ${money(totals.total)}. The payment is recorded on the next page.`;
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div className="max-h-[80vh] overflow-y-auto">
-        <div className="flex flex-col gap-6 p-4 sm:p-6">
-          {/* Patient Selection */}
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-emerald-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </div>
-              <label className="block text-sm font-bold text-gray-900">
-                Patient <span className="text-red-600">*</span>
-              </label>
-            </div>
-            <div className="relative patient-search-container">
-              <input
-                type="text"
-                required
-                value={patientSearch}
-                onChange={(e) => {
-                  setPatientSearch(e.target.value);
-                  setShowPatientSearch(true);
-                  if (!e.target.value) {
-                    setFormData({ ...formData, patient: '' });
-                    setSelectedPatient(null);
-                  }
+    <form data-invoice-form onSubmit={submit} noValidate autoComplete="off" className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="flex min-w-0 flex-col gap-6">
+        {failure && (
+          <div role="alert" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+            <p>{failure}</p>
+            <button type="button" onClick={() => setFailure(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 text-red-700 hover:text-red-900 ${FOCUS_RING}`}>
+              <Svg d={ICON.x} />
+            </button>
+          </div>
+        )}
+
+        {/* Patient and visit */}
+        <Section id={`${ids}-who`} title="Patient">
+          <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
+            <div data-invalid={attempted && patientProblem ? 'true' : undefined}>
+              <PatientSearch
+                value={patient}
+                onChange={(p) => {
+                  setPatient(p);
+                  setVisitId('');
+                  setDiscounts((ds) => ds.filter((d) => d.type === 'promotional' || d.type === 'other'));
                 }}
-                onFocus={() => setShowPatientSearch(true)}
-                placeholder="Type to search patients..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm"
+                autoFocus={!initialPatient}
               />
-              {showPatientSearch && filteredPatients.length > 0 && (
-                <div
-                  className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto"
-                >
-                  {filteredPatients.map((patient) => (
-                    <button
-                      key={patient._id}
-                      type="button"
-                      onClick={() => selectPatient(patient)}
-                      className="w-full text-left px-3 py-2 hover:bg-emerald-50 rounded transition-colors"
-                    >
-                      <div className="flex flex-col items-start gap-1">
-                        <span className="text-sm font-semibold text-gray-900">{patient.firstName} {patient.lastName}</span>
-                        {patient.patientCode && (
-                          <span className="text-xs text-gray-600">{patient.patientCode}</span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+              {attempted && patientProblem && <FieldError id={`${ids}-patient-err`}>{patientProblem}</FieldError>}
             </div>
-            {/* Visit Selection (Optional) */}
-            {formData.patient && visits.length > 0 && (
-              <div className="mt-4">
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Visit (Optional)</label>
-                <select
-                  value={formData.visit}
-                  onChange={(e) => setFormData({ ...formData, visit: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                >
-                  <option value="">Select a visit...</option>
-                  {visits.map((visit) => (
-                    <option key={visit._id} value={visit._id}>
-                      {visit.visitCode} - {new Date(visit.date).toLocaleDateString()}
+            {patient && visits.length > 0 && (
+              <div>
+                <Label htmlFor={`${ids}-visit`} optional>
+                  For visit
+                </Label>
+                <select id={`${ids}-visit`} value={visitId} onChange={(e) => setVisitId(e.target.value)} className={FIELD}>
+                  <option value="">Not linked to a visit</option>
+                  {visits.map((v) => (
+                    <option key={v._id} value={v._id}>
+                      {v.visitCode} · {shortDate(v.date)}
+                      {v.doctor ? ` · ${v.doctor}` : ''}
+                      {v.invoice ? ` · billed (${v.invoice.invoiceNumber})` : ''}
                     </option>
                   ))}
+                  {visitId && !chosenVisit && <option value={visitId}>The visit you came from</option>}
                 </select>
+                {chosenVisit?.invoice ? (
+                  <p className="mt-1.5 flex items-start gap-1.5 text-sm text-amber-800">
+                    <Svg d={ICON.alert} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      This visit already has invoice{' '}
+                      <Link href={`/invoices/${chosenVisit.invoice._id}`} target="_blank" className={`rounded font-mono font-semibold underline underline-offset-2 ${FOCUS_RING}`}>
+                        {chosenVisit.invoice.invoiceNumber}
+                      </Link>
+                      . Bill it again only for charges not on that one.
+                    </span>
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-xs text-gray-500">Linked invoices show on the visit under “From this visit”.</p>
+                )}
               </div>
             )}
           </div>
+        </Section>
 
-          {/* Invoice Items */}
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-blue-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">
-                Invoice Items <span className="text-red-600">*</span>
-              </h3>
+        {/* Services */}
+        <Section
+          id={`${ids}-items`}
+          title="Services"
+          hint="Pick from the clinic’s price list; prices can be changed for this invoice."
+          aside={
+            items.length > 0 ? (
+              <span className="text-sm text-gray-500">
+                <span className="font-mono tabular-nums text-gray-900">{money(totals.subtotal)}</span>
+              </span>
+            ) : null
+          }
+        >
+          <div className="border-b border-gray-100 px-5 py-3">
+            <ServicePicker services={services} loading={ctx.loading && !ctx.value} failed={Boolean(ctx.error)} money={money} onPick={addService} />
+          </div>
+          {items.length > 0 && (
+            <div aria-hidden="true" className={`hidden gap-3 px-5 pt-3 text-xs font-medium text-gray-500 sm:grid ${ITEM_COLS}`}>
+              <span>Charge</span>
+              <span className="text-right">Qty</span>
+              <span className="text-right">Unit price</span>
+              <span className="text-right">Amount</span>
             </div>
-            <div className="flex justify-between items-center mb-4">
-              <div className="relative service-search-container flex-1 max-w-xs">
-                <input
-                  type="text"
-                  value={serviceSearch}
-                  onChange={(e) => {
-                    setServiceSearch(e.target.value);
-                    setShowServiceSearch(true);
-                  }}
-                  onFocus={() => setShowServiceSearch(true)}
-                  placeholder="Search services..."
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-                />
-                {showServiceSearch && filteredServices.length > 0 && (
-                  <div
-                    className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto"
+          )}
+          <ul className="divide-y divide-gray-100 sm:divide-y-0">
+            {items.map((r, i) => {
+              const rid = `${ids}-i${r._key}`;
+              const err = attempted || r.description.trim() ? itemProblems[r._key] : undefined;
+              const bad = (f: 'd' | 'q' | 'p') => err?.field === f;
+              const label = r.description.trim() || `charge ${i + 1}`;
+              return (
+                <li key={r._key} className={`motion-row-in grid gap-3 px-5 py-3 sm:items-start sm:py-2 ${ITEM_COLS}`}>
+                  <div className="min-w-0">
+                    <RowLabel htmlFor={`${rid}-d`}>Charge</RowLabel>
+                    <input
+                      ref={(el) => {
+                        if (el && focusRow.current === r._key) {
+                          focusRow.current = null;
+                          el.focus();
+                        }
+                      }}
+                      id={`${rid}-d`}
+                      value={r.description}
+                      onChange={(e) => updateItem(r._key, { description: e.target.value })}
+                      placeholder="e.g. Wound dressing"
+                      maxLength={1000}
+                      aria-invalid={bad('d')}
+                      aria-describedby={bad('d') ? `${rid}-err` : undefined}
+                      className={`${FIELD} ${bad('d') ? 'border-red-400' : ''}`}
+                    />
+                    {(r.code || r.category) && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        {r.code && <span className="font-mono">{r.code}</span>}
+                        {r.code && r.category && ' · '}
+                        {r.category}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <RowLabel htmlFor={`${rid}-q`}>Quantity</RowLabel>
+                    <input
+                      id={`${rid}-q`}
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="1"
+                      value={r.quantity}
+                      onChange={(e) => updateItem(r._key, { quantity: e.target.value })}
+                      aria-invalid={bad('q')}
+                      aria-describedby={bad('q') ? `${rid}-err` : undefined}
+                      className={`${FIELD} text-right font-mono tabular-nums ${bad('q') ? 'border-red-400' : ''}`}
+                    />
+                  </div>
+                  <div>
+                    <RowLabel htmlFor={`${rid}-p`}>Unit price</RowLabel>
+                    <input
+                      id={`${rid}-p`}
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="0.01"
+                      value={r.unitPrice}
+                      onChange={(e) => updateItem(r._key, { unitPrice: e.target.value })}
+                      placeholder="0.00"
+                      aria-invalid={bad('p')}
+                      aria-describedby={bad('p') ? `${rid}-err` : undefined}
+                      className={`${FIELD} text-right font-mono tabular-nums ${bad('p') ? 'border-red-400' : ''}`}
+                    />
+                  </div>
+                  <p className="self-center text-right font-mono text-sm font-medium tabular-nums text-gray-900">
+                    <span className="font-sans font-normal text-gray-500 sm:hidden">Amount </span>
+                    {money(totals.items[i]?.total ?? 0)}
+                  </p>
+                  <button type="button" onClick={() => setItems((rs) => rs.filter((x) => x._key !== r._key))} aria-label={`Remove ${label}`} title={`Remove ${label}`} className={`${REMOVE_BUTTON} justify-self-end sm:mt-0.5 sm:justify-self-auto`}>
+                    <Svg d={ICON.x} />
+                  </button>
+                  {err && (
+                    <div className="sm:col-span-full sm:-mt-1">
+                      <FieldError id={`${rid}-err`}>{err.text}</FieldError>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          <div className="px-5 py-4">
+            <button type="button" onClick={addCustom} className={ADD_BUTTON}>
+              <Svg d="M12 4v16m8-8H4" />
+              Add a charge not on the price list
+            </button>
+            {attempted && noCharges && <FieldError id={`${ids}-none`}>Add at least one service, or a professional fee.</FieldError>}
+          </div>
+        </Section>
+
+        {/* Professional fee */}
+        <Section id={`${ids}-pf`} title="Professional fee" hint="The doctor’s own fee, billed apart from the clinic’s services. Discounts don’t reduce it.">
+          <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor={`${ids}-pf-amount`} optional>
+                Amount
+              </Label>
+              <input
+                id={`${ids}-pf-amount`}
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="0.01"
+                value={pfAmount}
+                onChange={(e) => setPfAmount(e.target.value)}
+                placeholder="0.00"
+                aria-invalid={Boolean(attempted && pfProblem)}
+                className={`${FIELD} text-right font-mono tabular-nums sm:max-w-[12rem] ${attempted && pfProblem ? 'border-red-400' : ''}`}
+              />
+              {attempted && pfProblem && <FieldError id={`${ids}-pf-err`}>{pfProblem}</FieldError>}
+            </div>
+            <div>
+              <Label htmlFor={`${ids}-pf-doctor`} optional>
+                Doctor
+              </Label>
+              <select id={`${ids}-pf-doctor`} value={pfDoctor} onChange={(e) => setPfDoctor(e.target.value)} disabled={!ctx.value} className={FIELD}>
+                <option value="">{ctx.value ? 'Not named' : ctx.error ? 'Doctor list unavailable' : 'Loading doctors…'}</option>
+                {doctors.map((d) => (
+                  <option key={d._id} value={d._id}>
+                    Dr. {d.firstName} {d.lastName}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <fieldset className="sm:col-span-2">
+              <legend className="mb-1.5 block text-sm font-medium text-gray-700">
+                For <span className="font-normal text-gray-500">(optional)</span>
+              </legend>
+              <div className="inline-flex flex-wrap gap-1 rounded-md border border-gray-300 bg-white p-1">
+                {PF_TYPES.map((t) => (
+                  <label
+                    key={t.value}
+                    className="cursor-pointer rounded px-3.5 py-1 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 has-[:checked]:bg-brand-teal-dark has-[:checked]:text-white has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-teal has-[:focus-visible]:ring-offset-1"
                   >
-                    {filteredServices.map((service) => (
+                    <input
+                      type="radio"
+                      name={`${ids}-pf-type`}
+                      value={t.value}
+                      checked={pfType === t.value}
+                      onChange={() => setPfType(t.value)}
+                      onClick={() => pfType === t.value && setPfType('')}
+                      className="sr-only"
+                    />
+                    {t.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <div className="sm:col-span-2">
+              <Label htmlFor={`${ids}-pf-notes`} optional>
+                Note
+              </Label>
+              <input id={`${ids}-pf-notes`} value={pfNotes} onChange={(e) => setPfNotes(e.target.value)} maxLength={2000} placeholder="e.g. ECG reading" className={FIELD} />
+            </div>
+          </div>
+        </Section>
+
+        {/* Discounts */}
+        <Section
+          id={`${ids}-disc`}
+          title="Discounts"
+          hint="Taken off the services, in the order listed. Together they never exceed the services total."
+          aside={
+            totals.discounts.length > 0 ? (
+              <span className="font-mono text-sm tabular-nums text-gray-900">−{money(totals.discounts.reduce((s, d) => s + d.amount, 0))}</span>
+            ) : null
+          }
+        >
+          {(quick.length > 0 || patient) && (
+            <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-5 py-3">
+              {quick.length > 0 ? (
+                <>
+                  <span className="text-sm text-gray-500">This patient qualifies for:</span>
+                  {quick.map((q) => {
+                    const on = hasDiscount(q.type);
+                    return (
                       <button
-                        key={service._id}
+                        key={q.type}
                         type="button"
-                        onClick={() => addItem(service)}
-                        className="w-full text-left px-3 py-2 hover:bg-blue-50 rounded transition-colors"
+                        disabled={on}
+                        onClick={() => setDiscounts((ds) => [...ds, { _key: key(), type: q.type, mode: 'percent', value: String(q.percent), reason: q.reason }])}
+                        aria-label={on ? `${q.label} is applied` : `Apply ${q.label}`}
+                        className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-sm font-medium transition-colors ${on ? 'cursor-default border-brand-teal/30 bg-brand-teal-light text-brand-teal-deep' : `border-gray-300 bg-white text-gray-700 hover:border-brand-teal-dark hover:bg-brand-teal-light/50 hover:text-brand-teal-deep ${FOCUS_RING}`}`}
                       >
-                        <div className="flex flex-col items-start gap-1">
-                          <span className="text-sm font-semibold text-gray-900">{service.name}</span>
-                          <span className="text-xs text-gray-600">
-                            {service.code && `${service.code} • `}{formatCurrency(service.unitPrice)}
-                          </span>
-                        </div>
+                        <Svg d={on ? ICON.check : 'M12 4v16m8-8H4'} className="h-3.5 w-3.5" />
+                        {q.label}
                       </button>
-                    ))}
+                    );
+                  })}
+                  {seniorAge && !elig?.senior?.eligible && <span className="w-full text-xs text-gray-500">Senior citizen by age; check their ID before applying.</span>}
+                </>
+              ) : (
+                pc && <span className="text-sm text-gray-500">No senior, PWD or membership discount on file for this patient.</span>
+              )}
+              {member && !member.discountPercentage && (
+                <span className="w-full text-xs text-amber-800">
+                  Membership <span className="font-mono">{member.membershipNumber}</span> is {member.state === 'expired' ? 'expired' : member.state}, so it gives no discount.{' '}
+                  <Link href={`/memberships/${member._id}`} target="_blank" className={`rounded font-semibold underline hover:text-amber-900 ${FOCUS_RING}`}>
+                    Open the membership
+                  </Link>
+                </span>
+              )}
+            </div>
+          )}
+          {discounts.length > 0 && (
+            <div aria-hidden="true" className={`hidden gap-3 px-5 pt-3 text-xs font-medium text-gray-500 sm:grid ${DISCOUNT_COLS}`}>
+              <span>Kind</span>
+              <span>Taken as</span>
+              <span className="text-right">Value</span>
+              <span>Reason or ID</span>
+            </div>
+          )}
+          <ul className="divide-y divide-gray-100 sm:divide-y-0">
+            {discounts.map((d, i) => {
+              const rid = `${ids}-d${d._key}`;
+              const err = attempted || d.value.trim() ? discountProblems[d._key] : undefined;
+              const applied = totals.discounts[i]?.amount ?? 0;
+              const update = (patch: Partial<DiscountRow>) => setDiscounts((ds) => ds.map((x) => (x._key === d._key ? { ...x, ...patch } : x)));
+              return (
+                <li key={d._key} className={`motion-row-in grid gap-3 px-5 py-3 sm:items-start sm:py-2 ${DISCOUNT_COLS}`}>
+                  <div>
+                    <RowLabel htmlFor={`${rid}-t`}>Kind</RowLabel>
+                    <select id={`${rid}-t`} value={d.type} onChange={(e) => update({ type: e.target.value as DiscountType })} className={FIELD}>
+                      {Object.entries(DISCOUNT_LABEL).map(([v, l]) => (
+                        <option key={v} value={v}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <RowLabel htmlFor={`${rid}-m`}>Taken as</RowLabel>
+                    <select id={`${rid}-m`} value={d.mode} onChange={(e) => update({ mode: e.target.value as DiscountRow['mode'] })} className={FIELD}>
+                      <option value="percent">% of services</option>
+                      <option value="amount">Fixed amount</option>
+                    </select>
+                  </div>
+                  <div>
+                    <RowLabel htmlFor={`${rid}-v`}>Value</RowLabel>
+                    <input
+                      id={`${rid}-v`}
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      max={d.mode === 'percent' ? 100 : undefined}
+                      step={d.mode === 'percent' ? '1' : '0.01'}
+                      value={d.value}
+                      onChange={(e) => update({ value: e.target.value })}
+                      aria-invalid={Boolean(err)}
+                      aria-describedby={err ? `${rid}-err` : `${rid}-hint`}
+                      className={`${FIELD} text-right font-mono tabular-nums ${err ? 'border-red-400' : ''}`}
+                    />
+                  </div>
+                  <div>
+                    <RowLabel htmlFor={`${rid}-r`}>Reason or ID</RowLabel>
+                    <input id={`${rid}-r`} value={d.reason} onChange={(e) => update({ reason: e.target.value })} maxLength={200} placeholder={d.type === 'promotional' ? 'e.g. October check-up promo' : 'Optional'} className={FIELD} />
+                  </div>
+                  <button type="button" onClick={() => setDiscounts((ds) => ds.filter((x) => x._key !== d._key))} aria-label={`Remove ${DISCOUNT_LABEL[d.type]} discount`} title="Remove discount" className={`${REMOVE_BUTTON} justify-self-end sm:mt-0.5 sm:justify-self-auto`}>
+                    <Svg d={ICON.x} />
+                  </button>
+                  <div className="sm:col-span-full sm:-mt-1">
+                    {err ? (
+                      <FieldError id={`${rid}-err`}>{err}</FieldError>
+                    ) : (
+                      <p id={`${rid}-hint`} className="text-xs text-gray-500">
+                        Takes <span className="font-mono text-gray-900">{money(applied)}</span> off
+                        {d.mode === 'amount' && num(d.value) > applied + 0.005 && ' (all that is left of the services)'}.
+                      </p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="px-5 py-4">
+            <button type="button" onClick={() => setDiscounts((ds) => [...ds, { _key: key(), type: 'promotional', mode: 'percent', value: '', reason: '' }])} className={ADD_BUTTON}>
+              <Svg d="M12 4v16m8-8H4" />
+              Add a discount
+            </button>
+          </div>
+        </Section>
+
+        {/* Tax and insurer */}
+        <Section id={`${ids}-more`} title={taxRate > 0 ? 'Insurance or HMO' : 'Tax, insurance or HMO'}>
+          <div className="grid gap-4 px-5 py-4">
+            {taxRate === 0 && (
+              <div className="sm:max-w-[12rem]">
+                <Label htmlFor={`${ids}-tax`} optional>
+                  Tax
+                </Label>
+                <input
+                  id={`${ids}-tax`}
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  value={tax}
+                  onChange={(e) => setTax(e.target.value)}
+                  placeholder="0.00"
+                  aria-invalid={Boolean(attempted && taxProblem)}
+                  className={`${FIELD} text-right font-mono tabular-nums ${attempted && taxProblem ? 'border-red-400' : ''}`}
+                />
+                {attempted && taxProblem ? <FieldError id={`${ids}-tax-err`}>{taxProblem}</FieldError> : <p className="mt-1.5 text-xs text-gray-500">No tax rate is set in Settings, so enter it here if any.</p>}
+              </div>
+            )}
+
+            {!insuranceOn ? (
+              <div>
+                <button type="button" onClick={() => setInsuranceOn(true)} className={ADD_BUTTON}>
+                  <Svg d="M12 4v16m8-8H4" />
+                  An insurer or HMO covers part of this
+                </button>
+              </div>
+            ) : (
+              <div className="grid gap-4 rounded-md border border-gray-200 p-4 sm:grid-cols-2" data-invalid={attempted && insuranceProblem ? 'true' : undefined}>
+                <div className="flex items-start justify-between gap-3 sm:col-span-2">
+                  <p className="text-sm font-semibold text-gray-900">Insurer or HMO</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInsuranceOn(false);
+                      setInsurance({ provider: '', memberId: '', policyNumber: '', coverageType: '', coverageAmount: '' });
+                    }}
+                    className={`rounded text-sm font-semibold text-gray-600 hover:text-red-700 ${FOCUS_RING}`}
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div>
+                  <Label htmlFor={`${ids}-ins-p`}>Name</Label>
+                  <input
+                    id={`${ids}-ins-p`}
+                    value={insurance.provider}
+                    onChange={(e) => setInsurance((s) => ({ ...s, provider: e.target.value }))}
+                    maxLength={200}
+                    placeholder="e.g. PhilHealth, Maxicare"
+                    aria-invalid={Boolean(attempted && insuranceProblem && !insurance.provider.trim())}
+                    className={`${FIELD} ${attempted && insuranceProblem && !insurance.provider.trim() ? 'border-red-400' : ''}`}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor={`${ids}-ins-m`} optional>
+                    Member ID
+                  </Label>
+                  <input id={`${ids}-ins-m`} value={insurance.memberId} onChange={(e) => setInsurance((s) => ({ ...s, memberId: e.target.value }))} maxLength={200} className={`${FIELD} font-mono`} />
+                </div>
+                <div>
+                  <Label htmlFor={`${ids}-ins-c`} optional>
+                    Coverage
+                  </Label>
+                  <select id={`${ids}-ins-c`} value={insurance.coverageType} onChange={(e) => setInsurance((s) => ({ ...s, coverageType: e.target.value as typeof s.coverageType }))} className={FIELD}>
+                    <option value="">Not stated</option>
+                    <option value="full">Full</option>
+                    <option value="partial">Partial</option>
+                    <option value="co-pay">Co-pay</option>
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor={`${ids}-ins-a`} optional>
+                    Amount covered
+                  </Label>
+                  <input
+                    id={`${ids}-ins-a`}
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="0.01"
+                    value={insurance.coverageAmount}
+                    onChange={(e) => setInsurance((s) => ({ ...s, coverageAmount: e.target.value }))}
+                    placeholder="0.00"
+                    className={`${FIELD} text-right font-mono tabular-nums`}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label htmlFor={`${ids}-ins-n`} optional>
+                    Policy number
+                  </Label>
+                  <input id={`${ids}-ins-n`} value={insurance.policyNumber} onChange={(e) => setInsurance((s) => ({ ...s, policyNumber: e.target.value }))} maxLength={200} className={`${FIELD} font-mono sm:max-w-sm`} />
+                </div>
+                <p className="text-xs text-gray-500 sm:col-span-2">
+                  The claim starts as pending. When the insurer pays, record it as a payment by HMO or Insurance on the invoice.
+                </p>
+                {attempted && insuranceProblem && (
+                  <div className="sm:col-span-2">
+                    <FieldError id={`${ids}-ins-err`}>{insuranceProblem}</FieldError>
                   </div>
                 )}
               </div>
-            </div>
-
-            {formData.items.length === 0 ? (
-              <div className="p-6 text-center border-2 border-dashed border-blue-200 rounded-lg bg-white/50">
-                <span className="text-sm text-gray-600 font-medium">No items added. Search and select services above.</span>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {formData.items.map((item, index) => (
-                  <div key={index} className="bg-gradient-to-r from-white to-blue-50/50 border border-blue-200 rounded-lg p-4 hover:shadow-md transition-all">
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                      <div className="md:col-span-5">
-                        <div className="text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Description</div>
-                        <input
-                          type="text"
-                          value={item.description}
-                          onChange={(e) => updateItem(index, 'description', e.target.value)}
-                          required
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <div className="text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Qty</div>
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
-                          required
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <div className="text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Unit Price</div>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.unitPrice}
-                          onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                          required
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <div className="text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Total</div>
-                        <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
-                          <span className="text-sm font-bold text-gray-900">
-                            {formatCurrency(item.total)}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="md:col-span-1">
-                        <button
-                          type="button"
-                          onClick={() => removeItem(index)}
-                          className="w-full px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors font-semibold text-sm"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
             )}
           </div>
+        </Section>
 
-          {/* Discounts */}
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border border-amber-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-amber-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Discounts</h3>
-            </div>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {selectedPatient?.discountEligibility?.pwd?.eligible && (
-                <button
-                  type="button"
-                  onClick={() => addDiscount('pwd')}
-                  className="px-3 py-1.5 text-sm bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors font-semibold border border-amber-200"
-                >
-                  PWD
-                </button>
-              )}
-              {selectedPatient?.discountEligibility?.senior?.eligible && (
-                <button
-                  type="button"
-                  onClick={() => addDiscount('senior')}
-                  className="px-3 py-1.5 text-sm bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors font-semibold border border-amber-200"
-                >
-                  Senior
-                </button>
-              )}
-              {selectedPatient?.discountEligibility?.membership?.eligible && (
-                <button
-                  type="button"
-                  onClick={() => addDiscount('membership')}
-                  className="px-3 py-1.5 text-sm bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors font-semibold border border-amber-200"
-                >
-                  Membership
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => addDiscount('promotional')}
-                className="px-3 py-1.5 text-sm bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors font-semibold border border-amber-200"
-              >
-                Promo
-              </button>
-              <button
-                type="button"
-                onClick={() => addDiscount('other')}
-                className="px-3 py-1.5 text-sm bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors font-semibold border border-amber-200"
-              >
-                Other
-              </button>
-            </div>
-
-            {formData.discounts.length > 0 && (
-              <div className="flex flex-col gap-3">
-                {formData.discounts.map((discount, index) => (
-                  <div key={index} className="bg-white border border-amber-200 rounded-lg p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                      <div className="md:col-span-2">
-                        <div className="text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Type</div>
-                        <select
-                          value={discount.type}
-                          onChange={(e) => updateDiscount(index, 'type', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                        >
-                          <option value="pwd">PWD</option>
-                          <option value="senior">Senior</option>
-                          <option value="membership">Membership</option>
-                          <option value="promotional">Promotional</option>
-                          <option value="other">Other</option>
-                        </select>
-                      </div>
-                      <div className="md:col-span-2">
-                        <div className="text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">%</div>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={discount.percentage || ''}
-                          onChange={(e) => updateDiscount(index, 'percentage', parseFloat(e.target.value) || 0)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm"
-                        />
-                      </div>
-                      <div className="md:col-span-3">
-                        <div className="text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Amount</div>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={discount.amount}
-                          onChange={(e) => updateDiscount(index, 'amount', parseFloat(e.target.value) || 0)}
-                          required
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm"
-                        />
-                      </div>
-                      <div className="md:col-span-4">
-                        <div className="text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Reason</div>
-                        <input
-                          type="text"
-                          value={discount.reason || ''}
-                          onChange={(e) => updateDiscount(index, 'reason', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm"
-                        />
-                      </div>
-                      <div className="md:col-span-1">
-                        <button
-                          type="button"
-                          onClick={() => removeDiscount(index)}
-                          className="w-full px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors font-semibold text-sm"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Professional Fee */}
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-purple-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Professional Fee (PF)</h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-                  Amount
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={formData.professionalFee || ''}
-                  onChange={(e) => setFormData({ ...formData, professionalFee: parseFloat(e.target.value) || 0 })}
-                  placeholder="0.00"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm"
-                />
-                <p className="text-xs text-gray-600 mt-1">Doctor&apos;s professional fee separate from service charges</p>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-                  Type
-                </label>
-                <select
-                  value={formData.professionalFeeType || ''}
-                  onChange={(e) => setFormData({ ...formData, professionalFeeType: e.target.value as any })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                >
-                  <option value="">Select type...</option>
-                  <option value="consultation">Consultation</option>
-                  <option value="procedure">Procedure/Surgery</option>
-                  <option value="reading">Reading/Interpretation</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-                  Doctor (Optional)
-                </label>
-                <select
-                  value={formData.professionalFeeDoctor || ''}
-                  onChange={(e) => setFormData({ ...formData, professionalFeeDoctor: e.target.value })}
-                  disabled={loadingDoctors}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm bg-white disabled:bg-gray-50 disabled:cursor-not-allowed"
-                >
-                  <option value="">{loadingDoctors ? 'Loading doctors...' : 'Select doctor...'}</option>
-                  {doctors.map((doctor) => (
-                    <option key={doctor._id} value={doctor._id}>
-                      Dr. {doctor.firstName} {doctor.lastName}
-                      {doctor.specializationId?.name ? ` - ${doctor.specializationId.name}` : ''}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-600 mt-1">Assign the professional fee to a specific doctor</p>
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-                  Notes (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={formData.professionalFeeNotes || ''}
-                  onChange={(e) => setFormData({ ...formData, professionalFeeNotes: e.target.value })}
-                  placeholder="e.g., Dr. Smith - General Consultation"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Tax & Insurance */}
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-gray-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-5m-6 5v-5m6 5h.01M9 17h.01M9 12h.01M12 12h.01M15 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Tax & Insurance</h3>
-            </div>
-            <div className="flex flex-col gap-4">
-              {/* Tax */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
-                  Tax {defaultTaxRate > 0 ? `(${defaultTaxRate}% applied automatically)` : '(Manual)'}
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={defaultTaxRate > 0 ? tax : (formData.tax || 0)}
-                  onChange={(e) => setFormData({ ...formData, tax: parseFloat(e.target.value) || 0 })}
-                  disabled={defaultTaxRate > 0}
-                  placeholder={defaultTaxRate > 0 ? 'Calculated automatically' : 'Enter tax amount'}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all text-sm disabled:bg-gray-100"
-                />
-              </div>
-              {/* Insurance/HMO (Optional) */}
-              <div className="pt-4 border-t border-gray-200">
-                <h4 className="text-sm font-bold text-gray-900 mb-3">Insurance/HMO (Optional)</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Provider</label>
-                    <input
-                      type="text"
-                      value={formData.insurance.provider}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          insurance: { ...formData.insurance, provider: e.target.value },
-                        })
-                      }
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Policy Number</label>
-                    <input
-                      type="text"
-                      value={formData.insurance.policyNumber}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          insurance: { ...formData.insurance, policyNumber: e.target.value },
-                        })
-                      }
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Member ID</label>
-                    <input
-                      type="text"
-                      value={formData.insurance.memberId}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          insurance: { ...formData.insurance, memberId: e.target.value },
-                        })
-                      }
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Coverage Type</label>
-                    <select
-                      value={formData.insurance.coverageType}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          insurance: { ...formData.insurance, coverageType: e.target.value as any },
-                        })
-                      }
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                    >
-                      <option value="">Select...</option>
-                      <option value="full">Full</option>
-                      <option value="partial">Partial</option>
-                      <option value="co-pay">Co-pay</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Totals Summary */}
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-emerald-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-5m-6 5v-5m6 5h.01M9 17h.01M9 12h.01M12 12h.01M15 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Summary</h3>
-            </div>
-            <div className="bg-white rounded-lg p-4 space-y-3 border border-emerald-200">
-              <div className="flex justify-between">
-                <span className="text-sm font-semibold text-gray-700">Subtotal:</span>
-                <span className="text-sm font-bold text-gray-900">{formatCurrency(subtotal)}</span>
-              </div>
-              {professionalFee > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-sm font-semibold text-purple-700">Professional Fee:</span>
-                  <span className="text-sm font-bold text-purple-700">+{formatCurrency(professionalFee)}</span>
-                </div>
-              )}
-              {discountTotal > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-sm font-semibold text-red-600">Discounts:</span>
-                  <span className="text-sm font-bold text-red-600">-{formatCurrency(discountTotal)}</span>
-                </div>
-              )}
-              {tax > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-sm font-semibold text-gray-700">Tax:</span>
-                  <span className="text-sm font-bold text-gray-900">{formatCurrency(tax)}</span>
-                </div>
-              )}
-              <div className="border-t border-gray-300 pt-3">
-                <div className="flex justify-between">
-                  <span className="text-lg font-bold text-gray-900">Total:</span>
-                  <span className="text-lg font-bold text-emerald-600">{formatCurrency(total)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Form Actions */}
-          <hr className="border-gray-200" />
-          <div className="flex justify-end gap-3 pt-2">
-            {onCancel && (
-              <button type="button" onClick={onCancel} className="px-4 py-2.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-semibold border border-gray-200">
-                Cancel
-              </button>
-            )}
-            <button type="submit" className="px-4 py-2.5 text-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-md">
-              Create Invoice
+        <div className="motion-tray-in sticky bottom-4 z-20 flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-[0_8px_30px_rgb(15,23,42,0.1)] sm:flex-row sm:items-center sm:justify-between">
+          <p className={`text-sm ${attempted && problemCount > 0 && !busy ? 'font-medium text-red-700' : 'text-gray-600'}`} aria-live="polite">
+            {status}
+          </p>
+          <div className="flex shrink-0 justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (dirty && !window.confirm('Discard this invoice?')) return;
+                onCancel();
+              }}
+              disabled={busy}
+              className={`rounded-md px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:text-gray-900 ${FOCUS_RING}`}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              aria-busy={busy}
+              className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
+            >
+              <Svg d={ICON.check} />
+              {busy ? 'Saving…' : 'Create invoice'}
             </button>
           </div>
         </div>
       </div>
+
+      {/* The bill, worked out as you go */}
+      <aside className="flex min-w-0 flex-col gap-6 xl:sticky xl:top-20">
+        <section className="rounded-lg border border-gray-200 bg-white" aria-labelledby={`${ids}-bill`}>
+          <div className="border-b border-gray-200 px-5 py-4">
+            <h2 id={`${ids}-bill`} className="text-base font-bold tracking-tight text-gray-900">
+              Bill
+            </h2>
+          </div>
+          <dl className="px-5 py-4 text-sm">
+            <BillLine label="Services" value={money(totals.subtotal)} muted={items.length === 0} />
+            {totals.discounts.map((d, i) =>
+              d.amount > 0 ? <BillLine key={i} label={`${DISCOUNT_LABEL[d.type]} discount`} value={`−${money(d.amount)}`} /> : null
+            )}
+            {totals.professionalFee > 0 && <BillLine label="Professional fee" value={money(totals.professionalFee)} />}
+            {(taxRate > 0 || totals.tax > 0) && (
+              <BillLine
+                label={
+                  <>
+                    Tax{taxRate > 0 && <span className="font-mono text-gray-500"> {taxRate}%</span>}
+                  </>
+                }
+                value={money(totals.tax)}
+              />
+            )}
+            <div className="mt-2 flex items-baseline justify-between gap-4 border-t border-gray-200 pt-3">
+              <dt className="font-semibold text-gray-900">Total</dt>
+              <dd className="font-mono text-2xl font-semibold tabular-nums text-gray-900" aria-live="polite">
+                {money(totals.total)}
+              </dd>
+            </div>
+            {insuranceOn && coverValue > 0 && Number.isFinite(coverValue) && (
+              <p className="mt-2 text-xs text-gray-500">
+                <span className="font-mono">{money(Math.min(coverValue, totals.total))}</span> expected from {insurance.provider.trim() || 'the insurer'}; the patient pays the rest.
+              </p>
+            )}
+          </dl>
+        </section>
+
+        {patient && pc && (
+          <section className="rounded-lg border border-gray-200 bg-white" aria-labelledby={`${ids}-acct`}>
+            <div className="border-b border-gray-200 px-5 py-4">
+              <h2 id={`${ids}-acct`} className="text-base font-bold tracking-tight text-gray-900">
+                {pc.patient.firstName}’s account
+              </h2>
+              {pc.patient.dateOfBirth && <p className="mt-0.5 text-sm text-gray-500">{ageFrom(pc.patient.dateOfBirth)}</p>}
+            </div>
+            {pc.openInvoices.length === 0 ? (
+              <p className="px-5 py-4 text-sm text-gray-500">Nothing owed on earlier invoices.</p>
+            ) : (
+              <div className="px-5 py-4">
+                <p className="text-sm text-amber-800">
+                  Already owes <span className="font-mono font-semibold">{money(pc.openBalance)}</span> on {pc.openInvoices.length === 1 ? 'an earlier invoice' : `${pc.openInvoices.length} earlier invoices`}.
+                </p>
+                <ul className="mt-2 divide-y divide-gray-100 text-sm">
+                  {pc.openInvoices.slice(0, 5).map((o) => (
+                    <li key={o._id} className="flex items-baseline justify-between gap-3 py-1.5">
+                      <Link href={`/invoices/${o._id}`} target="_blank" className={`rounded font-mono text-xs font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                        {o.invoiceNumber}
+                      </Link>
+                      <span className="text-xs text-gray-500">{shortDate(o.createdAt)}</span>
+                      <span className="font-mono tabular-nums text-gray-900">{money(o.outstandingBalance ?? 0)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
+        {!patient && (
+          <div className="rounded-lg border border-dashed border-gray-300 px-5 py-6 text-center text-sm text-gray-500">
+            Choose the patient to see what they already owe and the discounts they qualify for.
+          </div>
+        )}
+      </aside>
     </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pieces
+// ---------------------------------------------------------------------------
+
+/** Price-list combobox: type to filter by name, code or category; Enter or a click adds the charge. */
+function ServicePicker({
+  services,
+  loading,
+  failed,
+  money,
+  onPick,
+}: {
+  services: Service[];
+  loading: boolean;
+  failed: boolean;
+  money: (v: number) => string;
+  onPick: (s: Service) => void;
+}) {
+  const ids = useId();
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const q = query.trim().toLowerCase();
+  const matches = q
+    ? services.filter((s) => s.name.toLowerCase().includes(q) || s.code?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q)).slice(0, 8)
+    : [];
+  const show = open && q !== '';
+  const listId = `${ids}-list`;
+
+  const pick = (s: Service) => {
+    onPick(s);
+    setQuery('');
+    setHighlight(0);
+  };
+
+  return (
+    <div className="relative sm:max-w-md">
+      <label htmlFor={`${ids}-in`} className="mb-1.5 block text-sm font-medium text-gray-700">
+        Add from the price list
+      </label>
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+          <Svg d={ICON.search} />
+        </span>
+        <input
+          id={`${ids}-in`}
+          role="combobox"
+          aria-expanded={show}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-activedescendant={show && matches[highlight] ? `${ids}-o${highlight}` : undefined}
+          value={query}
+          disabled={failed}
+          placeholder={failed ? 'The price list didn’t load; add charges by hand' : loading ? 'Loading the price list…' : 'Service name, code or category'}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+            setHighlight(0);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 120)}
+          onKeyDown={(e) => {
+            if (!show) return;
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setHighlight((h) => Math.min(matches.length - 1, h + 1));
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setHighlight((h) => Math.max(0, h - 1));
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              if (matches[highlight]) pick(matches[highlight]);
+            } else if (e.key === 'Escape') {
+              e.stopPropagation();
+              setOpen(false);
+            }
+          }}
+          className={`${FIELD} pl-9`}
+        />
+      </div>
+      {show && (
+        <div className="motion-panel-in absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 shadow-[0_8px_30px_rgb(15,23,42,0.1)]">
+          {matches.length > 0 ? (
+            <ul id={listId} role="listbox" aria-label="Matching services">
+              {matches.map((s, i) => (
+                <li
+                  key={s._id}
+                  id={`${ids}-o${i}`}
+                  role="option"
+                  aria-selected={highlight === i}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pick(s)}
+                  onMouseEnter={() => setHighlight(i)}
+                  className={`flex cursor-pointer items-baseline justify-between gap-3 rounded-md px-3 py-2 ${highlight === i ? 'bg-brand-teal-light/60' : ''}`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-gray-900">{s.name}</span>
+                    <span className="block truncate text-xs text-gray-500">
+                      {s.code && <span className="font-mono">{s.code}</span>}
+                      {s.code && s.category && ' · '}
+                      {s.category}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-mono text-sm tabular-nums text-gray-900">
+                    {money(s.unitPrice ?? 0)}
+                    {s.unit && <span className="font-sans text-xs text-gray-500"> / {s.unit}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p id={listId} className="px-3 py-3 text-sm text-gray-500">
+              Nothing on the price list matches “{query.trim()}”. Use “Add a charge not on the price list” below.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RowLabel({ htmlFor, children }: { htmlFor: string; children: ReactNode }) {
+  return (
+    <label htmlFor={htmlFor} className="mb-1 block text-xs font-medium text-gray-600 sm:sr-only">
+      {children}
+    </label>
+  );
+}
+
+function BillLine({ label, value, muted }: { label: ReactNode; value: string; muted?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1">
+      <dt className="min-w-0 text-gray-700">{label}</dt>
+      <dd className={`shrink-0 font-mono tabular-nums ${muted ? 'text-gray-400' : 'text-gray-900'}`}>{value}</dd>
+    </div>
   );
 }

@@ -6,22 +6,51 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-test-lint:
     runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
+      # Version comes from "packageManager" in package.json
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+          cache: pnpm
+
       - name: Install dependencies
-        run: npm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
+
       - name: Test
-        run: npm run test
-      - name: Accessibility Audit
-        run: npm run accessibility:audit || true
+        run: pnpm run test
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level high
+
       - name: Build
-        run: npm run build
+        run: pnpm run build
+        env:
+          # Placeholder values so the build can evaluate server modules; never real secrets.
+          MONGODB_URI: mongodb://127.0.0.1:27017/ci-build
+          SESSION_SECRET: ci-only-session-secret-not-used-at-runtime-000
+          CRON_SECRET: ci-only-cron-secret-not-used-at-runtime-00000000
+          ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'

@@ -1,37 +1,30 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
-import { getTenantContext } from '@/lib/tenant';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
+import { isAdmin } from '@/app/lib/auth-helpers';
 import AuditLog from '@/models/AuditLog';
 import connectDB from '@/lib/mongodb';
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify session and admin role
-    const session = await verifySession() as any;
-    if (!session?.user?.role?.name || session.user.role.name !== 'admin') {
+    // Verify session (tenant comes from the session) and admin role
+    const auth = await requireTenantSession();
+    if (isTenantSessionError(auth)) return auth;
+    if (!isAdmin(auth.session)) {
       return NextResponse.json(
-        { success: false, message: 'Unauthorized' },
-        { status: 401 }
+        { success: false, message: 'Forbidden' },
+        { status: 403 }
       );
     }
 
-    // Get tenant context
-    const tenantContext = await getTenantContext();
-    if (!tenantContext.tenant) {
-      return NextResponse.json(
-        { success: false, message: 'Tenant not found' },
-        { status: 404 }
-      );
-    }
 
     // Get limit from query
-    const limit = parseInt(request.nextUrl.searchParams.get('limit') || '4');
+    const limit = Math.min(50, Math.max(1, parseInt(request.nextUrl.searchParams.get('limit') || '4', 10) || 4));
 
     await connectDB();
 
     // Fetch recent audit logs
     const logs = await AuditLog.find({
-      tenantId: tenantContext.tenantId,
+      tenantId: auth.tenantObjectId,
     })
       .sort({ timestamp: -1 })
       .limit(limit)

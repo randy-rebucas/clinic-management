@@ -1,27 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import Invoice from '@/models/Invoice';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, patientTenantFilter } from '@/lib/api/tenant-session';
 import { getSettings } from '@/lib/settings';
-import { getTenantContext } from '@/lib/tenant';
 import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
 import {
   escapeHtml as e,
   sealedDocumentParts,
   PROTECTED_DOCUMENT_HEADERS,
+  withScriptNonce,
 } from '@/lib/document-protection';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   const permissionCheck = await requirePermission(session, 'invoices', 'read');
   if (permissionCheck) {
@@ -31,9 +29,6 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
     const query = id ? tenantScopedQuery(id, tenantId) : null;
     if (!query) {
       return NextResponse.json(
@@ -43,7 +38,11 @@ export async function GET(
     }
 
     const invoice = await Invoice.findOne(query)
-      .populate('patient', 'firstName lastName patientCode email phone dateOfBirth address')
+      .populate({
+        path: 'patient',
+        select: 'firstName lastName patientCode email phone dateOfBirth address',
+        match: patientTenantFilter(tenantId),
+      })
       .populate('visit', 'visitCode date')
       .populate('createdBy', 'name email');
 
@@ -57,6 +56,15 @@ export async function GET(
     if (invoice.status === 'refunded') {
       return NextResponse.json(
         { success: false, error: 'Receipts cannot be issued for refunded invoices' },
+        { status: 409 }
+      );
+    }
+
+    // An official receipt acknowledges money received; none can be issued before a payment.
+    const paid = (invoice.payments || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+    if (paid <= 0) {
+      return NextResponse.json(
+        { success: false, error: 'Nothing has been paid on this invoice yet, so there is no receipt to print' },
         { status: 409 }
       );
     }
@@ -83,9 +91,9 @@ export async function GET(
               // Already populated
               return item;
             }
-            if (item.serviceId && typeof item.serviceId === 'string') {
+            if (item.serviceId && Types.ObjectId.isValid(String(item.serviceId))) {
               try {
-                const service = await Service.findById(item.serviceId)
+                const service = await Service.findOne({ _id: item.serviceId, tenantId: new Types.ObjectId(tenantId) })
                   .select('name code category unitPrice')
                   .lean();
                 if (service) {
@@ -105,7 +113,7 @@ export async function GET(
     // Generate HTML for printable receipt (EOR - Electronic Official Receipt)
     const html = await generateReceiptHTML(invoiceData, tenantId, seal);
 
-    return new NextResponse(html, { headers: PROTECTED_DOCUMENT_HEADERS });
+    return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {
     console.error('Error generating receipt:', error);
     return NextResponse.json(
@@ -303,7 +311,7 @@ async function generateReceiptHTML(invoice: any, tenantId: string | null | undef
 <body>
   ${protection.watermark}
   <div class="no-print print-button">
-    <button onclick="window.print()">Print Receipt</button>
+    <button data-print>Print Receipt</button>
   </div>
   ${protection.banner}
 

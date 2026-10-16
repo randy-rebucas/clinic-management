@@ -1,50 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import { processAutoCancellationPolicies } from '@/lib/automations/auto-cancellation-policies';
-import { getTenantContext } from '@/lib/tenant';
+
+export const maxDuration = 300;
 
 /**
- * Cron job to apply auto-cancellation policies for chronic no-shows
- * Runs daily at 10:00 AM
+ * Applies progressive no-show restrictions for every active tenant.
+ * Schedule: see vercel.json. Auth: Authorization: Bearer $CRON_SECRET.
  */
 export async function GET(request: NextRequest) {
-  // Authenticate request
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-  
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-  }
-  
-  try {
-    const tenantContext = await getTenantContext();
-    const tenantId = tenantContext.tenantId;
+  const denied = requireCron(request);
+  if (denied) return denied;
 
-    // Ensure we have a tenant for this cron run
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'Tenant not found' },
-        { status: 400 }
-      );
-    }
-    
-    const result = await processAutoCancellationPolicies(tenantId);
-    
+  try {
+    const result = await processAutoCancellationPolicies();
     return NextResponse.json({
       success: result.success,
       message: 'Auto-cancellation policies processed',
       data: result,
     });
-  } catch (error: any) {
-    console.error('Error in auto-cancellation policies cron:', error);
-    return NextResponse.json(
-      { success: false, error: error.message || 'Failed to process auto-cancellation policies' },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('[Cron] auto-cancellation-policies error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to process auto-cancellation-policies' }, { status: 500 });
   }
 }

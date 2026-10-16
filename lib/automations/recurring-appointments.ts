@@ -3,17 +3,31 @@
 
 import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
-import Patient from '@/models/Patient';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
+import { combineDateAndTimeInTz, formatInTz } from '@/lib/tz';
+import { addDays, addMonths, addYears } from 'date-fns';
 import { Types } from 'mongoose';
+import {
+  forEachTenant,
+  automationEnabled,
+  getTenantTimezone,
+  nextAppointmentCode,
+  displayDate,
+  displayTime,
+  errorMessage,
+  BATCH_LIMIT,
+  type AutomationTenant,
+} from './shared';
+
+type Frequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
 
 export interface RecurringAppointmentConfig {
   patientId: Types.ObjectId;
   doctorId?: Types.ObjectId;
-  frequency: 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
+  providerId?: Types.ObjectId;
+  frequency: Frequency;
   startDate: Date;
   endDate?: Date;
   duration?: number; // in minutes
@@ -30,59 +44,45 @@ export interface RecurringAppointmentOptions {
   sendNotification?: boolean;
 }
 
+const AUTO_NOTE = '[Recurring appointment - created automatically]';
+
 /**
  * Create recurring appointment configuration
  */
-export async function createRecurringConfig(config: RecurringAppointmentConfig): Promise<{
+export async function createRecurringConfig(_config: RecurringAppointmentConfig): Promise<{
   success: boolean;
   configId?: string;
   error?: string;
 }> {
-  try {
-    await connectDB();
-
-    // Store recurring config (you might want to create a RecurringAppointment model)
-    // For now, we'll store it in appointment notes or a separate field
-    // This is a simplified implementation
-    
-    return { success: true, configId: 'config-' + Date.now() };
-  } catch (error: any) {
-    console.error('Error creating recurring config:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to create recurring config' 
-    };
-  }
+  // Series are tracked through Appointment.recurringParentId; no separate config is stored.
+  return { success: true, configId: 'config-' + Date.now() };
 }
 
 /**
  * Calculate next appointment date based on frequency
  */
-export function calculateNextAppointmentDate(
-  lastAppointmentDate: Date,
-  frequency: 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly'
-): Date {
-  const nextDate = new Date(lastAppointmentDate);
-
+export function calculateNextAppointmentDate(lastAppointmentDate: Date, frequency: Frequency): Date {
   switch (frequency) {
     case 'weekly':
-      nextDate.setDate(nextDate.getDate() + 7);
-      break;
+      return addDays(lastAppointmentDate, 7);
     case 'biweekly':
-      nextDate.setDate(nextDate.getDate() + 14);
-      break;
+      return addDays(lastAppointmentDate, 14);
     case 'monthly':
-      nextDate.setMonth(nextDate.getMonth() + 1);
-      break;
+      return addMonths(lastAppointmentDate, 1);
     case 'quarterly':
-      nextDate.setMonth(nextDate.getMonth() + 3);
-      break;
+      return addMonths(lastAppointmentDate, 3);
     case 'yearly':
-      nextDate.setFullYear(nextDate.getFullYear() + 1);
-      break;
+      return addYears(lastAppointmentDate, 1);
   }
+}
 
-  return nextDate;
+/** Next occurrence as a clinic-local "yyyy-MM-dd", computed on the calendar date (no TZ drift). */
+function nextOccurrenceYmd(lastAppointment: any, frequency: Frequency, tz: string): string | null {
+  const ref = lastAppointment.appointmentDate || lastAppointment.scheduledAt;
+  if (!ref) return null;
+  const ymd = formatInTz(ref, 'yyyy-MM-dd', tz);
+  const next = calculateNextAppointmentDate(new Date(`${ymd}T00:00:00.000Z`), frequency);
+  return next.toISOString().slice(0, 10);
 }
 
 /**
@@ -99,247 +99,182 @@ export async function createNextRecurringAppointment(
   try {
     await connectDB();
 
-    const settings = await getSettings();
-    const autoRecurringAppointments = (settings.automationSettings as any)?.autoRecurringAppointments !== false;
+    const tenantId = config.tenantId || lastAppointment.tenantId;
+    if (!tenantId) {
+      return { success: false, error: 'Tenant is required' };
+    }
+    const tid = new Types.ObjectId(String(tenantId));
 
-    if (!autoRecurringAppointments) {
+    const settings = await getSettings(tid.toString());
+    if (!automationEnabled(settings, 'autoRecurringAppointments')) {
       return { success: true };
     }
 
-    // Calculate next appointment date
-    const lastDate = lastAppointment.appointmentDate 
-      ? new Date(lastAppointment.appointmentDate)
-      : lastAppointment.scheduledAt 
-      ? new Date(lastAppointment.scheduledAt)
-      : new Date();
+    const tz = await getTenantTimezone(tid);
+    const ymd = nextOccurrenceYmd(lastAppointment, config.frequency, tz);
+    if (!ymd) return { success: true };
 
-    const nextDate = calculateNextAppointmentDate(lastDate, config.frequency);
-
-    // Check if end date has passed
-    if (config.endDate && nextDate > config.endDate) {
+    if (config.endDate && new Date(`${ymd}T00:00:00.000Z`) > new Date(config.endDate)) {
       return { success: true }; // Series complete
     }
-
-    // Check if appointment already exists
-    const existingQuery: any = {
-      patient: config.patientId,
-      appointmentDate: {
-        $gte: new Date(nextDate.getFullYear(), nextDate.getMonth(), nextDate.getDate()),
-        $lt: new Date(nextDate.getFullYear(), nextDate.getMonth(), nextDate.getDate() + 1),
-      },
-      status: { $nin: ['cancelled', 'no-show'] },
-    };
-
-    if (config.tenantId) {
-      existingQuery.tenantId = config.tenantId;
+    if (ymd < formatInTz(new Date(), 'yyyy-MM-dd', tz)) {
+      return { success: true }; // Never book into the past
     }
 
-    const existing = await Appointment.findOne(existingQuery);
+    // Any status counts: a cancelled or no-show occurrence must not be recreated.
+    const dayStart = combineDateAndTimeInTz(ymd, '00:00', tz);
+    const dayEnd = new Date(combineDateAndTimeInTz(ymd, '23:59', tz).getTime() + 59999);
+    const existing = await Appointment.exists({
+      tenantId: tid,
+      $or: [
+        { recurringParentId: lastAppointment._id },
+        { patient: config.patientId, recurringOccurrenceDate: ymd },
+        { patient: config.patientId, appointmentDate: { $gte: dayStart, $lte: dayEnd } },
+      ],
+    });
     if (existing) {
-      return { success: true }; // Already exists
+      return { success: true };
     }
 
-    // Generate appointment code
-    const codeQuery: any = { appointmentCode: { $exists: true, $ne: null } };
-    if (config.tenantId) {
-      codeQuery.tenantId = config.tenantId;
-    } else {
-      codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    const appointmentTime: string | undefined =
+      lastAppointment.appointmentTime ||
+      (lastAppointment.scheduledAt ? formatInTz(lastAppointment.scheduledAt, 'HH:mm', tz) : undefined);
 
-    const lastAppointmentByCode = await Appointment.findOne(codeQuery)
-      .sort({ appointmentCode: -1 })
-      .exec();
+    const baseNotes = String(config.notes || '').split(AUTO_NOTE).join('').trim();
+    const appointmentCode = await nextAppointmentCode(tid);
 
-    let nextNumber = 1;
-    if (lastAppointmentByCode?.appointmentCode) {
-      const match = lastAppointmentByCode.appointmentCode.match(/(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
-      }
-    }
-
-    const appointmentCode = `APT-${String(nextNumber).padStart(6, '0')}`;
-
-    // Create new appointment
-    const appointmentData: any = {
-      tenantId: config.tenantId,
+    const appointment = await Appointment.create({
+      tenantId: tid,
       patient: config.patientId,
       doctor: config.doctorId,
-      provider: config.doctorId,
+      provider: config.providerId,
       appointmentCode,
-      appointmentDate: nextDate,
-      scheduledAt: nextDate,
+      appointmentDate: new Date(`${ymd}T00:00:00.000Z`),
+      appointmentTime,
+      scheduledAt: combineDateAndTimeInTz(ymd, appointmentTime || '09:00', tz),
       status: 'scheduled',
       reason: config.reason || `Recurring appointment (${config.frequency})`,
-      notes: `${config.notes || ''}\n[Recurring appointment - created automatically]`.trim(),
+      notes: `${baseNotes}\n${AUTO_NOTE}`.trim(),
       duration: config.duration || 30,
-    };
+      recurringParentId: lastAppointment._id,
+      recurringOccurrenceDate: ymd,
+    });
 
-    const appointment = await Appointment.create(appointmentData);
-
-    // Populate appointment
     await appointment.populate('patient', 'firstName lastName email phone');
     await appointment.populate('doctor', 'firstName lastName');
 
-    // Notify patient
     const patient = appointment.patient as any;
     if (patient && config.sendNotification !== false) {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
       const clinicName = settings.clinicName || 'Clinic';
+      const dateText = displayDate(appointment.scheduledAt, tz);
+      const timeText = displayTime(appointmentTime);
 
-      // Send SMS
       if (patient.phone) {
         try {
-          let phoneNumber = patient.phone.trim();
-          if (!phoneNumber.startsWith('+')) {
-            phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-          }
-
-          const message = `Your next recurring appointment has been scheduled for ${nextDate.toLocaleDateString()}. Appointment Code: ${appointmentCode}. - ${clinicName}`;
-
-          await sendSMS({
-            to: phoneNumber,
-            message,
-          });
+          const message = `Your next recurring appointment has been scheduled for ${dateText}${appointmentTime ? ` at ${timeText}` : ''}. Appointment Code: ${appointmentCode}. - ${clinicName}`;
+          await sendSMS({ to: patient.phone, message });
         } catch (error) {
           console.error('Error sending recurring appointment SMS:', error);
         }
       }
 
-      // Send email
       if (patient.email) {
         try {
-          const emailContent = generateRecurringAppointmentEmail(appointment, settings);
-          await sendEmail({
-            to: patient.email,
-            subject: emailContent.subject,
-            html: emailContent.html,
-          });
+          const emailContent = generateRecurringAppointmentEmail(appointment, settings, dateText, timeText);
+          await sendEmail({ to: patient.email, subject: emailContent.subject, html: emailContent.html });
         } catch (error) {
           console.error('Error sending recurring appointment email:', error);
         }
-      }
-
-      // Send notification
-      try {
-        await createNotification({
-          userId: patient._id,
-          tenantId: config.tenantId,
-          type: 'appointment',
-          priority: 'normal',
-          title: 'Recurring Appointment Scheduled',
-          message: `Your next appointment has been automatically scheduled for ${nextDate.toLocaleDateString()}.`,
-          relatedEntity: {
-            type: 'appointment',
-            id: appointment._id,
-          },
-          actionUrl: `/appointments/${appointment._id}`,
-        });
-      } catch (error) {
-        console.error('Error creating recurring appointment notification:', error);
       }
     }
 
     return { success: true, appointment };
   } catch (error: any) {
     console.error('Error creating next recurring appointment:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to create next recurring appointment' 
+    return {
+      success: false,
+      error: 'Failed to create next recurring appointment',
     };
   }
 }
 
-/**
- * Process all completed recurring appointments and create next ones
- * This should be called by a cron job
- */
-export async function processRecurringAppointments(tenantId?: string | Types.ObjectId): Promise<{
+type RecurringResult = {
   success: boolean;
   processed: number;
   created: number;
   errors: number;
   results: Array<{ appointmentId: string; success: boolean; created?: boolean; error?: string }>;
-}> {
-  try {
-    await connectDB();
+};
 
-    const settings = await getSettings();
-    const autoRecurringAppointments = (settings.automationSettings as any)?.autoRecurringAppointments !== false;
+async function processTenant(tenant: AutomationTenant): Promise<RecurringResult> {
+  const out: RecurringResult = { success: true, processed: 0, created: 0, errors: 0, results: [] };
 
-    if (!autoRecurringAppointments) {
-      return { success: true, processed: 0, created: 0, errors: 0, results: [] };
-    }
+  const settings = await getSettings(tenant.tenantId);
+  if (!automationEnabled(settings, 'autoRecurringAppointments')) return out;
 
-    // Find completed appointments with recurring indicators
-    // Look for appointments with notes containing "recurring" or specific recurring flags
-    const query: any = {
-      status: 'completed',
-      notes: { $regex: /recurring|recur/i },
-      // You might want to add a recurringAppointmentId field to track series
-    };
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const appointments = await Appointment.find({
+    tenantId: tenant.tenantObjectId,
+    status: 'completed',
+    notes: { $regex: /recurring|recur/i },
+    updatedAt: { $gte: sevenDaysAgo },
+  })
+    .limit(BATCH_LIMIT)
+    .lean();
 
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
-
-    // Find appointments completed in the last 7 days (to catch any missed)
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    query.updatedAt = { $gte: sevenDaysAgo };
-
-    const appointments = await Appointment.find(query)
-      .populate('patient', 'firstName lastName')
-      .populate('doctor', 'firstName lastName');
-
-    const results: Array<{ appointmentId: string; success: boolean; created?: boolean; error?: string }> = [];
-    let created = 0;
-    let errors = 0;
-
-    for (const appointment of appointments) {
-      // Extract recurring config from notes or appointment data
-      // This is simplified - in production, you'd have a proper recurring config model
-      const frequency = extractFrequencyFromNotes(appointment.notes || '') || 'monthly';
-      
-      const config: RecurringAppointmentConfig = {
-        patientId: appointment.patient as Types.ObjectId,
-        doctorId: appointment.doctor as Types.ObjectId || appointment.provider as Types.ObjectId,
-        frequency: frequency as any,
+  for (const appointment of appointments as any[]) {
+    out.processed++;
+    try {
+      const frequency = (extractFrequencyFromNotes(appointment.notes || '') || 'monthly') as Frequency;
+      const result = await createNextRecurringAppointment(appointment, {
+        patientId: appointment.patient,
+        doctorId: appointment.doctor,
+        providerId: appointment.provider,
+        frequency,
         startDate: appointment.appointmentDate || appointment.scheduledAt || new Date(),
         duration: appointment.duration || 30,
         reason: appointment.reason,
         notes: appointment.notes,
-        tenantId: appointment.tenantId,
-      };
-
-      const result = await createNextRecurringAppointment(appointment, {
-        ...config,
+        tenantId: tenant.tenantObjectId,
         sendNotification: true,
       });
-
-      results.push({
-        appointmentId: appointment._id.toString(),
+      out.results.push({
+        appointmentId: String(appointment._id),
         success: result.success,
         created: !!result.appointment,
         error: result.error,
       });
-
-      if (result.success && result.appointment) {
-        created++;
-      } else if (!result.success) {
-        errors++;
-      }
+      if (result.success && result.appointment) out.created++;
+      else if (!result.success) out.errors++;
+    } catch (error) {
+      out.errors++;
+      out.results.push({ appointmentId: String(appointment._id), success: false, error: errorMessage(error) });
     }
+  }
 
-    return {
-      success: true,
-      processed: appointments.length,
-      created,
-      errors,
-      results,
-    };
+  return out;
+}
+
+/**
+ * Process completed recurring appointments and create the next ones.
+ * Without a tenantId every active tenant is processed.
+ */
+export async function processRecurringAppointments(tenantId?: string | Types.ObjectId): Promise<RecurringResult> {
+  try {
+    await connectDB();
+    const runs = await forEachTenant(tenantId, processTenant);
+    const total: RecurringResult = { success: runs.every((r) => r.success), processed: 0, created: 0, errors: 0, results: [] };
+    for (const run of runs) {
+      if (!run.result) {
+        total.errors++;
+        continue;
+      }
+      total.processed += run.result.processed;
+      total.created += run.result.created;
+      total.errors += run.result.errors;
+      total.results.push(...run.result.results);
+    }
+    return total;
   } catch (error: any) {
     console.error('Error processing recurring appointments:', error);
     return {
@@ -347,18 +282,15 @@ export async function processRecurringAppointments(tenantId?: string | Types.Obj
       processed: 0,
       created: 0,
       errors: 1,
-      results: [{ appointmentId: 'unknown', success: false, error: error.message }],
+      results: [],
     };
   }
 }
 
-/**
- * Extract frequency from appointment notes
- */
 function extractFrequencyFromNotes(notes: string): string | null {
   const frequencyPatterns = {
-    weekly: /weekly|every week|each week/i,
     biweekly: /biweekly|bi-weekly|every two weeks|every 2 weeks/i,
+    weekly: /weekly|every week|each week/i,
     monthly: /monthly|every month|each month/i,
     quarterly: /quarterly|every quarter|every 3 months/i,
     yearly: /yearly|annually|every year|each year/i,
@@ -373,16 +305,15 @@ function extractFrequencyFromNotes(notes: string): string | null {
   return null;
 }
 
-/**
- * Generate recurring appointment email
- */
-function generateRecurringAppointmentEmail(appointment: any, settings: any): { subject: string; html: string } {
+function generateRecurringAppointmentEmail(
+  appointment: any,
+  settings: any,
+  dateText: string,
+  timeText: string
+): { subject: string; html: string } {
   const patient = appointment.patient as any;
   const doctor = appointment.doctor as any;
-  const appointmentDate = new Date(appointment.appointmentDate || appointment.scheduledAt).toLocaleDateString();
-  const appointmentTime = appointment.appointmentTime || 'TBD';
   const clinicName = settings.clinicName || 'Clinic';
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
 
   const subject = `Recurring Appointment Scheduled - ${clinicName}`;
 
@@ -396,7 +327,6 @@ function generateRecurringAppointmentEmail(appointment: any, settings: any): { s
         .header { background-color: #2196F3; color: white; padding: 20px; text-align: center; }
         .content { padding: 20px; background-color: #f9f9f9; }
         .info-box { background-color: white; padding: 15px; margin: 10px 0; border-left: 4px solid #2196F3; }
-        .button { display: inline-block; padding: 12px 24px; margin: 10px 0; background-color: #2196F3; color: white; text-decoration: none; border-radius: 4px; }
         .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
       </style>
     </head>
@@ -406,18 +336,15 @@ function generateRecurringAppointmentEmail(appointment: any, settings: any): { s
           <h1>Recurring Appointment Scheduled</h1>
         </div>
         <div class="content">
-          <p>Dear ${patient.firstName} ${patient.lastName},</p>
+          <p>Dear ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)},</p>
           <p>Your next recurring appointment has been automatically scheduled:</p>
           <div class="info-box">
-            <p><strong>Date:</strong> ${appointmentDate}</p>
-            <p><strong>Time:</strong> ${appointmentTime}</p>
-            ${doctor ? `<p><strong>Doctor:</strong> Dr. ${doctor.firstName} ${doctor.lastName}</p>` : ''}
-            <p><strong>Appointment Code:</strong> ${appointment.appointmentCode}</p>
+            <p><strong>Date:</strong> ${escapeHtml(dateText)}</p>
+            <p><strong>Time:</strong> ${escapeHtml(timeText)}</p>
+            ${doctor ? `<p><strong>Doctor:</strong> Dr. ${escapeHtml(doctor.firstName)} ${escapeHtml(doctor.lastName)}</p>` : ''}
+            <p><strong>Appointment Code:</strong> ${escapeHtml(appointment.appointmentCode)}</p>
           </div>
           <p>This appointment was automatically created as part of your recurring appointment series.</p>
-          <p style="text-align: center;">
-            <a href="${baseUrl}/appointments/${appointment._id}" class="button">View Appointment</a>
-          </p>
           <p>If you need to reschedule or cancel, please contact us as soon as possible.</p>
         </div>
         <div class="footer">
@@ -430,4 +357,3 @@ function generateRecurringAppointmentEmail(appointment: any, settings: any): { s
 
   return { subject, html };
 }
-

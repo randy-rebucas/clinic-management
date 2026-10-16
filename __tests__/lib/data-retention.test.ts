@@ -11,55 +11,8 @@ vi.mock('@/lib/mongodb', () => ({
   default: vi.fn(),
 }));
 
-vi.mock('@/models/Appointment', () => ({
-  default: {
-    find: vi.fn(),
-    updateMany: vi.fn(),
-    countDocuments: vi.fn(),
-  },
-}));
-
-vi.mock('@/models/Visit', () => ({
-  default: {
-    find: vi.fn(),
-    updateMany: vi.fn(),
-    countDocuments: vi.fn(),
-  },
-}));
-
-vi.mock('@/models/Invoice', () => ({
-  default: {
-    find: vi.fn(),
-    updateMany: vi.fn(),
-    countDocuments: vi.fn(),
-  },
-}));
-
-vi.mock('@/models/LabResult', () => ({
-  default: {
-    find: vi.fn(),
-    updateMany: vi.fn(),
-    countDocuments: vi.fn(),
-  },
-}));
-
-vi.mock('@/models/Prescription', () => ({
-  default: {
-    find: vi.fn(),
-    updateMany: vi.fn(),
-    countDocuments: vi.fn(),
-  },
-}));
-
-vi.mock('@/models/Document', () => ({
-  default: {
-    find: vi.fn(),
-    updateMany: vi.fn(),
-    countDocuments: vi.fn(),
-  },
-}));
-
-vi.mock('@/models/AuditLog', () => ({
+// vi.mock is hoisted, so the shared factory must be hoisted too.
+const modelMock = vi.hoisted(() => () => ({
   default: {
     find: vi.fn(),
     updateMany: vi.fn(),
@@ -67,6 +20,14 @@ vi.mock('@/models/AuditLog', () => ({
     countDocuments: vi.fn(),
   },
 }));
+
+vi.mock('@/models/Appointment', modelMock);
+vi.mock('@/models/Visit', modelMock);
+vi.mock('@/models/Invoice', modelMock);
+vi.mock('@/models/LabResult', modelMock);
+vi.mock('@/models/Prescription', modelMock);
+vi.mock('@/models/Document', modelMock);
+vi.mock('@/models/AuditLog', modelMock);
 
 vi.mock('@/models/Tenant', () => ({
   default: {
@@ -84,6 +45,17 @@ vi.mock('@/lib/logger', () => ({
     info: vi.fn(),
   },
 }));
+
+/** find(filter).select('_id').limit(n).lean() → ids */
+function mockIdQuery(ids: Types.ObjectId[]) {
+  return {
+    select: vi.fn().mockReturnValue({
+      limit: vi.fn().mockReturnValue({
+        lean: vi.fn().mockResolvedValue(ids.map((_id) => ({ _id }))),
+      }),
+    }),
+  } as any;
+}
 
 describe('Data Retention', () => {
   const tenantId = new Types.ObjectId();
@@ -111,6 +83,11 @@ describe('Data Retention', () => {
       expect(patientPolicy?.archiveAfterDays).toBe(0);
       expect(patientPolicy?.deleteAfterDays).toBe(0);
     });
+
+    it('should only ever delete audit logs', () => {
+      const deletable = getDefaultRetentionPolicies().filter((p) => p.deleteAfterDays > 0);
+      expect(deletable.map((p) => p.resource)).toEqual(['audit-logs']);
+    });
   });
 
   describe('applyDataRetentionPolicy', () => {
@@ -129,7 +106,7 @@ describe('Data Retention', () => {
       expect(result.deleted).toEqual({});
     });
 
-    it('should archive old records', async () => {
+    it('should archive old records in tenant-scoped batches', async () => {
       const { getSettings } = await import('@/lib/settings');
       const Appointment = (await import('@/models/Appointment')).default;
 
@@ -139,18 +116,9 @@ describe('Data Retention', () => {
         },
       } as any);
 
-      const oldDate = new Date();
-      oldDate.setDate(oldDate.getDate() - 400); // 400 days ago
-
-      vi.mocked(Appointment.find).mockReturnValue({
-        length: 5,
-        map: vi.fn().mockReturnValue([
-          { _id: new Types.ObjectId() },
-          { _id: new Types.ObjectId() },
-        ]),
-      } as any);
-
-      vi.mocked(Appointment.updateMany).mockResolvedValue({} as any);
+      const ids = [new Types.ObjectId(), new Types.ObjectId()];
+      vi.mocked(Appointment.find).mockReturnValue(mockIdQuery(ids));
+      vi.mocked(Appointment.updateMany).mockResolvedValue({ modifiedCount: 2 } as any);
 
       const result = await applyDataRetentionPolicy(tenantId, [
         {
@@ -161,7 +129,33 @@ describe('Data Retention', () => {
       ]);
 
       expect(result.success).toBe(true);
-      expect(Appointment.updateMany).toHaveBeenCalled();
+      expect(result.archived.appointments).toBe(2);
+      const filter = (vi.mocked(Appointment.find).mock.calls[0] as any[])[0];
+      expect(filter.tenantId).toEqual(tenantId);
+      expect(Appointment.updateMany).toHaveBeenCalledWith(
+        { _id: { $in: ids } },
+        { $set: expect.objectContaining({ archived: true }) }
+      );
+      // Clinical records are never deleted
+      expect(Appointment.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('should not delete audit logs younger than the minimum retention', async () => {
+      const { getSettings } = await import('@/lib/settings');
+      const AuditLog = (await import('@/models/AuditLog')).default;
+
+      vi.mocked(getSettings).mockResolvedValue({ automationSettings: { autoDataRetention: true } } as any);
+      vi.mocked(AuditLog.find).mockReturnValue(mockIdQuery([]));
+
+      await applyDataRetentionPolicy(tenantId, [
+        { resource: 'audit-logs', archiveAfterDays: 0, deleteAfterDays: 1 },
+      ]);
+
+      const filter = (vi.mocked(AuditLog.find).mock.calls[0] as any[])[0];
+      const cutoff: Date = filter.createdAt.$lt;
+      const ageDays = (Date.now() - cutoff.getTime()) / (24 * 60 * 60 * 1000);
+      expect(ageDays).toBeGreaterThanOrEqual(364);
+      expect(AuditLog.deleteMany).not.toHaveBeenCalled();
     });
   });
 
@@ -180,15 +174,14 @@ describe('Data Retention', () => {
       const { getSettings } = await import('@/lib/settings');
       vi.mocked(getSettings).mockResolvedValue({
         automationSettings: {
-          autoDataRetention: true,
+          autoDataRetention: false,
         },
       } as any);
 
       const result = await processDataRetentionForAllTenants();
 
       expect(result.success).toBe(true);
-      expect(result.tenantsProcessed).toBeGreaterThanOrEqual(0);
+      expect(result.tenantsProcessed).toBe(2);
     });
   });
 });
-

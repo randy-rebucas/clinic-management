@@ -29,6 +29,7 @@ vi.mock('@/lib/notifications', () => ({
 
 vi.mock('@/lib/email', () => ({
   sendEmail: vi.fn().mockResolvedValue({}),
+  escapeHtml: (v: unknown) => String(v ?? ''),
 }));
 
 vi.mock('@/lib/sms', () => ({
@@ -42,8 +43,9 @@ vi.mock('@/lib/logger', () => ({
   },
 }));
 
+// verifyInsurance reads the raw patient document: findOne().select().lean()
 function mockFindOne(resolvedValue: unknown) {
-  return { select: vi.fn().mockResolvedValue(resolvedValue) };
+  return { select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(resolvedValue) }) };
 }
 
 describe('Insurance Verification', () => {
@@ -63,6 +65,8 @@ describe('Insurance Verification', () => {
 
       expect(result.verified).toBe(false);
       expect(result.errors).toContain('Patient not found');
+      // Patient is scoped by the tenantIds array, never tenantId
+      expect(vi.mocked(Patient.findOne).mock.calls[0][0]).toEqual({ _id: patientId, tenantIds: tenantId });
     });
 
     it('should return error if patient has no insurance', async () => {
@@ -77,6 +81,7 @@ describe('Insurance Verification', () => {
 
       expect(result.verified).toBe(false);
       expect(result.errors).toContain('Patient does not have insurance information');
+      expect(result.noInsurance).toBe(true);
     });
 
     it('should verify insurance successfully', async () => {
@@ -96,7 +101,9 @@ describe('Insurance Verification', () => {
       expect(result.verified).toBe(true);
       expect(result.insuranceProvider).toBe('Test Insurance');
       expect(result.policyNumber).toBe('1234567890');
-      expect(mockPatient.save).toHaveBeenCalled();
+      // No real eligibility provider is integrated, so simulated results are never written back.
+      expect(mockPatient.save).not.toHaveBeenCalled();
+      expect(result.coverageDetails).toBeUndefined();
     });
 
     it('should fail verification for invalid policy number', async () => {
@@ -141,7 +148,7 @@ describe('Insurance Verification', () => {
     it('should handle errors gracefully', async () => {
       const Patient = (await import('@/models/Patient')).default;
       vi.mocked(Patient.findOne).mockReturnValue({
-        select: vi.fn().mockRejectedValue(new Error('Database error')),
+        select: vi.fn().mockReturnValue({ lean: vi.fn().mockRejectedValue(new Error('Database error')) }),
       } as any);
 
       const result = await batchVerifyInsurance([patientId], tenantId);

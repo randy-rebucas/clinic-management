@@ -1,26 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { getSettings } from '@/lib/settings';
-import { getTenantContext } from '@/lib/tenant';
 import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
 import {
   escapeHtml as e,
   sealedDocumentParts,
   PROTECTED_DOCUMENT_HEADERS,
+  withScriptNonce,
 } from '@/lib/document-protection';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   const permissionCheck = await requirePermission(session, 'lab-results', 'read');
   if (permissionCheck) {
@@ -30,14 +29,12 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
 
     const query = tenantScopedQuery(id, tenantId);
     const labResult = query
       ? await LabResult.findOne(query)
-          .populate('patient', 'firstName lastName patientCode email phone dateOfBirth sex')
-          .populate('visit', 'visitCode date visitType diagnoses chiefComplaint soapNotes')
+          .populate({ path: 'patient', select: 'firstName lastName patientCode email phone dateOfBirth sex', match: { tenantIds: query.tenantId } })
+          .populate({ path: 'visit', select: 'visitCode date visitType diagnoses chiefComplaint soapNotes', match: { tenantId: query.tenantId } })
           .populate('orderedBy', 'name email')
       : null;
 
@@ -55,8 +52,9 @@ export async function GET(
       );
     }
 
-    const [settings, seal] = await Promise.all([
+    const [settings, tz, seal] = await Promise.all([
       getSettings(tenantId),
+      getTenantTimezone(tenantId),
       issueSeal({
         request,
         documentType: 'lab_request_form',
@@ -67,9 +65,9 @@ export async function GET(
     ]);
 
     // Generate HTML for printable lab request form
-    const html = generateLabRequestFormHTML(labResult, settings, seal);
+    const html = generateLabRequestFormHTML(labResult, settings, seal, tz);
 
-    return new NextResponse(html, { headers: PROTECTED_DOCUMENT_HEADERS });
+    return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {
     console.error('Error generating lab request form:', error);
     return NextResponse.json(
@@ -79,13 +77,14 @@ export async function GET(
   }
 }
 
-function generateLabRequestFormHTML(labResult: any, settings: any, seal: IssuedSeal): string {
+function generateLabRequestFormHTML(labResult: any, settings: any, seal: IssuedSeal, tz: string): string {
   const patient = labResult.patient || {};
   const provider = labResult.orderedBy;
   const visit = labResult.visit;
   const request = labResult.request || {};
   const clinicName = settings?.clinicName || 'Clinic';
   const today = new Date().toLocaleDateString('en-US', {
+    timeZone: tz,
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -222,7 +221,7 @@ function generateLabRequestFormHTML(labResult: any, settings: any, seal: IssuedS
 <body>
   ${protection.watermark}
   <div class="no-print print-button">
-    <button onclick="window.print()">Print Request Form</button>
+    <button data-print>Print Request Form</button>
   </div>
   ${protection.banner}
 
@@ -242,7 +241,7 @@ function generateLabRequestFormHTML(labResult: any, settings: any, seal: IssuedS
     ${patient.dateOfBirth ? `
     <div class="info-row">
       <div class="info-label">Date of Birth:</div>
-      <div>${new Date(patient.dateOfBirth).toLocaleDateString()}</div>
+      <div>${new Date(patient.dateOfBirth).toLocaleDateString('en-US', { timeZone: tz })}</div>
     </div>
     ` : ''}
     ${patient.sex ? `
@@ -264,7 +263,7 @@ function generateLabRequestFormHTML(labResult: any, settings: any, seal: IssuedS
     ${visit ? `
     <div class="info-row">
       <div class="info-label">Visit Date:</div>
-      <div>${new Date(visit.date).toLocaleDateString()}</div>
+      <div>${new Date(visit.date).toLocaleDateString('en-US', { timeZone: tz })}</div>
     </div>
     <div class="info-row">
       <div class="info-label">Visit Code:</div>

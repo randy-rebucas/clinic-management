@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useId } from 'react';
 
 interface SignaturePadProps {
   onSave: (signatureData: string) => void;
@@ -10,6 +10,7 @@ interface SignaturePadProps {
 
 export default function SignaturePad({ onSave, onCancel, providerName }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const titleId = useId();
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
 
@@ -94,12 +95,14 @@ export default function SignaturePad({ onSave, onCancel, providerName }: Signatu
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <label className="block text-sm font-medium mb-2">
+        <p id={titleId} className="block text-sm font-medium mb-2">
           Digital Signature - {providerName}
-        </label>
+        </p>
         <div className="border-2 border-gray-300 rounded-lg bg-white">
           <canvas
             ref={canvasRef}
+            role="img"
+            aria-labelledby={titleId}
             onMouseDown={startDrawing}
             onMouseMove={draw}
             onMouseUp={stopDrawing}
@@ -134,7 +137,7 @@ export default function SignaturePad({ onSave, onCancel, providerName }: Signatu
           <button
             type="button"
             onClick={handleSave}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+            className="px-3 py-1.5 bg-brand-teal-dark hover:bg-brand-teal-deep text-white rounded-lg text-sm font-medium transition-colors"
           >
             Save Signature
           </button>

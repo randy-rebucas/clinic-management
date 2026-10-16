@@ -1,13 +1,16 @@
-import { requirePagePermission } from '@/app/lib/auth-helpers';
 import InvoiceDetailClient from '@/components/InvoiceDetailClient';
+import { loadInvoiceDetailPermissions } from '@/lib/invoices-page';
 
 export default async function InvoiceDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ created?: string }>;
 }) {
-  await requirePagePermission('invoices', 'read');
+  const permissions = await loadInvoiceDetailPermissions();
 
   const { id } = await params;
-  return <InvoiceDetailClient invoiceId={id} />;
+  const { created } = await searchParams;
+  return <InvoiceDetailClient invoiceId={id} permissions={permissions} justCreated={created === '1'} />;
 }

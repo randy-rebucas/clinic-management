@@ -13,6 +13,20 @@ import Doctor from '@/models/Doctor';
 import Appointment from '@/models/Appointment';
 import Visit from '@/models/Visit';
 import { Types } from 'mongoose';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { dayRangeInTz, monthRangeInTz } from '@/lib/tz';
+
+function tid(tenantId: string | Types.ObjectId): Types.ObjectId {
+  return new Types.ObjectId(String(tenantId));
+}
+
+/** Clinic-local month start and day window, so limits reset at the clinic's midnight. */
+async function clinicWindows(tenantId: string | Types.ObjectId, now = new Date()) {
+  const tz = await getTenantTimezone(tenantId);
+  const month = monthRangeInTz(now, tz);
+  const day = dayRangeInTz(now, tz);
+  return { startOfMonth: month.start, startOfDay: day.start, endOfDay: day.end };
+}
 
 export interface LimitCheckResult {
   allowed: boolean;
@@ -107,32 +121,30 @@ export async function checkSubscriptionLimit(
     switch (action) {
       case 'createPatient':
         limitType = 'patients';
-        currentCount = await Patient.countDocuments({ tenantId });
+        currentCount = await Patient.countDocuments({ tenantIds: tid(tenantId) });
         break;
       
       case 'createUser':
         limitType = 'users';
-        currentCount = await User.countDocuments({ tenantId, active: { $ne: false } });
+        currentCount = await User.countDocuments({ tenantId: tid(tenantId), status: { $ne: 'inactive' } });
         break;
       
       case 'createDoctor':
         limitType = 'doctors';
-        currentCount = await Doctor.countDocuments({ tenantId, status: 'active' });
+        currentCount = await Doctor.countDocuments({ tenantId: tid(tenantId), status: 'active' });
         break;
       
-      case 'createAppointment':
+      case 'createAppointment': {
         // Check both monthly and daily limits
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
+        const { startOfMonth, startOfDay, endOfDay } = await clinicWindows(tenantId, now);
 
         const monthlyCount = await Appointment.countDocuments({
-          tenantId,
+          tenantId: tid(tenantId),
           createdAt: { $gte: startOfMonth },
         });
 
         const dailyCount = await Appointment.countDocuments({
-          tenantId,
+          tenantId: tid(tenantId),
           createdAt: { $gte: startOfDay, $lte: endOfDay },
         });
 
@@ -161,15 +173,17 @@ export async function checkSubscriptionLimit(
         }
 
         return { allowed: true };
-      
-      case 'createVisit':
+      }
+
+      case 'createVisit': {
         limitType = 'visitsPerMonth';
-        const visitStartOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const { startOfMonth: visitStartOfMonth } = await clinicWindows(tenantId, now);
         currentCount = await Visit.countDocuments({
-          tenantId,
+          tenantId: tid(tenantId),
           createdAt: { $gte: visitStartOfMonth },
         });
         break;
+      }
       
       default:
         return { allowed: true };
@@ -226,10 +240,8 @@ export async function getSubscriptionUsage(tenantId: string | Types.ObjectId): P
     const plan = subscriptionStatus.plan || 'trial';
     const limitations = getSubscriptionLimitations(plan);
 
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
+    const { startOfMonth, startOfDay, endOfDay } = await clinicWindows(tenantId);
+    const tenantObjectId = tid(tenantId);
 
     const [
       patientsCount,
@@ -239,19 +251,19 @@ export async function getSubscriptionUsage(tenantId: string | Types.ObjectId): P
       appointmentsToday,
       visitsThisMonth,
     ] = await Promise.all([
-      Patient.countDocuments({ tenantId }),
-      User.countDocuments({ tenantId, active: { $ne: false } }),
-      Doctor.countDocuments({ tenantId, status: 'active' }),
+      Patient.countDocuments({ tenantIds: tenantObjectId }),
+      User.countDocuments({ tenantId: tenantObjectId, status: { $ne: 'inactive' } }),
+      Doctor.countDocuments({ tenantId: tenantObjectId, status: 'active' }),
       Appointment.countDocuments({
-        tenantId,
+        tenantId: tenantObjectId,
         createdAt: { $gte: startOfMonth },
       }),
       Appointment.countDocuments({
-        tenantId,
+        tenantId: tenantObjectId,
         createdAt: { $gte: startOfDay, $lte: endOfDay },
       }),
       Visit.countDocuments({
-        tenantId,
+        tenantId: tenantObjectId,
         createdAt: { $gte: startOfMonth },
       }),
     ]);

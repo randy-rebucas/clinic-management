@@ -6,21 +6,33 @@ import Patient from '@/models/Patient';
 import Appointment from '@/models/Appointment';
 import Visit from '@/models/Visit';
 import Invoice from '@/models/Invoice';
-import Doctor from '@/models/Doctor';
-import User from '@/models/User';
 import { getSettings } from '@/lib/settings';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
+import { dayRangeInTz, dayRangeOffsetInTz, formatInTz, combineDateAndTimeInTz } from '@/lib/tz';
 import { Types } from 'mongoose';
+import { forEachTenant, getTenantTimezone, getTenantStaff, automationEnabled, type AutomationTenant } from './shared';
 
 export interface DailyReportOptions {
   tenantId?: string | Types.ObjectId;
+  /** Any instant inside the clinic-local day to report on. */
   date?: Date;
+  /** Clinic-local calendar day "yyyy-MM-dd" (takes precedence over `date`). */
+  day?: string;
   recipients?: string[];
   sendEmail?: boolean;
 }
 
+async function resolveDayRange(options: DailyReportOptions, tz: string) {
+  if (options.day && /^\d{4}-\d{2}-\d{2}$/.test(options.day)) {
+    return dayRangeInTz(combineDateAndTimeInTz(options.day, '12:00', tz), tz);
+  }
+  if (options.date) return dayRangeInTz(options.date, tz);
+  // Default: the previous full clinic-local day (the job runs early the next morning).
+  return dayRangeOffsetInTz(-1, new Date(), tz);
+}
+
 /**
- * Generate daily report data
+ * Generate daily report data for one tenant
  */
 export async function generateDailyReport(options: DailyReportOptions = {}): Promise<{
   success: boolean;
@@ -30,167 +42,69 @@ export async function generateDailyReport(options: DailyReportOptions = {}): Pro
   try {
     await connectDB();
 
-    const reportDate = options.date || new Date();
-    const dateStart = new Date(reportDate);
-    dateStart.setHours(0, 0, 0, 0);
-    const dateEnd = new Date(reportDate);
-    dateEnd.setHours(23, 59, 59, 999);
-
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : undefined;
-
-    // Build tenant filter
-    const tenantFilter: any = {};
-    if (tenantId) {
-      tenantFilter.tenantId = tenantId;
-    } else {
-      tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    if (!options.tenantId) {
+      return { success: false, error: 'Tenant is required' };
     }
+    const tenantId = new Types.ObjectId(String(options.tenantId));
+    const tz = await getTenantTimezone(tenantId);
+    const { start: dateStart, end: dateEnd } = await resolveDayRange(options, tz);
 
-    // Fetch all statistics in parallel
+    const tenantFilter = { tenantId };
+    const inDay = { $gte: dateStart, $lte: dateEnd };
+
     const [
       newPatients,
-      totalAppointments,
-      completedAppointments,
-      cancelledAppointments,
+      appointmentsByStatus,
       totalVisits,
       completedVisits,
       newInvoices,
       paidInvoices,
-      totalRevenue,
       outstandingBalance,
+      revenueByMethod,
     ] = await Promise.all([
-      // New patients today
-      Patient.countDocuments({
-        ...tenantFilter,
-        createdAt: { $gte: dateStart, $lte: dateEnd },
-      }),
-      // Total appointments today
-      Appointment.countDocuments({
-        ...tenantFilter,
-        appointmentDate: { $gte: dateStart, $lte: dateEnd },
-      }),
-      // Completed appointments
-      Appointment.countDocuments({
-        ...tenantFilter,
-        appointmentDate: { $gte: dateStart, $lte: dateEnd },
-        status: 'completed',
-      }),
-      // Cancelled appointments
-      Appointment.countDocuments({
-        ...tenantFilter,
-        appointmentDate: { $gte: dateStart, $lte: dateEnd },
-        status: 'cancelled',
-      }),
-      // Total visits today
-      Visit.countDocuments({
-        ...tenantFilter,
-        date: { $gte: dateStart, $lte: dateEnd },
-      }),
-      // Completed visits
-      Visit.countDocuments({
-        ...tenantFilter,
-        date: { $gte: dateStart, $lte: dateEnd },
-        status: 'closed',
-      }),
-      // New invoices today
-      Invoice.countDocuments({
-        ...tenantFilter,
-        createdAt: { $gte: dateStart, $lte: dateEnd },
-      }),
-      // Paid invoices today
-      Invoice.find({
-        ...tenantFilter,
-        'payments.date': { $gte: dateStart, $lte: dateEnd },
-        status: 'paid',
-      }),
-      // Total revenue today (from paid invoices)
-      Invoice.aggregate([
-        {
-          $match: {
-            ...tenantFilter,
-            'payments.date': { $gte: dateStart, $lte: dateEnd },
-            status: 'paid',
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: '$totalPaid' },
-          },
-        },
+      Patient.countDocuments({ tenantIds: tenantId, createdAt: inDay }),
+      Appointment.aggregate([
+        { $match: { ...tenantFilter, appointmentDate: inDay } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
-      // Outstanding balance
+      Visit.countDocuments({ ...tenantFilter, date: inDay }),
+      Visit.countDocuments({ ...tenantFilter, date: inDay, status: 'closed' }),
+      Invoice.countDocuments({ ...tenantFilter, createdAt: inDay }),
+      Invoice.countDocuments({ ...tenantFilter, 'payments.date': inDay, status: 'paid' }),
       Invoice.aggregate([
-        {
-          $match: {
-            ...tenantFilter,
-            status: { $in: ['unpaid', 'partial'] },
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: '$outstandingBalance' },
-          },
-        },
+        { $match: { ...tenantFilter, status: { $in: ['unpaid', 'partial'] } } },
+        { $group: { _id: null, total: { $sum: '$outstandingBalance' } } },
+      ]),
+      Invoice.aggregate([
+        { $match: { ...tenantFilter, 'payments.date': inDay } },
+        { $unwind: '$payments' },
+        { $match: { 'payments.date': inDay } },
+        { $group: { _id: '$payments.method', total: { $sum: '$payments.amount' } } },
       ]),
     ]);
 
-    // Get appointment breakdown by status
-    const appointmentsByStatus = await Appointment.aggregate([
-      {
-        $match: {
-          ...tenantFilter,
-          appointmentDate: { $gte: dateStart, $lte: dateEnd },
-        },
-      },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-        },
-      },
-    ]);
-
-    // Get revenue breakdown by payment method
-    const revenueByMethod = await Invoice.aggregate([
-      {
-        $match: {
-          ...tenantFilter,
-          'payments.date': { $gte: dateStart, $lte: dateEnd },
-        },
-      },
-      {
-        $unwind: '$payments',
-      },
-      {
-        $match: {
-          'payments.date': { $gte: dateStart, $lte: dateEnd },
-        },
-      },
-      {
-        $group: {
-          _id: '$payments.method',
-          total: { $sum: '$payments.amount' },
-        },
-      },
-    ]);
+    const byStatus = appointmentsByStatus.reduce((acc: Record<string, number>, item: any) => {
+      acc[item._id || 'unknown'] = item.count;
+      return acc;
+    }, {});
+    const totalAppointments = Object.values(byStatus).reduce((a: number, b: number) => a + b, 0);
+    const byMethod = revenueByMethod.reduce((acc: Record<string, number>, item: any) => {
+      acc[item._id || 'other'] = item.total || 0;
+      return acc;
+    }, {});
+    // Revenue = payments received during the day (not invoice totals).
+    const totalRevenue = Object.values(byMethod).reduce((a: number, b: number) => a + b, 0);
 
     const report = {
-      date: reportDate.toISOString().split('T')[0],
+      date: formatInTz(dateStart, 'yyyy-MM-dd', tz),
       period: 'daily',
       summary: {
         newPatients,
         appointments: {
           total: totalAppointments,
-          completed: completedAppointments,
-          cancelled: cancelledAppointments,
-          byStatus: appointmentsByStatus.reduce((acc: any, item: any) => {
-            acc[item._id] = item.count;
-            return acc;
-          }, {}),
+          completed: byStatus.completed || 0,
+          cancelled: byStatus.cancelled || 0,
+          byStatus,
         },
         visits: {
           total: totalVisits,
@@ -198,141 +112,108 @@ export async function generateDailyReport(options: DailyReportOptions = {}): Pro
         },
         billing: {
           newInvoices,
-          paidInvoices: paidInvoices.length,
-          totalRevenue: totalRevenue[0]?.total || 0,
+          paidInvoices,
+          totalRevenue,
           outstandingBalance: outstandingBalance[0]?.total || 0,
-          revenueByMethod: revenueByMethod.reduce((acc: any, item: any) => {
-            acc[item._id] = item.total;
-            return acc;
-          }, {}),
+          revenueByMethod: byMethod,
         },
       },
       generatedAt: new Date().toISOString(),
+      timezone: tz,
     };
 
     return { success: true, report };
   } catch (error: any) {
     console.error('Error generating daily report:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to generate daily report' 
+    return {
+      success: false,
+      error: 'Failed to generate daily report',
     };
   }
 }
 
+type SendResult = { success: boolean; sent: number; errors: number; error?: string };
+
+async function sendTenantDailyReport(tenant: AutomationTenant, options: DailyReportOptions): Promise<SendResult> {
+  const settings = await getSettings(tenant.tenantId);
+  if (!automationEnabled(settings, 'autoDailyReports')) {
+    return { success: true, sent: 0, errors: 0 };
+  }
+
+  const reportResult = await generateDailyReport({ ...options, tenantId: tenant.tenantObjectId });
+  if (!reportResult.success || !reportResult.report) {
+    return { success: false, sent: 0, errors: 0, error: reportResult.error || 'Failed to generate report' };
+  }
+
+  let recipients: string[] = options.recipients || [];
+  if (recipients.length === 0) {
+    const users = await getTenantStaff(tenant.tenantObjectId, ['admin', 'accountant'], 'email');
+    recipients = users.map((u: any) => u.email).filter(Boolean);
+  }
+  if (recipients.length === 0) {
+    return { success: false, sent: 0, errors: 0, error: 'No recipients found' };
+  }
+
+  const emailContent = generateReportEmail(reportResult.report, settings, tenant.timezone);
+
+  let sent = 0;
+  let errors = 0;
+  if (options.sendEmail !== false) {
+    for (const recipient of recipients) {
+      try {
+        const emailResult = await sendEmail({ to: recipient, subject: emailContent.subject, html: emailContent.html });
+        if (emailResult.success) sent++;
+        else errors++;
+      } catch (error) {
+        console.error('Error sending daily report:', error);
+        errors++;
+      }
+    }
+  }
+
+  return { success: true, sent, errors };
+}
+
 /**
- * Send daily report to recipients
+ * Send daily report to recipients. Without a tenantId every active tenant is processed.
  */
-export async function sendDailyReport(options: DailyReportOptions = {}): Promise<{
-  success: boolean;
-  sent: number;
-  errors: number;
-  error?: string;
-}> {
+export async function sendDailyReport(options: DailyReportOptions = {}): Promise<SendResult & { tenants?: unknown[] }> {
   try {
     await connectDB();
-
-    const settings = await getSettings();
-    const autoDailyReports = (settings.automationSettings as any)?.autoDailyReports !== false;
-
-    if (!autoDailyReports) {
-      return { success: true, sent: 0, errors: 0 };
-    }
-
-    // Generate report
-    const reportResult = await generateDailyReport(options);
-    if (!reportResult.success || !reportResult.report) {
-      return { 
-        success: false, 
-        sent: 0, 
-        errors: 0, 
-        error: reportResult.error || 'Failed to generate report' 
-      };
-    }
-
-    const report = reportResult.report;
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : undefined;
-
-    // Get recipients
-    let recipients: string[] = options.recipients || [];
-
-    if (recipients.length === 0) {
-      // Get admin users
-      const usersQuery: any = {};
-      if (tenantId) {
-        usersQuery.tenantId = tenantId;
-      }
-
-      const users = await User.find(usersQuery)
-        .populate('role')
-        .exec();
-
-      recipients = users
-        .filter((user: any) => {
-          const role = user.role;
-          return role && (role.name === 'admin' || role.name === 'accountant');
-        })
-        .map((user: any) => user.email)
-        .filter(Boolean);
-    }
-
-    if (recipients.length === 0) {
-      return { 
-        success: false, 
-        sent: 0, 
-        errors: 0, 
-        error: 'No recipients found' 
-      };
-    }
-
-    // Generate email content
-    const emailContent = generateReportEmail(report, settings);
-
+    const runs = await forEachTenant(options.tenantId, (t) => sendTenantDailyReport(t, options));
     let sent = 0;
     let errors = 0;
-
-    // Send email to all recipients
-    if (options.sendEmail !== false) {
-      for (const recipient of recipients) {
-        try {
-          const emailResult = await sendEmail({
-            to: recipient,
-            subject: emailContent.subject,
-            html: emailContent.html,
-          });
-
-          if (emailResult.success) {
-            sent++;
-          } else {
-            errors++;
-          }
-        } catch (error) {
-          console.error(`Error sending daily report to ${recipient}:`, error);
-          errors++;
-        }
-      }
+    for (const run of runs) {
+      sent += run.result?.sent ?? 0;
+      errors += run.result?.errors ?? (run.success ? 0 : 1);
     }
-
-    return { success: true, sent, errors };
+    return {
+      success: runs.every((r) => r.success),
+      sent,
+      errors,
+      tenants: runs.map((r) => ({ tenantId: r.tenantId, success: r.success && !!r.result?.success, error: r.error || r.result?.error })),
+    };
   } catch (error: any) {
     console.error('Error sending daily report:', error);
-    return { 
-      success: false, 
-      sent: 0, 
-      errors: 1, 
-      error: error.message || 'Failed to send daily report' 
+    return {
+      success: false,
+      sent: 0,
+      errors: 1,
+      error: 'Failed to send daily report',
     };
   }
+}
+
+function money(n: unknown): string {
+  return (Number(n) || 0).toFixed(2);
 }
 
 /**
  * Generate report email
  */
-function generateReportEmail(report: any, settings: any): { subject: string; html: string } {
+function generateReportEmail(report: any, settings: any, tz: string): { subject: string; html: string } {
   const clinicName = settings.clinicName || 'Clinic';
-  const reportDate = new Date(report.date).toLocaleDateString();
+  const reportDate = report.date;
   const subject = `Daily Report - ${clinicName} - ${reportDate}`;
 
   const html = `
@@ -357,8 +238,8 @@ function generateReportEmail(report: any, settings: any): { subject: string; htm
     <body>
       <div class="container">
         <div class="header">
-          <h1>Daily Report - ${reportDate}</h1>
-          <p>${clinicName}</p>
+          <h1>Daily Report - ${escapeHtml(reportDate)}</h1>
+          <p>${escapeHtml(clinicName)}</p>
         </div>
         <div class="content">
           <div class="section">
@@ -376,7 +257,7 @@ function generateReportEmail(report: any, settings: any): { subject: string; htm
               <div class="metric-label">Visits</div>
             </div>
             <div class="metric">
-              <div class="metric-value">${report.summary.billing.totalRevenue.toFixed(2)}</div>
+              <div class="metric-value">${money(report.summary.billing.totalRevenue)}</div>
               <div class="metric-label">Revenue</div>
             </div>
           </div>
@@ -390,8 +271,8 @@ function generateReportEmail(report: any, settings: any): { subject: string; htm
               </tr>
               ${Object.entries(report.summary.appointments.byStatus).map(([status, count]: [string, any]) => `
                 <tr>
-                  <td>${status}</td>
-                  <td>${count}</td>
+                  <td>${escapeHtml(status)}</td>
+                  <td>${Number(count) || 0}</td>
                 </tr>
               `).join('')}
               <tr>
@@ -414,11 +295,11 @@ function generateReportEmail(report: any, settings: any): { subject: string; htm
               </tr>
               <tr>
                 <td>Total Revenue</td>
-                <td><strong>${report.summary.billing.totalRevenue.toFixed(2)}</strong></td>
+                <td><strong>${money(report.summary.billing.totalRevenue)}</strong></td>
               </tr>
               <tr>
                 <td>Outstanding Balance</td>
-                <td>${report.summary.billing.outstandingBalance.toFixed(2)}</td>
+                <td>${money(report.summary.billing.outstandingBalance)}</td>
               </tr>
             </table>
             ${Object.keys(report.summary.billing.revenueByMethod).length > 0 ? `
@@ -426,8 +307,8 @@ function generateReportEmail(report: any, settings: any): { subject: string; htm
               <table>
                 ${Object.entries(report.summary.billing.revenueByMethod).map(([method, amount]: [string, any]) => `
                   <tr>
-                    <td>${method}</td>
-                    <td>${amount.toFixed(2)}</td>
+                    <td>${escapeHtml(method)}</td>
+                    <td>${money(amount)}</td>
                   </tr>
                 `).join('')}
               </table>
@@ -435,7 +316,7 @@ function generateReportEmail(report: any, settings: any): { subject: string; htm
           </div>
 
           <div class="section">
-            <p><strong>Report Generated:</strong> ${new Date(report.generatedAt).toLocaleString()}</p>
+            <p><strong>Report Generated:</strong> ${escapeHtml(formatInTz(report.generatedAt, 'yyyy-MM-dd HH:mm', tz))}</p>
           </div>
         </div>
         <div class="footer">
@@ -448,4 +329,3 @@ function generateReportEmail(report: any, settings: any): { subject: string; htm
 
   return { subject, html };
 }
-

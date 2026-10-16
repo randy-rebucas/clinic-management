@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
-import bcrypt from 'bcryptjs';
+import { ensureStaffUser } from './staff-user-link';
 
 export interface IAdmin extends Document {
   // Tenant reference for multi-tenant support
@@ -105,105 +105,12 @@ AdminSchema.index({ tenantId: 1, accessLevel: 1, status: 1 }); // For access lev
 // Post-save hook to automatically create a User when an Admin is created
 // IMPORTANT: Hook must be added BEFORE model registration
 AdminSchema.post('save', async function (doc: IAdmin) {
-  try {
-    // Ensure models are registered by importing them first
-    if (!mongoose.models.User) {
-      await import('./User');
-    }
-    if (!mongoose.models.Role) {
-      await import('./Role');
-    }
-    
-    // Now get the models from mongoose.models (they should be registered now)
-    const User = mongoose.models.User;
-    const Role = mongoose.models.Role;
-    
-    if (!User || !Role) {
-      console.warn(`⚠️  Required models not registered. User: ${!!User}, Role: ${!!Role}`);
-      return;
-    }
-
-    // Check if a User with this adminProfile already exists (to avoid duplicates on updates)
-    const existingUserByProfile = await User.findOne({ adminProfile: doc._id });
-    
-    if (existingUserByProfile) {
-      // User already linked to this admin, skip
-      return;
-    }
-
-    // Check if a User with this email already exists
-    const existingUserByEmail = await User.findOne({ email: doc.email.toLowerCase().trim() });
-    
-    if (!existingUserByEmail) {
-      // Find the admin role (tenant-scoped if tenantId exists)
-      let adminRole;
-      if (doc.tenantId) {
-        // First try to find tenant-scoped admin role
-        adminRole = await Role.findOne({ 
-          name: 'admin',
-          tenantId: doc.tenantId 
-        });
-        
-        // If no tenant-scoped role, try global admin role
-        if (!adminRole) {
-          adminRole = await Role.findOne({ 
-            name: 'admin',
-            $or: [
-              { tenantId: { $exists: false } },
-              { tenantId: null }
-            ]
-          });
-        }
-      } else {
-        // No tenant, look for global admin role
-        adminRole = await Role.findOne({ 
-          name: 'admin',
-          $or: [
-            { tenantId: { $exists: false } },
-            { tenantId: null }
-          ]
-        });
-      }
-      
-      if (!adminRole) {
-        console.warn(`⚠️  Admin role not found. User not created for admin: ${doc.email}`);
-        return;
-      }
-
-      // Generate a default password (can be changed on first login)
-      const defaultPassword = `Admin${doc.firstName.slice(0, 2).toUpperCase()}${doc.phone?.slice(-4) || '1234'}!`;
-      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-
-      // Create the user with tenantId if admin has one
-      const userData: any = {
-        name: `${doc.firstName} ${doc.lastName}`.trim(),
-        email: doc.email.toLowerCase().trim(),
-        password: hashedPassword,
-        role: adminRole._id,
-        adminProfile: doc._id,
-        status: doc.status === 'active' ? 'active' : 'inactive',
-      };
-      
-      // Add tenantId if admin has one
-      if (doc.tenantId) {
-        userData.tenantId = doc.tenantId;
-      }
-
-      const user = await User.create(userData);
-
-      console.log(`✅ Created user account for admin: ${doc.email} (default password: ${defaultPassword})`);
-    } else {
-      // User exists, but update the adminProfile reference if not set
-      if (!existingUserByEmail.adminProfile) {
-        existingUserByEmail.adminProfile = doc._id;
-        await existingUserByEmail.save();
-        console.log(`✅ Linked existing user to admin: ${doc.email}`);
-      }
-    }
-  } catch (error: any) {
-    // Log error but don't throw - we don't want to prevent admin creation if user creation fails
-    console.error(`⚠️  Error creating user for admin ${doc.email}:`, error.message);
-  }
+  await ensureStaffUser({
+    doc,
+    profileField: 'adminProfile',
+    roleNames: ['admin'],
+    label: 'admin',
+  });
 });
 
 // Register Admin model immediately to ensure it's available when other models reference it

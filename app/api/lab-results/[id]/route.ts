@@ -1,22 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import Patient from '@/models/Patient';
+import Visit from '@/models/Visit';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
+import { updateLabResultSchema } from '@/lib/lab-result-schema';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to read lab results
   const permissionCheck = await requirePermission(session, 'lab-results', 'read');
   if (permissionCheck) {
     return permissionCheck;
@@ -25,44 +24,38 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    if (!isValidId(id)) return notFound('Lab result');
 
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode email phone dateOfBirth',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-
-    const labResult = await LabResult.findOne(query)
-      .populate(patientPopulateOptions)
-      .populate('visit', 'visitCode date visitType')
+    // File contents (inline data URLs) are not sent; files open through ./files/[fileId].
+    const labResult = await LabResult.findOne(tenantFilter(tenantId, { _id: id }))
+      .select('-thirdPartyLab.apiKey -attachments.url')
+      .populate({ path: 'patient', select: 'firstName lastName patientCode email phone dateOfBirth', match: { tenantIds: tenantObjectId } })
+      .populate({ path: 'visit', select: 'visitCode date visitType', match: { tenantId: tenantObjectId } })
       .populate('orderedBy', 'name email')
       .populate('reviewedBy', 'name email');
 
-    if (!labResult) {
-      return NextResponse.json(
-        { success: false, error: 'Lab result not found' },
-        { status: 404 }
-      );
-    }
+    if (!labResult) return notFound('Lab result');
 
-    return NextResponse.json({ success: true, data: labResult });
+    // The patient's earlier results for the same test, so each value can be read against the last.
+    const testType = String(labResult.request?.testType ?? '').trim();
+    const history = testType
+      ? await LabResult.find(
+          tenantFilter(tenantId, {
+            _id: { $ne: labResult._id },
+            patient: labResult.patient?._id ?? labResult.patient,
+            'request.testType': new RegExp(`^${escapeRegex(testType)}$`, 'i'),
+            status: { $in: ['completed', 'reviewed'] },
+            results: { $exists: true },
+            orderDate: { $lte: labResult.orderDate ?? new Date() },
+          })
+        )
+          .select('requestCode orderDate resultDate results abnormalFlags')
+          .sort({ resultDate: -1, orderDate: -1 })
+          .limit(6)
+          .lean()
+      : [];
+
+    return NextResponse.json({ success: true, data: labResult, history });
   } catch (error: any) {
     console.error('Error fetching lab result:', error);
     return NextResponse.json(
@@ -76,13 +69,10 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to update lab results
   const permissionCheck = await requirePermission(session, 'lab-results', 'update');
   if (permissionCheck) {
     return permissionCheck;
@@ -91,92 +81,82 @@ export async function PUT(
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
+    if (!isValidId(id)) return notFound('Lab result');
 
-    // If results are being updated, set resultDate and update status
-    if (body.results && !body.resultDate) {
-      body.resultDate = new Date();
+    const parsed = await parseBody(request, updateLabResultSchema);
+    if (isValidationError(parsed)) return parsed;
+    const body = parsed.data;
+
+    if (body.patient && !(await Patient.exists({ _id: body.patient, tenantIds: tenantObjectId }))) {
+      return NextResponse.json({ success: false, error: 'Invalid patient' }, { status: 400 });
+    }
+    if (body.visit && !(await Visit.exists({ _id: body.visit, tenantId: tenantObjectId }))) {
+      return NextResponse.json({ success: false, error: 'Invalid visit' }, { status: 400 });
     }
 
-    // If status is being set to completed or reviewed, update accordingly
-    if (body.status === 'completed' && !body.resultDate) {
-      body.resultDate = new Date();
+    const update: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (value !== undefined) update[key] = value;
     }
-
+    // reviewer is always the current user; never taken from the body
+    delete update.reviewedBy;
+    delete update.reviewedAt;
+    if ((body.results || body.status === 'completed') && !body.resultDate) {
+      update.resultDate = new Date();
+    }
     if (body.status === 'reviewed') {
-      body.reviewedBy = session.userId;
-      body.reviewedAt = new Date();
+      update.reviewedBy = session.userId;
+      update.reviewedAt = new Date();
+    }
+    // thirdPartyLab is a subdocument: only set the provided descriptive fields.
+    if (body.thirdPartyLab) {
+      delete update.thirdPartyLab;
+      for (const [key, value] of Object.entries(body.thirdPartyLab)) {
+        if (value !== undefined) update[`thirdPartyLab.${key}`] = value;
+      }
     }
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    const query = tenantFilter(tenantId, { _id: id });
+    const oldLabResult = await LabResult.findOne(query).select('status').lean() as any;
+    if (!oldLabResult) return notFound('Lab result');
+    const statusChangedToCompleted = oldLabResult.status !== 'completed' && body.status === 'completed';
 
-    // Get old lab result to check status change
-    const oldLabResult = await LabResult.findOne(query);
-    const statusChangedToCompleted = oldLabResult && oldLabResult.status !== 'completed' && body.status === 'completed';
-
-    const labResult = await LabResult.findOneAndUpdate(query, body, {
+    const labResult = await LabResult.findOneAndUpdate(query, { $set: update }, {
       new: true,
       runValidators: true,
-    });
-    
-    if (!labResult) {
-      return NextResponse.json(
-        { success: false, error: 'Lab result not found' },
-        { status: 404 }
-      );
-    }
-    
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode email phone',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    await labResult.populate(patientPopulateOptions);
-    await labResult.populate('visit', 'visitCode date');
+    }).select('-thirdPartyLab.apiKey -attachments.url');
+
+    if (!labResult) return notFound('Lab result');
+
+    await labResult.populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } });
+    await labResult.populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } });
     await labResult.populate('orderedBy', 'name email');
     await labResult.populate('reviewedBy', 'name email');
 
-    // Check if status changed to 'completed' - trigger automatic notification
     if (statusChangedToCompleted && !labResult.notificationSent) {
-      // Import and trigger automatic notification (async, don't wait)
-      import('@/lib/automations/lab-notifications').then(({ sendLabResultNotification }) => {
-        sendLabResultNotification({
-          labResultId: labResult._id,
-          tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
-          sendSMS: true,
-          sendEmail: true,
-          sendNotification: true,
-        }).catch((error) => {
+      const labResultId = labResult._id;
+      after(async () => {
+        try {
+          const { sendLabResultNotification } = await import('@/lib/automations/lab-notifications');
+          await sendLabResultNotification({
+            labResultId,
+            tenantId: tenantObjectId,
+            sendSMS: true,
+            sendEmail: true,
+            sendNotification: true,
+          });
+        } catch (error) {
           console.error('Error sending automatic lab result notification:', error);
-          // Don't fail the lab result update if notification fails
-        });
-      }).catch((error) => {
-        console.error('Error loading lab notifications module:', error);
+        }
       });
     }
 
     return NextResponse.json({ success: true, data: labResult });
   } catch (error: any) {
     console.error('Error updating lab result:', error);
-    if (error.name === 'ValidationError') {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid lab result data' },
         { status: 400 }
       );
     }
@@ -186,4 +166,3 @@ export async function PUT(
     );
   }
 }
-

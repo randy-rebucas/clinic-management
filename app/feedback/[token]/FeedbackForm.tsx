@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 interface SurveyMeta {
   visitId: string;
@@ -22,12 +22,13 @@ function StarRating({
   required?: boolean;
 }) {
   const [hover, setHover] = useState(0);
+  const labelId = useId();
   return (
     <div className="space-y-1">
-      <label className="block text-sm font-medium text-gray-700">
+      <span id={labelId} className="block text-sm font-medium text-gray-700">
         {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <div className="flex gap-1">
+      </span>
+      <div className="flex gap-1" role="group" aria-labelledby={labelId}>
         {[1, 2, 3, 4, 5].map((star) => (
           <button
             key={star}
@@ -37,8 +38,9 @@ function StarRating({
             onMouseLeave={() => setHover(0)}
             className="text-3xl leading-none transition-transform hover:scale-110 focus:outline-none"
             aria-label={`${star} star${star > 1 ? 's' : ''}`}
+            aria-pressed={value === star}
           >
-            <span className={(hover || value) >= star ? 'text-yellow-400' : 'text-gray-300'}>★</span>
+            <span aria-hidden="true" className={(hover || value) >= star ? 'text-yellow-400' : 'text-gray-300'}>★</span>
           </button>
         ))}
       </div>
@@ -172,13 +174,14 @@ export default function FeedbackForm({ token }: { token: string }) {
 
           {/* Would recommend */}
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Would you recommend us to family or friends?</label>
-            <div className="flex gap-3">
+            <p id="feedback-recommend-label" className="block text-sm font-medium text-gray-700">Would you recommend us to family or friends?</p>
+            <div className="flex gap-3" role="group" aria-labelledby="feedback-recommend-label">
               {[{ label: 'Yes 👍', value: true }, { label: 'No 👎', value: false }].map(({ label, value }) => (
                 <button
                   key={String(value)}
                   type="button"
                   onClick={() => setWouldRecommend(value)}
+                  aria-pressed={wouldRecommend === value}
                   className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${
                     wouldRecommend === value
                       ? 'border-blue-500 bg-blue-50 text-blue-700'

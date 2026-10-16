@@ -31,7 +31,9 @@ export type AuditResource =
   | 'doctor' 
   | 'room' 
   | 'service' 
-  | 'notification' 
+  | 'notification'
+  | 'referral'
+  | 'membership'
   | 'system';
 
 export interface IAuditLog extends Document {
@@ -76,6 +78,8 @@ export interface IAuditLog extends Document {
   // Timestamp
   timestamp: Date;
   
+  archived?: boolean;
+  archivedAt?: Date;
   createdAt: Date;
 }
 
@@ -108,7 +112,7 @@ const AuditLogSchema: Schema = new Schema(
     },
     resource: {
       type: String,
-      enum: ['patient', 'visit', 'appointment', 'prescription', 'lab_result', 'invoice', 'document', 'user', 'doctor', 'room', 'service', 'notification', 'system'],
+      enum: ['patient', 'visit', 'appointment', 'prescription', 'lab_result', 'invoice', 'document', 'user', 'doctor', 'room', 'service', 'notification', 'referral', 'membership', 'system'],
       required: true,
       index: true,
     },
@@ -125,6 +129,8 @@ const AuditLogSchema: Schema = new Schema(
     isSensitive: { type: Boolean, default: false, index: true },
     dataSubject: { type: Schema.Types.ObjectId, ref: 'Patient', index: true }, // For PH DPA compliance
     timestamp: { type: Date, default: Date.now, required: true, index: true },
+    archived: { type: Boolean },
+    archivedAt: { type: Date },
   },
   { timestamps: true }
 );
@@ -136,6 +142,7 @@ AuditLogSchema.index({ tenantId: 1, action: 1, timestamp: -1 });
 AuditLogSchema.index({ tenantId: 1, dataSubject: 1, timestamp: -1 }); // For PH DPA queries
 AuditLogSchema.index({ tenantId: 1, isSensitive: 1, timestamp: -1 });
 AuditLogSchema.index({ tenantId: 1, timestamp: -1 }); // For time-based queries
+AuditLogSchema.index({ tenantId: 1, archived: 1, archivedAt: 1 });
 
 // TTL index to auto-delete old logs (optional - keep for 7 years for compliance)
 // AuditLogSchema.index({ timestamp: 1 }, { expireAfterSeconds: 220752000 }); // 7 years

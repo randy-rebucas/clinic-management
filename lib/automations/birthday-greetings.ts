@@ -4,10 +4,11 @@
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
+import { formatInTz, dayRangeOffsetInTz } from '@/lib/tz';
 import { Types } from 'mongoose';
+import { forEachTenant, automationEnabled, delivered, errorMessage, BATCH_LIMIT, type AutomationTenant } from './shared';
 
 export interface BirthdayGreetingOptions {
   patientId: string | Types.ObjectId;
@@ -16,6 +17,9 @@ export interface BirthdayGreetingOptions {
   sendEmail?: boolean;
   sendNotification?: boolean;
 }
+
+/** Don't greet the same patient twice within this many days (reruns, multi-day catch-up). */
+const GREETING_COOLDOWN_DAYS = 300;
 
 /**
  * Send birthday greeting to patient
@@ -28,173 +32,161 @@ export async function sendBirthdayGreeting(options: BirthdayGreetingOptions): Pr
   try {
     await connectDB();
 
-    const settings = await getSettings();
-    const autoBirthdayGreetings = (settings.automationSettings as any)?.autoBirthdayGreetings !== false;
+    if (!options.tenantId) {
+      return { success: false, sent: false, error: 'Tenant is required' };
+    }
+    const tenantId = new Types.ObjectId(String(options.tenantId));
 
-    if (!autoBirthdayGreetings) {
+    const settings = await getSettings(tenantId.toString());
+    if (!automationEnabled(settings, 'autoBirthdayGreetings')) {
       return { success: true, sent: false };
     }
 
-    const patientId = typeof options.patientId === 'string' 
-      ? new Types.ObjectId(options.patientId) 
-      : options.patientId;
-
-    const patient = await Patient.findById(patientId);
-
+    const patient = await Patient.findOne({ _id: options.patientId, tenantIds: tenantId });
     if (!patient) {
       return { success: false, sent: false, error: 'Patient not found' };
     }
-
     if (!patient.dateOfBirth) {
       return { success: true, sent: false };
     }
-
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : patient.tenantId;
 
     const clinicName = settings.clinicName || 'Our Clinic';
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
     const bookingUrl = `${baseUrl}/book`;
 
-    const greetingMessage = generateBirthdaySMS(patient, clinicName, bookingUrl);
-    const emailContent = generateBirthdayEmail(patient, settings, bookingUrl);
-
     let sent = false;
 
-    // Send SMS if enabled and phone available
     if (options.sendSMS !== false && patient.phone) {
       try {
-        let phoneNumber = patient.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-        }
-
         const smsResult = await sendSMS({
-          to: phoneNumber,
-          message: greetingMessage,
+          to: patient.phone,
+          message: generateBirthdaySMS(patient, clinicName, bookingUrl),
         });
-
-        if (smsResult.success) {
-          sent = true;
-        }
+        if (delivered(smsResult)) sent = true;
       } catch (error) {
         console.error('Error sending birthday SMS:', error);
       }
     }
 
-    // Send email if enabled and email available
     if (options.sendEmail !== false && patient.email) {
       try {
+        const emailContent = generateBirthdayEmail(patient, settings, bookingUrl);
         const emailResult = await sendEmail({
           to: patient.email,
           subject: emailContent.subject,
           html: emailContent.html,
         });
-
-        if (emailResult.success) {
-          sent = true;
-        }
+        if (delivered(emailResult)) sent = true;
       } catch (error) {
         console.error('Error sending birthday email:', error);
       }
     }
 
-    // Send in-app notification
-    if (options.sendNotification !== false) {
-      // Note: Patient might not have a user account
-      // Could send to clinic staff instead if needed
+    if (sent) {
+      await Patient.updateOne({ _id: patient._id }, { $set: { lastBirthdayGreetingAt: new Date() } });
     }
 
     return { success: true, sent };
   } catch (error: any) {
     console.error('Error sending birthday greeting:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send birthday greeting' 
+      error: 'Failed to send birthday greeting',
     };
   }
 }
 
-/**
- * Process all patients with birthdays today and send greetings
- * This should be called by a cron job
- */
-export async function processBirthdayGreetings(tenantId?: string | Types.ObjectId): Promise<{
+type BirthdayResult = {
   success: boolean;
   processed: number;
   greetingsSent: number;
   errors: number;
   results: Array<{ patientId: string; success: boolean; error?: string }>;
-}> {
-  try {
-    await connectDB();
+};
 
-    const settings = await getSettings();
-    const autoBirthdayGreetings = (settings.automationSettings as any)?.autoBirthdayGreetings !== false;
+async function processTenant(tenant: AutomationTenant): Promise<BirthdayResult> {
+  const out: BirthdayResult = { success: true, processed: 0, greetingsSent: 0, errors: 0, results: [] };
 
-    if (!autoBirthdayGreetings) {
-      return { success: true, processed: 0, greetingsSent: 0, errors: 0, results: [] };
-    }
+  const settings = await getSettings(tenant.tenantId);
+  if (!automationEnabled(settings, 'autoBirthdayGreetings')) return out;
 
-    // Find patients with birthdays today
-    const today = new Date();
-    const month = today.getMonth() + 1; // 1-12
-    const day = today.getDate();
-
-    // Build query for patients with birthday today
-    const query: any = {
-      dateOfBirth: { $exists: true, $ne: null },
-      $expr: {
-        $and: [
-          { $eq: [{ $month: '$dateOfBirth' }, month] },
-          { $eq: [{ $dayOfMonth: '$dateOfBirth' }, day] },
-        ],
-      },
+  // Today and yesterday (clinic-local) so a missed run still greets the next day.
+  const days = [0, -1].map((offset) => {
+    const { start } = dayRangeOffsetInTz(offset, new Date(), tenant.timezone);
+    return {
+      month: Number(formatInTz(start, 'M', tenant.timezone)),
+      day: Number(formatInTz(start, 'd', tenant.timezone)),
     };
+  });
 
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
+  const cooldown = new Date(Date.now() - GREETING_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+  const tz = tenant.timezone;
 
-    const patients = await Patient.find(query);
+  const patients = await Patient.find({
+    tenantIds: tenant.tenantObjectId,
+    active: { $ne: false },
+    dateOfBirth: { $exists: true, $ne: null },
+    $and: [
+      { $or: [{ lastBirthdayGreetingAt: { $exists: false } }, { lastBirthdayGreetingAt: null }, { lastBirthdayGreetingAt: { $lt: cooldown } }] },
+      {
+        $or: days.map(({ month, day }) => ({
+          $expr: {
+            $and: [
+              { $eq: [{ $month: { date: '$dateOfBirth', timezone: tz } }, month] },
+              { $eq: [{ $dayOfMonth: { date: '$dateOfBirth', timezone: tz } }, day] },
+            ],
+          },
+        })),
+      },
+    ],
+  })
+    .select('_id')
+    .limit(BATCH_LIMIT)
+    .lean();
 
-    const results: Array<{ patientId: string; success: boolean; error?: string }> = [];
-    let greetingsSent = 0;
-    let errors = 0;
-
-    for (const patient of patients) {
+  for (const patient of patients as any[]) {
+    out.processed++;
+    try {
       const result = await sendBirthdayGreeting({
         patientId: patient._id,
-        tenantId: patient.tenantId,
+        tenantId: tenant.tenantObjectId,
         sendSMS: true,
         sendEmail: true,
         sendNotification: false,
       });
-
-      results.push({
-        patientId: patient._id.toString(),
-        success: result.success,
-        error: result.error,
-      });
-
-      if (result.success && result.sent) {
-        greetingsSent++;
-      } else if (!result.success) {
-        errors++;
-      }
+      out.results.push({ patientId: String(patient._id), success: result.success, error: result.error });
+      if (result.success && result.sent) out.greetingsSent++;
+      else if (!result.success) out.errors++;
+    } catch (error) {
+      out.errors++;
+      out.results.push({ patientId: String(patient._id), success: false, error: errorMessage(error) });
     }
+  }
 
-    return {
-      success: true,
-      processed: patients.length,
-      greetingsSent,
-      errors,
-      results,
-    };
+  return out;
+}
+
+/**
+ * Process all patients with birthdays today and send greetings.
+ * Without a tenantId every active tenant is processed.
+ */
+export async function processBirthdayGreetings(tenantId?: string | Types.ObjectId): Promise<BirthdayResult> {
+  try {
+    await connectDB();
+    const runs = await forEachTenant(tenantId, processTenant);
+    const total: BirthdayResult = { success: runs.every((r) => r.success), processed: 0, greetingsSent: 0, errors: 0, results: [] };
+    for (const run of runs) {
+      if (!run.result) {
+        total.errors++;
+        continue;
+      }
+      total.processed += run.result.processed;
+      total.greetingsSent += run.result.greetingsSent;
+      total.errors += run.result.errors;
+      total.results.push(...run.result.results);
+    }
+    return total;
   } catch (error: any) {
     console.error('Error processing birthday greetings:', error);
     return {
@@ -202,24 +194,20 @@ export async function processBirthdayGreetings(tenantId?: string | Types.ObjectI
       processed: 0,
       greetingsSent: 0,
       errors: 1,
-      results: [{ patientId: 'unknown', success: false, error: error.message }],
+      results: [],
     };
   }
 }
 
-/**
- * Generate birthday SMS
- */
 function generateBirthdaySMS(patient: any, clinicName: string, bookingUrl: string): string {
   return `Happy Birthday ${patient.firstName}! 🎉 Wishing you a wonderful day and good health. As a special birthday gift, we're offering you a 10% discount on your next visit. Book now: ${bookingUrl}. - ${clinicName}`;
 }
 
-/**
- * Generate birthday email
- */
 function generateBirthdayEmail(patient: any, settings: any, bookingUrl: string): { subject: string; html: string } {
-  const clinicName = settings.clinicName || 'Our Clinic';
-  const clinicPhone = settings.clinicPhone || '';
+  const clinicName = escapeHtml(settings.clinicName || 'Our Clinic');
+  const clinicPhone = escapeHtml(settings.clinicPhone || '');
+  const firstName = escapeHtml(patient.firstName);
+  const lastName = escapeHtml(patient.lastName);
   const subject = `🎉 Happy Birthday ${patient.firstName}!`;
 
   const html = `
@@ -241,10 +229,10 @@ function generateBirthdayEmail(patient: any, settings: any, bookingUrl: string):
       <div class="container">
         <div class="header">
           <h1>🎉 Happy Birthday!</h1>
-          <p>${patient.firstName} ${patient.lastName}</p>
+          <p>${firstName} ${lastName}</p>
         </div>
         <div class="content">
-          <p>Dear ${patient.firstName},</p>
+          <p>Dear ${firstName},</p>
           <p>We at ${clinicName} would like to wish you a very happy birthday! 🎂</p>
           <p>We hope your special day is filled with joy, happiness, and good health.</p>
           <div class="birthday-box">
@@ -255,7 +243,7 @@ function generateBirthdayEmail(patient: any, settings: any, bookingUrl: string):
           </div>
           <p>Take this opportunity to schedule your annual check-up or any health consultation you've been planning.</p>
           <p style="text-align: center;">
-            <a href="${bookingUrl}" class="button">Book Your Appointment</a>
+            <a href="${escapeHtml(bookingUrl)}" class="button">Book Your Appointment</a>
           </p>
           ${clinicPhone ? `<p>Or call us at ${clinicPhone} to schedule.</p>` : ''}
           <p>Thank you for being a valued patient. We look forward to serving you!</p>
@@ -271,4 +259,3 @@ function generateBirthdayEmail(patient: any, settings: any, bookingUrl: string):
 
   return { subject, html };
 }
-

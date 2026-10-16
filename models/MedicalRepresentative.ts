@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
-import bcrypt from 'bcryptjs';
+import { tenantScope, newAccountCredentials, sendInviteInBackground } from './staff-user-link';
 
 export interface IMedicalRepresentative extends Document {
   // Tenant references for multi-tenant support
@@ -231,17 +231,18 @@ MedicalRepresentativeSchema.post('save', async function (doc) {
     const User = (await import('./User')).default;
     const Role = (await import('./Role')).default;
 
-    // Check if User already exists
-    const existingUser = await User.findOne({ email: doc.email });
+    const email = String(doc.email).toLowerCase().trim();
+
+    // Medical reps are tenant-less users; never link to a clinic's account that shares the email.
+    const existingUser = await User.findOne({ email, ...tenantScope(null) });
     if (existingUser) {
-      console.log('User already exists for medical representative:', doc.email);
       // Link the existing user to this medical representative
       await doc.updateOne({ userId: existingUser._id });
       return;
     }
 
     // Find or create the medical-representative role (tenant-agnostic)
-    let role = await Role.findOne({ name: 'medical-representative' });
+    let role = await Role.findOne({ name: 'medical-representative', ...tenantScope(null) });
     if (!role) {
       console.log('Creating medical-representative role');
       role = await Role.create({
@@ -252,24 +253,19 @@ MedicalRepresentativeSchema.post('save', async function (doc) {
       });
     }
 
-    // Generate a default password (can be changed on first login)
-    const defaultPassword = `Password1234!`;
-    const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-
-    console.log('🔐 Generated default password');
-
-    // Create a User account for this medical representative
+    // No usable password until the rep follows the emailed set-password link
+    const name = `${doc.firstName} ${doc.lastName}`.trim();
+    const { fields, token } = await newAccountCredentials();
     const newUser = await User.create({
-      name: `${doc.firstName} ${doc.lastName}`.trim(),
-      email: doc.email,
-      password: hashedPassword, // Use the generated hashed password
+      name,
+      email,
+      ...fields,
       role: role._id,
       isActive: true,
       medicalRepresentativeProfile: doc._id,
       tenantId: undefined, // Medical representatives are not tied to a specific tenant
     });
-
-    console.log('Created User account for medical representative:', newUser.email);
+    sendInviteInBackground({ email, name, token, tenantId: null, kind: 'invite' });
 
     // Link the User to this MedicalRepresentative using updateOne to avoid triggering save again
     await doc.updateOne({ userId: newUser._id });

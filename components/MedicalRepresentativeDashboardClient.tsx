@@ -42,40 +42,39 @@ export default function MedicalRepresentativeDashboardClient() {
   const router = useRouter();
 
   useEffect(() => {
-    fetchMedicalRepData();
-  }, []);
-
-  const fetchMedicalRepData = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch('/api/medical-representatives/session');
-      const data = await res.json();
-      if (!data.success) {
-        if (res.status === 401) {
-          router.push('/medical-representatives/login');
+    const fetchMedicalRepData = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch('/api/medical-representatives/session');
+        const data = await res.json();
+        if (!data.success) {
+          if (res.status === 401) {
+            router.push('/medical-representatives/login');
+            return;
+          }
+          setError(data.error || 'Failed to load data');
           return;
         }
-        setError(data.error || 'Failed to load data');
-        return;
-      }
 
-      setMedicalRep(data.data);
+        setMedicalRep(data.data);
       
-      // Calculate stats
-    //   const products = data.data.products || [];
-    //   setStats({
-    //     totalVisits: 0, // TODO: Track visits in future
-    //     thisMonth: 0,
-    //     activeProducts: products.length,
-    //     territorySize: data.data.territory ? data.data.territory.split(',').length : 1
-    //   });
-    } catch (err: any) {
-      console.error('Fetch medical representative data error:', err);
-      // setError(err.message || 'Failed to load data');
-    } finally {
-      setLoading(false);
-    }
-  };
+        // Calculate stats
+      //   const products = data.data.products || [];
+      //   setStats({
+      //     totalVisits: 0, // TODO: Track visits in future
+      //     thisMonth: 0,
+      //     activeProducts: products.length,
+      //     territorySize: data.data.territory ? data.data.territory.split(',').length : 1
+      //   });
+      } catch (err: any) {
+        console.error('Fetch medical representative data error:', err);
+        // setError(err.message || 'Failed to load data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMedicalRepData();
+  }, [router]);
 
   const handleLogout = async () => {
     try {
@@ -89,7 +88,7 @@ export default function MedicalRepresentativeDashboardClient() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100 flex items-center justify-center">
+      <div className="min-h-screen bg-purple-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-700 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading your dashboard...</p>
@@ -100,14 +99,14 @@ export default function MedicalRepresentativeDashboardClient() {
   
   if (error || !medicalRep) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100 flex items-center justify-center">
+      <div className="min-h-screen bg-purple-50 flex items-center justify-center">
         {error && <pre>{error}</pre>}
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100">
+    <div className="min-h-screen bg-purple-50">
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -138,7 +137,7 @@ export default function MedicalRepresentativeDashboardClient() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Activation Status Banner */}
         {!medicalRep.isActivated && (
-          <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg">
+          <div className="mb-6 bg-yellow-50 border border-yellow-200 p-4 rounded-r-lg">
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <svg className="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
@@ -172,8 +171,8 @@ export default function MedicalRepresentativeDashboardClient() {
 
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center">
-              <div className="flex-shrink-0 bg-blue-100 rounded-lg p-3">
-                <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex-shrink-0 bg-brand-teal-light rounded-lg p-3">
+                <svg className="h-6 w-6 text-brand-teal-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </div>
@@ -200,8 +199,8 @@ export default function MedicalRepresentativeDashboardClient() {
 
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center">
-              <div className="flex-shrink-0 bg-indigo-100 rounded-lg p-3">
-                <svg className="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex-shrink-0 bg-brand-teal-light rounded-lg p-3">
+                <svg className="h-6 w-6 text-brand-teal-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                 </svg>
               </div>
@@ -223,33 +222,33 @@ export default function MedicalRepresentativeDashboardClient() {
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Full Name</label>
+                  <span className="text-sm font-medium text-gray-600">Full Name</span>
                   <p className="mt-1 text-base text-gray-900">
                     {medicalRep.firstName} {medicalRep.lastName}
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Title</label>
+                  <span className="text-sm font-medium text-gray-600">Title</span>
                   <p className="mt-1 text-base text-gray-900">{medicalRep.title || 'Not specified'}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Email</label>
+                  <span className="text-sm font-medium text-gray-600">Email</span>
                   <p className="mt-1 text-base text-gray-900">{medicalRep.email}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Phone</label>
+                  <span className="text-sm font-medium text-gray-600">Phone</span>
                   <p className="mt-1 text-base text-gray-900">{medicalRep.phone}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Company</label>
+                  <span className="text-sm font-medium text-gray-600">Company</span>
                   <p className="mt-1 text-base text-gray-900">{medicalRep.company}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Territory</label>
+                  <span className="text-sm font-medium text-gray-600">Territory</span>
                   <p className="mt-1 text-base text-gray-900">{medicalRep.territory}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Status</label>
+                  <span className="text-sm font-medium text-gray-600">Status</span>
                   <p className="mt-1">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       medicalRep.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
@@ -259,7 +258,7 @@ export default function MedicalRepresentativeDashboardClient() {
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Member Since</label>
+                  <span className="text-sm font-medium text-gray-600">Member Since</span>
                   <p className="mt-1 text-base text-gray-900">
                     {new Date(medicalRep.createdAt).toLocaleDateString()}
                   </p>
@@ -268,14 +267,14 @@ export default function MedicalRepresentativeDashboardClient() {
 
               {medicalRep.bio && (
                 <div className="mt-6">
-                  <label className="text-sm font-medium text-gray-600">Bio</label>
+                  <span className="text-sm font-medium text-gray-600">Bio</span>
                   <p className="mt-1 text-base text-gray-700">{medicalRep.bio}</p>
                 </div>
               )}
 
               {medicalRep.products && medicalRep.products.length > 0 && (
                 <div className="mt-6">
-                  <label className="text-sm font-medium text-gray-600">Products</label>
+                  <span className="text-sm font-medium text-gray-600">Products</span>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {medicalRep.products.map((product, index) => (
                       <span
@@ -309,7 +308,7 @@ export default function MedicalRepresentativeDashboardClient() {
 
               <button
                 onClick={() => router.push('/medical-representative/products')}
-                className="w-full flex items-center justify-start gap-3 px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors"
+                className="w-full flex items-center justify-start gap-3 px-4 py-3 bg-brand-teal-light/60 hover:bg-brand-teal-light text-brand-teal-deep rounded-lg transition-colors"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -341,7 +340,7 @@ export default function MedicalRepresentativeDashboardClient() {
               <div className="pt-4 border-t border-gray-200">
                 <button
                   onClick={() => router.push('/medical-representative/support')}
-                  className="w-full flex items-center justify-start gap-3 px-4 py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition-colors"
+                  className="w-full flex items-center justify-start gap-3 px-4 py-3 bg-brand-teal-light/60 hover:bg-brand-teal-light text-brand-teal-deep rounded-lg transition-colors"
                 >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />

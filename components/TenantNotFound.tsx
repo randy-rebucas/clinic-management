@@ -81,12 +81,12 @@ export default function TenantNotFound({ subdomain }: TenantNotFoundProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-brand-teal-light/60 p-4">
       <div className="max-w-lg w-full">
         {/* Main Error Card */}
-        <div className="bg-white shadow-2xl rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="bg-white shadow-2xl rounded-lg border border-gray-200 overflow-hidden">
           {/* Header with Icon */}
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-8 text-center">
+          <div className="bg-brand-teal-dark p-8 text-center">
             <div className="flex items-center justify-center w-20 h-20 mx-auto bg-white/20 backdrop-blur-sm rounded-full mb-4">
               <svg
                 className="w-12 h-12 text-white"
@@ -105,7 +105,7 @@ export default function TenantNotFound({ subdomain }: TenantNotFoundProps) {
             <h1 className="text-3xl font-bold text-white mb-2">
               Clinic Not Found
             </h1>
-            <p className="text-blue-100 text-lg">
+            <p className="text-brand-teal-light text-lg">
               The clinic you&apos;re looking for doesn&apos;t exist or is no longer available
             </p>
           </div>
@@ -142,8 +142,8 @@ export default function TenantNotFound({ subdomain }: TenantNotFoundProps) {
 
             <div className="space-y-4 mb-6">
               <div className="flex items-start">
-                <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3">
-                  <span className="text-blue-600 font-semibold text-sm">1</span>
+                <div className="flex-shrink-0 w-8 h-8 bg-brand-teal-light rounded-full flex items-center justify-center mr-3">
+                  <span className="text-brand-teal-dark font-semibold text-sm">1</span>
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-1">Check the URL</h3>
@@ -154,8 +154,8 @@ export default function TenantNotFound({ subdomain }: TenantNotFoundProps) {
               </div>
 
               <div className="flex items-start">
-                <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3">
-                  <span className="text-blue-600 font-semibold text-sm">2</span>
+                <div className="flex-shrink-0 w-8 h-8 bg-brand-teal-light rounded-full flex items-center justify-center mr-3">
+                  <span className="text-brand-teal-dark font-semibold text-sm">2</span>
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-1">Contact Support</h3>
@@ -166,8 +166,8 @@ export default function TenantNotFound({ subdomain }: TenantNotFoundProps) {
               </div>
 
               <div className="flex items-start">
-                <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3">
-                  <span className="text-blue-600 font-semibold text-sm">3</span>
+                <div className="flex-shrink-0 w-8 h-8 bg-brand-teal-light rounded-full flex items-center justify-center mr-3">
+                  <span className="text-brand-teal-dark font-semibold text-sm">3</span>
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-1">Set Up Your Clinic</h3>
@@ -182,7 +182,7 @@ export default function TenantNotFound({ subdomain }: TenantNotFoundProps) {
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={handleSetUpClinic}
-                className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all font-semibold shadow-md text-center"
+                className="flex-1 bg-brand-teal-dark text-white py-3 px-6 rounded-lg hover:bg-brand-teal-deep transition-all font-semibold shadow-md text-center"
               >
                 Set Up Your Clinic
               </button>
@@ -200,7 +200,7 @@ export default function TenantNotFound({ subdomain }: TenantNotFoundProps) {
                 Need help?{' '}
                 <a
                   href="mailto:support@clinicmanagement.com"
-                  className="text-blue-600 hover:text-blue-700 font-medium underline"
+                  className="text-brand-teal-dark hover:text-brand-teal-deep font-medium underline"
                 >
                   Contact Support
                 </a>

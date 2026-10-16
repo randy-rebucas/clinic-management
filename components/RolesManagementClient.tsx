@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Modal, AlertDialog } from './ui/Modal';
 
 interface Permission {
@@ -39,6 +39,7 @@ export default function RolesManagementClient() {
   const [showPermissionsDialog, setShowPermissionsDialog] = useState(false);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -48,11 +49,7 @@ export default function RolesManagementClient() {
     isActive: true,
   });
 
-  useEffect(() => {
-    fetchRoles();
-  }, []);
-
-  const fetchRoles = async () => {
+  const fetchRoles = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -93,7 +90,14 @@ export default function RolesManagementClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchRoles();
+    };
+    load();
+  }, [fetchRoles]);
 
   const handleCreate = () => {
     setEditingRole(null);
@@ -120,6 +124,8 @@ export default function RolesManagementClient() {
   };
 
   const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
     try {
       setError(null);
       const url = editingRole ? `/api/roles/${editingRole._id}` : '/api/roles';
@@ -157,12 +163,15 @@ export default function RolesManagementClient() {
     } catch (err: any) {
       setError(err.message || 'Failed to save role');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!roleToDelete) return;
+    if (!roleToDelete || saving) return;
 
+    setSaving(true);
     try {
       setError(null);
       const response = await fetch(`/api/roles/${roleToDelete}`, {
@@ -196,6 +205,8 @@ export default function RolesManagementClient() {
     } catch (err: any) {
       setError(err.message || 'Failed to delete role');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -206,8 +217,9 @@ export default function RolesManagementClient() {
   };
 
   const handleSavePermissions = async () => {
-    if (!selectedRole) return;
+    if (!selectedRole || saving) return;
 
+    setSaving(true);
     try {
       setError(null);
       const response = await fetch(`/api/roles/${selectedRole._id}/permissions`, {
@@ -242,6 +254,8 @@ export default function RolesManagementClient() {
     } catch (err: any) {
       setError(err.message || 'Failed to update permissions');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -280,11 +294,11 @@ export default function RolesManagementClient() {
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100 border-t-blue-600"></div>
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-brand-teal/20 border-t-brand-teal-dark"></div>
             </div>
             <p className="text-gray-600 font-medium">Loading roles...</p>
           </div>
@@ -294,12 +308,12 @@ export default function RolesManagementClient() {
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6">
           {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -311,7 +325,7 @@ export default function RolesManagementClient() {
             </div>
           )}
           {success && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-green-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -324,22 +338,22 @@ export default function RolesManagementClient() {
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
+                <div className="p-2 bg-brand-teal-dark rounded-lg shadow-md">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Roles Management</h1>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Roles Management</h1>
                   <p className="text-sm sm:text-base text-gray-600 mt-1">Manage user roles and permissions</p>
                 </div>
               </div>
               <button
                 onClick={handleCreate}
-                className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
+                className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -350,7 +364,7 @@ export default function RolesManagementClient() {
           </div>
 
           {/* Roles Table */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             {roles.length === 0 ? (
               <div className="p-12 text-center">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
@@ -363,7 +377,7 @@ export default function RolesManagementClient() {
                 <div className="mt-6">
                   <button
                     onClick={handleCreate}
-                    className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
+                    className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -411,7 +425,7 @@ export default function RolesManagementClient() {
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleManagePermissions(role)}
-                              className="px-3 py-1.5 text-xs font-semibold bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                              className="px-3 py-1.5 text-xs font-semibold bg-brand-teal-light text-brand-teal-deep rounded-lg hover:bg-brand-teal-light transition-colors"
                             >
                               Permissions
                             </button>
@@ -452,7 +466,7 @@ export default function RolesManagementClient() {
         <Modal open={showForm} onOpenChange={setShowForm}>
           <div className="p-6 max-w-[500px]">
             <div className="flex items-center gap-3 mb-5">
-              <div className="p-2 bg-blue-500 rounded-lg">
+              <div className="p-2 bg-brand-teal-dark rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
@@ -465,11 +479,11 @@ export default function RolesManagementClient() {
             
             <div className="flex flex-col gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Role Name</label>
-                <select
+                <label htmlFor="role-name" className="block text-sm font-semibold text-gray-700 mb-2">Role Name</label>
+                <select id="role-name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm"
                 >
                   <option value="">Select role name</option>
                   <option value="admin">Admin</option>
@@ -482,47 +496,47 @@ export default function RolesManagementClient() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Display Name</label>
-                <input
+                <label htmlFor="role-display-name" className="block text-sm font-semibold text-gray-700 mb-2">Display Name</label>
+                <input id="role-display-name"
                   type="text"
                   value={formData.displayName}
                   onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
                   placeholder="Enter display name"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
-                <input
+                <label htmlFor="role-description" className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
+                <input id="role-description"
                   type="text"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="Enter description"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Level</label>
-                <input
+                <label htmlFor="role-level" className="block text-sm font-semibold text-gray-700 mb-2">Level</label>
+                <input id="role-level"
                   type="number"
                   value={formData.level.toString()}
                   onChange={(e) => setFormData({ ...formData, level: parseInt(e.target.value) || 0 })}
                   placeholder="Enter level"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm"
                 />
               </div>
 
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  id="isActive"
+                  id="role-is-active"
                   checked={formData.isActive}
                   onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  className="w-4 h-4 text-brand-teal-dark border-gray-300 rounded focus:ring-brand-teal"
                 />
-                <label htmlFor="isActive" className="text-sm font-semibold cursor-pointer text-gray-700">Active</label>
+                <label htmlFor="role-is-active" className="text-sm font-semibold cursor-pointer text-gray-700">Active</label>
               </div>
             </div>
 
@@ -535,9 +549,10 @@ export default function RolesManagementClient() {
               </button>
               <button
                 onClick={handleSave}
-                className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
+                disabled={saving}
+                className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all text-sm font-semibold shadow-md"
               >
-                {editingRole ? 'Update' : 'Create'}
+                {saving ? 'Saving…' : editingRole ? 'Update' : 'Create'}
               </button>
             </div>
           </div>
@@ -547,7 +562,7 @@ export default function RolesManagementClient() {
         <Modal open={showPermissionsDialog} onOpenChange={setShowPermissionsDialog}>
           <div className="p-6 max-w-[800px] max-h-[80vh] overflow-auto">
             <div className="flex items-center gap-3 mb-5">
-              <div className="p-2 bg-blue-500 rounded-lg">
+              <div className="p-2 bg-brand-teal-dark rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
@@ -563,7 +578,7 @@ export default function RolesManagementClient() {
                 Select permissions for this role. Permissions can be resource-specific or use wildcards (*).
               </p>
 
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50 border-b border-gray-200">
@@ -586,18 +601,20 @@ export default function RolesManagementClient() {
                             <td key={action} className="px-6 py-4 whitespace-nowrap text-center">
                               <button
                                 onClick={() => togglePermission(resource, action)}
+                                aria-label={`${action} ${resource}`}
+                                aria-pressed={hasPermission(resource, action)}
                                 className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                                   hasPermission(resource, action)
-                                    ? 'bg-green-600 text-white hover:bg-green-700 shadow-sm'
+                                    ? 'bg-brand-teal-dark text-white hover:bg-brand-teal-deep shadow-sm'
                                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                 }`}
                               >
                                 {hasPermission(resource, action) ? (
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                   </svg>
                                 ) : (
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                   </svg>
                                 )}
@@ -621,9 +638,10 @@ export default function RolesManagementClient() {
               </button>
               <button
                 onClick={handleSavePermissions}
-                className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
+                disabled={saving}
+                className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all text-sm font-semibold shadow-md"
               >
-                Save Permissions
+                {saving ? 'Saving…' : 'Save Permissions'}
               </button>
             </div>
           </div>
@@ -644,9 +662,10 @@ export default function RolesManagementClient() {
           </button>
           <button
             onClick={handleDelete}
-            className="px-5 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition-all text-sm font-semibold shadow-md"
+            disabled={saving}
+            className="px-5 py-2.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all text-sm font-semibold shadow-md"
           >
-            Delete
+            {saving ? 'Deleting…' : 'Delete'}
           </button>
         </AlertDialog>
         </div>

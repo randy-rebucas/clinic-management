@@ -1,42 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { sendSMS } from '@/lib/sms';
 import { sendEmail, generateLabResultEmail } from '@/lib/email';
 import { createLabResultNotification } from '@/lib/notifications';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
+import { normalizePhone } from '@/lib/phone';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(session, 'lab-results', 'update');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
-    const notificationMethod = body.method || 'email'; // 'email', 'sms', or 'both'
+    if (!isValidId(id)) return notFound('Lab result');
 
-    const labResult = await LabResult.findById(id)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('visit', 'visitCode date');
+    const body = await request.json().catch(() => ({}));
+    const notificationMethod: 'email' | 'sms' | 'both' =
+      body?.method === 'sms' || body?.method === 'both' ? body.method : 'email';
 
-    if (!labResult) {
-      return NextResponse.json(
-        { success: false, error: 'Lab result not found' },
-        { status: 404 }
-      );
-    }
+    const labResult = await LabResult.findOne(tenantFilter(tenantId, { _id: id }))
+      .populate({ path: 'patient', select: 'firstName lastName email phone', match: { tenantIds: tenantObjectId } })
+      .populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } });
+
+    if (!labResult) return notFound('Lab result');
 
     const patient = labResult.patient as any;
 
-    if (!patient.email && !patient.phone) {
+    if (!patient || (!patient.email && !patient.phone)) {
       return NextResponse.json(
         { success: false, error: 'Patient contact information not available' },
         { status: 400 }
@@ -49,7 +49,6 @@ export async function POST(
       errors: [] as string[],
     };
 
-    // Send email notification
     if (notificationMethod === 'email' || notificationMethod === 'both') {
       if (patient.email) {
         try {
@@ -63,66 +62,64 @@ export async function POST(
           if (emailResult.success) {
             results.emailSent = true;
           } else {
-            results.errors.push(`Email failed: ${emailResult.error}`);
+            results.errors.push('Email failed to send');
           }
         } catch (error: any) {
-          results.errors.push(`Email failed: ${error.message}`);
+          console.error('Lab result email failed:', error);
+          results.errors.push('Email failed to send');
         }
       } else {
         results.errors.push('Patient email not available');
       }
     }
 
-    // Send SMS notification
     if (notificationMethod === 'sms' || notificationMethod === 'both') {
-      if (patient.phone) {
+      const phoneNumber = patient.phone ? normalizePhone(patient.phone) : null;
+      if (phoneNumber) {
         try {
           const message = `Your lab results for ${labResult.request.testType} are now available. Request Code: ${labResult.requestCode}. Please contact the clinic to view your results.`;
-
-          let phoneNumber = patient.phone.trim();
-          if (!phoneNumber.startsWith('+')) {
-            phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-          }
-
-          const smsResult = await sendSMS({
-            to: phoneNumber,
-            message,
-          });
+          const smsResult = await sendSMS({ to: phoneNumber, message });
 
           if (smsResult.success) {
             results.smsSent = true;
           } else {
-            results.errors.push(`SMS failed: ${smsResult.error}`);
+            results.errors.push('SMS failed to send');
           }
         } catch (error: any) {
-          results.errors.push(`SMS failed: ${error.message}`);
+          console.error('Lab result SMS failed:', error);
+          results.errors.push('SMS failed to send');
         }
       } else {
         results.errors.push('Patient phone not available');
       }
     }
 
-    // Update notification status
-    labResult.notificationSent = results.emailSent || results.smsSent;
-    labResult.notificationSentAt = new Date();
-    labResult.notificationMethod = notificationMethod as any;
-    await labResult.save();
+    const sent = results.emailSent || results.smsSent;
+    // Only a message that actually went out is recorded; a failed attempt must not read as "patient told".
+    if (sent) {
+      labResult.notificationSent = true;
+      labResult.notificationSentAt = new Date();
+      labResult.notificationMethod = results.emailSent && results.smsSent ? 'both' : results.smsSent ? 'sms' : 'email';
+      await labResult.save();
+    }
 
-    // Create in-app notification if patient has a user account
-    try {
-      const User = (await import('@/models/User')).default;
-      const user = await User.findOne({ email: patient.email }).select('_id');
-      if (user) {
-        await createLabResultNotification(user._id, labResult);
+    // In-app notification for a user account at this clinic with the patient's email
+    if (patient.email) {
+      try {
+        const User = (await import('@/models/User')).default;
+        const user = await User.findOne({ email: patient.email, tenantId: tenantObjectId }).select('_id');
+        if (user) {
+          await createLabResultNotification(user._id, labResult, tenantObjectId);
+        }
+      } catch (error: any) {
+        console.error('Error creating in-app notification:', error);
       }
-    } catch (error: any) {
-      console.error('Error creating in-app notification:', error);
-      // Don't fail the whole request if notification creation fails
     }
 
     return NextResponse.json({
-      success: results.emailSent || results.smsSent,
+      success: sent,
       data: results,
+      ...(sent ? {} : { error: results.errors.join('. ') || 'Nothing was sent' }),
     });
   } catch (error: any) {
     console.error('Error sending lab result notification:', error);
@@ -132,4 +129,3 @@ export async function POST(
     );
   }
 }
-

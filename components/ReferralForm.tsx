@@ -1,626 +1,759 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
+import { FIELD, FOCUS_RING, ICON, Svg, localKey } from './appointments/shared';
+import { ADD_BUTTON, FieldError, Label, NoteArea, REMOVE_BUTTON, Section } from './visits/form/parts';
+import PatientSearch, { type PatientOption } from './patients/PatientSearch';
+import PatientSummary, { usePatientSummary } from './visits/form/PatientSummary';
+import { useUnsavedChanges } from './hooks/useUnsavedChanges';
+import { formatApiError } from './utils/apiError';
+import { DIRECTIONS, DIRECTION_LABEL, type ReferralDirection, type ReferralUrgency } from '@/lib/referrals';
 
-interface Patient {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  dateOfBirth?: string;
-  patientCode?: string;
+export interface ReferralFormContext {
+  doctors: { _id: string; name: string; specialty: string | null; onLeave: boolean }[];
+  myDoctorId: string | null;
+  clinics: string[];
+  specialties: string[];
 }
 
-interface Doctor {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  specialization?: string;
+export interface ReferralFormValues {
+  direction: ReferralDirection;
+  visitId: string;
+  referringDoctor: string;
+  receivingDoctor: string;
+  receivingClinic: string;
+  referringClinic: string;
+  contactName: string;
+  contactPhone: string;
+  contactEmail: string;
+  referringPatient: PatientOption | null;
+  reason: string;
+  urgency: ReferralUrgency;
+  specialty: string;
+  notes: string;
+  chiefComplaint: string;
+  diagnosis: string;
+  relevantHistory: string;
+  medications: string[];
+  followUpRequired: boolean;
+  followUpDate: string;
+  followUpNotes: string;
 }
 
-interface ReferralFormProps {
-  initialData?: {
-    patient?: string;
-  };
-  patients: Patient[];
-  doctors: Doctor[];
-  onSubmit: (data: any) => void;
-  onCancel?: () => void;
-}
+export const emptyReferral = (myDoctorId: string | null): ReferralFormValues => ({
+  direction: 'internal',
+  visitId: '',
+  referringDoctor: myDoctorId ?? '',
+  receivingDoctor: '',
+  receivingClinic: '',
+  referringClinic: '',
+  contactName: '',
+  contactPhone: '',
+  contactEmail: '',
+  referringPatient: null,
+  reason: '',
+  urgency: 'routine',
+  specialty: '',
+  notes: '',
+  chiefComplaint: '',
+  diagnosis: '',
+  relevantHistory: '',
+  medications: [],
+  followUpRequired: false,
+  followUpDate: '',
+  followUpNotes: '',
+});
 
+const DIRECTION_HINT: Record<ReferralDirection, string> = {
+  internal: 'Another doctor at this clinic sees the patient.',
+  out: 'A hospital, clinic or specialist outside. Print the letter for the patient.',
+  in: 'Another clinic or doctor sent the patient to us.',
+  patient: 'One of our patients recommended the clinic.',
+};
+
+const URGENCY_OPTIONS: { value: ReferralUrgency; label: string; hint: string }[] = [
+  { value: 'routine', label: 'Routine', hint: 'At the next available time' },
+  { value: 'urgent', label: 'Urgent', hint: 'Within days; escalated by email if still unanswered after 7' },
+  { value: 'stat', label: 'STAT', hint: 'Right away' },
+];
+
+type Field = 'patient' | 'reason' | 'receivingDoctor' | 'receivingClinic' | 'referringClinic' | 'referringPatient' | 'contactEmail' | 'followUpDate';
+
+let seq = 0;
+const rowKey = () => `m${++seq}`;
+
+/**
+ * Make or edit a referral. The first question is where the patient is going; only that
+ * direction's fields show. Saving lands on the referral, where the letter is printed.
+ */
 export default function ReferralForm({
-  initialData,
-  patients,
-  doctors,
-  onSubmit,
+  mode,
+  context,
+  initialPatient,
+  initial,
+  referralId,
+  onSaved,
   onCancel,
-}: ReferralFormProps) {
-  const [formData, setFormData] = useState({
-    type: 'doctor_to_doctor' as 'doctor_to_doctor' | 'patient_to_patient' | 'external',
-    patient: initialData?.patient || '',
-    referringDoctor: '',
-    receivingDoctor: '',
-    referringClinic: '',
-    referringContact: {
-      name: '',
-      phone: '',
-      email: '',
-    },
-    receivingClinic: '',
-    reason: '',
-    urgency: 'routine' as 'routine' | 'urgent' | 'stat',
-    specialty: '',
-    notes: '',
-    chiefComplaint: '',
-    diagnosis: '',
-    relevantHistory: '',
-    medications: [] as string[],
-    followUpRequired: false,
-    followUpDate: '',
-  });
+}: {
+  mode: 'new' | 'edit';
+  context: ReferralFormContext;
+  initialPatient: PatientOption | null;
+  initial: ReferralFormValues;
+  referralId?: string;
+  onSaved: (id: string) => void;
+  onCancel: () => void;
+}) {
+  const ids = useId();
+  const router = useRouter();
+  const [patient, setPatient] = useState<PatientOption | null>(initialPatient);
+  const [v, setV] = useState<ReferralFormValues>(initial);
+  const [meds, setMeds] = useState(() => initial.medications.map((text) => ({ key: rowKey(), text })));
+  const [attempted, setAttempted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [serverProblems, setServerProblems] = useState<Partial<Record<Field, string>>>({});
+  const [filledFrom, setFilledFrom] = useState<string | null>(null);
+  const [today] = useState(() => localKey(new Date()));
+  const focusRow = useRef<string | null>(null);
 
-  const [patientSearch, setPatientSearch] = useState('');
-  const [showPatientSearch, setShowPatientSearch] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [medicationInput, setMedicationInput] = useState('');
+  const summary = usePatientSummary(patient?._id ?? null);
+  const set = <K extends keyof ReferralFormValues>(key: K, value: ReferralFormValues[K]) => {
+    setV((cur) => ({ ...cur, [key]: value }));
+    setServerProblems((p) => (key in p ? { ...p, [key]: undefined } : p));
+  };
 
-  useEffect(() => {
-    if (formData.patient) {
-      const patient = patients.find((p) => p._id === formData.patient);
-      setTimeout(() => {
-        setSelectedPatient(patient || null);
-        if (patient) {
-          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-        }
-      }, 0);
-    }
-  }, [formData.patient, patients]);
+  const medList = meds.map((m) => m.text.trim()).filter(Boolean);
+  const initialKey = JSON.stringify({ ...initial, referringPatient: initial.referringPatient?._id ?? null, medications: initial.medications });
+  const currentKey = JSON.stringify({ ...v, referringPatient: v.referringPatient?._id ?? null, medications: medList });
+  const dirty = currentKey !== initialKey || (mode === 'new' && Boolean(patient && patient._id !== initialPatient?._id));
+  useUnsavedChanges(dirty && !busy, mode === 'new' ? 'This referral is not saved yet. Leave anyway?' : 'Your changes are not saved yet. Leave anyway?');
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.patient-search-container')) {
-        setShowPatientSearch(false);
+  const d = v.direction;
+  const doctorById = useMemo(() => new Map(context.doctors.map((x) => [x._id, x])), [context.doctors]);
+  const receiving = v.receivingDoctor ? doctorById.get(v.receivingDoctor) : undefined;
+
+  // Medicines the patient is on now, from their open prescriptions, to copy into the summary.
+  const currentMeds = useMemo(() => {
+    const out: string[] = [];
+    for (const rx of summary.data?.prescriptions ?? []) {
+      for (const m of rx.medications ?? []) {
+        const line = [m.name, m.dose, m.frequency].filter(Boolean).join(' ');
+        if (line && !out.some((x) => x.toLowerCase() === line.toLowerCase())) out.push(line);
       }
-    };
-
-    if (showPatientSearch) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showPatientSearch]);
+    return out;
+  }, [summary.data]);
+  const missingMeds = currentMeds.filter((m) => !medList.some((x) => x.toLowerCase() === m.toLowerCase()));
 
-  const filteredPatients = patients.filter((patient) => {
-    const searchLower = patientSearch.toLowerCase();
-    const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
-    const patientCode = (patient.patientCode || '').toLowerCase();
-    return fullName.includes(searchLower) || patientCode.includes(searchLower);
-  });
+  const problems = useMemo(() => {
+    const out: Partial<Record<Field, string>> = {};
+    if (mode === 'new' && !patient) out.patient = 'Choose the patient being referred.';
+    if (!v.reason.trim()) out.reason = 'Say why the patient is being referred.';
+    if (d === 'internal') {
+      if (!v.receivingDoctor) out.receivingDoctor = 'Choose the doctor the patient is going to.';
+      else if (v.receivingDoctor === v.referringDoctor) out.receivingDoctor = 'A doctor can’t refer a patient to themselves.';
+    }
+    if (d === 'out' && !v.receivingClinic.trim()) out.receivingClinic = 'Name the hospital, clinic or specialist.';
+    if (d === 'in' && !v.referringClinic.trim() && !v.contactName.trim()) out.referringClinic = 'Name the clinic, or the person who sent the patient.';
+    if (d === 'in' && v.contactEmail.trim() && !/^\S+@\S+\.\S+$/.test(v.contactEmail.trim())) out.contactEmail = 'This doesn’t look like an email address.';
+    if (d === 'patient') {
+      if (!v.referringPatient) out.referringPatient = 'Choose the patient who recommended the clinic.';
+      else if (patient && v.referringPatient._id === patient._id) out.referringPatient = 'A patient can’t recommend themselves.';
+    }
+    if (v.followUpRequired && v.followUpDate && mode === 'new' && v.followUpDate < today) out.followUpDate = 'Choose today or a later day.';
+    return { ...out, ...Object.fromEntries(Object.entries(serverProblems).filter(([, m]) => m)) } as Partial<Record<Field, string>>;
+  }, [mode, patient, v, d, today, serverProblems]);
+  const problemCount = Object.keys(problems).length;
+  const err = (f: Field) => (attempted ? problems[f] : undefined);
 
-  const selectPatient = (patient: Patient) => {
-    setFormData({ ...formData, patient: patient._id });
-    setSelectedPatient(patient);
-    setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-    setShowPatientSearch(false);
+  const pickVisit = (visitId: string) => {
+    set('visitId', visitId);
+    const visit = summary.data?.visits.find((x) => x._id === visitId);
+    if (!visit) return;
+    const dx = (visit.diagnoses ?? [])
+      .map((x) => [x.code, x.description].filter(Boolean).join(' '))
+      .filter(Boolean)
+      .join('; ');
+    const fill: Partial<ReferralFormValues> = {};
+    if (!v.chiefComplaint.trim() && visit.chiefComplaint) fill.chiefComplaint = visit.chiefComplaint;
+    if (!v.diagnosis.trim() && dx) fill.diagnosis = dx;
+    if (Object.keys(fill).length) {
+      setV((cur) => ({ ...cur, ...fill, visitId }));
+      setFilledFrom(visit.visitCode);
+    }
   };
 
-  const addMedication = () => {
-    if (medicationInput.trim()) {
-      setFormData({
-        ...formData,
-        medications: [...formData.medications, medicationInput.trim()],
-      });
-      setMedicationInput('');
-    }
+  const addMed = (text = '') => {
+    const row = { key: rowKey(), text };
+    if (!text) focusRow.current = row.key;
+    setMeds((ms) => [...ms.filter((m) => m.text.trim() || !text), row]);
   };
 
-  const removeMedication = (index: number) => {
-    setFormData({
-      ...formData,
-      medications: formData.medications.filter((_, i) => i !== index),
+  const focusFirstProblem = () =>
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>('[data-referral-form] [aria-invalid="true"], [data-referral-form] [data-invalid="true"] input');
+      el?.focus();
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     });
-  };
 
-  const handleSubmit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!formData.patient || !selectedPatient) {
-      alert('Please select a valid patient');
-      setShowPatientSearch(true);
+    if (busy) return;
+    setAttempted(true);
+    if (problemCount > 0 || (mode === 'new' && !patient)) {
+      focusFirstProblem();
       return;
     }
-    if (!formData.reason.trim()) {
-      alert('Please enter a reason for referral');
-      return;
-    }
-    if (formData.type === 'doctor_to_doctor' && !formData.receivingDoctor) {
-      alert('Please select a receiving doctor for doctor-to-doctor referrals');
-      return;
-    }
-    if (formData.type === 'external' && !formData.referringContact.name) {
-      alert('Please enter referring contact name for external referrals');
-      return;
-    }
-
-    const submitData: any = {
-      type: formData.type,
-      patient: formData.patient,
-      reason: formData.reason,
-      urgency: formData.urgency,
-      status: 'pending',
-      referredDate: new Date().toISOString(),
+    setBusy(true);
+    setFailure(null);
+    const body = {
+      ...(mode === 'new' ? { patient: patient!._id } : {}),
+      direction: d,
+      reason: v.reason.trim(),
+      urgency: v.urgency,
+      specialty: v.specialty.trim(),
+      notes: v.notes.trim(),
+      visit: v.visitId,
+      ...(d === 'internal' || d === 'out' ? { referringDoctor: v.referringDoctor } : {}),
+      ...(d === 'internal' || d === 'in' || d === 'patient' ? { receivingDoctor: v.receivingDoctor } : {}),
+      ...(d === 'out' ? { receivingClinic: v.receivingClinic.trim() } : {}),
+      ...(d === 'in'
+        ? { referringClinic: v.referringClinic.trim(), referringContact: { name: v.contactName.trim(), phone: v.contactPhone.trim(), email: v.contactEmail.trim() } }
+        : {}),
+      ...(d === 'patient' ? { referringPatient: v.referringPatient?._id ?? '' } : {}),
+      ...(d !== 'patient'
+        ? { chiefComplaint: v.chiefComplaint.trim(), diagnosis: v.diagnosis.trim(), relevantHistory: v.relevantHistory.trim(), medications: medList }
+        : { chiefComplaint: '', diagnosis: '', relevantHistory: '', medications: [] }),
+      followUpRequired: v.followUpRequired,
+      followUpDate: v.followUpRequired ? v.followUpDate : '',
+      followUpNotes: v.followUpRequired ? v.followUpNotes.trim() : '',
     };
-
-    if (formData.type === 'doctor_to_doctor') {
-      if (formData.referringDoctor) submitData.referringDoctor = formData.referringDoctor;
-      if (formData.receivingDoctor) submitData.receivingDoctor = formData.receivingDoctor;
-    } else if (formData.type === 'external') {
-      if (formData.referringClinic) submitData.referringClinic = formData.referringClinic;
-      if (formData.referringContact.name) {
-        submitData.referringContact = {
-          name: formData.referringContact.name,
-          phone: formData.referringContact.phone || undefined,
-          email: formData.referringContact.email || undefined,
-        };
+    try {
+      const res = await fetch(mode === 'new' ? '/api/referrals' : `/api/referrals/${referralId}`, {
+        method: mode === 'new' ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 401) {
+        router.push('/login');
+        return;
       }
-      if (formData.receivingClinic) submitData.receivingClinic = formData.receivingClinic;
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        // Field problems from the server land on their fields; anything else goes in the banner.
+        const issues = Array.isArray(json?.issues) ? (json.issues as { path?: string; message?: string }[]) : [];
+        const mapped: Partial<Record<Field, string>> = {};
+        for (const i of issues) {
+          const key = (i.path === 'referringContact.email' ? 'contactEmail' : i.path) as Field;
+          if (key && ['reason', 'receivingDoctor', 'receivingClinic', 'referringClinic', 'referringPatient', 'contactEmail', 'followUpDate'].includes(key) && i.message) mapped[key] = i.message;
+        }
+        if (Object.keys(mapped).length) {
+          setServerProblems(mapped);
+          focusFirstProblem();
+        }
+        setFailure(Object.keys(mapped).length === issues.length && issues.length ? 'Fix the fields marked below and save again.' : formatApiError(json, 'The referral could not be saved'));
+        setBusy(false);
+        return;
+      }
+      onSaved(String(json.data._id));
+    } catch {
+      setFailure('The server couldn’t be reached. Nothing was saved; try again.');
+      setBusy(false);
     }
-
-    if (formData.specialty) submitData.specialty = formData.specialty;
-    if (formData.notes) submitData.notes = formData.notes;
-    if (formData.chiefComplaint) submitData.chiefComplaint = formData.chiefComplaint;
-    if (formData.diagnosis) submitData.diagnosis = formData.diagnosis;
-    if (formData.relevantHistory) submitData.relevantHistory = formData.relevantHistory;
-    if (formData.medications.length > 0) submitData.medications = formData.medications;
-    if (formData.followUpRequired) {
-      submitData.followUpRequired = true;
-      if (formData.followUpDate) submitData.followUpDate = formData.followUpDate;
-    }
-
-    onSubmit(submitData);
   };
+
+  const status = busy
+    ? 'Saving…'
+    : attempted && problemCount > 0
+      ? `${problemCount === 1 ? 'One thing needs' : `${problemCount} things need`} fixing before the referral can be saved.`
+      : mode === 'edit'
+        ? 'Saving updates the referral; its state stays as it is.'
+        : d === 'internal' || d === 'out'
+          ? 'Saving records the referral as waiting for a reply. Print the letter from its page.'
+          : 'Saving records the referral as waiting for the clinic to accept the patient.';
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div className="max-h-[80vh] overflow-y-auto">
-        <div className="flex flex-col gap-6 p-4 sm:p-6">
-          {/* Referral Type & Patient Selection */}
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 border border-orange-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-orange-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                </svg>
+    <form data-referral-form onSubmit={submit} noValidate className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
+      <div className="flex min-w-0 flex-col gap-6">
+        {failure && (
+          <div role="alert" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+            <p>{failure}</p>
+            <button type="button" onClick={() => setFailure(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 text-red-700 hover:text-red-900 ${FOCUS_RING}`}>
+              <Svg d={ICON.x} />
+            </button>
+          </div>
+        )}
+
+        <Section id={`${ids}-who`} title="Patient">
+          <div className="grid gap-4 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            {mode === 'new' ? (
+              <div data-invalid={err('patient') ? 'true' : undefined}>
+                <PatientSearch
+                  value={patient}
+                  onChange={(p) => {
+                    setPatient(p);
+                    set('visitId', '');
+                    setFilledFrom(null);
+                  }}
+                  autoFocus={!initialPatient}
+                />
+                {err('patient') && <FieldError id={`${ids}-patient-err`}>{err('patient')}</FieldError>}
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Referral Information</h3>
-            </div>
-            <div className="flex flex-col gap-4">
-              {/* Referral Type */}
+            ) : (
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
-                  Referral Type <span className="text-red-600">*</span>
-                </label>
-                <select
-                  required
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                >
-                  <option value="doctor_to_doctor">Doctor to Doctor</option>
-                  <option value="patient_to_patient">Patient to Patient</option>
-                  <option value="external">External</option>
+                <p className="mb-1.5 text-sm font-medium text-gray-700">Patient</p>
+                <p className="text-sm font-semibold text-gray-900">{patient ? `${patient.firstName} ${patient.lastName}` : 'Patient record unavailable'}</p>
+                {patient?.patientCode && <p className="mt-0.5 font-mono text-xs text-gray-500">{patient.patientCode}</p>}
+              </div>
+            )}
+            {patient && ((summary.data?.visits.length ?? 0) > 0 || v.visitId) && (
+              <div>
+                <Label htmlFor={`${ids}-visit`} optional>
+                  From visit
+                </Label>
+                <select id={`${ids}-visit`} value={v.visitId} onChange={(e) => pickVisit(e.target.value)} className={FIELD}>
+                  <option value="">Not linked to a visit</option>
+                  {(summary.data?.visits ?? []).map((x) => (
+                    <option key={x._id} value={x._id}>
+                      {x.visitCode} · {new Date(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      {x.chiefComplaint ? ` · ${x.chiefComplaint.slice(0, 40)}` : ''}
+                    </option>
+                  ))}
+                  {v.visitId && !summary.data?.visits.some((x) => x._id === v.visitId) && <option value={v.visitId}>The linked visit</option>}
                 </select>
+                <p className="mt-1.5 text-xs text-gray-500">Choosing a visit fills in its complaint and diagnosis when those are empty.</p>
               </div>
-
-              {/* Patient Selection */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
-                  Patient <span className="text-red-600">*</span>
-                </label>
-                <div className="relative patient-search-container">
-                  <input
-                    type="text"
-                    required
-                    value={patientSearch}
-                    onChange={(e) => {
-                      setPatientSearch(e.target.value);
-                      setShowPatientSearch(true);
-                      if (!e.target.value) {
-                        setFormData({ ...formData, patient: '' });
-                        setSelectedPatient(null);
-                      }
-                    }}
-                    onFocus={() => setShowPatientSearch(true)}
-                    placeholder="Type to search patients..."
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                  {showPatientSearch && filteredPatients.length > 0 && (
-                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                      {filteredPatients.map((patient) => {
-                        const age = patient.dateOfBirth
-                          ? Math.floor((new Date().getTime() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-                          : null;
-                        return (
-                          <button
-                            key={patient._id}
-                            type="button"
-                            onClick={() => selectPatient(patient)}
-                            className="w-full text-left px-3 py-2 hover:bg-orange-50 rounded transition-colors"
-                          >
-                            <div className="flex flex-col items-start gap-1">
-                              <span className="text-sm font-semibold text-gray-900">{patient.firstName} {patient.lastName}</span>
-                              <span className="text-xs text-gray-600">
-                                {patient.patientCode && `${patient.patientCode}`}
-                                {age && ` • Age: ${age} years`}
-                              </span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {showPatientSearch && patientSearch && filteredPatients.length === 0 && (
-                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl">
-                      <div className="p-2">
-                        <p className="text-sm text-gray-600">No patients found</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {formData.patient && !selectedPatient && (
-                  <p className="text-xs text-red-600 mt-2 font-medium">Please select a valid patient from the list</p>
-                )}
-              </div>
-            </div>
+            )}
           </div>
+        </Section>
 
-          {/* Doctor to Doctor Fields */}
-          {formData.type === 'doctor_to_doctor' && (
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-blue-500 rounded-lg">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Doctor Information</h3>
-              </div>
-              <div className="flex flex-col gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referring Doctor (Optional)</label>
-                  <select
-                    value={formData.referringDoctor || undefined}
-                    onChange={(e) => setFormData({ ...formData, referringDoctor: e.target.value === 'none' ? '' : e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+        <Section id={`${ids}-where`} title="Where is the patient going?">
+          <div className="px-5 py-4">
+            <fieldset>
+              <legend className="sr-only">Direction</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {DIRECTIONS.map((x) => (
+                  <label
+                    key={x}
+                    className="flex cursor-pointer items-start gap-3 rounded-md border border-gray-300 bg-white px-3.5 py-3 transition-colors hover:border-gray-400 hover:bg-gray-50 has-[:checked]:border-brand-teal-dark has-[:checked]:bg-brand-teal-light/40 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-teal has-[:focus-visible]:ring-offset-1"
                   >
-                    <option value="none">Select referring doctor</option>
-                    {doctors.map((doctor) => (
-                      <option key={doctor._id} value={doctor._id}>
-                        Dr. {doctor.firstName} {doctor.lastName}
-                        {doctor.specialization && ` - ${doctor.specialization}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">
-                    Receiving Doctor <span className="text-red-600">*</span>
-                  </label>
-                  <select
-                    required={formData.type === 'doctor_to_doctor'}
-                    value={formData.receivingDoctor}
-                    onChange={(e) => setFormData({ ...formData, receivingDoctor: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                  >
-                    <option value="">Select receiving doctor</option>
-                    {doctors.map((doctor) => (
-                      <option key={doctor._id} value={doctor._id}>
-                        Dr. {doctor.firstName} {doctor.lastName}
-                        {doctor.specialization && ` - ${doctor.specialization}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* External Referral Fields */}
-          {formData.type === 'external' && (
-            <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 rounded-xl p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-indigo-500 rounded-lg">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">External Referral Information</h3>
-              </div>
-              <div className="flex flex-col gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referring Clinic (Optional)</label>
-                  <input
-                    type="text"
-                    value={formData.referringClinic}
-                    onChange={(e) => setFormData({ ...formData, referringClinic: e.target.value })}
-                    placeholder="Name of referring clinic"
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">
-                    Referring Contact Name <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required={formData.type === 'external'}
-                    value={formData.referringContact.name}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      referringContact: { ...formData.referringContact, name: e.target.value }
-                    })}
-                    placeholder="Contact person name"
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Contact Phone (Optional)</label>
                     <input
-                      type="tel"
-                      value={formData.referringContact.phone}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        referringContact: { ...formData.referringContact, phone: e.target.value }
-                      })}
-                      placeholder="Phone number"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
+                      type="radio"
+                      name={`${ids}-direction`}
+                      value={x}
+                      checked={d === x}
+                      onChange={() => set('direction', x)}
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-brand-teal-dark"
                     />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-gray-900">{DIRECTION_LABEL[x].label}</span>
+                      <span className="block text-xs text-gray-500">{DIRECTION_HINT[x]}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              {(d === 'internal' || d === 'out') && (
+                <div>
+                  <Label htmlFor={`${ids}-from`} optional>
+                    Referring doctor
+                  </Label>
+                  <DoctorSelect id={`${ids}-from`} value={v.referringDoctor} onChange={(x) => set('referringDoctor', x)} doctors={context.doctors} empty="No doctor named" />
+                  {context.myDoctorId && v.referringDoctor === context.myDoctorId && <p className="mt-1.5 text-xs text-gray-500">You. The letter is signed with your licence number.</p>}
+                </div>
+              )}
+
+              {d === 'internal' && (
+                <div>
+                  <Label htmlFor={`${ids}-to`}>Refer to</Label>
+                  <DoctorSelect
+                    id={`${ids}-to`}
+                    value={v.receivingDoctor}
+                    onChange={(x) => set('receivingDoctor', x)}
+                    doctors={context.doctors}
+                    empty="Choose a doctor"
+                    invalid={Boolean(err('receivingDoctor'))}
+                    describedBy={err('receivingDoctor') ? `${ids}-to-err` : undefined}
+                  />
+                  {err('receivingDoctor') ? (
+                    <FieldError id={`${ids}-to-err`}>{err('receivingDoctor')}</FieldError>
+                  ) : (
+                    receiving?.onLeave && <p className="mt-1.5 text-sm text-amber-800">{receiving.name} is on leave; the patient may wait.</p>
+                  )}
+                </div>
+              )}
+
+              {d === 'out' && (
+                <div>
+                  <Label htmlFor={`${ids}-rc`}>Refer to</Label>
+                  <input
+                    id={`${ids}-rc`}
+                    value={v.receivingClinic}
+                    onChange={(e) => set('receivingClinic', e.target.value)}
+                    list={`${ids}-clinics`}
+                    placeholder="e.g. Dr. Ana Santos, Cardiology, St. Luke’s"
+                    maxLength={200}
+                    aria-invalid={Boolean(err('receivingClinic'))}
+                    aria-describedby={err('receivingClinic') ? `${ids}-rc-err` : undefined}
+                    className={`${FIELD} ${err('receivingClinic') ? 'border-red-400' : ''}`}
+                  />
+                  {err('receivingClinic') && <FieldError id={`${ids}-rc-err`}>{err('receivingClinic')}</FieldError>}
+                </div>
+              )}
+
+              {d === 'in' && (
+                <>
+                  <div>
+                    <Label htmlFor={`${ids}-fc`}>Sent by (clinic or hospital)</Label>
+                    <input
+                      id={`${ids}-fc`}
+                      value={v.referringClinic}
+                      onChange={(e) => set('referringClinic', e.target.value)}
+                      list={`${ids}-clinics`}
+                      placeholder="e.g. Cebu Doctors’ Hospital"
+                      maxLength={200}
+                      aria-invalid={Boolean(err('referringClinic'))}
+                      aria-describedby={err('referringClinic') ? `${ids}-fc-err` : undefined}
+                      className={`${FIELD} ${err('referringClinic') ? 'border-red-400' : ''}`}
+                    />
+                    {err('referringClinic') && <FieldError id={`${ids}-fc-err`}>{err('referringClinic')}</FieldError>}
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Contact Email (Optional)</label>
-                    <input
-                      type="email"
-                      value={formData.referringContact.email}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        referringContact: { ...formData.referringContact, email: e.target.value }
-                      })}
-                      placeholder="Email address"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
-                    />
+                    <Label htmlFor={`${ids}-to-in`} optional>
+                      Seen here by
+                    </Label>
+                    <DoctorSelect id={`${ids}-to-in`} value={v.receivingDoctor} onChange={(x) => set('receivingDoctor', x)} doctors={context.doctors} empty="Not decided yet" />
                   </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Receiving Clinic (Optional)</label>
-                  <input
-                    type="text"
-                    value={formData.receivingClinic}
-                    onChange={(e) => setFormData({ ...formData, receivingClinic: e.target.value })}
-                    placeholder="Name of receiving clinic"
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-              </div>
+                  <div>
+                    <Label htmlFor={`${ids}-cn`} optional>
+                      Their doctor or contact person
+                    </Label>
+                    <input id={`${ids}-cn`} value={v.contactName} onChange={(e) => set('contactName', e.target.value)} placeholder="e.g. Dr. Jose Reyes" maxLength={200} autoComplete="off" className={FIELD} />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2 sm:col-span-1">
+                    <div>
+                      <Label htmlFor={`${ids}-cp`} optional>
+                        Phone
+                      </Label>
+                      <input id={`${ids}-cp`} type="tel" value={v.contactPhone} onChange={(e) => set('contactPhone', e.target.value)} maxLength={40} autoComplete="off" className={`${FIELD} font-mono`} />
+                    </div>
+                    <div>
+                      <Label htmlFor={`${ids}-ce`} optional>
+                        Email
+                      </Label>
+                      <input
+                        id={`${ids}-ce`}
+                        type="email"
+                        value={v.contactEmail}
+                        onChange={(e) => set('contactEmail', e.target.value)}
+                        maxLength={254}
+                        autoComplete="off"
+                        aria-invalid={Boolean(err('contactEmail'))}
+                        aria-describedby={err('contactEmail') ? `${ids}-ce-err` : undefined}
+                        className={`${FIELD} ${err('contactEmail') ? 'border-red-400' : ''}`}
+                      />
+                      {err('contactEmail') && <FieldError id={`${ids}-ce-err`}>{err('contactEmail')}</FieldError>}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {d === 'patient' && (
+                <>
+                  <div data-invalid={err('referringPatient') ? 'true' : undefined}>
+                    <PatientSearch label="Recommended by" value={v.referringPatient} onChange={(p) => set('referringPatient', p)} />
+                    {err('referringPatient') && <FieldError id={`${ids}-rp-err`}>{err('referringPatient')}</FieldError>}
+                  </div>
+                  <div>
+                    <Label htmlFor={`${ids}-to-p`} optional>
+                      Seen here by
+                    </Label>
+                    <DoctorSelect id={`${ids}-to-p`} value={v.receivingDoctor} onChange={(x) => set('receivingDoctor', x)} doctors={context.doctors} empty="Not decided yet" />
+                  </div>
+                </>
+              )}
             </div>
-          )}
+            <datalist id={`${ids}-clinics`}>
+              {context.clinics.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </div>
+        </Section>
 
-          {/* Referral Details */}
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-emerald-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Referral Details</h3>
+        <Section id={`${ids}-why`} title="Why">
+          <div className="grid gap-4 px-5 py-4">
+            <div>
+              <Label htmlFor={`${ids}-reason`}>Reason for referral</Label>
+              <NoteArea
+                id={`${ids}-reason`}
+                rows={3}
+                value={v.reason}
+                onChange={(x) => set('reason', x)}
+                maxLength={4000}
+                placeholder={d === 'patient' ? 'e.g. Wants a check-up; friend of the family' : 'e.g. Persistent chest pain on exertion; please evaluate for coronary artery disease'}
+                invalid={Boolean(err('reason'))}
+                describedBy={err('reason') ? `${ids}-reason-err` : undefined}
+              />
+              {err('reason') && <FieldError id={`${ids}-reason-err`}>{err('reason')}</FieldError>}
             </div>
-            <div className="flex flex-col gap-4">
-              {/* Reason for Referral */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
-                  Reason for Referral <span className="text-red-600">*</span>
-                </label>
-                <textarea
-                  required
-                  value={formData.reason}
-                  onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                  placeholder="Describe the reason for this referral"
-                  rows={3}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm resize-y"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Urgency */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">
-                    Urgency <span className="text-red-600">*</span>
-                  </label>
-                  <select
-                    required
-                    value={formData.urgency}
-                    onChange={(e) => setFormData({ ...formData, urgency: e.target.value as any })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                  >
-                    <option value="routine">Routine</option>
-                    <option value="urgent">Urgent</option>
-                    <option value="stat">STAT</option>
-                  </select>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <fieldset>
+                <legend className="mb-1.5 block text-sm font-medium text-gray-700">Urgency</legend>
+                <div className="inline-flex flex-wrap gap-1 rounded-md border border-gray-300 bg-white p-1">
+                  {URGENCY_OPTIONS.map((u) => (
+                    <label
+                      key={u.value}
+                      className="cursor-pointer rounded px-3.5 py-1 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 has-[:checked]:bg-brand-teal-dark has-[:checked]:text-white has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-teal has-[:focus-visible]:ring-offset-1"
+                    >
+                      <input type="radio" name={`${ids}-urgency`} value={u.value} checked={v.urgency === u.value} onChange={() => set('urgency', u.value)} className="sr-only" />
+                      {u.label}
+                    </label>
+                  ))}
                 </div>
-
-                {/* Specialty */}
+                <p className="mt-1.5 text-xs text-gray-500">{URGENCY_OPTIONS.find((u) => u.value === v.urgency)?.hint}.</p>
+              </fieldset>
+              {d !== 'patient' && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Required Specialty (Optional)</label>
+                  <Label htmlFor={`${ids}-sp`} optional>
+                    Specialty needed
+                  </Label>
                   <input
-                    type="text"
-                    value={formData.specialty}
-                    onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
-                    placeholder="e.g., Cardiology, Orthopedics"
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm"
+                    id={`${ids}-sp`}
+                    value={v.specialty}
+                    onChange={(e) => set('specialty', e.target.value)}
+                    list={`${ids}-specialties`}
+                    placeholder={receiving?.specialty ?? 'e.g. Cardiology'}
+                    maxLength={200}
+                    className={FIELD}
                   />
+                  <datalist id={`${ids}-specialties`}>
+                    {context.specialties.map((s) => (
+                      <option key={s} value={s} />
+                    ))}
+                  </datalist>
                 </div>
-              </div>
+              )}
+            </div>
+            <div>
+              <Label htmlFor={`${ids}-notes`} optional>
+                Notes
+              </Label>
+              <NoteArea id={`${ids}-notes`} rows={2} value={v.notes} onChange={(x) => set('notes', x)} maxLength={4000} placeholder="Anything else the receiving doctor or the front desk should know" />
             </div>
           </div>
+        </Section>
 
-          {/* Medical Information */}
-          <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 border border-cyan-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-cyan-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Medical Information</h3>
-            </div>
-            <div className="flex flex-col gap-4">
-              {/* Chief Complaint */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Chief Complaint (Optional)</label>
-                <textarea
-                  value={formData.chiefComplaint}
-                  onChange={(e) => setFormData({ ...formData, chiefComplaint: e.target.value })}
-                  placeholder="Patient's chief complaint"
-                  rows={2}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none transition-all text-sm resize-y"
-                />
-              </div>
-
-              {/* Diagnosis */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Diagnosis (Optional)</label>
-                <input
-                  type="text"
-                  value={formData.diagnosis}
-                  onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
-                  placeholder="Current diagnosis"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none transition-all text-sm"
-                />
-              </div>
-
-              {/* Relevant History */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Relevant History (Optional)</label>
-                <textarea
-                  value={formData.relevantHistory}
-                  onChange={(e) => setFormData({ ...formData, relevantHistory: e.target.value })}
-                  placeholder="Relevant medical history"
-                  rows={3}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none transition-all text-sm resize-y"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Medications & Notes */}
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-purple-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Medications & Notes</h3>
-            </div>
-            <div className="flex flex-col gap-4">
-              {/* Medications */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Current Medications (Optional)</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={medicationInput}
-                    onChange={(e) => setMedicationInput(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addMedication();
-                      }
-                    }}
-                    placeholder="Enter medication and press Enter"
-                    className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={addMedication}
-                    className="px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-semibold"
-                  >
-                    Add
-                  </button>
+        {d !== 'patient' && (
+          <Section
+            id={`${ids}-clinical`}
+            title={d === 'in' ? 'From the referring doctor' : 'For the receiving doctor'}
+            hint={d === 'in' ? 'What their letter says, so it is on file here.' : 'Printed on the referral letter with the patient’s allergies.'}
+          >
+            <div className="grid gap-4 px-5 py-4">
+              {filledFrom && (
+                <p className="flex items-start gap-1.5 text-sm text-brand-teal-deep">
+                  <Svg d={ICON.check} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  Filled in from visit {filledFrom}. Edit freely.
+                </p>
+              )}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor={`${ids}-cc`} optional>
+                    Chief complaint
+                  </Label>
+                  <NoteArea id={`${ids}-cc`} rows={2} value={v.chiefComplaint} onChange={(x) => set('chiefComplaint', x)} maxLength={2000} />
                 </div>
-                {formData.medications.length > 0 && (
-                  <div className="flex gap-2 flex-wrap mt-3">
-                    {formData.medications.map((med, index) => (
-                      <span key={index} className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-sm font-semibold border border-purple-200">
-                        {med}
+                <div>
+                  <Label htmlFor={`${ids}-dx`} optional>
+                    Diagnosis
+                  </Label>
+                  <NoteArea id={`${ids}-dx`} rows={2} value={v.diagnosis} onChange={(x) => set('diagnosis', x)} maxLength={2000} placeholder="e.g. I20.9 Angina pectoris" />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor={`${ids}-hx`} optional>
+                  Relevant history
+                </Label>
+                <NoteArea id={`${ids}-hx`} rows={3} value={v.relevantHistory} onChange={(x) => set('relevantHistory', x)} maxLength={8000} placeholder="Findings, tests done, treatment so far" />
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-sm font-medium text-gray-700">
+                  Current medicines <span className="font-normal text-gray-500">(optional)</span>
+                </p>
+                {meds.length === 0 ? (
+                  <p className="text-sm text-gray-500">None listed.</p>
+                ) : (
+                  <ul className="divide-y divide-gray-100 rounded-md border border-gray-200">
+                    {meds.map((m, i) => (
+                      <li key={m.key} className="motion-row-in flex items-center gap-2 px-2 py-1.5">
+                        <label htmlFor={`${ids}-med-${m.key}`} className="sr-only">
+                          Medicine {i + 1}
+                        </label>
+                        <input
+                          ref={(el) => {
+                            if (el && focusRow.current === m.key) {
+                              focusRow.current = null;
+                              el.focus();
+                            }
+                          }}
+                          id={`${ids}-med-${m.key}`}
+                          value={m.text}
+                          onChange={(e) => setMeds((ms) => ms.map((x) => (x.key === m.key ? { ...x, text: e.target.value } : x)))}
+                          placeholder="e.g. Amlodipine 5 mg once a day"
+                          maxLength={300}
+                          className={`${FIELD} border-transparent`}
+                        />
                         <button
                           type="button"
-                          onClick={() => removeMedication(index)}
-                          className="ml-1 p-0 min-w-0 hover:text-purple-900 font-bold"
+                          onClick={() => setMeds((ms) => ms.filter((x) => x.key !== m.key))}
+                          aria-label={`Remove ${m.text.trim() || `medicine ${i + 1}`}`}
+                          title="Remove"
+                          className={REMOVE_BUTTON}
                         >
-                          ×
+                          <Svg d={ICON.x} />
                         </button>
-                      </span>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 )}
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Additional Notes (Optional)</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="Any additional notes or instructions"
-                  rows={3}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm resize-y"
-                />
-              </div>
-
-              {/* Follow-up */}
-              <div className="flex flex-col gap-3 p-3 bg-white/50 rounded-lg border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="followUpRequired"
-                    checked={formData.followUpRequired}
-                    onChange={(e) => setFormData({ ...formData, followUpRequired: e.target.checked })}
-                    className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
-                  />
-                  <label htmlFor="followUpRequired" className="text-sm font-semibold text-gray-700 cursor-pointer">
-                    Follow-up Required
-                  </label>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => addMed()} className={ADD_BUTTON}>
+                    <Svg d="M12 4v16m8-8H4" />
+                    Add medicine
+                  </button>
+                  {missingMeds.length > 0 && (
+                    <button type="button" onClick={() => missingMeds.forEach((m) => addMed(m))} className={ADD_BUTTON}>
+                      <Svg d={ICON.check} />
+                      Add {missingMeds.length === 1 ? 'the 1 current medicine' : `the ${missingMeds.length} current medicines`} from prescriptions
+                    </button>
+                  )}
                 </div>
-                {formData.followUpRequired && (
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Follow-up Date (Optional)</label>
-                    <input
-                      type="date"
-                      value={formData.followUpDate}
-                      onChange={(e) => setFormData({ ...formData, followUpDate: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm"
-                    />
-                  </div>
-                )}
               </div>
             </div>
-          </div>
+          </Section>
+        )}
 
-          {/* Form Actions */}
-          <hr className="border-gray-200" />
-          <div className="flex justify-end gap-3 pt-2">
-            {onCancel && (
-              <button type="button" onClick={onCancel} className="px-4 py-2.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-semibold border border-gray-200">
-                Cancel
-              </button>
+        <Section id={`${ids}-fu`} title="Follow-up">
+          <div className="grid gap-4 px-5 py-4">
+            <label className="flex w-fit cursor-pointer items-center gap-2.5 text-sm text-gray-900">
+              <input type="checkbox" checked={v.followUpRequired} onChange={(e) => set('followUpRequired', e.target.checked)} className="h-4 w-4 rounded border-gray-300 accent-brand-teal-dark" />
+              Follow up with the patient after the referral
+            </label>
+            {v.followUpRequired && (
+              <div className="motion-panel-in grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
+                <div>
+                  <Label htmlFor={`${ids}-fud`} optional>
+                    On
+                  </Label>
+                  <input
+                    id={`${ids}-fud`}
+                    type="date"
+                    value={v.followUpDate}
+                    min={mode === 'new' ? today : undefined}
+                    onChange={(e) => set('followUpDate', e.target.value)}
+                    aria-invalid={Boolean(err('followUpDate'))}
+                    aria-describedby={err('followUpDate') ? `${ids}-fud-err` : `${ids}-fud-hint`}
+                    className={`${FIELD} font-mono ${err('followUpDate') ? 'border-red-400' : ''}`}
+                  />
+                  {err('followUpDate') ? (
+                    <FieldError id={`${ids}-fud-err`}>{err('followUpDate')}</FieldError>
+                  ) : (
+                    <p id={`${ids}-fud-hint`} className="mt-1.5 text-xs text-gray-500">
+                      With a date, the patient gets a reminder 3 days before (when follow-up reminders are on).
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <Label htmlFor={`${ids}-fun`} optional>
+                    What to follow up
+                  </Label>
+                  <NoteArea id={`${ids}-fun`} rows={2} value={v.followUpNotes} onChange={(x) => set('followUpNotes', x)} maxLength={2000} placeholder="e.g. Review the cardiologist’s findings; repeat ECG" />
+                </div>
+              </div>
             )}
-            <button type="submit" className="px-4 py-2.5 text-sm bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all font-semibold shadow-md">
-              Create Referral
+          </div>
+        </Section>
+
+        <div className="motion-tray-in sticky bottom-4 z-20 flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-[0_8px_30px_rgb(15,23,42,0.1)] sm:flex-row sm:items-center sm:justify-between">
+          <p className={`text-sm ${attempted && problemCount > 0 && !busy ? 'font-medium text-red-700' : 'text-gray-600'}`} aria-live="polite">
+            {status}
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (dirty && !window.confirm(mode === 'new' ? 'Discard this referral?' : 'Discard your changes?')) return;
+                onCancel();
+              }}
+              disabled={busy}
+              className={`rounded-md px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:text-gray-900 ${FOCUS_RING}`}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              aria-busy={busy}
+              className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
+            >
+              <Svg d={ICON.check} />
+              {busy ? 'Saving…' : mode === 'new' ? 'Save referral' : 'Save changes'}
             </button>
           </div>
         </div>
       </div>
+
+      <aside className="flex min-w-0 flex-col gap-6 xl:sticky xl:top-20 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto">
+        {patient ? (
+          summary.error ? null : <PatientSummary summary={summary} />
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-300 px-5 py-6 text-center text-sm text-gray-500">Choose the patient to see their allergies, conditions, current medicines and last visits here.</div>
+        )}
+      </aside>
     </form>
   );
 }
 
+function DoctorSelect({
+  id,
+  value,
+  onChange,
+  doctors,
+  empty,
+  invalid,
+  describedBy,
+}: {
+  id: string;
+  value: string;
+  onChange: (id: string) => void;
+  doctors: ReferralFormContext['doctors'];
+  empty: string;
+  invalid?: boolean;
+  describedBy?: string;
+}): ReactNode {
+  return (
+    <select
+      id={id}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      aria-invalid={invalid || undefined}
+      aria-describedby={describedBy}
+      className={`${FIELD} ${invalid ? 'border-red-400' : ''}`}
+    >
+      <option value="">{empty}</option>
+      {doctors.map((x) => (
+        <option key={x._id} value={x._id}>
+          {x.name}
+          {x.specialty ? ` · ${x.specialty}` : ''}
+          {x.onLeave ? ' (on leave)' : ''}
+        </option>
+      ))}
+      {value && !doctors.some((x) => x._id === value) && <option value={value}>A doctor no longer on the roster</option>}
+    </select>
+  );
+}

@@ -1,6 +1,7 @@
 // Role-Based Permissions System
 // Defines what each role can do in the system
 
+import { cache } from 'react';
 import connectDB from '@/lib/mongodb';
 import Role, { RoleName } from '@/models/Role';
 import Permission from '@/models/Permission';
@@ -117,6 +118,11 @@ async function getRoleName(roleIdOrName: string | Types.ObjectId | undefined | n
  * @param tenantId Optional tenant ID for tenant-scoped permission lookup
  */
 export async function getUserPermissions(userId: string | Types.ObjectId, tenantId?: string | null): Promise<PermissionData[]> {
+  return loadUserPermissions(String(userId), tenantId ? String(tenantId) : '');
+}
+
+// Memoized per request on primitive keys, so repeated hasPermission calls reuse one lookup
+const loadUserPermissions = cache(async (userId: string, tenantId: string): Promise<PermissionData[]> => {
   try {
     await connectDB();
     
@@ -226,7 +232,7 @@ export async function getUserPermissions(userId: string | Types.ObjectId, tenant
     console.error('Error getting user permissions:', error);
     return [];
   }
-}
+});
 
 /**
  * Check if user has permission for a resource and action

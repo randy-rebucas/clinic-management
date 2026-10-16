@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import PatientNote from '@/models/PatientNote';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { Types } from 'mongoose';
 
 /**
@@ -14,8 +13,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; noteId: string }> }
 ) {
-  const session = await verifySession();
-  if (!session) return unauthorizedResponse();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   const permissionCheck = await requirePermission(session, 'patients', 'write');
   if (permissionCheck) return permissionCheck;
@@ -28,17 +28,10 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'Invalid IDs' }, { status: 400 });
     }
 
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    const query: any = {
+    const query = tenantFilter(tenantId, {
       _id: new Types.ObjectId(noteId),
       patient: new Types.ObjectId(id),
-    };
-
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    }
+    });
 
     const note = await PatientNote.findOne(query);
     if (!note) {
@@ -46,18 +39,18 @@ export async function PUT(
     }
 
     // Only author or admin can edit
-    if (note.author.userId.toString() !== session.userId && session.role !== 'admin') {
+    if (note.author.userId.toString() !== session.userId && session.role !== 'admin' && session.role !== 'owner') {
       return NextResponse.json(
         { success: false, error: 'You do not have permission to edit this note' },
         { status: 403 }
       );
     }
 
-    const body = await request.json();
-    const { content, visibility, priority, tags } = body;
+    const body = await request.json().catch(() => ({}));
+    const { content, visibility, priority, tags } = body ?? {};
 
-    if (content && typeof content === 'string') {
-      note.content = content.trim();
+    if (content && typeof content === 'string' && content.trim()) {
+      note.content = content.trim().slice(0, 20000);
     }
 
     if (visibility && ['private', 'internal', 'shared'].includes(visibility)) {
@@ -69,7 +62,10 @@ export async function PUT(
     }
 
     if (Array.isArray(tags)) {
-      note.tags = tags.filter((t: string) => typeof t === 'string' && t.trim().length > 0);
+      note.tags = tags
+        .filter((t: unknown): t is string => typeof t === 'string' && t.trim().length > 0)
+        .slice(0, 50)
+        .map((t) => t.trim().slice(0, 50));
     }
 
     await note.save();
@@ -92,8 +88,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; noteId: string }> }
 ) {
-  const session = await verifySession();
-  if (!session) return unauthorizedResponse();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   const permissionCheck = await requirePermission(session, 'patients', 'write');
   if (permissionCheck) return permissionCheck;
@@ -106,17 +103,10 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Invalid IDs' }, { status: 400 });
     }
 
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    const query: any = {
+    const query = tenantFilter(tenantId, {
       _id: new Types.ObjectId(noteId),
       patient: new Types.ObjectId(id),
-    };
-
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    }
+    });
 
     const note = await PatientNote.findOne(query);
     if (!note) {
@@ -124,7 +114,7 @@ export async function DELETE(
     }
 
     // Only author or admin can delete
-    if (note.author.userId.toString() !== session.userId && session.role !== 'admin') {
+    if (note.author.userId.toString() !== session.userId && session.role !== 'admin' && session.role !== 'owner') {
       return NextResponse.json(
         { success: false, error: 'You do not have permission to delete this note' },
         { status: 403 }

@@ -49,13 +49,12 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   // Main content area with margin that adjusts based on sidebar state
   return (
     <div
-      className="min-h-screen bg-gray-50 transition-all duration-300"
-      style={{
-        marginLeft: isCollapsed ? '80px' : '280px',
-      }}
+      className={`min-h-screen bg-gray-50 transition-[margin] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        isCollapsed ? 'lg:ml-20' : 'lg:ml-[280px]'
+      }`}
     >
       <ContentHeader user={user} />
-      <main>{children}</main>
+      <main id="main-content" tabIndex={-1} className="focus:outline-none">{children}</main>
     </div>
   );
 }

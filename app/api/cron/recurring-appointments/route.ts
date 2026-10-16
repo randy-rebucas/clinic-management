@@ -1,40 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import { processRecurringAppointments } from '@/lib/automations/recurring-appointments';
 
-// This endpoint should be called by a cron job service (e.g., Vercel Cron, cron-job.org, etc.)
-// For security, you should add authentication via a secret token
+export const maxDuration = 300;
+
+/**
+ * Creates the next appointment in recurring series for every active tenant.
+ * Schedule: see vercel.json. Auth: Authorization: Bearer $CRON_SECRET.
+ */
 export async function GET(request: NextRequest) {
-  // Authenticate request
-  // Vercel Cron sends 'x-vercel-cron' header for internal authentication
-  // External cron services should use 'Authorization: Bearer CRON_SECRET'
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-  
-  // If CRON_SECRET is set, require authentication (unless it's Vercel Cron)
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-  }
+  const denied = requireCron(request);
+  if (denied) return denied;
 
   try {
     const result = await processRecurringAppointments();
-
     return NextResponse.json({
-      success: true,
+      success: result.success,
       message: 'Recurring appointments processed',
       data: result,
     });
-  } catch (error: any) {
-    console.error('Error processing recurring appointments:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to process recurring appointments' },
-      { status: 500 }
-    );
-    }
+  } catch (error) {
+    console.error('[Cron] recurring-appointments error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to process recurring-appointments' }, { status: 500 });
+  }
 }
-

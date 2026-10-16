@@ -14,6 +14,8 @@ export interface Patient {
   };
   active?: boolean;
   createdAt?: string;
+  tags?: string[];
+  segmentFlags?: Record<string, boolean>;
 }
 
 // Sort options - using as const to prevent widening to string
@@ -24,6 +26,8 @@ export const PATIENT_SORT_OPTIONS = {
   DATE_DESC: 'date-desc',
   CODE_ASC: 'code-asc',
   CODE_DESC: 'code-desc',
+  ADDED_DESC: 'added-desc',
+  ADDED_ASC: 'added-asc',
 } as const;
 
 export type SortOption = typeof PATIENT_SORT_OPTIONS[keyof typeof PATIENT_SORT_OPTIONS];
@@ -36,7 +40,10 @@ export interface FilterState {
   maxAge: string;
   city: string;
   state: string;
-  global: boolean;
+  /** Any of these tags. */
+  tags: string[];
+  /** Every one of these segment flags. */
+  flags: string[];
 }
 
 // Pagination state
@@ -69,6 +76,8 @@ export const SORT_MAP: Record<SortOption, SortConfig> = {
   [PATIENT_SORT_OPTIONS.DATE_DESC]: { sortBy: 'dateOfBirth', sortOrder: 'desc' },
   [PATIENT_SORT_OPTIONS.CODE_ASC]: { sortBy: 'patientCode', sortOrder: 'asc' },
   [PATIENT_SORT_OPTIONS.CODE_DESC]: { sortBy: 'patientCode', sortOrder: 'desc' },
+  [PATIENT_SORT_OPTIONS.ADDED_DESC]: { sortBy: 'createdAt', sortOrder: 'desc' },
+  [PATIENT_SORT_OPTIONS.ADDED_ASC]: { sortBy: 'createdAt', sortOrder: 'asc' },
 } as const;
 
 // Default filter state
@@ -79,7 +88,8 @@ export const DEFAULT_FILTERS: FilterState = {
   maxAge: '',
   city: '',
   state: '',
-  global: false,
+  tags: [],
+  flags: [],
 };
 
 // Default pagination

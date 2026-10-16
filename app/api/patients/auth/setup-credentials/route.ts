@@ -4,6 +4,8 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { rotatePatientSessionAfterPasswordChange } from '../shared';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -45,6 +47,9 @@ export async function POST(request: NextRequest) {
       { status: 401 }
     );
   }
+
+  const limited = await applyRateLimit(request, rateLimiters.authAccount, `patient-pw:${session.patientId}`);
+  if (limited) return limited;
 
   try {
     await connectDB();
@@ -154,17 +159,21 @@ export async function POST(request: NextRequest) {
 
     await Patient.updateOne({ _id: patient._id }, { $set: updates });
 
+    // Any previously issued token (other devices, leaked tokens) stops working
+    const rotated = await rotatePatientSessionAfterPasswordChange(request, session.patientId);
+
     logger.info('Patient credentials set up for third-party access', {
       patientId: session.patientId,
       emailUpdated: !!updates.email,
     });
 
-    return NextResponse.json({
+    return rotated.apply(NextResponse.json({
       success: true,
       message:
         'Credentials saved. You can now log in with email and password on any supported application.',
       email: updates.email ?? patient.email ?? null,
-    });
+      ...(rotated.token ? { token: rotated.token } : {}),
+    }));
   } catch (error: any) {
     logger.error('Error setting up patient credentials', error as Error);
     return NextResponse.json(

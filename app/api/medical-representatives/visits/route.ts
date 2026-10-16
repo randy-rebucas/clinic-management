@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
+import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
 
 const VALID_VISIT_STATUSES = ['scheduled', 'completed', 'cancelled'] as const;
 
@@ -11,27 +11,12 @@ const VALID_VISIT_STATUSES = ['scheduled', 'completed', 'cancelled'] as const;
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    if (session.role !== 'medical-representative') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
 
     await connectDB();
 
-    const visits = await MedicalRepresentativeVisit.find({
-      tenantId: session.tenantId,
-      userId: session.userId,
-    })
+    const visits = await MedicalRepresentativeVisit.find(rep.ownerFilter)
       .sort({ date: -1, createdAt: -1 })
       .lean();
 
@@ -42,7 +27,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('Get visits error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -54,20 +39,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    if (session.role !== 'medical-representative') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
 
     let body: Record<string, unknown>;
     try {
@@ -87,7 +60,7 @@ export async function POST(request: NextRequest) {
     const notes = typeof body.notes === 'string' ? body.notes.trim() : '';
     const status = typeof body.status === 'string' ? body.status.trim() : 'scheduled';
     const durationRaw = typeof body.duration === 'number' ? body.duration : Number(body.duration);
-    const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? Math.floor(durationRaw) : 60;
+    const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? Math.min(Math.floor(durationRaw), 24 * 60) : 60;
 
     if (!clinicName || !clinicLocation || !purpose || !date || !time) {
       return NextResponse.json(
@@ -116,8 +89,7 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     const visit = await MedicalRepresentativeVisit.create({
-      tenantId: session.tenantId,
-      userId: session.userId,
+      ...rep.ownerFilter,
       clinicName,
       clinicLocation,
       purpose,
@@ -136,7 +108,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Create visit error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }

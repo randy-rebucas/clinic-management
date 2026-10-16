@@ -1,29 +1,22 @@
 import { NextResponse } from 'next/server';
-import { getTenantContext } from '@/lib/tenant';
 import Tenant from '@/models/Tenant';
 import connectDB from '@/lib/mongodb';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 
 export async function GET() {
   try {
-    // Get tenant context
-    const tenantContext = await getTenantContext();
-    
-    if (!tenantContext.tenant) {
-      return NextResponse.json(
-        { success: false, message: 'No tenant found' },
-        { status: 404 }
-      );
-    }
+    const ctx = await requireTenantSession();
+    if (isTenantSessionError(ctx)) return ctx;
 
-    // Connect to database
     await connectDB();
 
-    // Fetch tenant with subscription data
-    const tenant = await Tenant.findById(tenantContext.tenant._id).select('subscription');
+    const tenant = await Tenant.findById(ctx.tenantObjectId)
+      .select('subscription.plan subscription.status subscription.billingCycle subscription.expiresAt subscription.renewalAt')
+      .lean<any>();
 
     if (!tenant) {
       return NextResponse.json(
-        { success: false, message: 'Tenant not found' },
+        { success: false, error: 'Tenant not found', message: 'Tenant not found' },
         { status: 404 }
       );
     }
@@ -37,7 +30,7 @@ export async function GET() {
   } catch (error) {
     console.error('Error fetching subscription:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to fetch subscription' },
+      { success: false, error: 'Failed to fetch subscription', message: 'Failed to fetch subscription' },
       { status: 500 }
     );
   }

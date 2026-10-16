@@ -106,10 +106,11 @@ ${errorDetails.componentStack || 'No component stack available'}`;
       const isDevelopment = process.env.NODE_ENV === 'development';
 
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-red-50/30 p-4">
-          <div className={`${isDevelopment ? 'max-w-4xl' : 'max-w-md'} w-full bg-white shadow-xl rounded-xl border border-gray-200 p-8`}>
-            <div className="flex items-center justify-center w-16 h-16 mx-auto bg-gradient-to-br from-red-500 to-red-600 rounded-full mb-6 shadow-md">
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+          <div className={`${isDevelopment ? 'max-w-4xl' : 'max-w-md'} w-full bg-white shadow-xl rounded-lg border border-gray-200 p-8`}>
+            <div className="flex items-center justify-center w-16 h-16 mx-auto bg-red-500 rounded-full mb-6 shadow-md">
               <svg
+                aria-hidden="true"
                 className="w-8 h-8 text-white"
                 fill="none"
                 stroke="currentColor"
@@ -244,7 +245,7 @@ ${errorDetails.componentStack || 'No component stack available'}`;
                   this.setState({ hasError: false, error: null, errorInfo: null, errorTimestamp: null });
                   window.location.reload();
                 }}
-                className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md"
+                className="flex-1 bg-brand-teal-dark text-white py-3 px-4 rounded-lg hover:bg-brand-teal-deep transition-all font-semibold shadow-md"
               >
                 Reload Page
               </button>

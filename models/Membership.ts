@@ -1,7 +1,8 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
+import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
+import { TIER, type MembershipTier, type MembershipStatus } from '@/lib/memberships';
 
-export type MembershipTier = 'bronze' | 'silver' | 'gold' | 'platinum';
-export type MembershipStatus = 'active' | 'inactive' | 'expired' | 'suspended';
+export type { MembershipTier, MembershipStatus };
 
 export interface IMembership extends Document {
   // Tenant reference for multi-tenant support
@@ -21,7 +22,9 @@ export interface IMembership extends Document {
   joinDate: Date;
   expiryDate?: Date;
   renewalDate?: Date;
-  
+  expiryRemindersSent?: number[]; // day thresholds already reminded
+  expiryRemindersFor?: Date; // expiryDate the markers apply to
+
   // Benefits
   discountPercentage: number; // Discount percentage based on tier
   benefits: string[]; // List of benefits (e.g., "free_consultation", "priority_booking")
@@ -39,6 +42,7 @@ export interface IMembership extends Document {
       type: 'visit' | 'appointment' | 'invoice';
       id: Types.ObjectId;
     };
+    performedBy?: Types.ObjectId; // Staff user who recorded it
     createdAt: Date;
   }>;
   
@@ -65,6 +69,7 @@ const TransactionSchema: Schema = new Schema(
       },
       id: { type: Schema.Types.ObjectId },
     },
+    performedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     createdAt: { type: Date, default: Date.now },
   },
   { _id: false }
@@ -99,6 +104,8 @@ const MembershipSchema: Schema = new Schema(
     joinDate: { type: Date, default: Date.now, required: true },
     expiryDate: { type: Date },
     renewalDate: { type: Date },
+    expiryRemindersSent: { type: [Number], default: undefined },
+    expiryRemindersFor: { type: Date },
     discountPercentage: { type: Number, default: 0, min: 0, max: 100 },
     benefits: [{ type: String }],
     referredBy: { type: Schema.Types.ObjectId, ref: 'Patient', index: true },
@@ -111,29 +118,40 @@ const MembershipSchema: Schema = new Schema(
 
 // Indexes (tenant-scoped)
 MembershipSchema.index({ tenantId: 1, patient: 1 }, { unique: true, sparse: true }); // One membership per patient per tenant
-MembershipSchema.index({ tenantId: 1, membershipNumber: 1 }, { unique: true, sparse: true }); // Tenant-scoped membership number
+MembershipSchema.index(
+  { tenantId: 1, membershipNumber: 1 },
+  { unique: true, partialFilterExpression: { membershipNumber: { $type: 'string' } } }
+);
 MembershipSchema.index({ tenantId: 1, tier: 1, status: 1 });
 MembershipSchema.index({ tenantId: 1, points: -1 });
 MembershipSchema.index({ tenantId: 1, expiryDate: 1 });
 
-// Pre-save hook to generate membership number and set tier benefits
-MembershipSchema.pre('save', async function (this: IMembership, next) {
-  if (!this.membershipNumber) {
-    const count = await mongoose.models.Membership?.countDocuments() || 0;
-    this.membershipNumber = `MEM-${Date.now()}-${count + 1}`;
+// Must run before validation: membershipNumber is required.
+MembershipSchema.pre('validate', async function (this: IMembership, next) {
+  if (this.membershipNumber) return next();
+  try {
+    const seq = await nextSequence(
+      this.tenantId,
+      'membership',
+      maxCodeSeed(mongoose.model('Membership'), 'membershipNumber', {
+        tenantId: this.tenantId ?? null,
+        membershipNumber: { $regex: /^MEM-\d+$/ },
+      })
+    );
+    this.membershipNumber = formatCode('MEM', seq);
+    next();
+  } catch (err) {
+    next(err as Error);
   }
+});
 
-  // Set tier-based benefits
-  const tierBenefits: Record<MembershipTier, { discount: number; benefits: string[] }> = {
-    bronze: { discount: 5, benefits: ['points_earn'] },
-    silver: { discount: 10, benefits: ['points_earn', 'priority_booking'] },
-    gold: { discount: 15, benefits: ['points_earn', 'priority_booking', 'free_consultation_monthly'] },
-    platinum: { discount: 20, benefits: ['points_earn', 'priority_booking', 'free_consultation_monthly', 'discount_on_procedures'] },
-  };
+// Set tier benefits
+MembershipSchema.pre('save', async function (this: IMembership, next) {
 
-  const tierConfig = tierBenefits[this.tier];
+  // Set tier-based benefits (the table lives in lib/memberships so pages show the same terms)
+  const tierConfig = TIER[this.tier];
   this.discountPercentage = tierConfig.discount;
-  this.benefits = tierConfig.benefits;
+  this.benefits = [...tierConfig.benefits];
 
   next();
 });

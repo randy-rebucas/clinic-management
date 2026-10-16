@@ -10,8 +10,12 @@ import Prescription from '@/models/Prescription';
 import Visit from '@/models/Visit';
 import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
+import Referral from '@/models/Referral';
 import User from '@/models/User';
 import '@/models/Patient';
+import { nextSequence } from '@/lib/counters';
+import { resolveTimezone } from '@/lib/tz';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
 
 /**
  * Document sealing — tamper-evident, verifiable printouts.
@@ -35,9 +39,9 @@ interface SealDefinition {
   label: string;
   load(documentId: string, tenantId?: string | null): Promise<any | null>;
   code(doc: any): string | undefined;
-  canonical(doc: any): Record<string, unknown>;
+  canonical(doc: any, version?: CanonicalVersion): Record<string, unknown>;
   revocation(doc: any): string | null;
-  facts(doc: any, currency: string): SealFact[];
+  facts(doc: any, currency: string, tz?: string): SealFact[];
   patient(doc: any): any;
   issuer(doc: any): string | undefined;
 }
@@ -52,10 +56,10 @@ const iso = (v: any): string | null => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
-const longDate = (v: any): string => {
+const longDate = (v: any, tz?: string): string => {
   const d = v ? new Date(v) : null;
   return d && !Number.isNaN(d.getTime())
-    ? d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    ? d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: resolveTimezone(tz) })
     : '—';
 };
 const formatMoney = (amount: number, currency: string) => {
@@ -81,6 +85,23 @@ function stableStringify(value: unknown): string {
 
 function sha256(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex');
+}
+
+/**
+ * Canonical content format. v1 seals (issued before strength/dose/form were part of the
+ * prescription fingerprint) keep verifying with v1; new seals are issued as v2 and their
+ * contentHash carries a "v2:" prefix, which the HMAC signature covers.
+ */
+type CanonicalVersion = 1 | 2;
+const CURRENT_CANONICAL_VERSION: CanonicalVersion = 2;
+
+function hashCanonical(def: SealDefinition, doc: any, version: CanonicalVersion): string {
+  const digest = sha256(stableStringify(def.canonical(doc, version)));
+  return version === 1 ? digest : `v${version}:${digest}`;
+}
+
+function canonicalVersionOf(contentHash: string): CanonicalVersion {
+  return contentHash?.startsWith('v2:') ? 2 : 1;
 }
 
 /** Build a `{ _id, tenantId }` query that cannot cross tenant boundaries. Returns null for malformed ids. */
@@ -117,7 +138,7 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
         : Promise.resolve(null);
     },
     code: (rx) => rx.prescriptionCode,
-    canonical: (rx) => ({
+    canonical: (rx, version = CURRENT_CANONICAL_VERSION) => ({
       code: str(rx.prescriptionCode),
       patient: idOf(rx.patient),
       visit: idOf(rx.visit),
@@ -127,6 +148,7 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
       medications: (rx.medications || []).map((m: any) => ({
         name: str(m.name),
         genericName: str(m.genericName),
+        ...(version >= 2 ? { strength: str(m.strength), dose: str(m.dose), form: str(m.form) } : {}),
         route: str(m.route),
         frequency: str(m.frequency),
         durationDays: num(m.durationDays),
@@ -135,15 +157,18 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
       })),
     }),
     revocation: (rx) => (rx.status === 'cancelled' ? 'This prescription was cancelled by the clinic.' : null),
-    facts: (rx) => [
+    facts: (rx, _currency, tz) => [
       { label: 'Prescription code', value: rx.prescriptionCode || '—' },
-      { label: 'Date issued', value: longDate(rx.issuedAt) },
+      { label: 'Date issued', value: longDate(rx.issuedAt, tz) },
       { label: 'Current status', value: String(rx.status || '—').replace(/-/g, ' ').toUpperCase() },
       ...(rx.medications || []).map((m: any, i: number) => ({
         label: `Medication ${i + 1}`,
         value: [
           m.name,
           m.genericName ? `(${m.genericName})` : '',
+          m.strength || '',
+          m.form || '',
+          m.dose ? `dose ${m.dose}` : '',
           m.quantity ? `# ${m.quantity}` : '',
           m.instructions ? `— Sig: ${m.instructions}` : '',
         ]
@@ -179,16 +204,16 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
       };
     },
     revocation: (v) => (v.status === 'cancelled' ? 'The underlying visit was cancelled by the clinic.' : null),
-    facts: (v) => {
+    facts: (v, _currency, tz) => {
       const dx = primaryDiagnosis(v);
       return [
         { label: 'Visit code', value: v.visitCode || '—' },
-        { label: 'Examination date', value: longDate(v.date) },
+        { label: 'Examination date', value: longDate(v.date, tz) },
         { label: 'Diagnosis', value: diagnosisText(dx) || '—' },
         ...(v.treatmentPlan?.followUp?.instructions
           ? [{ label: 'Recommendations', value: String(v.treatmentPlan.followUp.instructions) }]
           : []),
-        ...(v.followUpDate ? [{ label: 'Follow-up date', value: longDate(v.followUpDate) }] : []),
+        ...(v.followUpDate ? [{ label: 'Follow-up date', value: longDate(v.followUpDate, tz) }] : []),
       ];
     },
     patient: (v) => v.patient,
@@ -219,9 +244,9 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
       labs: (v.labsOrdered || []).map((l: any) => ({ id: idOf(l), testType: str(l?.testType) })),
     }),
     revocation: (v) => (v.status === 'cancelled' ? 'The underlying visit was cancelled by the clinic.' : null),
-    facts: (v) => [
+    facts: (v, _currency, tz) => [
       { label: 'Visit code', value: v.visitCode || '—' },
-      { label: 'Visit date', value: longDate(v.date) },
+      { label: 'Visit date', value: longDate(v.date, tz) },
       {
         label: 'Requested tests',
         value:
@@ -260,14 +285,62 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
       thirdPartyLab: str(l.thirdPartyLab?.labName),
     }),
     revocation: (l) => (l.status === 'cancelled' ? 'This laboratory request was cancelled by the clinic.' : null),
-    facts: (l) => [
+    facts: (l, _currency, tz) => [
       { label: 'Request code', value: l.requestCode || '—' },
-      { label: 'Order date', value: longDate(l.orderDate) },
+      { label: 'Order date', value: longDate(l.orderDate, tz) },
       { label: 'Test', value: l.request?.testType || '—' },
       { label: 'Urgency', value: String(l.request?.urgency || 'routine').toUpperCase() },
     ],
     patient: (l) => l.patient,
     issuer: (l) => l.orderedBy?.name,
+  },
+
+  referral_letter: {
+    label: 'Referral Letter',
+    load: (id, tenantId) => {
+      const q = tenantScopedQuery(id, tenantId);
+      return q
+        ? Referral.findOne(q)
+            .populate('patient', 'firstName lastName')
+            .populate('referringDoctor', 'firstName lastName')
+            .populate('receivingDoctor', 'firstName lastName')
+        : Promise.resolve(null);
+    },
+    code: (r) => r.referralCode,
+    canonical: (r) => ({
+      code: str(r.referralCode),
+      patient: idOf(r.patient),
+      referringDoctor: idOf(r.referringDoctor),
+      receivingDoctor: idOf(r.receivingDoctor),
+      receivingClinic: str(r.receivingClinic),
+      referredDate: iso(r.referredDate),
+      reason: str(r.reason),
+      urgency: str(r.urgency),
+      specialty: str(r.specialty),
+      chiefComplaint: str(r.chiefComplaint),
+      diagnosis: str(r.diagnosis),
+      relevantHistory: str(r.relevantHistory),
+      medications: (r.medications || []).map((m: any) => str(m)),
+      notes: str(r.notes),
+    }),
+    revocation: (r) =>
+      r.status === 'cancelled'
+        ? 'This referral was cancelled by the clinic.'
+        : r.status === 'declined'
+          ? 'The receiving doctor or clinic declined this referral.'
+          : null,
+    facts: (r, _currency, tz) => [
+      { label: 'Referral code', value: r.referralCode || '—' },
+      { label: 'Date referred', value: longDate(r.referredDate, tz) },
+      {
+        label: 'Referred to',
+        value: r.receivingDoctor ? `Dr. ${r.receivingDoctor.firstName} ${r.receivingDoctor.lastName}` : r.receivingClinic || '—',
+      },
+      ...(r.specialty ? [{ label: 'Specialty', value: String(r.specialty) }] : []),
+      { label: 'Urgency', value: String(r.urgency || 'routine').toUpperCase() },
+    ],
+    patient: (r) => r.patient,
+    issuer: (r) => (r.referringDoctor ? `Dr. ${r.referringDoctor.firstName} ${r.referringDoctor.lastName}` : undefined),
   },
 
   receipt: {
@@ -317,11 +390,11 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
         : null,
     }),
     revocation: (inv) => (inv.status === 'refunded' ? 'This transaction was refunded.' : null),
-    facts: (inv, currency) => {
+    facts: (inv, currency, tz) => {
       const paid = (inv.payments || []).reduce((s: number, p: any) => s + (p.amount || 0), 0);
       return [
         { label: 'Receipt number', value: inv.invoiceNumber || '—' },
-        { label: 'Date', value: longDate(inv.createdAt) },
+        { label: 'Date', value: longDate(inv.createdAt, tz) },
         { label: 'Total amount', value: formatMoney(inv.total || 0, currency) },
         { label: 'Amount paid', value: formatMoney(paid, currency) },
         { label: 'Payment status', value: String(inv.status || '—').toUpperCase() },
@@ -465,18 +538,20 @@ export async function issueSeal(params: {
   const def = SEAL_DEFINITIONS[documentType];
   await connectDB();
 
-  const contentHash = sha256(stableStringify(def.canonical(document)));
+  const contentHash = hashCanonical(def, document, CURRENT_CANONICAL_VERSION);
   const tenantObjectId = tenantId ? new Types.ObjectId(tenantId) : undefined;
 
-  const [priorCount, issuer] = await Promise.all([
-    DocumentSeal.countDocuments({ tenantId: tenantObjectId ?? null, documentType, documentId: document._id }),
+  const [printNumber, issuer] = await Promise.all([
+    // Atomic per-document counter, seeded from seals issued before the counter existed.
+    nextSequence(tenantObjectId ?? null, `seal:${documentType}:${String(document._id)}`, () =>
+      DocumentSeal.countDocuments({ tenantId: tenantObjectId ?? null, documentType, documentId: document._id })
+    ),
     userId && Types.ObjectId.isValid(userId)
       ? User.findById(userId).select('name').lean<{ name?: string }>()
       : Promise.resolve(null),
   ]);
 
   const issuedAt = new Date();
-  const printNumber = priorCount + 1;
   const forwarded = request.headers.get('x-forwarded-for');
   const ipAddress = forwarded?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || undefined;
 
@@ -597,7 +672,7 @@ export async function verifySeal(rawSerial: string): Promise<SealVerification> {
 
   const def = SEAL_DEFINITIONS[seal.documentType as SealDocumentType];
   const tenantId = seal.tenantId ? String(seal.tenantId) : null;
-  const [document, settings, totalPrints] = await Promise.all([
+  const [document, settings, totalPrints, tz] = await Promise.all([
     def.load(String(seal.documentId), tenantId),
     getSettings(tenantId),
     DocumentSeal.countDocuments({
@@ -605,6 +680,7 @@ export async function verifySeal(rawSerial: string): Promise<SealVerification> {
       documentType: seal.documentType,
       documentId: seal.documentId,
     }),
+    getTenantTimezone(tenantId),
   ]);
 
   await DocumentSeal.updateOne({ _id: seal._id }, { $inc: { verificationCount: 1 }, $set: { lastVerifiedAt: new Date() } });
@@ -641,7 +717,7 @@ export async function verifySeal(rawSerial: string): Promise<SealVerification> {
 
   base.patientName = maskName(def.patient(document));
   base.issuedBy = def.issuer(document);
-  base.facts = def.facts(document, settings?.billingSettings?.currency || 'PHP');
+  base.facts = def.facts(document, settings?.billingSettings?.currency || 'PHP', tz);
 
   if (seal.documentType === 'prescription' && ['dispensed', 'completed'].includes(document.status)) {
     base.warnings.push('The clinic records this prescription as already dispensed/completed.');
@@ -656,7 +732,7 @@ export async function verifySeal(rawSerial: string): Promise<SealVerification> {
     return { ...base, status: 'revoked', message: revocation };
   }
 
-  const currentHash = sha256(stableStringify(def.canonical(document)));
+  const currentHash = hashCanonical(def, document, canonicalVersionOf(seal.contentHash));
   if (currentHash !== seal.contentHash) {
     return {
       ...base,

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
 import { revokeSeal } from '@/lib/document-seal';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 
 /**
  * Revoke a printed copy (e.g. lost, stolen, or suspected of being used in a
@@ -12,11 +11,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ serial: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   if (!isAdmin(session)) {
     return forbiddenResponse('Only administrators can revoke document seals');
@@ -26,11 +23,10 @@ export async function POST(
     const { serial } = await params;
     const body = await request.json().catch(() => ({}));
     const reason = typeof body?.reason === 'string' ? body.reason.trim() : undefined;
-    const tenantContext = await getTenantContext();
 
     const revoked = await revokeSeal({
       serial,
-      tenantId: session.tenantId || tenantContext.tenantId,
+      tenantId,
       userId: session.userId,
       reason,
     });

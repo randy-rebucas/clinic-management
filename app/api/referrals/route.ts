@@ -3,20 +3,34 @@ import connectDB from '@/lib/mongodb';
 import Referral from '@/models/Referral';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
-import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
+import { createReferralSchema, normalizeReferral, referralPopulate, validateReferralRefs } from '@/lib/referral-helpers';
+import { directionFilter, OPEN_STATUSES, REFERRAL_STATUSES, URGENCIES, waitRange } from '@/lib/referrals';
+import { myDoctorProfileId } from '@/lib/doctor-access';
+import { nextSequence, formatCode } from '@/lib/counters';
 
+const DEFAULT_LIMIT = 200;
+const MAX_LIMIT = 500;
+const LIST_FIELDS =
+  'referralCode type patient referringDoctor referringPatient referringClinic referringContact.name receivingDoctor receivingClinic reason urgency specialty status referredDate acceptedDate completedDate declinedDate followUpRequired followUpDate';
+
+/**
+ * GET /api/referrals
+ * Paged (`page`) for the referrals list, with `search`, `mine` (referrals the signed-in doctor sent
+ * or receives), `toMe` (waiting for the signed-in doctor's answer), `direction`, `status` (or
+ * `open`), `urgency` (or `high` = urgent or STAT), `waiting` (days-waiting bucket), and `to` (a
+ * destination key from the insights).
+ * Without `page`: the newest `limit` referrals, filtered by patient/doctor/status/type as before.
+ */
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to read referrals
   const permissionCheck = await requirePermission(session, 'referrals', 'read');
   if (permissionCheck) {
     return permissionCheck;
@@ -24,90 +38,102 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
-    
-    const searchParams = request.nextUrl.searchParams;
-    const referringDoctor = searchParams.get('referringDoctor');
-    const receivingDoctor = searchParams.get('receivingDoctor');
-    const patientId = searchParams.get('patientId');
-    const status = searchParams.get('status');
-    const type = searchParams.get('type');
 
-    const query: any = {};
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    if (referringDoctor) {
-      query.referringDoctor = referringDoctor;
-    }
-    if (receivingDoctor) {
-      query.receivingDoctor = receivingDoctor;
-    }
-    if (patientId) {
-      query.patient = patientId;
-    }
-    if (status) {
-      query.status = status;
-    }
-    if (type) {
-      query.type = type;
+    const sp = request.nextUrl.searchParams;
+    const pageParam = sp.get('page');
+    const page = Math.max(parseInt(pageParam || '1', 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(sp.get('limit') || '', 10) || DEFAULT_LIMIT, 1), MAX_LIMIT);
+    const empty = () =>
+      NextResponse.json({ success: true, data: [], ...(pageParam ? { pagination: { page, limit, total: 0, pages: 1 } } : {}) });
+
+    const and: Record<string, unknown>[] = [{ tenantId: tenantObjectId }];
+    for (const [key, value] of [['referringDoctor', sp.get('referringDoctor')], ['receivingDoctor', sp.get('receivingDoctor')], ['patient', sp.get('patientId')]] as const) {
+      if (!value) continue;
+      if (!isValidId(value)) return empty();
+      and.push({ [key]: new Types.ObjectId(value) });
     }
 
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
+    const mine = sp.get('mine') === 'true';
+    const toMe = sp.get('toMe') === 'true';
+    if (mine || toMe) {
+      const me = await myDoctorProfileId(tenantId, session.userId);
+      if (!me) return empty();
+      const meId = new Types.ObjectId(me);
+      and.push(toMe ? { receivingDoctor: meId, status: 'pending' } : { $or: [{ referringDoctor: meId }, { receivingDoctor: meId }] });
+    }
+
+    const status = sp.get('status');
+    if (status === 'open') and.push({ status: { $in: OPEN_STATUSES } });
+    else if (status && (REFERRAL_STATUSES as readonly string[]).includes(status)) and.push({ status });
+
+    const type = sp.get('type');
+    if (type && ['doctor_to_doctor', 'patient_to_patient', 'external'].includes(type)) and.push({ type });
+
+    const direction = sp.get('direction');
+    const dir = direction ? directionFilter(direction) : null;
+    if (dir) and.push(dir);
+
+    const urgency = sp.get('urgency');
+    if (urgency === 'high') and.push({ urgency: { $in: ['urgent', 'stat'] } });
+    else if (urgency && (URGENCIES as readonly string[]).includes(urgency)) and.push({ urgency });
+
+    const waiting = sp.get('waiting');
+    const range = waiting ? waitRange(waiting) : null;
+    if (range) and.push({ status: 'pending', referredDate: range });
+
+    const to = (sp.get('to') || '').slice(0, 220);
+    if (to.startsWith('d:')) {
+      if (!isValidId(to.slice(2))) return empty();
+      and.push({ receivingDoctor: new Types.ObjectId(to.slice(2)) });
+    } else if (to.startsWith('c:') && to.length > 2) {
+      and.push({ receivingDoctor: null, receivingClinic: new RegExp(`^\\s*${escapeRegex(to.slice(2).trim())}\\s*$`, 'i') });
+    }
+
+    const search = (sp.get('search') || '').trim().slice(0, 100);
+    if (search) {
+      // Code, reason, specialty, the outside clinic or contact, or a patient / doctor of this clinic by name.
+      const rx = new RegExp(escapeRegex(search), 'i');
+      const words = search.split(/\s+/).filter(Boolean).map((w) => new RegExp(escapeRegex(w), 'i'));
+      const nameMatch = words.length > 1 ? { $and: words.map((w) => ({ $or: [{ firstName: w }, { lastName: w }] })) } : { $or: [{ firstName: rx }, { lastName: rx }] };
+      const [patients, doctors] = await Promise.all([
+        Patient.find({ tenantIds: tenantObjectId, $or: [{ patientCode: rx }, { phone: rx }, nameMatch] }).select('_id').limit(500).lean(),
+        Doctor.find({ tenantId: tenantObjectId, ...nameMatch }).select('_id').limit(100).lean(),
+      ]);
+      const patientIds = patients.map((p) => p._id);
+      const doctorIds = doctors.map((d) => d._id);
+      and.push({
+        $or: [
+          { referralCode: rx },
+          { reason: rx },
+          { specialty: rx },
+          { receivingClinic: rx },
+          { referringClinic: rx },
+          { 'referringContact.name': rx },
+          { patient: { $in: patientIds } },
+          { referringPatient: { $in: patientIds } },
+          { referringDoctor: { $in: doctorIds } },
+          { receivingDoctor: { $in: doctorIds } },
+        ],
+      });
+    }
+
+    const query = and.length === 1 ? and[0] : { $and: and };
+    const find = (select?: string) => {
+      const q = Referral.find(query);
+      if (select) q.select(select);
+      return q
+        .populate(referralPopulate(tenantObjectId))
+        .populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } })
+        .populate({ path: 'appointment', select: 'appointmentCode appointmentDate', match: { tenantId: tenantObjectId } })
+        .sort({ referredDate: -1, _id: -1 });
     };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    const doctorPopulateOptions: any = {
-      path: 'referringDoctor',
-      select: 'firstName lastName specializationId',
-      populate: {
-        path: 'specializationId',
-        select: 'name',
-      },
-    };
-    if (tenantId) {
-      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-    
-    const receivingDoctorPopulateOptions: any = {
-      path: 'receivingDoctor',
-      select: 'firstName lastName specializationId',
-      populate: {
-        path: 'specializationId',
-        select: 'name',
-      },
-    };
-    if (tenantId) {
-      receivingDoctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      receivingDoctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+
+    if (pageParam) {
+      const [referrals, total] = await Promise.all([find(LIST_FIELDS).skip((page - 1) * limit).limit(limit).lean(), Referral.countDocuments(query)]);
+      return NextResponse.json({ success: true, data: referrals, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) } });
     }
 
-    const referrals = await Referral.find(query)
-      .populate(doctorPopulateOptions)
-      .populate(receivingDoctorPopulateOptions)
-      .populate(patientPopulateOptions)
-      .populate('visit', 'visitCode date')
-      .populate('appointment', 'appointmentCode appointmentDate')
-      .sort({ referredDate: -1 });
-
+    const referrals = await find('-feedback.submittedBy').limit(limit).lean();
     return NextResponse.json({ success: true, data: referrals });
   } catch (error: any) {
     console.error('Error fetching referrals:', error);
@@ -118,14 +144,16 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * POST /api/referrals
+ * Every new referral starts as waiting for a reply. A referral sent by "us" without a named
+ * sender is signed with the signed-in doctor's profile.
+ */
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to write/create referrals
   const permissionCheck = await requirePermission(session, 'referrals', 'write');
   if (permissionCheck) {
     return permissionCheck;
@@ -133,169 +161,53 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
-    const body = await request.json();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
-    
-    // Validate that the patient belongs to the tenant
-    // Patient model uses tenantIds (array) since patients can belong to multiple clinics
-    if (body.patient && tenantId) {
-      const patientQuery: any = {
-        _id: body.patient,
-        tenantIds: new Types.ObjectId(tenantId),
-      };
-      const patient = await Patient.findOne(patientQuery);
-      if (!patient) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
-          { status: 400 }
-        );
-      }
-    }
-    
-    // Validate that doctors belong to the tenant
-    if (body.referringDoctor && tenantId) {
-      const doctorQuery: any = {
-        _id: body.referringDoctor,
-        tenantId: new Types.ObjectId(tenantId),
-      };
-      const doctor = await Doctor.findOne(doctorQuery);
-      if (!doctor) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid referring doctor selected. Please select a doctor from this clinic.' },
-          { status: 400 }
-        );
-      }
-    }
-    
-    if (body.receivingDoctor && tenantId) {
-      const doctorQuery: any = {
-        _id: body.receivingDoctor,
-        tenantId: new Types.ObjectId(tenantId),
-      };
-      const doctor = await Doctor.findOne(doctorQuery);
-      if (!doctor) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid receiving doctor selected. Please select a doctor from this clinic.' },
-          { status: 400 }
-        );
-      }
-    }
-    
-    // Debug: log the incoming body to see what's being sent
+    const parsed = await parseBody(request, createReferralSchema);
+    if (isValidationError(parsed)) return parsed;
+    const body = parsed.data;
 
-    // Generate referral code if not provided (tenant-scoped)
-    let referralCode = body.referralCode;
-    if (!referralCode) {
-      const countQuery: any = {};
-      if (tenantId) {
-        countQuery.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        countQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      const count = await Referral.countDocuments(countQuery);
-      referralCode = `REF-${Date.now()}-${count + 1}`;
+    if ((body.direction === 'internal' || body.direction === 'out') && !body.referringDoctor) {
+      body.referringDoctor = (await myDoctorProfileId(tenantId, session.userId)) ?? undefined;
     }
 
-    // Clean up referringContact - only include if it has a name
-    const cleanedBody = { ...body };
-    
-    // Remove referringContact entirely if it's empty, null, undefined, or doesn't have a name
-    if (cleanedBody.referringContact) {
-      const name = cleanedBody.referringContact.name;
-      if (!name || (typeof name === 'string' && name.trim() === '')) {
-        delete cleanedBody.referringContact;
-      } else {
-        // Clean up empty phone/email fields
-        if (!cleanedBody.referringContact.phone || cleanedBody.referringContact.phone.trim() === '') {
-          delete cleanedBody.referringContact.phone;
-        }
-        if (!cleanedBody.referringContact.email || cleanedBody.referringContact.email.trim() === '') {
-          delete cleanedBody.referringContact.email;
-        }
-      }
-    }
-    
-    // Ensure referringContact is completely removed if it's an empty object
-    if (cleanedBody.referringContact && Object.keys(cleanedBody.referringContact).length === 0) {
-      delete cleanedBody.referringContact;
+    const { set, problems } = normalizeReferral(body, body.patient);
+    if (problems.length) {
+      return NextResponse.json({ success: false, error: 'Validation failed', issues: problems }, { status: 400 });
     }
 
-    // Ensure referral is created with tenantId
-    const referralData: any = {
-      ...cleanedBody,
-      referralCode,
-      referredDate: cleanedBody.referredDate || new Date(),
-    };
-    if (tenantId && !referralData.tenantId) {
-      referralData.tenantId = new Types.ObjectId(tenantId);
+    const refError = await validateReferralRefs({ ...set, patient: body.patient }, tenantObjectId, body.patient);
+    if (refError) {
+      return NextResponse.json({ success: false, error: refError }, { status: 400 });
     }
 
-    const referral = await Referral.create(referralData);
-    
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    const doctorPopulateOptions: any = {
-      path: 'referringDoctor',
-      select: 'firstName lastName specializationId',
-      populate: {
-        path: 'specializationId',
-        select: 'name',
-      },
-    };
-    if (tenantId) {
-      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-    
-    const receivingDoctorPopulateOptions: any = {
-      path: 'receivingDoctor',
-      select: 'firstName lastName specializationId',
-      populate: {
-        path: 'specializationId',
-        select: 'name',
-      },
-    };
-    if (tenantId) {
-      receivingDoctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      receivingDoctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
+    const seq = await nextSequence(tenantObjectId, 'referral', () => Referral.countDocuments({ tenantId: tenantObjectId }));
 
-    await referral.populate(doctorPopulateOptions);
-    await referral.populate(receivingDoctorPopulateOptions);
-    await referral.populate(patientPopulateOptions);
+    const referral = await Referral.create({
+      ...set,
+      patient: body.patient,
+      status: 'pending',
+      referralCode: formatCode('REF', seq),
+      referredDate: new Date(),
+      tenantId: tenantObjectId,
+    });
 
-    // Log referral creation
     await createAuditLog({
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
       tenantId: tenantId,
       action: 'create',
-      resource: 'patient',
+      resource: 'referral',
       resourceId: referral._id,
-      description: `Created ${referral.type} referral for patient ${referral.patient}`,
+      dataSubject: body.patient,
+      description: `Created referral ${referral.referralCode} (${body.direction})`,
     });
 
-    return NextResponse.json({ success: true, data: referral }, { status: 201 });
+    return NextResponse.json({ success: true, data: { _id: String(referral._id), referralCode: referral.referralCode } }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating referral:', error);
-    if (error.name === 'ValidationError') {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid referral data' },
         { status: 400 }
       );
     }
@@ -305,4 +217,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

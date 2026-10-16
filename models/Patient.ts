@@ -108,6 +108,9 @@ export interface IPatient extends Document {
   otp?: string;           // bcrypt-hashed OTP — not returned in queries (select: false)
   otpExpiry?: Date;
   otpAttempts?: number;
+  sessionVersion?: number;
+  loginQrTokenHash?: string;
+  loginQrTokenExpiry?: Date;
 
   // Notification read-tracking (stores IDs of notifications the patient has dismissed)
   readNotificationIds?: string[];
@@ -126,7 +129,15 @@ export interface IPatient extends Document {
     isPendingVerification?: boolean; // Insurance verification pending
     hasOutstandingBalance?: boolean; // Unpaid invoices
   };
-  
+
+  // Automation sent markers
+  lastBirthdayGreetingAt?: Date;
+  lastHealthReminderAt?: Date;
+  reengagementSentAt?: Date;
+  appointmentRestriction?: 'none' | 'deposit_required' | 'walk_in_only' | 'banned';
+  restrictionAppliedAt?: Date;
+  noShowNotifiedCount?: number;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -147,10 +158,12 @@ const PatientSchema: Schema = new Schema(
     },
     
     // Patient identification
+    // Globally unique: a patient record is shared across clinics (tenantIds), codes come from a
+    // single global sequence (lib/patient-schema nextPatientCode), and patient sessions derive
+    // `patient-<code>@clinic.local` from it. A per-tenant unique index would instead break
+    // linking an existing patient to a second clinic whose own sequence already used that code.
     patientCode: {
       type: String,
-      unique: true, // unique: true automatically creates an index
-      sparse: true, // Allow null/undefined values
       trim: true,
     },
     
@@ -331,6 +344,20 @@ const PatientSchema: Schema = new Schema(
       type: Number,
       default: 0,
     },
+    // Bumped on password change; patient tokens carrying an older version are rejected
+    sessionVersion: {
+      type: Number,
+      default: 0,
+    },
+    // SHA-256 of the server-issued QR login token
+    loginQrTokenHash: {
+      type: String,
+      select: false,
+    },
+    loginQrTokenExpiry: {
+      type: Date,
+      select: false,
+    },
 
     // Notification read-tracking
     readNotificationIds: {
@@ -376,6 +403,17 @@ const PatientSchema: Schema = new Schema(
         default: false,
       },
     },
+
+    // Automation sent markers (prevent duplicate outreach on cron reruns)
+    lastBirthdayGreetingAt: { type: Date },
+    lastHealthReminderAt: { type: Date },
+    reengagementSentAt: { type: Date },
+    appointmentRestriction: {
+      type: String,
+      enum: ['none', 'deposit_required', 'walk_in_only', 'banned'],
+    },
+    restrictionAppliedAt: { type: Date },
+    noShowNotifiedCount: { type: Number },
   },
   {
     timestamps: true,
@@ -388,10 +426,15 @@ PatientSchema.index({ tenantIds: 1, email: 1 }); // Tenant-scoped email (compoun
 PatientSchema.index({ tenantIds: 1, dateOfBirth: 1 }); // Tenant-scoped age queries
 PatientSchema.index({ tenantIds: 1, sex: 1 }); // Tenant-scoped gender queries
 PatientSchema.index({ tenantIds: 1, active: 1 }); // Tenant-scoped active patient queries
+PatientSchema.index({ loginQrTokenHash: 1 }, { sparse: true });
 PatientSchema.index({ tenantIds: 1, 'identifiers.philHealth': 1 }); // Tenant-scoped PhilHealth lookups
 PatientSchema.index({ tenantIds: 1, 'identifiers.govId': 1 }); // Tenant-scoped government ID lookups
 PatientSchema.index({ tenantIds: 1, createdAt: -1 }); // Tenant-scoped registration date queries
-PatientSchema.index({ tenantIds: 1, patientCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped patient code
+PatientSchema.index(
+  { patientCode: 1 },
+  { unique: true, name: 'uniq_patientCode', partialFilterExpression: { patientCode: { $type: 'string' } } }
+);
+PatientSchema.index({ tenantIds: 1, patientCode: 1 }); // Tenant-scoped code lookups
 
 // Segmentation indexes for efficient filtering
 // NOTE: Removed { tenantIds: 1, tags: 1 } — both are array fields, can't create compound multikey index

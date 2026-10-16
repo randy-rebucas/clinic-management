@@ -1,136 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import User from '@/models/User';
+import { formatInTz } from '@/lib/tz';
+import { openReport, dayKeys } from '../_lib/report-range';
 
+/**
+ * GET /api/reports/consultations?period=|startDate=&endDate=
+ * Visits in the window (cancelled ones counted apart): per day, by visit type, by doctor and by
+ * status. Aggregations only.
+ */
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const open = await openReport(request.nextUrl.searchParams, 'consultations');
+  if (open instanceof NextResponse) return open;
+  const { tenantObjectId, tz, start, end } = open;
 
   try {
     await connectDB();
-    const searchParams = request.nextUrl.searchParams;
-    const period = searchParams.get('period') || 'monthly'; // daily, weekly, monthly
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
+    const window = { tenantId: tenantObjectId, date: { $gte: start, $lte: end } };
+    const [result] = await Visit.aggregate([
+      { $match: window },
+      {
+        $facet: {
+          cancelled: [{ $match: { status: 'cancelled' } }, { $count: 'n' }],
+          byDay: [
+            { $match: { status: { $ne: 'cancelled' } } },
+            { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: tz } }, n: { $sum: 1 } } },
+          ],
+          byType: [{ $match: { status: { $ne: 'cancelled' } } }, { $group: { _id: { $ifNull: ['$visitType', 'consultation'] }, n: { $sum: 1 } } }],
+          byStatus: [{ $match: { status: { $ne: 'cancelled' } } }, { $group: { _id: { $ifNull: ['$status', 'open'] }, n: { $sum: 1 } } }],
+          byDoctor: [{ $match: { status: { $ne: 'cancelled' } } }, { $group: { _id: '$provider', n: { $sum: 1 } } }, { $sort: { n: -1 } }, { $limit: 12 }],
+        },
+      },
+    ]);
 
-    // Calculate date range based on period
-    let dateRange: { start: Date; end: Date };
-    const now = new Date();
+    const toMap = (rows: { _id: string; n: number }[]) => Object.fromEntries(rows.map((r) => [r._id, r.n]));
+    const perDay = new Map((result.byDay as { _id: string; n: number }[]).map((r) => [r._id, r.n]));
+    const days = dayKeys(start, end, tz).map((date) => ({ date, visits: perDay.get(date) ?? 0 }));
 
-    if (startDate && endDate) {
-      dateRange = {
-        start: new Date(startDate),
-        end: new Date(endDate),
-      };
-      dateRange.end.setHours(23, 59, 59, 999);
-    } else {
-      switch (period) {
-        case 'daily':
-          dateRange = {
-            start: new Date(now.setHours(0, 0, 0, 0)),
-            end: new Date(now.setHours(23, 59, 59, 999)),
-          };
-          break;
-        case 'weekly':
-          const weekStart = new Date(now);
-          weekStart.setDate(now.getDate() - now.getDay()); // Start of week (Sunday)
-          weekStart.setHours(0, 0, 0, 0);
-          const weekEnd = new Date(weekStart);
-          weekEnd.setDate(weekStart.getDate() + 6);
-          weekEnd.setHours(23, 59, 59, 999);
-          dateRange = { start: weekStart, end: weekEnd };
-          break;
-        case 'monthly':
-        default:
-          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-          monthStart.setHours(0, 0, 0, 0);
-          const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-          monthEnd.setHours(23, 59, 59, 999);
-          dateRange = { start: monthStart, end: monthEnd };
-          break;
-      }
+    const doctorIds = (result.byDoctor as { _id: unknown }[]).map((r) => r._id).filter(Boolean);
+    const names = new Map(
+      (await User.find({ _id: { $in: doctorIds }, tenantId: tenantObjectId }).select('name').lean()).map((u: { _id: unknown; name?: string }) => [String(u._id), u.name || 'Unnamed user'])
+    );
+    const byDoctor: Record<string, number> = {};
+    for (const r of result.byDoctor as { _id: unknown; n: number }[]) {
+      const name = r._id ? names.get(String(r._id)) ?? 'Former staff' : 'No doctor recorded';
+      byDoctor[name] = (byDoctor[name] || 0) + r.n;
     }
-
-    // Get consultations (visits) in date range
-    const visits = await Visit.find({
-      date: { $gte: dateRange.start, $lte: dateRange.end },
-      status: { $ne: 'cancelled' },
-    })
-      .populate('patient', 'firstName lastName patientCode')
-      .populate('provider', 'name')
-      .sort({ date: -1 });
-
-    // Group by date
-    const byDate: Record<string, any[]> = {};
-    visits.forEach((visit: any) => {
-      const dateKey = new Date(visit.date).toISOString().split('T')[0];
-      if (!byDate[dateKey]) {
-        byDate[dateKey] = [];
-      }
-      byDate[dateKey].push(visit);
-    });
-
-    // Calculate statistics
-    const totalConsultations = visits.length;
-    const byType = visits.reduce((acc: any, visit: any) => {
-      const type = visit.visitType || 'consultation';
-      acc[type] = (acc[type] || 0) + 1;
-      return acc;
-    }, {});
-
-    const byStatus = visits.reduce((acc: any, visit: any) => {
-      const status = visit.status || 'open';
-      acc[status] = (acc[status] || 0) + 1;
-      return acc;
-    }, {});
-
-    // Group by provider
-    const byProvider: Record<string, number> = {};
-    visits.forEach((visit: any) => {
-      const providerName = visit.provider?.name || 'Unknown';
-      byProvider[providerName] = (byProvider[providerName] || 0) + 1;
-    });
-
-    // Daily breakdown
-    const dailyBreakdown = Object.entries(byDate).map(([date, dateVisits]) => ({
-      date,
-      count: dateVisits.length,
-      byType: dateVisits.reduce((acc: any, v: any) => {
-        const type = v.visitType || 'consultation';
-        acc[type] = (acc[type] || 0) + 1;
-        return acc;
-      }, {}),
-    })).sort((a, b) => a.date.localeCompare(b.date));
 
     return NextResponse.json({
       success: true,
       data: {
-        period,
-        dateRange: {
-          start: dateRange.start.toISOString(),
-          end: dateRange.end.toISOString(),
-        },
-        summary: {
-          totalConsultations,
-          byType,
-          byStatus,
-          byProvider,
-        },
-        dailyBreakdown,
-        generatedAt: new Date().toISOString(),
+        range: { start: start.toISOString(), end: end.toISOString() },
+        today: formatInTz(new Date(), 'yyyy-MM-dd', tz),
+        total: days.reduce((s, d) => s + d.visits, 0),
+        cancelled: result.cancelled[0]?.n ?? 0,
+        days,
+        byType: toMap(result.byType),
+        byStatus: toMap(result.byStatus),
+        byDoctor,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error generating consultations report:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to generate consultations report' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to generate the consultations report' }, { status: 500 });
   }
 }
-

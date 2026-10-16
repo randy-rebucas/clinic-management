@@ -102,7 +102,7 @@ The application features a modern sidebar navigation layout with:
 Run the automated installation script:
 
 ```bash
-npm run install:setup
+pnpm run install:setup
 ```
 
 This script will:
@@ -123,7 +123,7 @@ This script will:
 
 2. Install dependencies:
    ```bash
-   npm install
+   pnpm install
    ```
 
 3. Set up environment variables:
@@ -139,18 +139,18 @@ This script will:
 
 4. Create the first admin user:
    ```bash
-   npm run setup:admin
+   pnpm run setup:admin
    ```
    This will prompt you to enter admin credentials (name, email, password).
 
 5. Run the development server:
    ```bash
-   npm run dev
+   pnpm run dev
    ```
 
    This starts the Next.js development server.
    
-   > **Note**: For the old polling-based system (legacy), use `npm run dev:polling`
+   > **Note**: For the old polling-based system (legacy), use `pnpm run dev:polling`
 
 6. Open [http://localhost:3000](http://localhost:3000) in your browser and log in with your admin credentials
 
@@ -203,7 +203,18 @@ This project uses Next.js environment variables. According to the [Next.js docum
 - `ENCRYPTION_KEY` - Key for encrypting sensitive data (generate with: `openssl rand -base64 32`)
 
 #### Monitoring (Sentry)
-- `SENTRY_DSN` - Sentry DSN for error tracking and performance monitoring (optional)
+Sentry is optional and stays completely inactive until a DSN is set.
+- `SENTRY_DSN` - server-side DSN (falls back to `NEXT_PUBLIC_SENTRY_DSN`)
+- `NEXT_PUBLIC_SENTRY_DSN` - browser DSN, inlined at build time (rebuild after changing it)
+- `SENTRY_TRACES_SAMPLE_RATE` - trace sampling, 0..1 (default `0.1`)
+- `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` - source-map upload during `next build`; skipped unless all three are set
+
+Because the app stores patient health data (Data Privacy Act of 2012), every event goes through
+`lib/sentry-scrub.ts` before it leaves the server or browser: request bodies, cookies, auth headers
+and query strings are dropped, user data is reduced to an opaque id, patient fields (names, phone,
+email, diagnosis, notes, medications, date of birth, address) are filtered, console breadcrumbs are
+dropped and Session Replay is not enabled. Browser events are posted to the same-origin
+`/monitoring` tunnel (no CSP change needed); this only works with a Sentry SaaS DSN (`o<id>.ingest.sentry.io`).
 
 **Notes:**
 - SMS functionality will work without Twilio credentials but will only log messages. To enable actual SMS sending, sign up at [Twilio](https://www.twilio.com) and add your credentials.
@@ -489,34 +500,34 @@ Additional documentation is available in the `docs/` directory:
 
 ```bash
 # First time setup (automated installation)
-npm run install:setup
+pnpm run install:setup
 
 # Create admin user (if not done during install)
-npm run setup:admin
+pnpm run setup:admin
 
 # Seed database with sample data (optional)
-npm run seed
+pnpm run seed
 
 # Run development server (with Turbopack - faster)
-npm run dev
+pnpm run dev
 
 # Run development server (with Webpack - no source map warnings)
-npm run dev:webpack
+pnpm run dev:webpack
 
 # Build for production
-npm run build
+pnpm run build
 
 # Start production server
-npm start
+pnpm start
 
 # Run linter
-npm run lint
+pnpm run lint
 
 # Run tests (unit/integration)
-npm run test
+pnpm run test
 
 # Run tests with coverage
-npm run test:coverage
+pnpm run test:coverage
 ```
 
 ## User Roles & Permissions
@@ -535,11 +546,14 @@ See `lib/permissions.ts` for implementation details.
 
 ## Continuous Integration (CI/CD)
 
-Automated CI/CD pipelines are recommended for linting, testing, and deployment. Example: GitHub Actions, GitLab CI, or similar. If using GitHub Actions, add a workflow file like `.github/workflows/ci.yml` for:
+`.github/workflows/ci.yml` runs on pushes and pull requests to `main`:
 
-- Linting (`npm run lint`)
-- Testing (`npm run test`)
-- Build & deploy
+- `pnpm install --frozen-lockfile` (the project uses pnpm only; don't commit a `package-lock.json`)
+- Type-check (`pnpm exec tsc --noEmit`)
+- Linting (`pnpm run lint`)
+- Testing (`pnpm run test`)
+- `pnpm audit --prod --audit-level high`
+- Production build
 
 ## Extending the Application
 
@@ -561,27 +575,27 @@ The `/book` page allows public users to book appointments without an account. Co
 
 ## Testing
 
-Tests are located in the `__tests__/` directory. Use Vitest or Jest as configured. To run all tests:
+Tests are located in the `__tests__/` directory and run with Vitest (no real database; models are mocked). To run all tests:
 
 ```bash
-npm run test
+pnpm run test
 ```
 
 For coverage:
 
 ```bash
-npm run test:coverage
+pnpm run test:coverage
 ```
 
-Refer to `vitest.config.ts` or `jest.config.js` for configuration details.
+Refer to `vitest.config.ts` for configuration details. Type-check with `pnpm run typecheck`.
 
 ### Known Issues
 
 **Source Map Warning in Development:**
-- When using `npm run dev` (Turbopack), you may see "Invalid source map" warnings in the console
+- When using `pnpm run dev` (Turbopack), you may see "Invalid source map" warnings in the console
 - This is a known Turbopack issue in Next.js 16.0.3 and does **not** affect functionality
 - The application works correctly despite this warning
-- **Workaround:** Use `npm run dev:webpack` to avoid the warning (slower but no warnings)
+- **Workaround:** Use `pnpm run dev:webpack` to avoid the warning (slower but no warnings)
 - This issue only affects development mode - production builds are not affected
 
 ## License
@@ -599,7 +613,7 @@ This application is designed for production use, following modern best practices
 - JWT authentication and PH DPA compliance are enforced.
 - Strict input validation and error handling in all API endpoints.
 - Secrets and credentials are managed via `.env.local` and never committed.
-- Regularly audit dependencies with `npm audit` and keep them updated.
+- Regularly audit dependencies with `pnpm audit --prod` and keep them updated.
 
 ### Monitoring & Error Handling
 - Integrated with Sentry for error monitoring and alerting (see `lib/`).
@@ -618,7 +632,7 @@ This application is designed for production use, following modern best practices
 
 ### Documentation & Operations
 - All features and integrations are documented in `docs/`.
-- Automated database backups and tested restore procedures are recommended.
+- Backups use MongoDB Atlas Cloud Backup; see [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) for setup, the restore drill and the incident procedure.
 - Health checks and resource monitoring should be set up in production.
 
 ### User Experience

@@ -1,44 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { sendLabRequestToThirdParty } from '@/lib/lab-integration';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { sendLabRequestToThirdParty, getConfiguredLab, LabIntegrationConfig } from '@/lib/lab-integration';
+import { requireTenantSession, isTenantSessionError, notFound, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
+
+const sendSchema = z.object({
+  labResultId: zObjectId,
+  labConfig: z.object({
+    labName: z.string().trim().min(1).max(200),
+    labId: z.string().max(100).optional(),
+    labCode: z.string().max(100).optional(),
+    integrationType: z.enum(['manual', 'api', 'hl7', 'other']).optional(),
+    // Only used when no server-side configuration exists for this lab (validated for SSRF).
+    apiEndpoint: z.string().max(2000).optional(),
+    apiKey: z.string().max(2000).optional(),
+  }),
+});
 
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(session, 'lab-results', 'update');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
-    const body = await request.json();
-    const { labResultId, labConfig } = body;
+    const parsed = await parseBody(request, sendSchema);
+    if (isValidationError(parsed)) return parsed;
+    const { labResultId, labConfig: requested } = parsed.data;
 
-    if (!labResultId || !labConfig) {
-      return NextResponse.json(
-        { success: false, error: 'Lab result ID and lab configuration required' },
-        { status: 400 }
-      );
-    }
+    const labResult = await LabResult.findOne(tenantFilter(tenantId, { _id: labResultId }))
+      .populate({ path: 'patient', select: 'firstName lastName dateOfBirth sex patientCode', match: { tenantIds: tenantObjectId } })
+      .populate({ path: 'visit', select: 'diagnoses chiefComplaint', match: { tenantId: tenantObjectId } });
 
-    const labResult = await LabResult.findById(labResultId)
-      .populate('patient', 'firstName lastName dateOfBirth sex patientCode')
-      .populate('visit', 'diagnoses chiefComplaint');
-
-    if (!labResult) {
-      return NextResponse.json(
-        { success: false, error: 'Lab result not found' },
-        { status: 404 }
-      );
-    }
+    if (!labResult) return notFound('Lab result');
 
     const patient = labResult.patient as any;
+    if (!patient) return notFound('Patient');
     const visit = labResult.visit as any;
 
-    // Prepare request payload
+    // Prefer the server-side lab configuration; the request's endpoint is only a fallback.
+    const configured = getConfiguredLab(requested.labCode, tenantId);
+    const config: LabIntegrationConfig = configured ?? {
+      labName: requested.labName,
+      labId: requested.labId,
+      labCode: requested.labCode,
+      integrationType: requested.integrationType || 'api',
+      apiEndpoint: requested.apiEndpoint,
+      apiKey: requested.apiKey,
+    };
+
     const requestPayload = {
       requestCode: labResult.requestCode || '',
       patient: {
@@ -58,27 +74,19 @@ export async function POST(request: NextRequest) {
       specialInstructions: labResult.request.specialInstructions,
     };
 
-    // Send to third-party lab
-    const result = await sendLabRequestToThirdParty(labConfig, requestPayload);
+    const result = await sendLabRequestToThirdParty(config, requestPayload);
 
-    if (result.success) {
-      // Update lab result with third-party lab info
-      labResult.thirdPartyLab = {
-        ...labConfig,
-        externalRequestId: result.externalRequestId,
-        status: 'sent',
-        sentAt: new Date(),
-      };
-      await labResult.save();
-    } else {
-      // Update with error status
-      labResult.thirdPartyLab = {
-        ...labConfig,
-        status: 'error',
-        errorMessage: result.error,
-      };
-      await labResult.save();
-    }
+    // Credentials and endpoints are never stored on the lab result.
+    const storedLab = {
+      labName: config.labName,
+      labId: config.labId,
+      labCode: config.labCode,
+      integrationType: config.integrationType,
+    };
+    labResult.thirdPartyLab = result.success
+      ? { ...storedLab, externalRequestId: result.externalRequestId, status: 'sent', sentAt: new Date() }
+      : { ...storedLab, status: 'error', errorMessage: result.error };
+    await labResult.save();
 
     return NextResponse.json({
       success: result.success,
@@ -95,4 +103,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

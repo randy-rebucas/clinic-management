@@ -1,37 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import { processWeeklyReports } from '@/lib/automations/periodic-reports';
 
-// This endpoint should be called by a cron job service (e.g., Vercel Cron)
-// Runs every Monday at 8:00 AM to report on the previous week
+export const maxDuration = 300;
+
+/**
+ * Emails each tenant the report for the previous Monday–Sunday week.
+ * Schedule: see vercel.json. Auth: Authorization: Bearer $CRON_SECRET.
+ */
 export async function GET(request: NextRequest) {
-  // Authenticate request
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-  
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-  }
+  const denied = requireCron(request);
+  if (denied) return denied;
 
   try {
     const result = await processWeeklyReports();
-
     return NextResponse.json({
-      success: true,
+      success: result.success,
       message: 'Weekly reports processed',
       data: result,
     });
-  } catch (error: any) {
-    console.error('Error processing weekly reports:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to process weekly reports' },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('[Cron] weekly-reports error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to process weekly-reports' }, { status: 500 });
   }
 }
-

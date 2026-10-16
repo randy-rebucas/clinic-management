@@ -1,11 +1,15 @@
 // End-of-Day Cleanup Automation
-// Automatically marks all active queue entries and pending/scheduled appointments
-// as "completed" at the end of each clinic day (runs at 6:00 PM).
+// Closes queue entries and unattended appointments at the end of each clinic day.
+// Unattended appointments become 'no-show' (or 'completed' when the patient was
+// actually seen); appointments later than "now" are never touched.
 
 import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
 import Appointment from '@/models/Appointment';
+import Visit from '@/models/Visit';
 import { Types } from 'mongoose';
+import { dayRangeInTz, dayRangeOffsetInTz, combineDateAndTimeInTz } from '@/lib/tz';
+import { forEachTenant, errorMessage, type AutomationTenant } from './shared';
 
 export interface EndOfDayCleanupResult {
   queues: {
@@ -23,127 +27,144 @@ export interface EndOfDayCleanupResult {
 }
 
 export interface EndOfDayCleanupOptions {
-  /** Scope cleanup to a specific tenant. Omit to run across all tenants. */
+  /** Scope cleanup to a specific tenant. Omit to run across all active tenants. */
   tenantId?: Types.ObjectId | string;
   /**
-   * Date to clean up (defaults to today). Useful for back-filling or testing.
+   * Clinic-local day to clean up. Defaults to yesterday + today (so a missed run catches up).
    */
   targetDate?: Date;
-  /** Override the "completed" status for queue entries. */
+  /** Status for queue entries still waiting at close (in-progress entries become 'completed'). */
   queueCompletionStatus?: 'completed' | 'cancelled';
-  /** Override the "completed" status for appointments. */
-  appointmentCompletionStatus?: 'completed' | 'cancelled';
+  /** Status for unattended appointments; defaults to 'no-show'. */
+  appointmentCompletionStatus?: 'no-show' | 'cancelled' | 'completed';
+}
+
+const OPEN_APPOINTMENT_STATUSES = ['pending', 'scheduled', 'confirmed', 'rescheduled'];
+const MAX_APPOINTMENTS = 2000;
+
+async function cleanupTenant(
+  tenant: AutomationTenant,
+  options: EndOfDayCleanupOptions
+): Promise<EndOfDayCleanupResult> {
+  const result: EndOfDayCleanupResult = {
+    queues: { matched: 0, updated: 0, statuses: ['waiting', 'in-progress'] },
+    appointments: { matched: 0, updated: 0, statuses: OPEN_APPOINTMENT_STATUSES },
+    errors: [],
+    ranAt: new Date(),
+  };
+
+  const now = new Date();
+  const tz = tenant.timezone;
+  const tenantId = tenant.tenantObjectId;
+
+  let rangeStart: Date;
+  let rangeEnd: Date;
+  if (options.targetDate) {
+    ({ start: rangeStart, end: rangeEnd } = dayRangeInTz(options.targetDate, tz));
+  } else {
+    rangeStart = dayRangeOffsetInTz(-1, now, tz).start;
+    rangeEnd = dayRangeInTz(now, tz).end;
+  }
+  if (rangeEnd > now) rangeEnd = now;
+
+  // 1. Queue entries
+  try {
+    const base = { tenantId, queuedAt: { $gte: rangeStart, $lte: rangeEnd } };
+    const waitingStatus = options.queueCompletionStatus === 'completed' ? 'completed' : 'cancelled';
+
+    const [inProgress, waiting] = await Promise.all([
+      Queue.updateMany(
+        { ...base, status: 'in-progress' },
+        { $set: { status: 'completed', completedAt: now, completionNotes: 'Auto-closed by end-of-day cleanup' } }
+      ),
+      Queue.updateMany(
+        { ...base, status: 'waiting' },
+        { $set: { status: waitingStatus, completionNotes: 'Auto-closed by end-of-day cleanup (not seen)' } }
+      ),
+    ]);
+    result.queues.matched = (inProgress.matchedCount ?? 0) + (waiting.matchedCount ?? 0);
+    result.queues.updated = (inProgress.modifiedCount ?? 0) + (waiting.modifiedCount ?? 0);
+  } catch (err: unknown) {
+    const msg = errorMessage(err);
+    console.error('[EndOfDayCleanup] Queue cleanup error:', msg);
+    result.errors.push(`Queue cleanup: ${msg}`);
+  }
+
+  // 2. Appointments whose time has passed and were never closed
+  try {
+    const unattendedStatus = options.appointmentCompletionStatus ?? 'no-show';
+    const appointments = await Appointment.find({
+      tenantId,
+      status: { $in: OPEN_APPOINTMENT_STATUSES },
+      $or: [
+        { appointmentDate: { $gte: rangeStart, $lte: rangeEnd } },
+        { scheduledAt: { $gte: rangeStart, $lte: rangeEnd } },
+      ],
+    })
+      .select('_id patient appointmentDate appointmentTime scheduledAt duration')
+      .limit(MAX_APPOINTMENTS)
+      .lean();
+
+    for (const appt of appointments as any[]) {
+      try {
+        const startsAt: Date = appt.scheduledAt
+          ? new Date(appt.scheduledAt)
+          : combineDateAndTimeInTz(appt.appointmentDate, appt.appointmentTime || '23:59', tz);
+        const endsAt = new Date(startsAt.getTime() + (appt.duration || 30) * 60 * 1000);
+        if (endsAt > now) continue;
+        result.appointments.matched++;
+
+        const { start, end } = dayRangeInTz(startsAt, tz);
+        const [servedInQueue, visit] = await Promise.all([
+          Queue.exists({ tenantId, appointment: appt._id, status: { $in: ['completed', 'in-progress'] } }),
+          Visit.exists({ tenantId, patient: appt.patient, date: { $gte: start, $lte: end } }),
+        ]);
+        const status = servedInQueue || visit ? 'completed' : unattendedStatus;
+
+        const res = await Appointment.updateOne(
+          { _id: appt._id, tenantId, status: { $in: OPEN_APPOINTMENT_STATUSES } },
+          { $set: { status } }
+        );
+        result.appointments.updated += res.modifiedCount ?? 0;
+      } catch (err) {
+        result.errors.push(`Appointment ${appt._id}: ${errorMessage(err)}`);
+      }
+    }
+  } catch (err: unknown) {
+    const msg = errorMessage(err);
+    console.error('[EndOfDayCleanup] Appointment cleanup error:', msg);
+    result.errors.push(`Appointment cleanup: ${msg}`);
+  }
+
+  return result;
 }
 
 /**
- * Returns a [start, end] tuple representing 00:00:00 – 23:59:59 for the given date.
- */
-function dayRange(date: Date): [Date, Date] {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
-  return [start, end];
-}
-
-/**
- * End-of-day cleanup – closes all open queue entries and pending appointments.
+ * End-of-day cleanup – closes open queue entries and unattended appointments.
  */
 export async function runEndOfDayCleanup(
   options: EndOfDayCleanupOptions = {}
 ): Promise<EndOfDayCleanupResult> {
   await connectDB();
 
-  const result: EndOfDayCleanupResult = {
-    queues: { matched: 0, updated: 0, statuses: [] },
-    appointments: { matched: 0, updated: 0, statuses: [] },
+  const total: EndOfDayCleanupResult = {
+    queues: { matched: 0, updated: 0, statuses: ['waiting', 'in-progress'] },
+    appointments: { matched: 0, updated: 0, statuses: OPEN_APPOINTMENT_STATUSES },
     errors: [],
     ranAt: new Date(),
   };
 
-  const targetDate = options.targetDate ?? new Date();
-  const [dayStart, dayEnd] = dayRange(targetDate);
-
-  const queueStatus = options.queueCompletionStatus ?? 'completed';
-  const appointmentStatus = options.appointmentCompletionStatus ?? 'completed';
-
-  // ── Tenant filter ───────────────────────────────────────────────────────────
-  const tenantFilter: Record<string, unknown> = {};
-  if (options.tenantId) {
-    tenantFilter.tenantId =
-      typeof options.tenantId === 'string'
-        ? new Types.ObjectId(options.tenantId)
-        : options.tenantId;
-  }
-
-  // ── 1. Clean up Queue entries ───────────────────────────────────────────────
-  try {
-    // Active statuses that should be closed at end of day
-    const activeQueueStatuses: string[] = ['waiting', 'in-progress'];
-
-    const queueFilter = {
-      ...tenantFilter,
-      status: { $in: activeQueueStatuses },
-      queuedAt: { $gte: dayStart, $lte: dayEnd },
-    };
-
-    // Count before updating
-    result.queues.matched = await Queue.countDocuments(queueFilter);
-    result.queues.statuses = activeQueueStatuses;
-
-    if (result.queues.matched > 0) {
-      const queueUpdate = await Queue.updateMany(queueFilter, {
-        $set: {
-          status: queueStatus,
-          completedAt: new Date(),
-          completionNotes: 'Auto-closed by end-of-day cleanup',
-          updatedAt: new Date(),
-        },
-      });
-
-      result.queues.updated = queueUpdate.modifiedCount ?? 0;
+  const runs = await forEachTenant(options.tenantId, (t) => cleanupTenant(t, options));
+  for (const run of runs) {
+    if (!run.result) {
+      total.errors.push(`Tenant ${run.tenantId}: ${run.error}`);
+      continue;
     }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[EndOfDayCleanup] Queue cleanup error:', msg);
-    result.errors.push(`Queue cleanup: ${msg}`);
+    total.queues.matched += run.result.queues.matched;
+    total.queues.updated += run.result.queues.updated;
+    total.appointments.matched += run.result.appointments.matched;
+    total.appointments.updated += run.result.appointments.updated;
+    total.errors.push(...run.result.errors.map((e) => `Tenant ${run.tenantId}: ${e}`));
   }
-
-  // ── 2. Clean up Appointments ────────────────────────────────────────────────
-  try {
-    // Statuses that represent "still pending" at end of day
-    const activeApptStatuses: string[] = ['pending', 'scheduled', 'confirmed'];
-
-    // Support both date field formats used in the Appointment model
-    const apptFilter = {
-      ...tenantFilter,
-      status: { $in: activeApptStatuses },
-      $or: [
-        // Original format: appointmentDate field
-        { appointmentDate: { $gte: dayStart, $lte: dayEnd } },
-        // Extended format: scheduledAt field
-        { scheduledAt: { $gte: dayStart, $lte: dayEnd } },
-      ],
-    };
-
-    result.appointments.matched = await Appointment.countDocuments(apptFilter);
-    result.appointments.statuses = activeApptStatuses;
-
-    if (result.appointments.matched > 0) {
-      const apptUpdate = await Appointment.updateMany(apptFilter, {
-        $set: {
-          status: appointmentStatus,
-          updatedAt: new Date(),
-        },
-      });
-
-      result.appointments.updated = apptUpdate.modifiedCount ?? 0;
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[EndOfDayCleanup] Appointment cleanup error:', msg);
-    result.errors.push(`Appointment cleanup: ${msg}`);
-  }
-
-  return result;
+  return total;
 }

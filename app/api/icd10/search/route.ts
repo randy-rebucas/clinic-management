@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const query = searchParams.get('q') || '';
+    const query = (searchParams.get('q') || '').slice(0, 100);
 
     if (!query || query.length < 2) {
       return NextResponse.json({ success: true, data: [] });

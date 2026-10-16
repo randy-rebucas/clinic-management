@@ -1,37 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import { processWeeklyStaffPerformance } from '@/lib/automations/staff-performance';
 
-// This endpoint should be called by a cron job service (e.g., Vercel Cron)
-// Runs every Monday at 9:00 AM to report on the previous week
+export const maxDuration = 300;
+
+/**
+ * Emails each tenant staff performance for the previous Monday–Sunday week.
+ * Schedule: see vercel.json. Auth: Authorization: Bearer $CRON_SECRET.
+ */
 export async function GET(request: NextRequest) {
-  // Authenticate request
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-  
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-  }
+  const denied = requireCron(request);
+  if (denied) return denied;
 
   try {
     const result = await processWeeklyStaffPerformance();
-
     return NextResponse.json({
-      success: true,
-      message: 'Weekly staff performance reports processed',
+      success: result.success,
+      message: 'Weekly staff performance processed',
       data: result,
     });
-  } catch (error: any) {
-    console.error('Error processing weekly staff performance:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to process weekly staff performance' },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('[Cron] weekly-staff-performance error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to process weekly-staff-performance' }, { status: 500 });
   }
 }
-

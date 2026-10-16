@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import { safeEqual } from '@/lib/cron-auth';
 import mongoose from 'mongoose';
 import {
   AuditLog,
@@ -36,8 +37,19 @@ import {
 /**
  * Reset database - Delete all collections
  * WARNING: This will delete all data in the database
+ *
+ * Requires Authorization: Bearer <INSTALL_SECRET> in every environment (also enforced in
+ * proxy.ts); without INSTALL_SECRET configured the route is disabled.
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const installSecret = process.env.INSTALL_SECRET;
+  if (!installSecret) {
+    return NextResponse.json({ success: false, error: 'Install routes are disabled' }, { status: 403 });
+  }
+  if (!safeEqual(request.headers.get('authorization') ?? '', `Bearer ${installSecret}`)) {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     await connectDB();
 
@@ -111,17 +123,18 @@ export async function POST() {
       return NextResponse.json(
         {
           success: false,
-          error: error.message || 'Failed to reset database',
+          error: 'Failed to reset database',
           partialResults: deletionResults,
         },
         { status: 500 }
       );
     }
   } catch (error: any) {
+    console.error('Install reset failed:', error);
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Failed to connect to database',
+        error: 'Failed to connect to database',
       },
       { status: 500 }
     );

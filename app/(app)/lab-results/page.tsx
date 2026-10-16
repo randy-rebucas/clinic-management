@@ -1,10 +1,7 @@
-import { requirePagePermission } from '@/app/lib/auth-helpers';
 import LabResultsPageClient from '@/components/LabResultsPageClient';
+import { loadLabResultsPageContext } from '@/lib/lab-results-page';
 
 export default async function LabResultsPage() {
-  // Require permission to read lab-results
-  await requirePagePermission('lab-results', 'read');
-
-  return <LabResultsPageClient />;
+  const context = await loadLabResultsPageContext();
+  return <LabResultsPageClient {...context} />;
 }
-

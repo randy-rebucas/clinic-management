@@ -1,26 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomInt } from 'crypto';
 import bcrypt from 'bcryptjs';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { sendSMS } from '@/lib/sms';
-import { Types } from 'mongoose';
+import { normalizePhone } from '@/lib/phone';
+import { invalidTenantResponse, maskPhone, parseOptionalTenantId, phoneFilter } from '../../shared';
 
 const OTP_EXPIRY_MINUTES = 5;
 const OTP_LENGTH = 6;
 
 function generateOTP(): string {
-  return Math.floor(Math.random() * 10 ** OTP_LENGTH)
-    .toString()
-    .padStart(OTP_LENGTH, '0');
-}
-
-function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (phone.startsWith('+')) return phone.replace(/\s/g, '');
-  if (digits.length === 10) return `+1${digits}`;
-  return `+${digits}`;
+  return randomInt(0, 10 ** OTP_LENGTH).toString().padStart(OTP_LENGTH, '0');
 }
 
 /**
@@ -33,9 +26,7 @@ export async function POST(request: NextRequest) {
   if (rateLimitResponse) return rateLimitResponse;
 
   try {
-    await connectDB();
-
-    let body: { phone?: string; tenantId?: string };
+    let body: { phone?: unknown; tenantId?: unknown };
     try {
       body = await request.json();
     } catch {
@@ -46,7 +37,8 @@ export async function POST(request: NextRequest) {
     }
 
     const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
-    const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : undefined;
+    const tenant = parseOptionalTenantId(body.tenantId);
+    if (!tenant.ok) return invalidTenantResponse();
 
     if (!phone) {
       return NextResponse.json(
@@ -55,12 +47,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Per-destination cap (SMS bombing / cost abuse), independent of the caller's IP
+    const perPhoneLimit = await applyRateLimit(request, rateLimiters.otpSend, `otp:${phone}`);
+    if (perPhoneLimit) return perPhoneLimit;
+
+    await connectDB();
+
     // Build tenant-scoped query — search both phone and contacts.phone
-    const query: any = {
-      $or: [{ phone }, { 'contacts.phone': phone }],
-    };
-    if (tenantId) {
-      query.tenantIds = new Types.ObjectId(tenantId);
+    const query: Record<string, unknown> = phoneFilter(phone);
+    if (tenant.tenantId) {
+      query.tenantIds = tenant.tenantId;
     }
 
     const patient = await Patient.findOne(query);
@@ -85,6 +81,13 @@ export async function POST(request: NextRequest) {
     );
 
     const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+      logger.warn('Patient OTP requested for an unroutable phone number', {
+        patientId: patient._id.toString(),
+      });
+      return genericResponse;
+    }
+
     const smsResult = await sendSMS({
       to: normalizedPhone,
       message: `Your clinic login code is: ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Do not share this code.`,
@@ -98,7 +101,7 @@ export async function POST(request: NextRequest) {
 
     logger.info('Patient OTP requested', {
       patientId: patient._id.toString(),
-      phone: normalizedPhone,
+      phone: maskPhone(normalizedPhone),
     });
 
     return genericResponse;

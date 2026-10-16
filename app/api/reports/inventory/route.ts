@@ -1,158 +1,86 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import InventoryItem from '@/models/Inventory';
-import Medicine from '@/models/Medicine';
-import User from '@/models/User';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import InventoryMovement from '@/models/InventoryMovement';
+import { openReport } from '../_lib/report-range';
 
+/**
+ * GET /api/reports/inventory?period=|startDate=&endDate=
+ * Stock as it stands (value at cost by category, the most valuable items) and what moved in the
+ * window from the stock ledger: what was used most (dispensed, or used in the clinic), what came
+ * in, and what was lost (damaged, expired). Aggregations only.
+ */
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Only admin can view inventory reports
-  if (session.role !== 'admin') {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    );
-  }
+  const open = await openReport(request.nextUrl.searchParams, 'inventory');
+  if (open instanceof NextResponse) return open;
+  const { tenantObjectId, start, end } = open;
 
   try {
     await connectDB();
-    const searchParams = request.nextUrl.searchParams;
-    const category = searchParams.get('category');
-    const status = searchParams.get('status');
+    const scope = { tenantId: tenantObjectId };
+    const value = { $multiply: [{ $ifNull: ['$quantity', 0] }, { $ifNull: ['$unitCost', 0] }] };
 
-    const query: any = {};
-    if (category) {
-      query.category = category;
-    }
-    if (status) {
-      query.status = status;
-    }
+    const [stock, moves] = await Promise.all([
+      InventoryItem.aggregate([
+        { $match: scope },
+        {
+          $facet: {
+            byCategory: [{ $group: { _id: '$category', items: { $sum: 1 }, value: { $sum: value } } }],
+            byStatus: [{ $group: { _id: '$status', n: { $sum: 1 } } }],
+            topValue: [{ $addFields: { value } }, { $sort: { value: -1 } }, { $limit: 8 }, { $project: { name: 1, quantity: 1, unit: 1, value: 1 } }],
+          },
+        },
+      ]),
+      InventoryMovement.aggregate([
+        { $match: { ...scope, createdAt: { $gte: start, $lte: end } } },
+        { $addFields: { kind: { $switch: { branches: [
+          { case: { $eq: ['$type', 'dispense'] }, then: 'used' },
+          { case: { $and: [{ $eq: ['$type', 'adjustment'] }, { $eq: ['$reasonCode', 'used'] }] }, then: 'used' },
+          { case: { $and: [{ $eq: ['$type', 'adjustment'] }, { $in: ['$reasonCode', ['damaged', 'expired']] }] }, then: 'lost' },
+          { case: { $eq: ['$type', 'restock'] }, then: 'restocked' },
+        ], default: 'other' } } } },
+        {
+          $facet: {
+            used: [
+              { $match: { kind: 'used' } },
+              { $group: { _id: '$item', used: { $sum: { $multiply: ['$change', -1] } } } },
+              { $sort: { used: -1 } },
+              { $limit: 10 },
+              { $lookup: { from: 'inventoryitems', localField: '_id', foreignField: '_id', as: 'i', pipeline: [{ $project: { name: 1, unit: 1, unitCost: 1 } }] } },
+              { $project: { used: 1, item: { $first: '$i' } } },
+            ],
+            totals: [
+              { $match: { kind: { $in: ['restocked', 'lost'] } } },
+              { $group: { _id: '$kind', moves: { $sum: 1 }, cost: { $sum: { $multiply: [{ $abs: '$change' }, { $ifNull: ['$unitCost', 0] }] } } } },
+            ],
+          },
+        },
+      ]),
+    ]);
 
-    const items = await InventoryItem.find(query)
-      .populate('medicineId', 'name genericName')
-      .populate('lastRestockedBy', 'name')
-      .sort({ name: 1 });
-
-    // Calculate statistics
-    const totalItems = items.length;
-    const totalValue = items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
-    
-    const byStatus = items.reduce((acc: any, item) => {
-      const status = item.status || 'in-stock';
-      acc[status] = (acc[status] || 0) + 1;
-      return acc;
-    }, {});
-
-    const byCategory = items.reduce((acc: any, item) => {
-      const category = item.category || 'other';
-      acc[category] = (acc[category] || 0) + 1;
-      return acc;
-    }, {});
-
-    // Low stock items
-    const lowStockItems = items.filter(item => item.status === 'low-stock' || item.status === 'out-of-stock');
-    
-    // Expired items
-    const expiredItems = items.filter(item => item.status === 'expired');
-    
-    // Items expiring soon (within 30 days)
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-    const expiringSoon = items.filter(item => 
-      item.expiryDate && 
-      item.expiryDate > new Date() && 
-      item.expiryDate <= thirtyDaysFromNow
-    );
-
-    // Category value breakdown
-    const categoryValue: Record<string, number> = {};
-    items.forEach((item) => {
-      const category = item.category || 'other';
-      categoryValue[category] = (categoryValue[category] || 0) + (item.quantity * item.unitCost);
-    });
-
-    // Top items by value
-    const topItemsByValue = items
-      .map(item => ({
-        _id: item._id,
-        name: item.name,
-        category: item.category,
-        quantity: item.quantity,
-        unitCost: item.unitCost,
-        totalValue: item.quantity * item.unitCost,
-        status: item.status,
-      }))
-      .sort((a, b) => b.totalValue - a.totalValue)
-      .slice(0, 10);
+    const round = (v: number) => Math.round((v || 0) * 100) / 100;
+    const s = stock[0];
+    const m = moves[0];
+    const totals = new Map((m.totals as { _id: string; moves: number; cost: number }[]).map((r) => [r._id, r]));
 
     return NextResponse.json({
       success: true,
       data: {
-        summary: {
-          totalItems,
-          totalValue: parseFloat(totalValue.toFixed(2)),
-          byStatus,
-          byCategory,
-          lowStockCount: lowStockItems.length,
-          expiredCount: expiredItems.length,
-          expiringSoonCount: expiringSoon.length,
-        },
-        items: items.map(item => ({
-          _id: item._id,
-          name: item.name,
-          category: item.category,
-          sku: item.sku,
-          quantity: item.quantity,
-          unit: item.unit,
-          reorderLevel: item.reorderLevel,
-          unitCost: item.unitCost,
-          totalValue: item.quantity * item.unitCost,
-          status: item.status,
-          expiryDate: item.expiryDate,
-          location: item.location,
-          supplier: item.supplier,
-        })),
-        lowStockItems: lowStockItems.map(item => ({
-          _id: item._id,
-          name: item.name,
-          quantity: item.quantity,
-          reorderLevel: item.reorderLevel,
-          reorderQuantity: item.reorderQuantity,
-          unit: item.unit,
-        })),
-        expiredItems: expiredItems.map(item => ({
-          _id: item._id,
-          name: item.name,
-          expiryDate: item.expiryDate,
-          quantity: item.quantity,
-        })),
-        expiringSoon: expiringSoon.map(item => ({
-          _id: item._id,
-          name: item.name,
-          expiryDate: item.expiryDate,
-          daysUntilExpiry: Math.ceil(
-            (new Date(item.expiryDate!).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-          ),
-          quantity: item.quantity,
-        })),
-        categoryValue,
-        topItemsByValue,
-        generatedAt: new Date().toISOString(),
+        range: { start: start.toISOString(), end: end.toISOString() },
+        items: (s.byCategory as { items: number }[]).reduce((a, r) => a + r.items, 0),
+        value: round((s.byCategory as { value: number }[]).reduce((a, r) => a + r.value, 0)),
+        byCategory: Object.fromEntries((s.byCategory as { _id: string; value: number }[]).map((r) => [r._id || 'other', round(r.value)])),
+        status: Object.fromEntries((s.byStatus as { _id: string; n: number }[]).map((r) => [r._id || 'in-stock', r.n])),
+        topValue: (s.topValue as { _id: string; name: string; quantity: number; unit: string; value: number }[]).map((r) => ({ ...r, value: round(r.value) })),
+        mostUsed: (m.used as { _id: string; used: number; item?: { name: string; unit: string; unitCost?: number } }[])
+          .filter((r) => r.item)
+          .map((r) => ({ _id: r._id, name: r.item!.name, unit: r.item!.unit, used: r.used, cost: round(r.used * (r.item!.unitCost ?? 0)) })),
+        restocks: totals.get('restocked')?.moves ?? 0,
+        lostMoves: totals.get('lost')?.moves ?? 0,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error generating inventory report:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to generate inventory report' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to generate the inventory report' }, { status: 500 });
   }
 }
-

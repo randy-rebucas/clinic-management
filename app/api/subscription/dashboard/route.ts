@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { getSubscriptionUsage } from '@/lib/subscription-limits';
 import { getStorageUsageSummary } from '@/lib/storage-tracking';
 import { checkSubscriptionStatus } from '@/lib/subscription';
@@ -14,12 +12,10 @@ import { getPlanRecommendations } from '@/lib/plan-recommendations';
  * Includes visual statistics, progress bars, and upgrade prompts
  * GET /api/subscription/dashboard
  */
-export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+export async function GET(_request: NextRequest) {
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   // Only admin/owner may view billing dashboard
   if (!['admin', 'owner'].includes(session.role)) {
@@ -28,17 +24,6 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
-
-    const tenantContext = await getTenantContext();
-    // Prefer session tenantId (trusted); fall back to header-derived only when session lacks it
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'Tenant not found' },
-        { status: 404 }
-      );
-    }
 
     // Get subscription status
     const subscriptionStatus = await checkSubscriptionStatus(tenantId);

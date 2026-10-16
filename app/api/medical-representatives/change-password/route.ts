@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import bcrypt from 'bcryptjs';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { createSession, revokeUserSessions } from '@/app/lib/dal';
+import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
+import { validatePasswordPolicy } from '@/lib/user-invite';
 
 /**
  * POST /api/medical-representatives/change-password
@@ -14,21 +16,8 @@ export async function POST(request: NextRequest) {
     const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
     if (rateLimitResponse) return rateLimitResponse;
 
-    // Verify session
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    if (session.role !== 'medical-representative') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
 
     let body;
     try {
@@ -40,7 +29,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { currentPassword, newPassword } = body;
+    const currentPassword = typeof body?.currentPassword === 'string' ? body.currentPassword : '';
+    const newPassword = typeof body?.newPassword === 'string' ? body.newPassword : '';
 
     if (!currentPassword || !newPassword) {
       return NextResponse.json(
@@ -49,16 +39,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (newPassword.length < 8) {
-      return NextResponse.json(
-        { success: false, error: 'New password must be at least 8 characters long' },
-        { status: 400 }
-      );
-    }
-
     await connectDB();
 
-    const user = await User.findById(session.userId);
+    const user = await User.findOne({ _id: rep.userObjectId });
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'User not found' },
@@ -66,7 +49,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify current password
+    const policyErrors = validatePasswordPolicy(newPassword, { email: user.email });
+    if (policyErrors.length > 0) {
+      return NextResponse.json(
+        { success: false, error: policyErrors.join(' ') },
+        { status: 400 }
+      );
+    }
+
     const passwordMatch = await bcrypt.compare(currentPassword, user.password);
     if (!passwordMatch) {
       return NextResponse.json(
@@ -75,10 +65,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     user.password = hashedPassword;
     await user.save();
+
+    // Sign out every other device, then re-issue this device's session at the new version.
+    await revokeUserSessions(String(user._id));
+    await createSession(
+      String(user._id),
+      rep.session.email,
+      'medical-representative',
+      rep.session.roleId,
+      rep.session.tenantId
+    );
 
     return NextResponse.json({
       success: true,

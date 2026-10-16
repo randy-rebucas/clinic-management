@@ -1,102 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Role from '@/models/Role';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
+import { revokeUserSessions } from '@/app/lib/dal';
+import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
+
+const updateUserRoleSchema = z.object({ roleId: zObjectId });
 
 // Update user's role - admin only
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-  
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (session.role !== 'admin') {
+  if (!isAdmin(session)) {
     return forbiddenResponse('Admin access required');
   }
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
-    
-    const { id } = await params;
-    const body = await request.json();
-    const { roleId } = body;
 
-    if (!roleId) {
+    const { id } = await params;
+    if (!isValidId(id)) return notFound('User');
+
+    const parsed = await parseBody(request, updateUserRoleSchema);
+    if (isValidationError(parsed)) return parsed;
+    const { roleId } = parsed.data;
+
+    if (id === session.userId) {
       return NextResponse.json(
-        { success: false, error: 'roleId is required' },
+        { success: false, error: 'You cannot change your own role' },
         { status: 400 }
       );
     }
 
-    // Verify role exists (tenant-scoped)
-    const roleQuery: any = { _id: roleId };
-    if (tenantId) {
-      roleQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      roleQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const role = await Role.findOne(roleQuery);
-    if (!role) {
-      return NextResponse.json(
-        { success: false, error: 'Role not found' },
-        { status: 404 }
-      );
-    }
+    const role = await Role.findOne(tenantFilter(tenantId, { _id: roleId }));
+    if (!role) return notFound('Role');
 
-    // Update user's role (tenant-scoped)
-    const userQuery: any = { _id: id };
-    if (tenantId) {
-      userQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      userQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    // Build populate options with tenant filter
-    const rolePopulateOptions: any = {
-      path: 'role',
-      select: 'name displayName',
-    };
-    if (tenantId) {
-      rolePopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      rolePopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-    
     const user = await User.findOneAndUpdate(
-      userQuery,
-      { role: roleId },
+      tenantFilter(tenantId, { _id: id }),
+      { $set: { role: role._id } },
       { new: true }
     )
-      .select('-password')
-      .populate(rolePopulateOptions)
+      .select('-password -totpSecret')
+      .populate({ path: 'role', select: 'name displayName', match: tenantFilter(tenantId) })
       .lean();
 
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
-    }
+    if (!user) return notFound('User');
+
+    // Sessions carry the role; force the user to sign in again with the new one.
+    await revokeUserSessions(id);
 
     await createAuditLog({
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
-      tenantId: session.tenantId,
+      tenantId,
       action: 'permission_change',
       resource: 'user',
       resourceId: id,
@@ -113,4 +79,3 @@ export async function PUT(
     );
   }
 }
-

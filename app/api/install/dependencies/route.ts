@@ -19,7 +19,7 @@ export async function POST() {
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Failed to process dependency installation request',
+        error: 'Failed to process dependency installation request',
       },
       { status: 500 }
     );

@@ -7,9 +7,7 @@ import Link from 'next/link';
 type QRInputMethod = 'scan' | 'upload' | 'paste';
 
 export default function PatientLoginClient() {
-  const [loginMethod, setLoginMethod] = useState<'code' | 'qr'>('code');
   const [qrInputMethod, setQrInputMethod] = useState<QRInputMethod>('scan');
-  const [patientCode, setPatientCode] = useState('');
   const [qrCode, setQrCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,14 +22,25 @@ export default function PatientLoginClient() {
     setLoading(true);
     setError(null);
 
+    let token: unknown;
     try {
-      // Parse QR data to add tenantId if needed
-      const parsedQrData = typeof qrData === 'string' ? JSON.parse(qrData) : qrData;
+      const parsed = JSON.parse(qrData.trim());
+      token = parsed?.type === 'patient_login' ? parsed.token : undefined;
+    } catch {
+      token = undefined;
+    }
+    if (typeof token !== 'string' || !token) {
+      setError('This QR code is not valid for login. Please use the login QR from your patient portal or ask the clinic for a new one.');
+      setLoading(false);
+      return;
+    }
+
+    try {
       const res = await fetch('/api/patients/qr-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          qrCode: parsedQrData
+          qrCode: { type: 'patient_login', token }
         }),
       });
 
@@ -68,7 +77,7 @@ export default function PatientLoginClient() {
     let html5QrCode: any = null;
 
     const initScanner = async () => {
-      if (loginMethod === 'qr' && qrInputMethod === 'scan') {
+      if (qrInputMethod === 'scan') {
         try {
           const { Html5Qrcode } = await import('html5-qrcode');
 
@@ -117,7 +126,7 @@ export default function PatientLoginClient() {
       scannerRef.current = null;
       setScannerReady(false);
     };
-  }, [loginMethod, qrInputMethod, handleQRScanned]);
+  }, [qrInputMethod, handleQRScanned]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -144,45 +153,6 @@ export default function PatientLoginClient() {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-    }
-  };
-
-  const handleCodeLogin = async (e: FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Create QR code data for login directly with patient code
-      const qrData = JSON.stringify({
-        patientCode: patientCode,
-        type: 'patient_login',
-        timestamp: Date.now()
-      });
-
-      // Use QR login endpoint directly - it supports lookup by patientCode
-      const loginRes = await fetch('/api/patients/qr-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          qrCode: qrData
-        }),
-      });
-
-      const loginData = await loginRes.json();
-
-      if (loginData.success) {
-        // Redirect to patient portal
-        router.push('/patient/portal');
-      } else {
-        setError(loginData.error || 'Login failed. Please try again.');
-      }
-
-    } catch (error: any) {
-      console.error('Login error:', error);
-      setError(`Login failed: ${error.message || 'Unknown error'}`);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -225,36 +195,7 @@ export default function PatientLoginClient() {
           <p className="text-base sm:text-lg text-gray-600">Access your medical records and appointments</p>
         </div>
 
-        {/* Login Method Tabs */}
         <div className="bg-white rounded-lg border border-gray-200 shadow-[0_20px_50px_rgb(15,23,42,0.12)] overflow-hidden mb-4 sm:mb-6">
-          <div className="flex border-b border-gray-200 bg-gray-50">
-            <button
-              onClick={() => {
-                stopScanner();
-                setLoginMethod('code');
-                setError(null);
-              }}
-              className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-semibold transition-colors ${loginMethod === 'code'
-                  ? 'bg-white text-brand-teal border-b-2 border-brand-teal'
-                  : 'text-gray-600 hover:text-gray-900'
-                }`}
-            >
-              Patient Code
-            </button>
-            <button
-              onClick={() => {
-                setLoginMethod('qr');
-                setError(null);
-              }}
-              className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-semibold transition-colors ${loginMethod === 'qr'
-                  ? 'bg-white text-brand-teal border-b-2 border-brand-teal'
-                  : 'text-gray-600 hover:text-gray-900'
-                }`}
-            >
-              QR Code
-            </button>
-          </div>
-
           <div className="p-6 sm:p-8">
             {/* Error Message */}
             {error && (
@@ -268,47 +209,8 @@ export default function PatientLoginClient() {
               </div>
             )}
 
-            {/* Patient Code Login */}
-            {loginMethod === 'code' && (
-              <form onSubmit={handleCodeLogin} className="space-y-4 sm:space-y-6">
-                <div>
-                  <label htmlFor="patientCode" className="block text-sm sm:text-base font-semibold text-gray-700 mb-2">
-                    Patient Code
-                  </label>
-                  <input
-                    id="patientCode"
-                    type="text"
-                    value={patientCode}
-                    onChange={(e) => setPatientCode(e.target.value.toUpperCase())}
-                    placeholder="CLINIC-0001"
-                    required
-                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none transition-colors bg-white hover:border-gray-400 text-base"
-                    disabled={loading}
-                  />
-                  <p className="text-xs sm:text-sm text-gray-500 mt-2">
-                    Enter the patient code you received during registration
-                  </p>
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full px-6 sm:px-8 py-3 sm:py-4 bg-brand-teal hover:bg-brand-teal-dark text-white rounded-md font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-base sm:text-lg"
-                >
-                  {loading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Logging in...
-                    </span>
-                  ) : (
-                    'Login'
-                  )}
-                </button>
-              </form>
-            )}
-
             {/* QR Code Login */}
-            {loginMethod === 'qr' && (
-              <div className="space-y-4">
+            <div className="space-y-4">
                 {/* QR Input Method Tabs */}
                 <div className="flex bg-gray-100 rounded-md p-1.5 sm:p-2">
                   <button
@@ -318,6 +220,7 @@ export default function PatientLoginClient() {
                       setError(null);
                       setCameraError(null);
                     }}
+                    aria-pressed={qrInputMethod === 'scan'}
                     className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-md transition-colors ${qrInputMethod === 'scan'
                         ? 'bg-white text-brand-teal shadow-sm'
                         : 'text-gray-600 hover:text-gray-900'
@@ -337,6 +240,7 @@ export default function PatientLoginClient() {
                       setError(null);
                       setCameraError(null);
                     }}
+                    aria-pressed={qrInputMethod === 'upload'}
                     className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-md transition-colors ${qrInputMethod === 'upload'
                         ? 'bg-white text-brand-teal shadow-sm'
                         : 'text-gray-600 hover:text-gray-900'
@@ -355,6 +259,7 @@ export default function PatientLoginClient() {
                       setError(null);
                       setCameraError(null);
                     }}
+                    aria-pressed={qrInputMethod === 'paste'}
                     className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-md transition-colors ${qrInputMethod === 'paste'
                         ? 'bg-white text-brand-teal shadow-sm'
                         : 'text-gray-600 hover:text-gray-900'
@@ -412,10 +317,18 @@ export default function PatientLoginClient() {
                     <div id="qr-file-reader" style={{ display: 'none' }}></div>
 
                     <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => fileInputRef.current?.click()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          fileInputRef.current?.click();
+                        }
+                      }}
                       className="border-2 border-dashed border-gray-300 rounded-lg p-8 sm:p-12 text-center cursor-pointer hover:border-brand-teal hover:bg-gray-50 transition-colors"
                     >
-                      <svg className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg aria-hidden="true" className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
                       <p className="text-sm font-medium text-gray-700 mb-1">
@@ -429,6 +342,7 @@ export default function PatientLoginClient() {
                       ref={fileInputRef}
                       type="file"
                       accept="image/*"
+                      aria-label="Upload QR code image"
                       onChange={handleFileUpload}
                       className="hidden"
                       disabled={loading}
@@ -453,14 +367,14 @@ export default function PatientLoginClient() {
                         id="qrCode"
                         value={qrCode}
                         onChange={(e) => setQrCode(e.target.value)}
-                        placeholder='{"patientId":"...","patientCode":"CLINIC-0001","type":"patient_login"}'
+                        placeholder='{"type":"patient_login","token":"..."}'
                         rows={5}
                         required
                         className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none transition-colors bg-white hover:border-gray-400 font-mono text-sm"
                         disabled={loading}
                       />
                       <p className="text-xs sm:text-sm text-gray-500 mt-2">
-                        Paste the QR code data from your registration confirmation
+                        Paste the login QR data from your patient portal
                       </p>
                     </div>
                     <button
@@ -479,15 +393,14 @@ export default function PatientLoginClient() {
                     </button>
                   </form>
                 )}
-              </div>
-            )}
+            </div>
           </div>
         </div>
 
         {/* Footer Links */}
         <div className="text-center space-y-3 sm:space-y-4 mt-6 sm:mt-8">
           <p className="text-sm sm:text-base text-gray-600">
-            Don&apos;t have a patient code?{' '}
+            Don&apos;t have an account yet?{' '}
             <Link href="/onboard" className="text-brand-teal hover:text-brand-teal-dark font-semibold underline decoration-2 underline-offset-2">
               Register here
             </Link>

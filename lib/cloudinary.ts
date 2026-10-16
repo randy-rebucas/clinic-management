@@ -17,6 +17,12 @@ export interface UploadOptions {
   folder?: string; // Folder path in Cloudinary
   publicId?: string; // Custom public ID
   resourceType?: 'image' | 'video' | 'raw' | 'auto';
+  /**
+   * Delivery type. Defaults to 'authenticated': the asset is not reachable by a public URL
+   * and must be fetched with a short-lived signed URL (see getPrivateDownloadUrl).
+   */
+  deliveryType?: 'authenticated' | 'private' | 'upload';
+  contentType?: string; // MIME type of the file, for the data URI
   format?: string; // Force format conversion
   transformation?: any; // Image transformations
   tags?: string[]; // Tags for organization
@@ -32,6 +38,7 @@ export interface UploadResult {
   height?: number;
   bytes: number;
   resource_type: string;
+  type: string; // delivery type: 'authenticated' | 'private' | 'upload'
   created_at: string;
 }
 
@@ -62,12 +69,14 @@ export async function uploadToCloudinary(
 
     // Convert buffer to base64
     const base64 = buffer.toString('base64');
-    const dataUri = `data:${options.resourceType || 'auto'};base64,${base64}`;
+    const mime = options.contentType || (file instanceof File ? file.type : '') || 'application/octet-stream';
+    const dataUri = `data:${mime};base64,${base64}`;
 
     // Upload options
     const uploadOptions: any = {
       folder: options.folder || 'clinic-documents',
       resource_type: options.resourceType || 'auto',
+      type: options.deliveryType || 'authenticated',
       tags: options.tags || [],
       context: options.context || {},
     };
@@ -98,6 +107,7 @@ export async function uploadToCloudinary(
         height: result.height,
         bytes: result.bytes,
         resource_type: result.resource_type,
+        type: (result as any).type || uploadOptions.type,
         created_at: result.created_at,
       },
     };
@@ -105,39 +115,141 @@ export async function uploadToCloudinary(
     console.error('Error uploading to Cloudinary:', error);
     return {
       success: false,
-      error: error.message || 'Failed to upload to Cloudinary',
+      error: 'Failed to upload file',
     };
   }
 }
 
+/** Make a client-supplied value safe to use as a Cloudinary folder segment or tag. */
+export function safeFolderSegment(value: string | undefined | null, fallback = 'other'): string {
+  const cleaned = String(value || '').toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_').slice(0, 50);
+  return cleaned.replace(/^_+|_+$/g, '') || fallback;
+}
+
 /**
- * Upload file with automatic folder organization by category
+ * Upload a clinic document as an authenticated (non-public) asset, organised by
+ * tenant and category. Patient identifiers are deliberately kept out of folder names
+ * and tags, which are visible in asset URLs and the Cloudinary console.
  */
 export async function uploadDocumentToCloudinary(
   file: File,
   category: string,
-  patientId?: string,
+  tenantId?: string,
   options: UploadOptions = {}
 ): Promise<{ success: boolean; data?: UploadResult; error?: string }> {
-  // Build folder path
-  const folderParts = ['clinic-documents', category];
-  if (patientId) {
-    folderParts.push(`patient-${patientId}`);
-  }
-  const folder = folderParts.join('/');
+  const safeCategory = safeFolderSegment(category);
+  const folderParts = ['clinic-documents'];
+  if (tenantId) folderParts.push(safeFolderSegment(tenantId, 'tenant'));
+  folderParts.push(safeCategory);
 
-  // Add category tag
-  const tags = options.tags || [];
-  tags.push(category);
-  if (patientId) {
-    tags.push(`patient-${patientId}`);
-  }
+  const tags = (options.tags || []).map((t) => safeFolderSegment(t, '')).filter(Boolean).slice(0, 20);
+  tags.push(safeCategory);
 
   return uploadToCloudinary(file, {
     ...options,
-    folder,
+    deliveryType: options.deliveryType || 'authenticated',
+    folder: folderParts.join('/'),
     tags,
   });
+}
+
+export interface CloudinaryAssetRef {
+  publicId: string;
+  resourceType: 'image' | 'video' | 'raw';
+  deliveryType: 'authenticated' | 'private' | 'upload';
+  format?: string;
+}
+
+/**
+ * Parse a stored Cloudinary delivery URL into an asset reference. Only URLs on this
+ * account's cloud are accepted, so a tampered `url` can't point the server elsewhere.
+ */
+export function parseCloudinaryUrl(url: string | undefined | null): CloudinaryAssetRef | null {
+  if (!url || !process.env.CLOUDINARY_CLOUD_NAME) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+  if (parsed.hostname !== 'res.cloudinary.com') return null;
+  const parts = parsed.pathname.split('/').filter(Boolean);
+  // /{cloud}/{resource_type}/{type}/[s--sig--/][v123/]{public_id}.{format}
+  if (parts.length < 4 || parts[0] !== process.env.CLOUDINARY_CLOUD_NAME) return null;
+  const resourceType = parts[1] as CloudinaryAssetRef['resourceType'];
+  const deliveryType = parts[2] as CloudinaryAssetRef['deliveryType'];
+  if (!['image', 'video', 'raw'].includes(resourceType)) return null;
+  if (!['authenticated', 'private', 'upload'].includes(deliveryType)) return null;
+  let rest = parts.slice(3);
+  if (rest[0]?.startsWith('s--')) rest = rest.slice(1);
+  if (/^v\d+$/.test(rest[0] || '')) rest = rest.slice(1);
+  const path = decodeURIComponent(rest.join('/'));
+  if (!path) return null;
+  if (resourceType === 'raw') return { publicId: path, resourceType, deliveryType };
+  const dot = path.lastIndexOf('.');
+  return dot > 0
+    ? { publicId: path.slice(0, dot), resourceType, deliveryType, format: path.slice(dot + 1) }
+    : { publicId: path, resourceType, deliveryType };
+}
+
+const RESOURCE_TYPES: ReadonlyArray<CloudinaryAssetRef['resourceType']> = ['image', 'video', 'raw'];
+const DELIVERY_TYPES: ReadonlyArray<CloudinaryAssetRef['deliveryType']> = ['authenticated', 'private', 'upload'];
+
+/**
+ * Resolve the asset a stored record points at, from its metadata (cloudinaryPublicId /
+ * cloudinaryResourceType / cloudinaryDeliveryType / cloudinaryFormat) with the stored URL as
+ * a fallback. Records written before metadata carried a delivery type are legacy public
+ * ('upload') assets; migrated ones say 'authenticated'.
+ */
+export function cloudinaryRefFromStored(url: string | undefined | null, metadata: any): CloudinaryAssetRef | null {
+  const fromUrl = parseCloudinaryUrl(url);
+  const meta = metadata && typeof metadata === 'object' ? metadata : {};
+  if (typeof meta.cloudinaryPublicId !== 'string' || !meta.cloudinaryPublicId) return fromUrl;
+  const resourceType = RESOURCE_TYPES.includes(meta.cloudinaryResourceType) ? meta.cloudinaryResourceType : undefined;
+  const deliveryType = DELIVERY_TYPES.includes(meta.cloudinaryDeliveryType) ? meta.cloudinaryDeliveryType : undefined;
+  const format = typeof meta.cloudinaryFormat === 'string' && meta.cloudinaryFormat ? meta.cloudinaryFormat : undefined;
+  // The URL only describes this asset if it carries the same public id.
+  const sameAsset = fromUrl && fromUrl.publicId === meta.cloudinaryPublicId ? fromUrl : null;
+  return {
+    publicId: meta.cloudinaryPublicId,
+    resourceType: resourceType || sameAsset?.resourceType || 'image',
+    deliveryType: deliveryType || sameAsset?.deliveryType || 'upload',
+    format: format || sameAsset?.format,
+  };
+}
+
+/**
+ * Short-lived signed download URL (default 5 minutes) through Cloudinary's API download
+ * endpoint. Works for authenticated, private and legacy public ('upload') assets.
+ */
+export function getPrivateDownloadUrl(ref: CloudinaryAssetRef, expiresInSeconds = 300): string {
+  if (!isCloudinaryConfigured()) return '';
+  return cloudinary.utils.private_download_url(ref.publicId, ref.format || '', {
+    resource_type: ref.resourceType,
+    type: ref.deliveryType,
+    expires_at: Math.floor(Date.now() / 1000) + expiresInSeconds,
+  });
+}
+
+/**
+ * Fetch a stored asset's bytes server-side, so files are proxied through the app with
+ * its own headers instead of redirecting the browser to a long-lived public URL.
+ */
+export async function fetchCloudinaryAsset(ref: CloudinaryAssetRef): Promise<{ buffer: Buffer; contentType: string } | null> {
+  const signedUrl = getPrivateDownloadUrl(ref, 120);
+  if (!signedUrl) return null;
+  try {
+    const res = await fetch(signedUrl, { redirect: 'follow', signal: AbortSignal.timeout(30000) });
+    if (!res.ok) return null;
+    return {
+      buffer: Buffer.from(await res.arrayBuffer()),
+      contentType: res.headers.get('content-type') || 'application/octet-stream',
+    };
+  } catch (error) {
+    console.error('Error fetching Cloudinary asset:', error);
+    return null;
+  }
 }
 
 /**
@@ -193,7 +305,10 @@ export function getOptimizedImageUrl(
 /**
  * Delete file from Cloudinary
  */
-export async function deleteFromCloudinary(publicId: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteFromCloudinary(
+  publicId: string,
+  opts: { resourceType?: string; deliveryType?: string } = {}
+): Promise<{ success: boolean; error?: string }> {
   if (!isCloudinaryConfigured()) {
     return {
       success: false,
@@ -202,7 +317,10 @@ export async function deleteFromCloudinary(publicId: string): Promise<{ success:
   }
 
   try {
-    const result = await cloudinary.uploader.destroy(publicId);
+    const result = await cloudinary.uploader.destroy(publicId, {
+      ...(opts.resourceType ? { resource_type: opts.resourceType } : {}),
+      ...(opts.deliveryType ? { type: opts.deliveryType } : {}),
+    });
     
     if (result.result === 'ok') {
       return { success: true };
@@ -216,7 +334,7 @@ export async function deleteFromCloudinary(publicId: string): Promise<{ success:
     console.error('Error deleting from Cloudinary:', error);
     return {
       success: false,
-      error: error.message || 'Failed to delete from Cloudinary',
+      error: 'Failed to delete from Cloudinary',
     };
   }
 }
@@ -226,8 +344,10 @@ export async function deleteFromCloudinary(publicId: string): Promise<{ success:
  */
 export function extractPublicIdFromUrl(url: string): string | null {
   try {
+    const ref = parseCloudinaryUrl(url);
+    if (ref) return ref.publicId;
     // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/{resource_type}/upload/{version}/{public_id}.{format}
-    const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
+    const match = url.match(/\/(?:upload|authenticated|private)\/(?:s--[^/]+--\/)?(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
     if (match && match[1]) {
       return match[1];
     }
@@ -249,17 +369,22 @@ export function isCloudinaryConfigured(): boolean {
 }
 
 /**
- * Get file URL from Cloudinary (for download/view)
+ * Get a file URL (for download/view). Signed and short-lived; prefer
+ * fetchCloudinaryAsset so the browser never receives a Cloudinary URL at all.
  */
-export function getCloudinaryFileUrl(publicId: string, format?: string): string {
+export function getCloudinaryFileUrl(
+  publicId: string,
+  format?: string,
+  opts: { resourceType?: CloudinaryAssetRef['resourceType']; deliveryType?: CloudinaryAssetRef['deliveryType'] } = {}
+): string {
   if (!isCloudinaryConfigured()) {
     return '';
   }
-
-  return cloudinary.url(publicId, {
+  return getPrivateDownloadUrl({
+    publicId,
     format,
-    secure: true,
-    resource_type: 'auto',
+    resourceType: opts.resourceType || 'image',
+    deliveryType: opts.deliveryType || 'authenticated',
   });
 }
 

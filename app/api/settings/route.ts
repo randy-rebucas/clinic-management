@@ -1,64 +1,148 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Settings from '@/models/Settings';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { clearSettingsCache, getDefaultSettings } from '@/lib/settings';
+import { isAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { clearSettingsCache, getDefaultSettings, getSettings } from '@/lib/settings';
 import { isSMSConfigured } from '@/lib/sms';
 import { isEmailConfigured } from '@/lib/email';
 import { isCloudinaryConfigured } from '@/lib/cloudinary';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
 
-// GET settings - accessible to all authenticated users
-export async function GET() {
-  const session = await verifySession();
+const zStr = (max = 200) => z.string().trim().max(max);
+const zNum = (min: number, max: number) => z.coerce.number().finite().min(min).max(max);
+const zTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected HH:mm');
 
-  if (!session) {
-    return unauthorizedResponse();
+// Only fields an admin may edit. tenantId, _id, timestamps and anything else in the body are stripped.
+const settingsUpdateSchema = z.object({
+  clinicName: zStr().min(1).optional(),
+  clinicAddress: zStr(500).optional(),
+  clinicPhone: zStr(50).optional(),
+  clinicEmail: zStr(254).optional(),
+  clinicWebsite: zStr(500).optional(),
+  taxId: zStr(100).optional(),
+  licenseNumber: zStr(100).optional(),
+  ptr: zStr(100).optional(),
+  businessHours: z
+    .array(
+      z.object({
+        day: z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']),
+        open: zTime,
+        close: zTime,
+        closed: z.boolean().optional(),
+      })
+    )
+    .max(7)
+    .optional(),
+  appointmentSettings: z
+    .object({
+      defaultDuration: zNum(1, 1440),
+      reminderHoursBefore: z.array(zNum(0, 720)).max(10),
+      allowOnlineBooking: z.boolean(),
+      requireConfirmation: z.boolean(),
+      maxAdvanceBookingDays: zNum(0, 3650),
+      minAdvanceBookingHours: zNum(0, 8760),
+    })
+    .partial()
+    .optional(),
+  communicationSettings: z
+    .object({
+      smsEnabled: z.boolean(),
+      emailEnabled: z.boolean(),
+      appointmentReminders: z.boolean(),
+      labResultNotifications: z.boolean(),
+      invoiceReminders: z.boolean(),
+    })
+    .partial()
+    .optional(),
+  billingSettings: z
+    .object({
+      currency: z.string().trim().regex(/^[A-Za-z]{3}$/, 'Expected a 3-letter currency code'),
+      taxRate: zNum(0, 100),
+      paymentTerms: zNum(0, 3650),
+      lateFeePercentage: zNum(0, 100),
+      invoicePrefix: zStr(20),
+      allowPartialPayments: z.boolean(),
+    })
+    .partial()
+    .optional(),
+  queueSettings: z
+    .object({
+      enableQueue: z.boolean(),
+      autoAssignRooms: z.boolean(),
+      estimatedWaitTimeMinutes: zNum(0, 1440),
+      displayQueuePublicly: z.boolean(),
+    })
+    .partial()
+    .optional(),
+  generalSettings: z
+    .object({
+      timezone: zStr(64),
+      dateFormat: zStr(32),
+      timeFormat: z.enum(['12h', '24h']),
+      itemsPerPage: zNum(1, 500),
+      enableAuditLog: z.boolean(),
+      sessionTimeoutMinutes: zNum(5, 10080),
+    })
+    .partial()
+    .optional(),
+  integrationSettings: z
+    .object({
+      cloudinaryEnabled: z.boolean(),
+      twilioEnabled: z.boolean(),
+      smtpEnabled: z.boolean(),
+    })
+    .partial()
+    .optional(),
+  automationSettings: z.record(z.string().regex(/^auto[A-Za-z]{1,60}$/), z.boolean()).optional(),
+  displaySettings: z
+    .object({
+      theme: z.enum(['light', 'dark', 'auto']),
+      sidebarCollapsed: z.boolean(),
+      showNotifications: z.boolean(),
+    })
+    .partial()
+    .optional(),
+  prescriptionDigitalSignatureEnabled: z.boolean().optional(),
+  prescriptionPaperSize: z.enum(['A5', 'A4']).optional(),
+});
+
+/** Flatten nested plain objects to dot paths so a partial sub-object doesn't wipe its siblings. */
+function toSetPaths(obj: Record<string, unknown>, prefix = '', out: Record<string, unknown> = {}) {
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) continue;
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+      toSetPaths(value as Record<string, unknown>, path, out);
+    } else {
+      out[path] = value;
+    }
   }
+  return out;
+}
+
+// GET settings - accessible to all authenticated users of the clinic
+export async function GET() {
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
 
-    // Get or create default settings (tenant-scoped)
-    const settingsQuery: any = {};
-    if (tenantId) {
-      settingsQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      settingsQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    let settings = await Settings.findOne(settingsQuery);
-
+    let settings = await Settings.findOne(tenantFilter(ctx.tenantId));
     if (!settings) {
-      // Create default settings if none exist - use full default values
-      const defaultSettingsData = getDefaultSettings();
-      const settingsData: any = {
-        ...defaultSettingsData,
-      };
-      if (tenantId) {
-        settingsData.tenantId = new Types.ObjectId(tenantId);
-      }
-      settings = await Settings.create(settingsData);
+      settings = await Settings.create({ ...getDefaultSettings(), tenantId: ctx.tenantObjectId });
     }
 
-    // Merge with defaults to ensure all fields are present
-    const defaultSettingsData = getDefaultSettings();
-    const settingsObj = {
-      ...defaultSettingsData,
+    const settingsObj: Record<string, any> = {
+      ...getDefaultSettings(),
       ...settings.toObject(),
     };
-    // Ensure digital signature toggle is present (default true)
     if (typeof settingsObj.prescriptionDigitalSignatureEnabled === 'undefined') {
       settingsObj.prescriptionDigitalSignatureEnabled = true;
     }
-    
-    // Add integration status based on environment variables
+
     settingsObj.integrationStatus = {
       twilio: isSMSConfigured(),
       smtp: isEmailConfigured(),
@@ -66,10 +150,10 @@ export async function GET() {
     };
 
     return NextResponse.json(settingsObj, { status: 200 });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching settings:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch settings', details: error.message },
+      { success: false, error: 'Failed to fetch settings' },
       { status: 500 }
     );
   }
@@ -77,80 +161,48 @@ export async function GET() {
 
 // PUT settings - only admins can update
 export async function PUT(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
+  if (!isAdmin(ctx.session)) {
+    return forbiddenResponse('Unauthorized: Only admins can update settings');
   }
 
-  // Only admins can update settings
-  if (session.role !== 'admin') {
-    return NextResponse.json(
-      { error: 'Unauthorized: Only admins can update settings' },
-      { status: 403 }
-    );
-  }
+  const parsed = await parseBody(request, settingsUpdateSchema);
+  if (isValidationError(parsed)) return parsed;
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
 
-    const body = await request.json();
+    // Ensures the tenant's settings document exists (created from defaults if missing).
+    await getSettings(ctx.tenantId);
 
-    // Get existing settings or create new (tenant-scoped)
-    const settingsQuery: any = {};
-    if (tenantId) {
-      settingsQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      settingsQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    let settings = await Settings.findOne(settingsQuery);
+    const $set = toSetPaths(parsed.data as Record<string, unknown>);
+    const settings = Object.keys($set).length
+      ? await Settings.findOneAndUpdate(tenantFilter(ctx.tenantId), { $set }, { new: true, runValidators: true })
+      : await Settings.findOne(tenantFilter(ctx.tenantId));
 
     if (!settings) {
-      // Merge with defaults when creating new settings
-      const defaultSettingsData = getDefaultSettings();
-      const settingsData: any = {
-        ...defaultSettingsData,
-        ...body,
-      };
-      if (tenantId && !settingsData.tenantId) {
-        settingsData.tenantId = new Types.ObjectId(tenantId);
-      }
-      // Ensure digital signature toggle is present (default true)
-      if (typeof settingsData.prescriptionDigitalSignatureEnabled === 'undefined') {
-        settingsData.prescriptionDigitalSignatureEnabled = true;
-      }
-      settings = await Settings.create(settingsData);
-    } else {
-      // Update settings - merge with defaults to ensure all fields exist
-      const defaultSettingsData = getDefaultSettings();
-      const updatedData = {
-        ...defaultSettingsData,
-        ...settings.toObject(),
-        ...body,
-      };
-      // Ensure digital signature toggle is present (default true)
-      if (typeof updatedData.prescriptionDigitalSignatureEnabled === 'undefined') {
-        updatedData.prescriptionDigitalSignatureEnabled = true;
-      }
-      Object.assign(settings, updatedData);
-      await settings.save();
+      return NextResponse.json(
+        { success: false, error: 'Settings not found' },
+        { status: 404 }
+      );
     }
 
-    // Clear cache so next request gets fresh settings
-    clearSettingsCache();
+    clearSettingsCache(ctx.tenantId);
 
     return NextResponse.json(settings, { status: 200 });
   } catch (error: any) {
     console.error('Error updating settings:', error);
+    if (error?.name === 'ValidationError' || error?.name === 'CastError') {
+      return NextResponse.json(
+        { success: false, error: 'Invalid settings data' },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
-      { error: 'Failed to update settings', details: error.message },
+      { success: false, error: 'Failed to update settings' },
       { status: 500 }
     );
   }
 }
-

@@ -1,9 +1,15 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
 });
+
+const sentryEnabled = Boolean(process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN);
+const sentryCanUpload = Boolean(
+  process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
+);
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -69,28 +75,9 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()'
+            value: 'camera=(self), microphone=(), geolocation=()'
           },
-          {
-            // CSP is also applied dynamically in middleware.ts for API routes.
-            // This covers page responses that bypass the middleware matcher.
-            key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.paypal.com https://www.paypalobjects.com",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https://images.unsplash.com https://static.vecteezy.com https://res.cloudinary.com",
-              "font-src 'self'",
-              "connect-src 'self' https://api.paypal.com https://www.paypal.com",
-              "frame-src 'self' https://www.paypal.com",
-              "worker-src 'self'",
-              "object-src 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-              "upgrade-insecure-requests",
-              "report-uri /api/csp-report",
-            ].join('; '),
-          },
+          // Content-Security-Policy is set per request in proxy.ts (single source of truth)
         ],
       },
       // Service worker — must never be cached by the browser
@@ -110,4 +97,31 @@ const nextConfig: NextConfig = {
   turbopack: {},
 };
 
-export default withBundleAnalyzer(nextConfig);
+// Always inline the browser DSN (empty when unset): Turbopack leaves an undefined NEXT_PUBLIC_* var
+// as a runtime lookup, which would keep the lazy Sentry chunks in the build.
+nextConfig.env = {
+  ...nextConfig.env,
+  NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN ?? "",
+  NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE:
+    process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE ?? process.env.SENTRY_TRACES_SAMPLE_RATE ?? "",
+};
+
+// Without a DSN or upload credentials Sentry's build plugin is not applied at all.
+// With a DSN it provides the /monitoring tunnel rewrite (browser events stay same-origin, so the
+// CSP connect-src 'self' covers them); source maps are only uploaded when credentials are set.
+const withSentry = (config: NextConfig): NextConfig =>
+  sentryEnabled || sentryCanUpload
+    ? withSentryConfig(config, {
+        org: process.env.SENTRY_ORG,
+        project: process.env.SENTRY_PROJECT,
+        authToken: process.env.SENTRY_AUTH_TOKEN,
+        silent: !sentryCanUpload,
+        telemetry: false,
+        tunnelRoute: "/monitoring",
+        sourcemaps: { disable: !sentryCanUpload },
+        release: { create: sentryCanUpload, finalize: sentryCanUpload },
+        widenClientFileUpload: sentryCanUpload,
+      })
+    : config;
+
+export default withSentry(withBundleAnalyzer(nextConfig));
