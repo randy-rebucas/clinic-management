@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { isAdmin } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { resolveReportRange, isRangeError, dateKeyInTz } from '../_lib/report-range';
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   // Only admin and accountant can view income reports
-  if (session.role !== 'admin' && session.role !== 'accountant') {
+  if (!isAdmin(session) && session.role !== 'accountant') {
     return NextResponse.json(
       { success: false, error: 'Unauthorized' },
       { status: 403 }
@@ -23,54 +23,19 @@ export async function GET(request: NextRequest) {
     await connectDB();
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get('period') || 'monthly'; // daily, weekly, monthly
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
+    const tz = await getTenantTimezone(tenantId);
 
-    // Calculate date range
-    let dateRange: { start: Date; end: Date };
-    const now = new Date();
-
-    if (startDate && endDate) {
-      dateRange = {
-        start: new Date(startDate),
-        end: new Date(endDate),
-      };
-      dateRange.end.setHours(23, 59, 59, 999);
-    } else {
-      switch (period) {
-        case 'daily':
-          dateRange = {
-            start: new Date(now.setHours(0, 0, 0, 0)),
-            end: new Date(now.setHours(23, 59, 59, 999)),
-          };
-          break;
-        case 'weekly':
-          const weekStart = new Date(now);
-          weekStart.setDate(now.getDate() - now.getDay());
-          weekStart.setHours(0, 0, 0, 0);
-          const weekEnd = new Date(weekStart);
-          weekEnd.setDate(weekStart.getDate() + 6);
-          weekEnd.setHours(23, 59, 59, 999);
-          dateRange = { start: weekStart, end: weekEnd };
-          break;
-        case 'monthly':
-        default:
-          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-          monthStart.setHours(0, 0, 0, 0);
-          const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-          monthEnd.setHours(23, 59, 59, 999);
-          dateRange = { start: monthStart, end: monthEnd };
-          break;
-      }
+    const dateRange = resolveReportRange(searchParams, tz);
+    if (isRangeError(dateRange)) {
+      return NextResponse.json({ success: false, error: dateRange.error }, { status: 400 });
     }
 
-    // Get invoices in date range
-    const invoices = await Invoice.find({
+    const invoices = await Invoice.find(tenantFilter(tenantId, {
       createdAt: { $gte: dateRange.start, $lte: dateRange.end },
-    })
-      .populate('patient', 'firstName lastName patientCode')
-      .populate('visit', 'visitCode date')
-      .sort({ createdAt: -1 });
+    }))
+      .select('total totalPaid outstandingBalance discounts tax payments status items createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
 
     // Calculate totals
     const totalBilled = invoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
@@ -92,7 +57,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Group by status
-    const byStatus = invoices.reduce((acc: any, inv) => {
+    const byStatus = invoices.reduce((acc: any, inv: any) => {
       const status = inv.status || 'unpaid';
       acc[status] = (acc[status] || 0) + 1;
       return acc;
@@ -100,7 +65,7 @@ export async function GET(request: NextRequest) {
 
     // Group by service category
     const byCategory: Record<string, number> = {};
-    invoices.forEach((inv) => {
+    invoices.forEach((inv: any) => {
       inv.items?.forEach((item: any) => {
         const category = item.category || 'other';
         byCategory[category] = (byCategory[category] || 0) + (item.total || 0);
@@ -110,7 +75,7 @@ export async function GET(request: NextRequest) {
     // Daily breakdown
     const byDate: Record<string, any[]> = {};
     invoices.forEach((inv: any) => {
-      const dateKey = new Date(inv.createdAt).toISOString().split('T')[0];
+      const dateKey = dateKeyInTz(inv.createdAt, tz);
       if (!byDate[dateKey]) {
         byDate[dateKey] = [];
       }
@@ -126,7 +91,7 @@ export async function GET(request: NextRequest) {
     })).sort((a, b) => a.date.localeCompare(b.date));
 
     // Calculate averages
-    const daysDiff = Math.ceil((dateRange.end.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const daysDiff = Math.max(1, Math.round((dateRange.end.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24)));
     const avgDailyRevenue = daysDiff > 0 ? totalPaid / daysDiff : 0;
 
     return NextResponse.json({
@@ -144,7 +109,7 @@ export async function GET(request: NextRequest) {
           totalDiscounts,
           totalTax,
           invoiceCount: invoices.length,
-          paidInvoiceCount: invoices.filter(inv => inv.status === 'paid').length,
+          paidInvoiceCount: invoices.filter((inv: any) => inv.status === 'paid').length,
           avgDailyRevenue: parseFloat(avgDailyRevenue.toFixed(2)),
         },
         breakdowns: {

@@ -17,80 +17,44 @@ interface UpdateQueueFromAppointmentParams {
 export async function updateQueueFromAppointment(params: UpdateQueueFromAppointmentParams): Promise<void> {
   const { appointmentId, patientId, newAppointmentStatus, queueId, tenantId, skipAutomation } = params;
 
-  // Prevent circular automation if this was triggered by queue update
-  if (skipAutomation) {
+  if (skipAutomation || !tenantId) {
     return;
   }
 
   try {
-    // Map appointment status to queue status
+    // Only terminal appointment states are pushed to the queue; scheduling changes
+    // must not reset an entry that is already being served.
     const statusMap: Record<string, string> = {
-      'scheduled': 'waiting',           // Scheduled → waiting in queue
-      'confirmed': 'waiting',            // Confirmed → still waiting
-      'checked-in': 'waiting',           // Checked in → waiting to be called
-      'in-progress': 'in-progress',      // In progress → being seen
-      'completed': 'completed',          // Completed → consultation done
-      'cancelled': 'cancelled',          // Cancelled → queue cancelled
-      'no-show': 'no-show',             // No-show → patient didn't show
+      completed: 'completed',
+      cancelled: 'cancelled',
+      'no-show': 'no-show',
     };
 
     const newQueueStatus = statusMap[newAppointmentStatus];
-
     if (!newQueueStatus) {
       return;
     }
 
-    // Build query to find the queue entry
-    const query: any = { patient: patientId };
-
-    // If specific queueId provided, use it
+    // Only active entries are synced so a finished queue entry is never reopened.
+    const query: Record<string, unknown> = {
+      tenantId,
+      patient: patientId,
+      status: { $in: ['waiting', 'in-progress'] },
+    };
     if (queueId) {
       query._id = queueId;
     } else {
-      // Otherwise, find the most recent active queue entry for this patient
-      query.status = { $in: ['waiting', 'in-progress'] };
+      query.appointment = appointmentId;
     }
 
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = tenantId;
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    // Prepare update data
-    const updateData: any = {
-      status: newQueueStatus,
-      updatedAt: new Date(),
-      _skipAutomation: true, // Flag to prevent circular automation
-    };
-
-    // Add timestamps based on status
-    if (newQueueStatus === 'in-progress') {
-      updateData.startedAt = updateData.startedAt || new Date();
-      updateData.calledAt = updateData.calledAt || new Date();
-    } else if (newQueueStatus === 'completed') {
+    const updateData: Record<string, unknown> = { status: newQueueStatus };
+    if (newQueueStatus === 'completed') {
       updateData.completedAt = new Date();
-    } else if (newQueueStatus === 'cancelled') {
-      updateData.cancelledAt = new Date();
     }
 
-    // Update the queue entry
-    const updatedQueue = await Queue.findOneAndUpdate(
-      query,
-      updateData,
-      { 
-        new: true, 
-        sort: { queuedAt: -1 } // Most recent queue entry
-      }
-    );
-
-    if (updatedQueue) {
-    } else {
-    }
-
+    await Queue.findOneAndUpdate(query, { $set: updateData }, { new: true, sort: { queuedAt: -1 } });
   } catch (error) {
-    console.error('[Queue Automation] ❌ Error updating queue from appointment:', error);
+    console.error('[Queue Automation] Error updating queue from appointment:', error);
     // Don't throw - we don't want to fail appointment operations if queue update fails
   }
 }
@@ -100,21 +64,15 @@ export async function updateQueueFromAppointment(params: UpdateQueueFromAppointm
  */
 export async function getQueueForAppointment(appointmentEntry: any): Promise<any | null> {
   try {
-    // Try to find queue entry by patient and date
-    const query: any = {
+    if (!appointmentEntry?.tenantId) return null;
+
+    return await Queue.findOne({
+      tenantId: appointmentEntry.tenantId,
       patient: appointmentEntry.patient,
       status: { $in: ['waiting', 'in-progress'] },
-    };
-
-    if (appointmentEntry.tenantId) {
-      query.tenantId = appointmentEntry.tenantId;
-    }
-
-    const queueEntry = await Queue.findOne(query)
+    })
       .sort({ queuedAt: -1 })
       .limit(1);
-
-    return queueEntry;
   } catch (error) {
     console.error('[Queue Automation] Error finding queue for appointment:', error);
     return null;

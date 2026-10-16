@@ -110,6 +110,7 @@ ${errorDetails.componentStack || 'No component stack available'}`;
           <div className={`${isDevelopment ? 'max-w-4xl' : 'max-w-md'} w-full bg-white shadow-xl rounded-xl border border-gray-200 p-8`}>
             <div className="flex items-center justify-center w-16 h-16 mx-auto bg-gradient-to-br from-red-500 to-red-600 rounded-full mb-6 shadow-md">
               <svg
+                aria-hidden="true"
                 className="w-8 h-8 text-white"
                 fill="none"
                 stroke="currentColor"

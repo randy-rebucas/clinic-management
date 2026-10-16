@@ -118,9 +118,12 @@ export interface IVisit extends Document {
   notes?: string;
   followUpDate?: Date;
   followUpReminderSent?: boolean;
+  followUpAppointmentId?: Types.ObjectId;
   feedbackRequested?: boolean;
   feedbackToken?: string;
   status: 'draft' | 'open' | 'closed' | 'cancelled';
+  archived?: boolean;
+  archivedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -242,9 +245,12 @@ const VisitSchema: Schema = new Schema(
     notes: { type: String },
     followUpDate: { type: Date },
     followUpReminderSent: { type: Boolean, default: false },
+    followUpAppointmentId: { type: Schema.Types.ObjectId, ref: 'Appointment' },
     feedbackRequested: { type: Boolean, default: false },
     feedbackToken: { type: String, index: true, sparse: true },
     status: { type: String, enum: ['draft', 'open', 'closed', 'cancelled'], default: 'open' },
+    archived: { type: Boolean },
+    archivedAt: { type: Date },
   },
   { timestamps: true }
 );
@@ -253,7 +259,14 @@ VisitSchema.index({ tenantId: 1, patient: 1, date: -1 });
 VisitSchema.index({ tenantId: 1, provider: 1 });
 VisitSchema.index({ tenantId: 1, provider: 1, date: -1 }); // Tenant-scoped provider visit history
 VisitSchema.index({ tenantId: 1, status: 1, date: -1 }); // Tenant-scoped status queries
-VisitSchema.index({ tenantId: 1, visitCode: 1 }); // Tenant-scoped visit code lookups
+VisitSchema.index(
+  { tenantId: 1, visitCode: 1 },
+  { unique: true, name: 'uniq_tenant_visitCode', partialFilterExpression: { visitCode: { $type: 'string' } } }
+);
+// Cross-tenant cron scans (follow-up reminders)
+VisitSchema.index({ 'treatmentPlan.followUp.date': 1 }, { sparse: true });
+VisitSchema.index({ followUpDate: 1 }, { sparse: true });
+VisitSchema.index({ tenantId: 1, archived: 1, createdAt: 1 });
 VisitSchema.index({ tenantId: 1, visitType: 1, date: -1 }); // Tenant-scoped visit type queries
 VisitSchema.index({ tenantId: 1, date: 1, status: 1 }); // Tenant-scoped date range + status queries
 VisitSchema.index({ tenantId: 1, patient: 1, status: 1 }); // Tenant-scoped patient visits by status

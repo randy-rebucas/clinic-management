@@ -6,10 +6,10 @@ import Visit from '@/models/Visit';
 import Prescription from '@/models/Prescription';
 import LabResult from '@/models/LabResult';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
 import { Types } from 'mongoose';
+import { automationEnabled, getTenantTimezone, delivered, displayDate } from './shared';
 
 export interface VisitSummaryOptions {
   visitId: string | Types.ObjectId;
@@ -30,28 +30,24 @@ export async function sendVisitSummary(options: VisitSummaryOptions): Promise<{
   try {
     await connectDB();
 
-    const settings = await getSettings();
-    const autoVisitSummaries = (settings.automationSettings as any)?.autoVisitSummaries !== false;
+    if (!options.tenantId) {
+      return { success: false, sent: false, error: 'Tenant is required' };
+    }
+    const tenantId = new Types.ObjectId(String(options.tenantId));
 
-    if (!autoVisitSummaries) {
+    const settings = await getSettings(tenantId.toString());
+    if (!automationEnabled(settings, 'autoVisitSummaries')) {
       return { success: true, sent: false };
     }
 
-    const visitId = typeof options.visitId === 'string' 
-      ? new Types.ObjectId(options.visitId) 
-      : options.visitId;
-
-    const visit = await Visit.findById(visitId)
+    const visitId = new Types.ObjectId(String(options.visitId));
+    const visit = await Visit.findOne({ _id: visitId, tenantId })
       .populate('patient', 'firstName lastName email phone')
-      .populate('provider', 'name')
-      .populate('prescriptions')
-      .populate('labsOrdered');
+      .populate('provider', 'name');
 
     if (!visit) {
       return { success: false, sent: false, error: 'Visit not found' };
     }
-
-    // Only send summary for closed visits
     if (visit.status !== 'closed') {
       return { success: true, sent: false };
     }
@@ -61,139 +57,69 @@ export async function sendVisitSummary(options: VisitSummaryOptions): Promise<{
       return { success: false, sent: false, error: 'Patient not found' };
     }
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : visit.tenantId;
-
-    // Get prescriptions and lab results
-    const prescriptions = await Prescription.find({
-      visit: visitId,
-      tenantId,
-    });
-
-    const labResults = await LabResult.find({
-      visit: visitId,
-      tenantId,
-    });
-
-    const summaryMessage = generateSummarySMS(visit, prescriptions, labResults);
-    const emailContent = generateSummaryEmail(visit, prescriptions, labResults, settings);
+    const [prescriptions, labResults, tz] = await Promise.all([
+      Prescription.find({ visit: visitId, tenantId }).select('prescriptionCode medications').lean(),
+      LabResult.find({ visit: visitId, tenantId }).select('request requestCode').lean(),
+      getTenantTimezone(tenantId),
+    ]);
 
     let sent = false;
 
-    // Send SMS if enabled and phone available
+    // SMS is not a secure channel: it only points to the email, never carries clinical details.
     if (options.sendSMS !== false && patient.phone) {
       try {
-        let phoneNumber = patient.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-        }
-
+        const clinicName = settings.clinicName || 'the clinic';
         const smsResult = await sendSMS({
-          to: phoneNumber,
-          message: summaryMessage,
+          to: patient.phone,
+          message: `Your visit summary from ${clinicName} (${displayDate(visit.date, tz)}) is ready.${patient.email ? ' Full details were sent to your email.' : ' Please contact the clinic for details.'}`,
         });
-
-        if (smsResult.success) {
-          sent = true;
-        }
+        if (delivered(smsResult)) sent = true;
       } catch (error) {
         console.error('Error sending visit summary SMS:', error);
       }
     }
 
-    // Send email if enabled and email available
     if (options.sendEmail !== false && patient.email) {
       try {
-        const emailResult = await sendEmail({
-          to: patient.email,
-          subject: emailContent.subject,
-          html: emailContent.html,
-        });
-
-        if (emailResult.success) {
-          sent = true;
-        }
+        const emailContent = generateSummaryEmail(visit, prescriptions as any[], labResults as any[], settings, tz);
+        const emailResult = await sendEmail({ to: patient.email, subject: emailContent.subject, html: emailContent.html });
+        if (delivered(emailResult)) sent = true;
       } catch (error) {
         console.error('Error sending visit summary email:', error);
       }
     }
 
-    // Send in-app notification
-    if (options.sendNotification !== false && patient._id) {
-      try {
-        await createNotification({
-          userId: patient._id,
-          tenantId,
-          type: 'visit',
-          priority: 'normal',
-          title: 'Visit Summary Available',
-          message: `Your visit summary for ${new Date(visit.date).toLocaleDateString()} is now available.`,
-          relatedEntity: {
-            type: 'visit',
-            id: visit._id,
-          },
-          actionUrl: `/visits/${visit._id}`,
-        });
-        sent = true;
-      } catch (error) {
-        console.error('Error creating visit summary notification:', error);
-      }
-    }
-
+    // Patients have no User account, so no in-app notification is created here.
     return { success: true, sent };
   } catch (error: any) {
     console.error('Error sending visit summary:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send visit summary' 
+      error: 'Failed to send visit summary',
     };
   }
 }
 
-/**
- * Generate visit summary SMS
- */
-function generateSummarySMS(visit: any, prescriptions: any[], labResults: any[]): string {
-  const visitDate = new Date(visit.date).toLocaleDateString();
-  const diagnoses = visit.diagnoses?.map((d: any) => d.description || d.code).join(', ') || 'N/A';
-  
-  let message = `Visit Summary (${visitDate}): Diagnosis: ${diagnoses}. `;
-  
-  if (prescriptions.length > 0) {
-    message += `Prescriptions: ${prescriptions.length}. `;
-  }
-  
-  if (labResults.length > 0) {
-    message += `Lab tests ordered: ${labResults.length}. `;
-  }
-  
-  if (visit.followUpDate) {
-    message += `Follow-up: ${new Date(visit.followUpDate).toLocaleDateString()}. `;
-  }
-  
-  message += 'Full details sent via email.';
-  
-  return message;
-}
-
-/**
- * Generate visit summary email
- */
-function generateSummaryEmail(visit: any, prescriptions: any[], labResults: any[], settings: any): { subject: string; html: string } {
+function generateSummaryEmail(
+  visit: any,
+  prescriptions: any[],
+  labResults: any[],
+  settings: any,
+  tz: string
+): { subject: string; html: string } {
   const patient = visit.patient as any;
   const provider = visit.provider as any;
-  const visitDate = new Date(visit.date).toLocaleDateString();
+  const visitDate = escapeHtml(displayDate(visit.date, tz));
   const clinicName = settings.clinicName || 'Clinic';
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
+  const baseUrl = escapeHtml(process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com');
 
-  const subject = `Visit Summary - ${visitDate} - ${clinicName}`;
+  const subject = `Visit Summary - ${displayDate(visit.date, tz)} - ${clinicName}`;
 
   const diagnoses = visit.diagnoses || [];
-  const chiefComplaint = visit.chiefComplaint || 'N/A';
-  const assessment = visit.assessment || visit.soapNotes?.assessment || 'N/A';
-  const plan = visit.plan || visit.soapNotes?.plan || 'N/A';
+  const chiefComplaint = escapeHtml(visit.chiefComplaint || 'N/A');
+  const assessment = escapeHtml(visit.assessment || visit.soapNotes?.assessment || 'N/A');
+  const plan = escapeHtml(visit.plan || visit.soapNotes?.plan || 'N/A');
 
   const html = `
     <!DOCTYPE html>
@@ -217,15 +143,15 @@ function generateSummaryEmail(visit: any, prescriptions: any[], labResults: any[
           <p>${visitDate}</p>
         </div>
         <div class="content">
-          <p>Dear ${patient.firstName} ${patient.lastName},</p>
+          <p>Dear ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)},</p>
           <p>Here is a summary of your visit:</p>
-          
+
           <div class="section">
             <h2>Visit Information</h2>
             <p><strong>Date:</strong> ${visitDate}</p>
-            <p><strong>Visit Code:</strong> ${visit.visitCode}</p>
-            ${provider ? `<p><strong>Provider:</strong> ${provider.name || `${provider.firstName} ${provider.lastName}`}</p>` : ''}
-            <p><strong>Visit Type:</strong> ${visit.visitType || 'Consultation'}</p>
+            ${visit.visitCode ? `<p><strong>Visit Code:</strong> ${escapeHtml(visit.visitCode)}</p>` : ''}
+            ${provider?.name ? `<p><strong>Provider:</strong> ${escapeHtml(provider.name)}</p>` : ''}
+            <p><strong>Visit Type:</strong> ${escapeHtml(visit.visitType || 'Consultation')}</p>
           </div>
 
           <div class="section">
@@ -238,7 +164,7 @@ function generateSummaryEmail(visit: any, prescriptions: any[], labResults: any[
               <h2>Diagnosis</h2>
               <ul>
                 ${diagnoses.map((d: any) => `
-                  <li>${d.description || d.code || 'N/A'}${d.code ? ` (${d.code})` : ''}</li>
+                  <li>${escapeHtml(d.description || d.code || 'N/A')}${d.code ? ` (${escapeHtml(d.code)})` : ''}</li>
                 `).join('')}
               </ul>
             </div>
@@ -260,8 +186,8 @@ function generateSummaryEmail(visit: any, prescriptions: any[], labResults: any[
               <ul>
                 ${prescriptions.map((prescription: any) => `
                   <li>
-                    <strong>${prescription.prescriptionCode}</strong>
-                    ${prescription.medications?.map((med: any) => med.name).join(', ') || 'No medications'}
+                    <strong>${escapeHtml(prescription.prescriptionCode)}</strong>
+                    ${escapeHtml(prescription.medications?.map((med: any) => med.name).join(', ') || 'No medications')}
                   </li>
                 `).join('')}
               </ul>
@@ -274,7 +200,7 @@ function generateSummaryEmail(visit: any, prescriptions: any[], labResults: any[
               <h2>Lab Tests Ordered (${labResults.length})</h2>
               <ul>
                 ${labResults.map((lab: any) => `
-                  <li>${lab.request?.testType || 'Lab Test'} - ${lab.requestCode || 'N/A'}</li>
+                  <li>${escapeHtml(lab.request?.testType || 'Lab Test')} - ${escapeHtml(lab.requestCode || 'N/A')}</li>
                 `).join('')}
               </ul>
               <p><a href="${baseUrl}/lab-results">View Lab Results</a></p>
@@ -284,8 +210,8 @@ function generateSummaryEmail(visit: any, prescriptions: any[], labResults: any[
           ${visit.followUpDate ? `
             <div class="section">
               <h2>Follow-up</h2>
-              <p><strong>Follow-up Date:</strong> ${new Date(visit.followUpDate).toLocaleDateString()}</p>
-              ${visit.treatmentPlan?.followUp?.instructions ? `<p>${visit.treatmentPlan.followUp.instructions}</p>` : ''}
+              <p><strong>Follow-up Date:</strong> ${escapeHtml(displayDate(visit.followUpDate, tz))}</p>
+              ${visit.treatmentPlan?.followUp?.instructions ? `<p>${escapeHtml(visit.treatmentPlan.followUp.instructions)}</p>` : ''}
             </div>
           ` : ''}
 
@@ -298,10 +224,6 @@ function generateSummaryEmail(visit: any, prescriptions: any[], labResults: any[
               <li>Contact the clinic if you have any questions or concerns</li>
             </ul>
           </div>
-
-          <p style="text-align: center; margin-top: 20px;">
-            <a href="${baseUrl}/visits/${visit._id}" style="display: inline-block; padding: 12px 24px; background-color: #2196F3; color: white; text-decoration: none; border-radius: 4px;">View Full Visit Details</a>
-          </p>
         </div>
         <div class="footer">
           <p>This is an automated message. Please do not reply to this email.</p>
@@ -314,4 +236,3 @@ function generateSummaryEmail(visit: any, prescriptions: any[], labResults: any[
 
   return { subject, html };
 }
-

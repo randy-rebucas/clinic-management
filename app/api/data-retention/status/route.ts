@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { isAdmin } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { getDefaultRetentionPolicies } from '@/lib/automations/data-retention';
 import Appointment from '@/models/Appointment';
 import Visit from '@/models/Visit';
@@ -11,35 +10,25 @@ import LabResult from '@/models/LabResult';
 import Prescription from '@/models/Prescription';
 import Document from '@/models/Document';
 import AuditLog from '@/models/AuditLog';
-import { Types } from 'mongoose';
 
 /**
  * Get data retention status
  * GET /api/data-retention/status
  */
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantObjectId: tenantIdObj } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
+  if (!isAdmin(session)) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized - Admin access required' },
+      { status: 403 }
+    );
   }
 
   try {
     await connectDB();
-
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'Tenant not found' },
-        { status: 404 }
-      );
-    }
-
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
-      : tenantId;
 
     const policies = getDefaultRetentionPolicies();
     const status: any = {};

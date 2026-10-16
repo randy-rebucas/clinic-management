@@ -1,19 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Product from '@/models/Product';
+import { isValidId, notFound } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+import { requireRepSession, isRepSessionError } from '../../_lib/rep-session';
 
-interface ProductData {
-  name: string;
-  category: string;
-  manufacturer: string;
-  description: string;
-  dosage?: string;
-  strength?: string;
-  packaging: string;
-  expiryDate: string;
-  status: 'active' | 'discontinued' | 'inactive';
-}
+const optionalShort = z.preprocess(
+  (v) => (v === '' || v === null ? undefined : v),
+  z.string().trim().max(200).optional()
+);
+
+const updateProductSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  category: z.string().trim().min(1).max(100),
+  manufacturer: z.string().trim().min(1).max(200),
+  description: z.string().trim().min(1).max(2000),
+  dosage: optionalShort,
+  strength: optionalShort,
+  packaging: z.string().trim().min(1).max(200),
+  expiryDate: z.coerce.date(),
+  status: z.enum(['active', 'discontinued', 'inactive']).optional(),
+});
 
 /**
  * PUT /api/medical-representatives/products/[id]
@@ -24,57 +32,37 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
 
-    if (session.role !== 'medical-representative') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
+    const { id: productId } = await params;
+    if (!isValidId(productId)) return notFound('Product');
 
-    let body: ProductData;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, error: 'Invalid request body' },
-        { status: 400 }
-      );
-    }
+    const parsed = await parseBody(request, updateProductSchema);
+    if (isValidationError(parsed)) return parsed;
+    const body = parsed.data;
 
     await connectDB();
 
-    const { id: productId } = await params;
-
     const updatedProduct = await Product.findOneAndUpdate(
-      { _id: productId, userId: session.userId },
+      { ...rep.ownerFilter, _id: productId },
       {
-        name: body.name,
-        category: body.category,
-        manufacturer: body.manufacturer,
-        description: body.description,
-        dosage: body.dosage || undefined,
-        strength: body.strength || undefined,
-        packaging: body.packaging,
-        expiryDate: new Date(body.expiryDate),
-        status: body.status || 'active',
+        $set: {
+          name: body.name,
+          category: body.category,
+          manufacturer: body.manufacturer,
+          description: body.description,
+          dosage: body.dosage,
+          strength: body.strength,
+          packaging: body.packaging,
+          expiryDate: body.expiryDate,
+          status: body.status || 'active',
+        },
       },
-      { new: true }
+      { new: true, runValidators: true }
     ).lean();
 
-    if (!updatedProduct) {
-      return NextResponse.json(
-        { success: false, error: 'Product not found' },
-        { status: 404 }
-      );
-    }
+    if (!updatedProduct) return notFound('Product');
 
     return NextResponse.json({
       success: true,
@@ -84,7 +72,7 @@ export async function PUT(
   } catch (error: any) {
     console.error('Update product error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -99,35 +87,20 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
 
-    if (session.role !== 'medical-representative') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
+    const { id: productId } = await params;
+    if (!isValidId(productId)) return notFound('Product');
 
     await connectDB();
 
-    const { id: productId } = await params;
     const deletedProduct = await Product.findOneAndDelete({
+      ...rep.ownerFilter,
       _id: productId,
-      userId: session.userId,
     }).lean();
 
-    if (!deletedProduct) {
-      return NextResponse.json(
-        { success: false, error: 'Product not found' },
-        { status: 404 }
-      );
-    }
+    if (!deletedProduct) return notFound('Product');
 
     return NextResponse.json({
       success: true,
@@ -136,7 +109,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error('Delete product error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }

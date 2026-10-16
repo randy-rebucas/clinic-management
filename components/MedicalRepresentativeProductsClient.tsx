@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Package, Edit2, Trash2, X, Check } from 'lucide-react';
+import { useModalA11y } from './hooks/useModalA11y';
 
 interface Product {
   _id: string;
@@ -55,6 +56,9 @@ export default function MedicalRepresentativeProductsClient() {
     expiryDate: '',
     status: 'active',
   });
+
+  const closeForm = () => setShowForm(false);
+  const formModalRef = useModalA11y<HTMLDivElement>(showForm, closeForm);
 
   // Fetch products
   useEffect(() => {
@@ -239,7 +243,7 @@ export default function MedicalRepresentativeProductsClient() {
               className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
               aria-label="Go back"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
+              <ArrowLeft aria-hidden="true" className="w-5 h-5 text-gray-600" />
             </button>
             <h1 className="text-3xl font-bold text-gray-900">Products Portfolio</h1>
           </div>
@@ -269,16 +273,24 @@ export default function MedicalRepresentativeProductsClient() {
         {/* Form Modal */}
         {showForm && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div
+              ref={formModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="product-form-title"
+              className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            >
               <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-900">
+                <h2 id="product-form-title" className="text-2xl font-bold text-gray-900">
                   {editingId ? 'Edit Product' : 'Add New Product'}
                 </h2>
                 <button
-                  onClick={() => setShowForm(false)}
+                  type="button"
+                  onClick={closeForm}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
+                  aria-label="Close product form"
                 >
-                  ×
+                  <span aria-hidden="true">×</span>
                 </button>
               </div>
 

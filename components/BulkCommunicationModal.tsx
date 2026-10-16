@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
+import { useModalA11y } from './hooks/useModalA11y';
 import { AlertCircle, Loader, Mail, MessageSquare, X } from 'lucide-react';
 import { ApiError } from '@/lib/errors';
 
@@ -185,11 +186,14 @@ export function BulkCommunicationModal({
     onClose();
   };
 
+  const dialogRef = useModalA11y<HTMLDivElement>(isOpen, handleReset);
+  const uid = useId();
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" role="dialog" aria-labelledby="modal-title">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div ref={dialogRef} className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby={`${uid}-title`}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white">
           <div className="flex items-center gap-3">
@@ -198,7 +202,7 @@ export function BulkCommunicationModal({
             ) : (
               <Mail className="text-blue-600" size={24} />
             )}
-            <h2 id="modal-title" className="text-xl font-semibold">
+            <h2 id={`${uid}-title`} className="text-xl font-semibold">
               Bulk {communicationType === 'sms' ? 'SMS' : 'Email'} Campaign
             </h2>
           </div>
@@ -207,7 +211,7 @@ export function BulkCommunicationModal({
             className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
             aria-label="Close modal"
           >
-            <X size={24} />
+            <X size={24} aria-hidden="true" />
           </button>
         </div>
 
@@ -242,7 +246,7 @@ export function BulkCommunicationModal({
               className="text-red-600 hover:text-red-700"
               aria-label="Dismiss error"
             >
-              <X size={16} />
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
         )}
@@ -250,8 +254,8 @@ export function BulkCommunicationModal({
         <div className="p-6 space-y-5">
           {/* Communication Type Selection */}
           <div>
-            <label className="block text-sm font-medium mb-3">Communication Type</label>
-            <div className="flex gap-3">
+            <p id={`${uid}-type-label`} className="block text-sm font-medium mb-3">Communication Type</p>
+            <div className="flex gap-3" role="group" aria-labelledby={`${uid}-type-label`}>
               {(['sms', 'email'] as const).map((type) => (
                 <button
                   key={type}
@@ -286,8 +290,8 @@ export function BulkCommunicationModal({
 
           {/* Template Selection */}
           <div>
-            <label className="block text-sm font-medium mb-2">Quick Templates</label>
-            <div className="grid grid-cols-3 gap-2">
+            <p id={`${uid}-templates-label`} className="block text-sm font-medium mb-2">Quick Templates</p>
+            <div className="grid grid-cols-3 gap-2" role="group" aria-labelledby={`${uid}-templates-label`}>
               {Object.keys(TEMPLATES).map((name) => (
                 <button
                   key={name}
@@ -312,11 +316,11 @@ export function BulkCommunicationModal({
 
           {/* Message Template */}
           <div>
-            <label htmlFor="template" className="block text-sm font-medium mb-2">
+            <label htmlFor={`${uid}-template`} className="block text-sm font-medium mb-2">
               Message Template
             </label>
             <textarea
-              id="template"
+              id={`${uid}-template`}
               ref={textAreaRef}
               value={template}
               onChange={(e) => {
@@ -326,7 +330,6 @@ export function BulkCommunicationModal({
               }}
               placeholder={`Enter your message. Use {{variableName}} for variables.\nExample: Hi {{firstName}}, your appointment is {{appointmentDate}}`}
               className="w-full h-32 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-              aria-label="Message template"
             />
             <p className="text-xs text-gray-500 mt-1">
               Use double curly braces for variables: {`{{variableName}}`}
@@ -343,7 +346,7 @@ export function BulkCommunicationModal({
 
           {/* Variables */}
           <div>
-            <label className="block text-sm font-medium mb-3">Variables</label>
+            <p className="block text-sm font-medium mb-3">Variables</p>
             <div className="grid grid-cols-2 gap-3">
               {Object.entries(AVAILABLE_VARIABLES).map(([key, description]) => {
                 // Only show if used in template
@@ -407,7 +410,6 @@ export function BulkCommunicationModal({
               onClick={handleSend}
               disabled={isLoading || selectedPatients.length === 0}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              aria-label={testMode ? 'Send test' : 'Send messages'}
             >
               {isLoading && <Loader size={18} className="animate-spin" />}
               {isLoading

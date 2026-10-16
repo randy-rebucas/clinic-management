@@ -26,6 +26,7 @@ export interface IPharmacyDispense {
   dispensedAt?: Date;
   dispensedBy?: string;
   quantityDispensed?: number;
+  items?: Array<{ medicationIndex: number; quantity: number }>;
   notes?: string;
   trackingNumber?: string;
 }
@@ -73,6 +74,11 @@ export interface IPrescription extends Document {
     recommendation?: string;
     checkedAt: Date;
   }>;
+  archived?: boolean;
+  archivedAt?: Date;
+  expiryWarningsSent?: number[];
+  refillRemindersSent?: number[];
+  lastMedicationReminderSlot?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -107,6 +113,11 @@ const PharmacyDispenseSchema: Schema = new Schema(
     dispensedAt: Date,
     dispensedBy: String,
     quantityDispensed: Number,
+    // Per-medication breakdown (index into medications[]); absent on legacy records.
+    items: {
+      type: [{ medicationIndex: Number, quantity: Number, _id: false }],
+      default: undefined,
+    },
     notes: String,
     trackingNumber: String,
   },
@@ -169,6 +180,12 @@ const PrescriptionSchema: Schema = new Schema(
         checkedAt: { type: Date, default: Date.now },
       },
     ],
+    archived: { type: Boolean },
+    archivedAt: { type: Date },
+    // Automation sent markers
+    expiryWarningsSent: { type: [Number], default: undefined }, // days-before thresholds already warned
+    refillRemindersSent: { type: [Number], default: undefined },
+    lastMedicationReminderSlot: { type: String }, // clinic-local "yyyy-MM-dd HH"
   },
   { timestamps: true }
 );
@@ -181,7 +198,17 @@ PrescriptionSchema.index({ tenantId: 1, status: 1 });
 PrescriptionSchema.index({ tenantId: 1, prescribedBy: 1, issuedAt: -1 }); // For prescriber history
 PrescriptionSchema.index({ tenantId: 1, status: 1, issuedAt: -1 }); // For status-based date queries
 PrescriptionSchema.index({ tenantId: 1, patient: 1, status: 1 }); // For patient's active prescriptions
-PrescriptionSchema.index({ tenantId: 1, prescriptionCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped prescription code
+PrescriptionSchema.index(
+  { tenantId: 1, prescriptionCode: 1 },
+  {
+    unique: true,
+    name: 'uniq_tenant_prescriptionCode',
+    partialFilterExpression: { prescriptionCode: { $type: 'string' } },
+  }
+);
+// Cross-tenant cron scans (refills, adherence, expiry warnings filter by status only)
+PrescriptionSchema.index({ status: 1, issuedAt: -1 });
+PrescriptionSchema.index({ tenantId: 1, archived: 1, createdAt: 1 });
 
 export default mongoose.models.Prescription || mongoose.model<IPrescription>('Prescription', PrescriptionSchema);
 

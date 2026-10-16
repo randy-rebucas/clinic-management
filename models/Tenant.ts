@@ -42,6 +42,8 @@ export interface ITenant extends Document {
     renewalAt?: Date;
     paypalOrderId?: string;
     paypalSubscriptionId?: string;
+    trialWarningsSent?: number[];
+    usageAlertLevels?: Record<string, number>;
     paymentHistory?: Array<{
       transactionId: string;
       orderId: string;
@@ -131,6 +133,8 @@ const TenantSchema = new Schema<ITenant>(
       paypalOrderId: { type: String },
       paypalSubscriptionId: { type: String },
       processedWebhookIds: [{ type: String }],
+      trialWarningsSent: { type: [Number], default: undefined }, // days-before thresholds already warned
+      usageAlertLevels: { type: Schema.Types.Mixed }, // { patients: 90, storage: 80, ... } last alerted threshold
       paymentHistory: [
         {
           transactionId: { type: String, required: true },

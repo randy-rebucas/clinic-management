@@ -1,21 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createHmac } from 'crypto';
 import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
 import Doctor from '@/models/Doctor';
+import User from '@/models/User';
+import { verifyCalendarFeedToken } from '@/app/lib/auth-helpers';
 import { buildICalFeed } from '@/lib/ical';
 import { Types } from 'mongoose';
 
 /**
  * GET /api/staff/[id]/calendar.ics?token=<hmac>
  *
- * Returns an iCalendar feed of the doctor's appointments.
- * The token is HMAC-SHA256(doctorId, SESSION_SECRET) — stateless, no schema change needed.
- * Calendar apps subscribe to this URL directly.
+ * Returns an iCalendar feed of the doctor's appointments. Patient names are reduced to
+ * initials because calendar providers store and sync this data outside the clinic.
  *
- * Generate the subscribe URL for a doctor:
- *   const token = createHmac('sha256', SESSION_SECRET).update(doctorId).digest('hex');
- *   const url = `${BASE_URL}/api/staff/${doctorId}/calendar.ics?token=${token}`;
+ * The token is calendarFeedToken(doctorId, sessionVersion) from app/lib/auth-helpers:
+ * an HMAC with a key derived from SESSION_SECRET, bound to the linked user's
+ * sessionVersion, so revokeUserSessions() also revokes existing feed links.
+ *
+ *   const url = `${BASE_URL}/api/staff/${doctorId}/calendar.ics?token=${calendarFeedToken(doctorId, user.sessionVersion ?? 0)}`;
  */
 export async function GET(
   request: NextRequest,
@@ -24,27 +26,31 @@ export async function GET(
   const { id } = await params;
   const token = request.nextUrl.searchParams.get('token');
 
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) {
+  if (!process.env.SESSION_SECRET) {
     return new NextResponse('Server misconfiguration', { status: 503 });
   }
 
-  // Verify HMAC token
-  const expected = createHmac('sha256', secret).update(id).digest('hex');
-  if (!token || token !== expected) {
+  if (!token || !Types.ObjectId.isValid(id)) {
     return new NextResponse('Unauthorized', { status: 401 });
-  }
-
-  if (!Types.ObjectId.isValid(id)) {
-    return new NextResponse('Invalid ID', { status: 400 });
   }
 
   try {
     await connectDB();
 
-    const doctor = await Doctor.findById(id).select('firstName lastName').lean() as any;
+    const linkedUser = await User.findOne({ doctorProfile: new Types.ObjectId(id) })
+      .select('sessionVersion status')
+      .lean<{ sessionVersion?: number; status?: string } | null>();
+    if (
+      !linkedUser ||
+      linkedUser.status !== 'active' ||
+      !verifyCalendarFeedToken(id, linkedUser.sessionVersion ?? 0, token)
+    ) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    const doctor = await Doctor.findById(id).select('firstName lastName tenantId').lean() as any;
     if (!doctor) {
-      return new NextResponse('Doctor not found', { status: 404 });
+      return new NextResponse('Unauthorized', { status: 401 });
     }
 
     const doctorName = `Dr. ${doctor.firstName ?? ''} ${doctor.lastName ?? ''}`.trim();
@@ -56,6 +62,7 @@ export async function GET(
     sixMonthsAhead.setMonth(sixMonthsAhead.getMonth() + 6);
 
     const appointments = await Appointment.find({
+      ...(doctor.tenantId ? { tenantId: doctor.tenantId } : {}),
       doctor: new Types.ObjectId(id),
       status: { $nin: ['cancelled'] },
       appointmentDate: { $gte: sixMonthsAgo, $lte: sixMonthsAhead },
@@ -66,8 +73,11 @@ export async function GET(
     const events = appointments.map((appt: any) => {
       const patient = appt.patient;
       const patientName = patient
-        ? `${patient.firstName ?? ''} ${patient.lastName ?? ''}`.trim()
-        : 'Unknown Patient';
+        ? [patient.firstName, patient.lastName]
+            .map((n: unknown) => (typeof n === 'string' && n.trim() ? `${n.trim()[0].toUpperCase()}.` : ''))
+            .join(' ')
+            .trim() || 'Patient'
+        : 'Patient';
 
       // Determine start datetime
       let dtstart: Date;
@@ -91,9 +101,8 @@ export async function GET(
         rescheduled: 'TENTATIVE',
       };
 
+      // Reason/notes are clinical details; keep them out of third-party calendars
       const descParts = [
-        appt.reason ? `Reason: ${appt.reason}` : '',
-        appt.notes ? `Notes: ${appt.notes}` : '',
         appt.appointmentCode ? `Code: ${appt.appointmentCode}` : '',
       ].filter(Boolean);
 

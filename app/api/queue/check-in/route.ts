@@ -1,51 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
-import Room from '@/models/Room';
+import '@/models/Room';
 import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
+import { isValidId } from '@/lib/api/tenant-session';
 
 /**
- * Check-in using QR code
+ * Queue check-in.
+ * - Manual check-in (queueId) is a staff action and requires a session with queue access.
+ * - QR check-in (kiosk) may be anonymous but only on the clinic's subdomain, and the QR's
+ *   patient id must match the queue entry. Anonymous callers get a minimal response.
  */
 export async function POST(request: NextRequest) {
   const session = await verifySession();
 
-  // Public endpoint - no authentication required for QR check-in
-  // In production, add QR code validation/security
-
   try {
     await connectDB();
-    const body = await request.json();
-    const { qrCode, queueId: directQueueId } = body;
+    const body = await request.json().catch(() => ({}));
+    const { qrCode, queueId: directQueueId } = body ?? {};
 
-    let queueId: string;
-    let patientId: string | undefined;
+    let queueId: unknown;
+    let patientId: unknown;
     let checkInMethod: 'qr_code' | 'manual' = 'manual';
 
-    // Support both QR code check-in and manual check-in
     if (qrCode) {
-      // QR code check-in
       checkInMethod = 'qr_code';
-      
-      // Parse QR code data
       let qrData;
       try {
         qrData = typeof qrCode === 'string' ? JSON.parse(qrCode) : qrCode;
-      } catch (error) {
+      } catch {
         return NextResponse.json(
           { success: false, error: 'Invalid QR code format' },
           { status: 400 }
         );
       }
-
-      queueId = qrData.queueId;
-      patientId = qrData.patientId;
+      queueId = qrData?.queueId;
+      patientId = qrData?.patientId;
+      if (!isValidId(patientId)) {
+        return NextResponse.json({ success: false, error: 'Invalid QR code format' }, { status: 400 });
+      }
     } else if (directQueueId) {
-      // Manual check-in
       queueId = directQueueId;
     } else {
       return NextResponse.json(
@@ -54,51 +52,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!queueId) {
+    if (!isValidId(queueId)) {
       return NextResponse.json(
         { success: false, error: 'Queue ID not found' },
         { status: 400 }
       );
     }
 
-    // Get tenant context from headers (public endpoint)
+    // Resolve the clinic: the staff session's clinic, else the subdomain's (kiosk).
     const tenantContext = await getTenantContext();
-    const tenantId = tenantContext.tenantId || undefined;
-    
-    // Build query with tenant filter
-    const query: any = { _id: queueId };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    let tenantId: string | null = null;
+    let isStaff = false;
+    if (session?.tenantId && (!tenantContext.tenantId || tenantContext.tenantId === session.tenantId)) {
+      const denied = await requirePermission(session, 'queue', 'update');
+      if (!denied) {
+        tenantId = session.tenantId;
+        isStaff = true;
+      }
     }
-    
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: null }] };
+    if (!isStaff) {
+      if (checkInMethod === 'manual') {
+        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      }
+      tenantId = tenantContext.tenantId;
     }
-    
-    const doctorPopulateOptions: any = {
-      path: 'doctor',
-      select: 'firstName lastName',
-    };
-    if (tenantId) {
-      doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+    if (!tenantId) {
+      return NextResponse.json({ success: false, error: 'Clinic not found' }, { status: 400 });
     }
+    const tenantObjectId = new Types.ObjectId(tenantId);
 
-    // Find queue entry
-    const queue = await Queue.findOne(query)
-      .populate(patientPopulateOptions)
-      .populate(doctorPopulateOptions)
-      .populate('room', 'name roomNumber');
+    const queue = await Queue.findOne({ _id: new Types.ObjectId(queueId), tenantId: tenantObjectId })
+      .populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } })
+      .populate({ path: 'doctor', select: 'firstName lastName', match: { tenantId: tenantObjectId } })
+      .populate({ path: 'room', select: 'name roomNumber', match: { tenantId: tenantObjectId } });
 
     if (!queue) {
       return NextResponse.json(
@@ -107,7 +93,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify patient matches (only for QR code check-in)
     if (patientId) {
       const queuePatientId = queue.patient?._id?.toString() || queue.patient?.toString();
       if (queuePatientId !== patientId) {
@@ -118,22 +103,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if already checked in
-    if (queue.checkedIn) {
-      return NextResponse.json({
+    const respond = (message: string) =>
+      NextResponse.json({
         success: true,
-        data: queue,
-        message: 'Already checked in',
+        data: isStaff
+          ? queue
+          : { queueNumber: queue.queueNumber, status: queue.status, checkedIn: queue.checkedIn, checkedInAt: queue.checkedInAt },
+        message,
       });
+
+    if (queue.checkedIn) {
+      return respond('Already checked in');
     }
 
-    // Update check-in status
     queue.checkedIn = true;
     queue.checkedInAt = new Date();
     queue.checkInMethod = checkInMethod;
     await queue.save();
 
-    // Log check-in
     await createAuditLog({
       userId: session?.userId || 'public',
       userEmail: session?.email || (checkInMethod === 'qr_code' ? 'qr_checkin' : 'manual_checkin'),
@@ -148,11 +135,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      data: queue,
-      message: 'Checked in successfully',
-    });
+    return respond('Checked in successfully');
   } catch (error: any) {
     console.error('Error processing QR check-in:', error);
     return NextResponse.json(
@@ -161,4 +144,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

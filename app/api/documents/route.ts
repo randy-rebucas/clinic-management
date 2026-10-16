@@ -1,20 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Document from '@/models/Document';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getDocumentType, inferDocumentCategory, validateFile } from '@/lib/document-utils';
-import { uploadDocumentToCloudinary, getThumbnailUrl, isCloudinaryConfigured } from '@/lib/cloudinary';
-import { getTenantContext } from '@/lib/tenant';
+import Visit from '@/models/Visit';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { getDocumentType, inferDocumentCategory } from '@/lib/document-utils';
+import { uploadDocumentToCloudinary, isCloudinaryConfigured } from '@/lib/cloudinary';
 import { Types } from 'mongoose';
+import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
+import { validateUpload, DOCUMENT_UPLOAD_TYPES, MAX_INLINE_UPLOAD_BYTES } from '@/lib/upload-validation';
+import { withStreamUrls } from '@/lib/document-file';
+import {
+  DOCUMENT_CATEGORIES,
+  referralMetaSchema,
+  imagingMetaSchema,
+  medicalCertificateMetaSchema,
+  labResultMetaSchema,
+} from '@/lib/document-schema';
+import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
+
+const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantObjectId } = ctx;
 
   // Check permission to read documents (using patients permission as documents are patient-related)
   const permissionCheck = await requirePermission(session, 'patients', 'read');
@@ -24,11 +35,7 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get('patientId');
     const category = searchParams.get('category');
@@ -36,63 +43,42 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || 'active';
     const search = searchParams.get('search');
     const visitId = searchParams.get('visitId');
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50', 10) || 50, 1), 200);
 
-    const query: any = { status };
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    // Filter by patient (users can only see documents for patients they have access to)
-    if (patientId) {
-      query.patient = patientId;
-    }
-
-    if (category) {
-      query.category = category;
-    }
-
-    if (documentType) {
-      query.documentType = documentType;
-    }
-
-    if (visitId) {
-      query.visit = visitId;
-    }
-
-    // Text search
-    if (search) {
-      query.$text = { $search: search };
-    }
-
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
+    const query: any = {
+      tenantId: tenantObjectId,
+      status: ['active', 'archived'].includes(status) ? status : 'active',
     };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
+
+    if (patientId) {
+      if (!isValidId(patientId)) return NextResponse.json({ success: true, data: [], total: 0 });
+      query.patient = new Types.ObjectId(patientId);
+    }
+    if (category) query.category = String(category);
+    if (documentType) query.documentType = String(documentType);
+    if (visitId) {
+      if (!isValidId(visitId)) return NextResponse.json({ success: true, data: [], total: 0 });
+      query.visit = new Types.ObjectId(visitId);
+    }
+    if (search) {
+      query.$text = { $search: search.slice(0, 200) };
     }
 
-    const documents = await Document.find(query)
-      .populate(patientPopulateOptions)
-      .populate('uploadedBy', 'name')
-      .populate('visit', 'visitCode date')
-      .sort({ uploadDate: -1 })
-      .limit(limit);
-
-    // Get total count for pagination
-    const total = await Document.countDocuments(query);
+    const [documents, total] = await Promise.all([
+      Document.find(query)
+        .select('-ocrText')
+        .populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } })
+        .populate('uploadedBy', 'name')
+        .populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } })
+        .sort({ uploadDate: -1 })
+        .limit(limit)
+        .lean(),
+      Document.countDocuments(query),
+    ]);
 
     return NextResponse.json({
       success: true,
-      data: documents,
+      data: documents.map((d: any) => withStreamUrls(d)),
       total,
     });
   } catch (error: any) {
@@ -104,12 +90,20 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
+function parseJsonField<T extends z.ZodType>(raw: FormDataEntryValue | null, schema: T): z.infer<T> | null | 'invalid' {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const result = schema.safeParse(JSON.parse(raw));
+    return result.success ? result.data : 'invalid';
+  } catch {
+    return 'invalid';
   }
+}
+
+export async function POST(request: NextRequest) {
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
   // Check permission to write documents (using patients permission as documents are patient-related)
   const permissionCheck = await requirePermission(session, 'patients', 'write');
@@ -120,190 +114,149 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const category = formData.get('category') as string;
-    const patientId = formData.get('patientId') as string;
-    const visitId = formData.get('visitId') as string | null;
-    const title = formData.get('title') as string;
-    const description = formData.get('description') as string | null;
-    const tags = formData.get('tags') as string | null;
-    const notes = formData.get('notes') as string | null;
+    const str = (key: string, max = 500) => {
+      const v = formData.get(key);
+      return typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined;
+    };
+    const file = formData.get('file');
+    const category = str('category', 50);
+    const patientId = str('patientId', 24);
+    const visitId = str('visitId', 24);
+    const title = str('title', 300);
+    const description = str('description', 5000);
+    const tagsRaw = str('tags', 2000);
+    const notes = str('notes', 5000);
     const scanned = formData.get('scanned') === 'true';
 
-    // Additional metadata based on category
-    const referralData = formData.get('referralData') ? JSON.parse(formData.get('referralData') as string) : null;
-    const imagingData = formData.get('imagingData') ? JSON.parse(formData.get('imagingData') as string) : null;
-    const medicalCertificateData = formData.get('medicalCertificateData') ? JSON.parse(formData.get('medicalCertificateData') as string) : null;
-    const labResultData = formData.get('labResultData') ? JSON.parse(formData.get('labResultData') as string) : null;
-
-    if (!file) {
-      return NextResponse.json(
-        { success: false, error: 'No file provided' },
-        { status: 400 }
-      );
+    if (category && !(DOCUMENT_CATEGORIES as readonly string[]).includes(category)) {
+      return NextResponse.json({ success: false, error: 'Invalid category' }, { status: 400 });
     }
 
-    // Validate file
-    const validation = validateFile(file, 10); // 10MB max
-    if (!validation.valid) {
-      return NextResponse.json(
-        { success: false, error: validation.error },
-        { status: 400 }
-      );
+    const referralData = parseJsonField(formData.get('referralData'), referralMetaSchema);
+    const imagingData = parseJsonField(formData.get('imagingData'), imagingMetaSchema);
+    const medicalCertificateData = parseJsonField(formData.get('medicalCertificateData'), medicalCertificateMetaSchema);
+    const labResultData = parseJsonField(formData.get('labResultData'), labResultMetaSchema);
+    if ([referralData, imagingData, medicalCertificateData, labResultData].includes('invalid')) {
+      return NextResponse.json({ success: false, error: 'Invalid document metadata' }, { status: 400 });
     }
 
-    // Determine document type and category
-    const documentType = getDocumentType(file.name, file.type);
-    const inferredCategory = inferDocumentCategory(file.name, category || undefined);
-    const finalCategory = category || inferredCategory;
-
-    // Upload to Cloudinary (or fallback to base64 if not configured)
-    let fileUrl: string;
-    let thumbnailUrl: string | undefined;
-    let cloudinaryPublicId: string | undefined;
-
-    if (isCloudinaryConfigured()) {
-      // Upload to Cloudinary
-      const uploadResult = await uploadDocumentToCloudinary(
-        file,
-        finalCategory,
-        patientId || undefined,
-        {
-          resourceType: documentType === 'image' ? 'image' : documentType === 'pdf' ? 'raw' : 'auto',
-          tags: tags ? tags.split(',').map(t => t.trim()) : [],
-        }
-      );
-
-      if (!uploadResult.success || !uploadResult.data) {
-        return NextResponse.json(
-          { success: false, error: uploadResult.error || 'Failed to upload to Cloudinary' },
-          { status: 500 }
-        );
-      }
-
-      fileUrl = uploadResult.data.secure_url;
-      cloudinaryPublicId = uploadResult.data.public_id;
-
-      // Generate thumbnail for images
-      if (documentType === 'image' && uploadResult.data.public_id) {
-        thumbnailUrl = getThumbnailUrl(uploadResult.data.public_id, 300);
-      }
-    } else {
-      // Fallback to base64 storage if Cloudinary not configured
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      const base64 = buffer.toString('base64');
-      fileUrl = `data:${file.type};base64,${base64}`;
+    const useCloudinary = isCloudinaryConfigured();
+    const check = await validateUpload(file instanceof File ? file : null, {
+      allowed: DOCUMENT_UPLOAD_TYPES,
+      // Inline (MongoDB) storage is limited by the document size cap.
+      maxBytes: useCloudinary ? MAX_DOCUMENT_BYTES : MAX_INLINE_UPLOAD_BYTES,
+    });
+    if (!check.ok) {
+      return NextResponse.json({ success: false, error: check.error }, { status: check.status });
     }
 
-    // Generate unique document code
-    const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const documentCode = `DOC-${Date.now()}-${randomSuffix}`;
-
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    // Check storage limit before uploading
-    if (tenantId) {
-      const { checkStorageLimit } = await import('@/lib/storage-tracking');
-      const storageCheck = await checkStorageLimit(tenantId, file.size);
-      if (!storageCheck.allowed) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: storageCheck.reason || 'Storage limit exceeded',
-            storageUsage: storageCheck.currentUsage,
-          },
-          { status: 403 }
-        );
-      }
-    }
-    
-    // Validate that the patient belongs to the tenant
-    // Patient model uses tenantIds (array) since patients can belong to multiple clinics
-    if (patientId && tenantId) {
-      const patientQuery: any = {
-        _id: patientId,
-        tenantIds: new Types.ObjectId(tenantId),
-      };
-      const patient = await Patient.findOne(patientQuery);
-      if (!patient) {
+    if (patientId) {
+      if (!isValidId(patientId) || !(await Patient.exists({ _id: patientId, tenantIds: tenantObjectId }))) {
         return NextResponse.json(
           { success: false, error: 'Invalid patient selected. Please select a patient from this clinic.' },
           { status: 400 }
         );
       }
     }
+    if (visitId) {
+      if (!isValidId(visitId) || !(await Visit.exists({ _id: visitId, tenantId: tenantObjectId }))) {
+        return NextResponse.json({ success: false, error: 'Invalid visit' }, { status: 400 });
+      }
+    }
 
-    // Build document object
+    // Storage limit is checked before anything is uploaded.
+    const { checkStorageLimit } = await import('@/lib/storage-tracking');
+    const storageCheck = await checkStorageLimit(tenantId, check.buffer.length);
+    if (!storageCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: storageCheck.reason || 'Storage limit exceeded',
+          storageUsage: storageCheck.currentUsage,
+        },
+        { status: 403 }
+      );
+    }
+
+    const documentType = getDocumentType(check.filename, check.contentType);
+    const finalCategory = category || inferDocumentCategory(check.filename, undefined);
+    const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim().slice(0, 50)).filter(Boolean).slice(0, 50) : [];
+
+    let fileUrl: string;
+    let cloudinaryMeta: Record<string, string> | undefined;
+
+    if (useCloudinary) {
+      const uploadFile = new File([new Uint8Array(check.buffer)], check.filename, { type: check.contentType });
+      const uploadResult = await uploadDocumentToCloudinary(uploadFile, finalCategory, tenantId, {
+        resourceType: documentType === 'image' ? 'image' : 'raw',
+        contentType: check.contentType,
+        tags,
+      });
+
+      if (!uploadResult.success || !uploadResult.data) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to upload file' },
+          { status: 502 }
+        );
+      }
+
+      fileUrl = uploadResult.data.secure_url;
+      cloudinaryMeta = {
+        cloudinaryPublicId: uploadResult.data.public_id,
+        cloudinaryResourceType: uploadResult.data.resource_type,
+        cloudinaryDeliveryType: uploadResult.data.type,
+        ...(uploadResult.data.format ? { cloudinaryFormat: uploadResult.data.format } : {}),
+      };
+    } else {
+      fileUrl = `data:${check.contentType};base64,${check.buffer.toString('base64')}`;
+    }
+
+    const seq = await nextSequence(
+      tenantObjectId,
+      'document',
+      maxCodeSeed(Document, 'documentCode', { tenantId: tenantObjectId, documentCode: { $regex: /^DOC-\d{1,9}$/ } })
+    );
+
     const documentData: any = {
-      documentCode,
-      title: title || file.name,
-      description: description || undefined,
+      tenantId: tenantObjectId,
+      documentCode: formatCode('DOC', seq),
+      title: title || check.filename,
+      description,
       category: finalCategory,
       documentType,
-      filename: file.name,
-      originalFilename: file.name,
-      contentType: file.type,
-      size: file.size,
+      filename: check.filename,
+      originalFilename: check.filename,
+      contentType: check.contentType,
+      size: check.buffer.length,
       url: fileUrl,
-      thumbnailUrl: thumbnailUrl || undefined,
       scanned,
       uploadedBy: session.userId,
       uploadDate: new Date(),
       status: 'active',
-      tags: tags ? tags.split(',').map(t => t.trim()) : [],
-      notes: notes || undefined,
-      // Store Cloudinary public ID in metadata for future operations
-      metadata: cloudinaryPublicId ? { cloudinaryPublicId } : undefined,
+      tags,
+      notes,
+      metadata: cloudinaryMeta,
     };
 
-    // Add relationships
-    if (patientId) documentData.patient = patientId;
-    if (visitId) documentData.visit = visitId;
-    
-    // Ensure document is created with tenantId
-    if (tenantId && !documentData.tenantId) {
-      documentData.tenantId = new Types.ObjectId(tenantId);
-    }
+    if (patientId) documentData.patient = new Types.ObjectId(patientId);
+    if (visitId) documentData.visit = new Types.ObjectId(visitId);
 
-    // Add category-specific data
-    if (category === 'referral' && referralData) {
-      documentData.referral = referralData;
-    }
-    if (category === 'imaging' && imagingData) {
-      documentData.imaging = imagingData;
-    }
-    if (category === 'medical_certificate' && medicalCertificateData) {
-      documentData.medicalCertificate = medicalCertificateData;
-    }
-    if (category === 'laboratory_result' && labResultData) {
-      documentData.labResultMetadata = labResultData;
-    }
+    if (finalCategory === 'referral' && referralData) documentData.referral = referralData;
+    if (finalCategory === 'imaging' && imagingData) documentData.imaging = imagingData;
+    if (finalCategory === 'medical_certificate' && medicalCertificateData) documentData.medicalCertificate = medicalCertificateData;
+    if (finalCategory === 'laboratory_result' && labResultData) documentData.labResultMetadata = labResultData;
 
     const document = await Document.create(documentData);
-    
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    await document.populate(patientPopulateOptions);
+
+    await document.populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } });
     await document.populate('uploadedBy', 'name');
 
-    return NextResponse.json({ success: true, data: document }, { status: 201 });
+    return NextResponse.json({ success: true, data: withStreamUrls(document.toObject()) }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating document:', error);
-    if (error.name === 'ValidationError') {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid document data' },
         { status: 400 }
       );
     }
@@ -319,4 +272,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

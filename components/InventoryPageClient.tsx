@@ -25,58 +25,57 @@ export default function InventoryPageClient() {
   const router = useRouter();
 
   useEffect(() => {
-    fetchInventory();
-  }, []);
-
-  const fetchInventory = async () => {
-    try {
-      const res = await fetch('/api/inventory');
+    const fetchInventory = async () => {
+      try {
+        const res = await fetch('/api/inventory');
       
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      const contentType = res.headers.get('content-type');
-      let data;
-      
-      // Try to parse JSON response regardless of status
-      if (contentType && contentType.includes('application/json')) {
-        try {
-          data = await res.json();
-        } catch (parseError) {
-          console.error('Failed to parse JSON response:', parseError);
-          const text = await res.text();
-          console.error('Response text:', text.substring(0, 500));
-          throw new Error(`API returned invalid JSON: ${res.status} ${res.statusText}`);
+        if (res.status === 401) {
+          router.push('/login');
+          return;
         }
-      } else {
-        const text = await res.text();
-        console.error('API returned non-JSON response:', text.substring(0, 500));
-        throw new Error(`API error: ${res.status} ${res.statusText}`);
-      }
       
-      if (!res.ok) {
-        const errorMsg = data?.error || `Failed to fetch inventory: ${res.status} ${res.statusText}`;
-        console.error('API error response:', res.status, res.statusText, errorMsg);
-        throw new Error(errorMsg);
-      }
+        const contentType = res.headers.get('content-type');
+        let data;
       
-      if (data.success) {
-        setItems(data.data || []);
-      } else {
-        const errorMsg = data.error || 'Failed to fetch inventory';
-        console.error('Failed to fetch inventory:', errorMsg);
-        throw new Error(errorMsg);
+        // Try to parse JSON response regardless of status
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            data = await res.json();
+          } catch (parseError) {
+            console.error('Failed to parse JSON response:', parseError);
+            const text = await res.text();
+            console.error('Response text:', text.substring(0, 500));
+            throw new Error(`API returned invalid JSON: ${res.status} ${res.statusText}`);
+          }
+        } else {
+          const text = await res.text();
+          console.error('API returned non-JSON response:', text.substring(0, 500));
+          throw new Error(`API error: ${res.status} ${res.statusText}`);
+        }
+      
+        if (!res.ok) {
+          const errorMsg = data?.error || `Failed to fetch inventory: ${res.status} ${res.statusText}`;
+          console.error('API error response:', res.status, res.statusText, errorMsg);
+          throw new Error(errorMsg);
+        }
+      
+        if (data.success) {
+          setItems(data.data || []);
+        } else {
+          const errorMsg = data.error || 'Failed to fetch inventory';
+          console.error('Failed to fetch inventory:', errorMsg);
+          throw new Error(errorMsg);
+        }
+      } catch (error) {
+        console.error('Failed to fetch inventory:', error);
+        // Set empty array on error to prevent UI issues
+        setItems([]);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Failed to fetch inventory:', error);
-      // Set empty array on error to prevent UI issues
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    fetchInventory();
+  }, [router]);
 
   const getStatusColor = (status: string): 'green' | 'yellow' | 'red' | 'gray' => {
     switch (status) {
@@ -190,23 +189,26 @@ export default function InventoryPageClient() {
                 <div className="flex-1">
                   <div className="relative">
                     <div className="absolute left-4 top-1/2 transform -translate-y-1/2 p-1.5">
-                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                       </svg>
                     </div>
                     <input
                       type="text"
                       placeholder="Search by item name..."
+                      aria-label="Search inventory"
                       value={searchQuery || ''}
                       onChange={(e) => setSearchQuery(e.target.value || '')}
                       className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm"
                     />
                     {searchQuery && (
                       <button
+                        type="button"
                         onClick={() => setSearchQuery('')}
+                        aria-label="Clear search"
                         className="absolute right-4 top-1/2 transform -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </button>
@@ -217,6 +219,7 @@ export default function InventoryPageClient() {
                   <select 
                     value={filterCategory || 'all'} 
                     onChange={(e) => setFilterCategory(e.target.value || 'all')}
+                    aria-label="Filter by category"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                   >
                     <option value="all">All Categories</option>
@@ -230,6 +233,7 @@ export default function InventoryPageClient() {
                   <select 
                     value={filterStatus || 'all'} 
                     onChange={(e) => setFilterStatus(e.target.value || 'all')}
+                    aria-label="Filter by status"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                   >
                     <option value="all">All Statuses</option>

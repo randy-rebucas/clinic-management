@@ -5,68 +5,56 @@ import Appointment from '@/models/Appointment';
 import Visit from '@/models/Visit';
 import Invoice from '@/models/Invoice';
 import Doctor from '@/models/Doctor';
-import Prescription from '@/models/Prescription';
-import LabResult from '@/models/LabResult';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, hasPermission } from '@/app/lib/auth-helpers';
+import User from '@/models/User';
+import { hasPermission } from '@/app/lib/auth-helpers';
+import {
+  requireTenantSession,
+  isTenantSessionError,
+  tenantFilter as buildTenantFilter,
+  patientTenantFilter,
+} from '@/lib/api/tenant-session';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { dayRangeInTz, dayRangeOffsetInTz } from '@/lib/tz';
+import { periodRange } from '../../_lib/report-range';
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   try {
     await connectDB();
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get('period') || 'today'; // today, week, month
+    const tz = await getTenantTimezone(tenantId);
 
-    // Calculate date range
     const now = new Date();
-    let dateRange: { start: Date; end: Date };
-    
-    switch (period) {
-      case 'week':
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - now.getDay());
-        weekStart.setHours(0, 0, 0, 0);
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
-        weekEnd.setHours(23, 59, 59, 999);
-        dateRange = { start: weekStart, end: weekEnd };
-        break;
-      case 'month':
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        monthStart.setHours(0, 0, 0, 0);
-        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        monthEnd.setHours(23, 59, 59, 999);
-        dateRange = { start: monthStart, end: monthEnd };
-        break;
-      case 'today':
-      default:
-        dateRange = {
-          start: new Date(now.setHours(0, 0, 0, 0)),
-          end: new Date(now.setHours(23, 59, 59, 999)),
-        };
-        break;
-    }
+    const dateRange = period === 'week'
+      ? periodRange('weekly', tz, now)
+      : period === 'month'
+        ? periodRange('monthly', tz, now)
+        : periodRange('daily', tz, now);
+    const { start: todayStart, end: todayEnd } = dayRangeInTz(now, tz);
 
-    // Get today's date for today-specific queries
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(now);
-    todayEnd.setHours(23, 59, 59, 999);
-
-    // Check permissions for each resource
-    const canViewPatients = await hasPermission(session, 'patients', 'read');
-    const canViewAppointments = await hasPermission(session, 'appointments', 'read');
-    const canViewVisits = await hasPermission(session, 'visits', 'read');
-    const canViewInvoices = await hasPermission(session, 'invoices', 'read');
-    const canViewDoctors = await hasPermission(session, 'doctors', 'read');
-    const canViewPrescriptions = await hasPermission(session, 'prescriptions', 'read');
-    const canViewLabResults = await hasPermission(session, 'lab-results', 'read');
-    const canViewReports = await hasPermission(session, 'reports', 'read');
+    const [
+      canViewPatients,
+      canViewAppointments,
+      canViewVisits,
+      canViewInvoices,
+      canViewDoctors,
+      canViewPrescriptions,
+      canViewLabResults,
+      canViewReports,
+    ] = await Promise.all([
+      hasPermission(session, 'patients', 'read'),
+      hasPermission(session, 'appointments', 'read'),
+      hasPermission(session, 'visits', 'read'),
+      hasPermission(session, 'invoices', 'read'),
+      hasPermission(session, 'doctors', 'read'),
+      hasPermission(session, 'prescriptions', 'read'),
+      hasPermission(session, 'lab-results', 'read'),
+      hasPermission(session, 'reports', 'read'),
+    ]);
 
     const overview: any = {};
     const data: any = {
@@ -88,30 +76,17 @@ export async function GET(request: NextRequest) {
       },
     };
 
-    // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
+    const tenantFilter = buildTenantFilter(tenantId);
+    const periodInvoiceMatch = { ...tenantFilter, createdAt: { $gte: dateRange.start, $lte: dateRange.end } };
 
-    // Build tenant filter
-    const tenantFilter: any = {};
-    if (tenantId) {
-      tenantFilter.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    // Fetch data based on permissions (tenant-scoped)
     const promises: Promise<any>[] = [];
 
     if (canViewPatients) {
-      promises.push(Patient.countDocuments(tenantFilter).then(count => ({ totalPatients: count })));
+      promises.push(Patient.countDocuments(patientTenantFilter(tenantId)).then(count => ({ totalPatients: count })));
     }
 
     if (canViewDoctors) {
-      const doctorQuery: any = { status: 'active', ...tenantFilter };
-      promises.push(Doctor.countDocuments(doctorQuery).then(count => ({ totalDoctors: count })));
+      promises.push(Doctor.countDocuments({ ...tenantFilter, status: 'active' }).then(count => ({ totalDoctors: count })));
     }
 
     if (canViewAppointments) {
@@ -138,35 +113,34 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    let paymentMethodBreakdown: Record<string, number> = {};
+
     if (canViewInvoices) {
       promises.push(
-        Invoice.find({
-          ...tenantFilter,
-          createdAt: { $gte: dateRange.start, $lte: dateRange.end },
-        }).then(invoices => {
-          const periodRevenue = invoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
-          const periodBilled = invoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
-          return { periodInvoices: invoices, periodRevenue, periodBilled };
-        }),
-        Invoice.find({
-          ...tenantFilter,
-          status: { $in: ['unpaid', 'partial'] },
-        }).then(invoices => {
-          const totalOutstanding = invoices.reduce((sum: number, inv: any) => sum + (inv.outstandingBalance || 0), 0);
-          return { outstandingInvoices: invoices, totalOutstanding, outstandingInvoiceCount: invoices.length };
+        Invoice.aggregate([
+          { $match: periodInvoiceMatch },
+          { $group: { _id: null, revenue: { $sum: { $ifNull: ['$totalPaid', 0] } }, billed: { $sum: { $ifNull: ['$total', 0] } } } },
+        ]).then(rows => ({ periodRevenue: rows[0]?.revenue || 0, periodBilled: rows[0]?.billed || 0 })),
+        Invoice.aggregate([
+          { $match: { ...tenantFilter, status: { $in: ['unpaid', 'partial'] } } },
+          { $group: { _id: null, outstanding: { $sum: { $ifNull: ['$outstandingBalance', 0] } }, count: { $sum: 1 } } },
+        ]).then(rows => ({ totalOutstanding: rows[0]?.outstanding || 0, outstandingInvoiceCount: rows[0]?.count || 0 })),
+        Invoice.aggregate([
+          { $match: periodInvoiceMatch },
+          { $unwind: '$payments' },
+          { $group: { _id: { $ifNull: ['$payments.method', 'unknown'] }, amount: { $sum: { $ifNull: ['$payments.amount', 0] } } } },
+        ]).then(rows => {
+          paymentMethodBreakdown = Object.fromEntries(rows.map((row: any) => [row._id, row.amount]));
+          return {};
         })
       );
     }
 
-    // Wait for all promises
     const results = await Promise.all(promises);
-    
-    // Merge results into overview
     results.forEach(result => {
       Object.assign(overview, result);
     });
 
-    // Set defaults for missing values
     overview.totalPatients = overview.totalPatients || 0;
     overview.totalDoctors = overview.totalDoctors || 0;
     overview.todayAppointments = overview.todayAppointments || 0;
@@ -177,29 +151,19 @@ export async function GET(request: NextRequest) {
     overview.totalOutstanding = parseFloat((overview.totalOutstanding || 0).toFixed(2));
     overview.outstandingInvoiceCount = overview.outstandingInvoiceCount || 0;
 
-    // Fetch appointments if permitted (tenant-scoped)
+    const patientPopulateOptions = {
+      path: 'patient',
+      select: 'firstName lastName',
+      match: patientTenantFilter(tenantId),
+    };
+
     if (canViewAppointments) {
-      // Build populate options with tenant filter
-      const patientPopulateOptions: any = {
-        path: 'patient',
-        select: 'firstName lastName',
-      };
-      if (tenantId) {
-        patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-      } else {
-        patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-      }
-      
-      const doctorPopulateOptions: any = {
+      const doctorPopulateOptions = {
         path: 'doctor',
         select: 'firstName lastName',
+        match: buildTenantFilter(tenantId),
       };
-      if (tenantId) {
-        doctorPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-      } else {
-        doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-      }
-      
+
       const recentAppointments = await Appointment.find({
         ...tenantFilter,
         appointmentDate: { $gte: todayStart, $lte: todayEnd },
@@ -210,11 +174,10 @@ export async function GET(request: NextRequest) {
         .limit(10)
         .lean();
 
-      const nextWeek = new Date(now);
-      nextWeek.setDate(now.getDate() + 7);
+      const nextWeek = dayRangeOffsetInTz(7, now, tz).end;
       const upcomingAppointments = await Appointment.find({
         ...tenantFilter,
-        appointmentDate: { $gte: todayEnd, $lte: nextWeek },
+        appointmentDate: { $gt: todayEnd, $lte: nextWeek },
         status: { $in: ['scheduled', 'confirmed'] },
       })
         .populate(patientPopulateOptions)
@@ -247,42 +210,18 @@ export async function GET(request: NextRequest) {
       data.upcomingAppointments = [];
     }
 
-    // Payment method breakdown for period (if invoices accessible)
-    if (canViewInvoices && overview.periodInvoices) {
-      const paymentMethodBreakdown: Record<string, number> = {};
-      overview.periodInvoices.forEach((inv: any) => {
-        inv.payments?.forEach((payment: any) => {
-          const method = payment.method || 'unknown';
-          paymentMethodBreakdown[method] = (paymentMethodBreakdown[method] || 0) + (payment.amount || 0);
-        });
-      });
-      data.paymentMethodBreakdown = paymentMethodBreakdown;
-    } else {
-      data.paymentMethodBreakdown = {};
-    }
+    data.paymentMethodBreakdown = paymentMethodBreakdown;
 
-    // Role-specific data (tenant-scoped)
     if (session.role === 'doctor') {
-      // Doctor-specific: My appointments, my visits, my prescriptions
-      const doctorUser = await import('@/models/User').then(m => m.default);
-      const user = await doctorUser.findById(session.userId).lean();
-      const staffId = (user as any)?.staff?._id;
+      const user = await User.findOne(buildTenantFilter(tenantId, { _id: session.userId }))
+        .select('doctorProfile')
+        .lean();
+      const doctorProfileId = (user as any)?.doctorProfile;
 
-      if (staffId) {
-        // Build populate options with tenant filter
-        const patientPopulateOptions: any = {
-          path: 'patient',
-          select: 'firstName lastName',
-        };
-        if (tenantId) {
-          patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-        } else {
-          patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-        }
-        
+      if (doctorProfileId) {
         const myAppointments = await Appointment.find({
           ...tenantFilter,
-          doctor: staffId,
+          $or: [{ doctor: doctorProfileId }, { provider: session.userId }],
           appointmentDate: { $gte: todayStart, $lte: todayEnd },
         })
           .populate(patientPopulateOptions)
@@ -292,7 +231,7 @@ export async function GET(request: NextRequest) {
 
         const myVisits = await Visit.find({
           ...tenantFilter,
-          provider: staffId,
+          provider: session.userId,
           date: { $gte: dateRange.start, $lte: dateRange.end },
         })
           .populate(patientPopulateOptions)
@@ -316,31 +255,33 @@ export async function GET(request: NextRequest) {
           diagnosis: visit.diagnosis || 'N/A',
         }));
       } else {
-        // Fallback: log missing staff reference and prevent crash
-        console.warn(`Doctor user ${session.userId} is missing staff reference. Dashboard will not show personal appointments/visits.`);
+        console.warn(`Doctor user ${session.userId} is missing doctorProfile reference. Dashboard will not show personal appointments/visits.`);
         data.myAppointments = [];
         data.myVisits = [];
       }
     }
 
     if (session.role === 'accountant') {
-      // Accountant-specific: Financial summary (tenant-scoped)
-      const allInvoices = await Invoice.find({
-        ...tenantFilter,
-        createdAt: { $gte: dateRange.start, $lte: dateRange.end },
-      }).lean();
-
-      const paidInvoices = allInvoices.filter((inv: any) => inv.status === 'paid');
-      const unpaidInvoices = allInvoices.filter((inv: any) => inv.status === 'unpaid');
-      const partialInvoices = allInvoices.filter((inv: any) => inv.status === 'partial');
+      const rows = await Invoice.aggregate([
+        { $match: periodInvoiceMatch },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            totalPaid: { $sum: { $ifNull: ['$totalPaid', 0] } },
+            outstanding: { $sum: { $ifNull: ['$outstandingBalance', 0] } },
+          },
+        },
+      ]);
+      const byStatus = (status: string) => rows.find((r: any) => r._id === status);
 
       data.financialSummary = {
-        totalInvoices: allInvoices.length,
-        paidInvoices: paidInvoices.length,
-        unpaidInvoices: unpaidInvoices.length,
-        partialInvoices: partialInvoices.length,
-        totalPaid: paidInvoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0),
-        totalUnpaid: unpaidInvoices.reduce((sum: number, inv: any) => sum + (inv.outstandingBalance || 0), 0),
+        totalInvoices: rows.reduce((sum: number, r: any) => sum + r.count, 0),
+        paidInvoices: byStatus('paid')?.count || 0,
+        unpaidInvoices: byStatus('unpaid')?.count || 0,
+        partialInvoices: byStatus('partial')?.count || 0,
+        totalPaid: byStatus('paid')?.totalPaid || 0,
+        totalUnpaid: byStatus('unpaid')?.outstanding || 0,
       };
     }
 
@@ -351,16 +292,10 @@ export async function GET(request: NextRequest) {
       data,
     });
   } catch (error: any) {
-    // Improved error logging and reporting
     console.error('Error generating role-based dashboard data:', error);
-    let errorMessage = 'Failed to generate dashboard data';
-    if (error && error.message) {
-      errorMessage += `: ${error.message}`;
-    }
     return NextResponse.json(
-      { success: false, error: errorMessage, details: error?.stack || error },
+      { success: false, error: 'Failed to generate dashboard data' },
       { status: 500 }
     );
   }
 }
-

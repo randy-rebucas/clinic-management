@@ -59,44 +59,43 @@ export default function PatientEditClient({ patientId }: { patientId: string }) 
   const router = useRouter();
 
   useEffect(() => {
-    fetchPatient();
-  }, [patientId]);
-
-  const fetchPatient = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await fetch(`/api/patients/${patientId}`);
+    const fetchPatient = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch(`/api/patients/${patientId}`);
       
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      if (!res.ok) {
-        const contentType = res.headers.get('content-type');
-        let errorData;
-        if (contentType && contentType.includes('application/json')) {
-          errorData = await res.json();
+        if (res.status === 401) {
+          router.push('/login');
+          return;
         }
-        const errorMsg = errorData?.error || `Failed to load patient: ${res.status} ${res.statusText}`;
-        setError(errorMsg);
-        return;
-      }
       
-      const data = await res.json();
-      if (data.success && data.data) {
-        setPatient(data.data);
-      } else {
-        setError(data.error || 'Failed to load patient');
+        if (!res.ok) {
+          const contentType = res.headers.get('content-type');
+          let errorData;
+          if (contentType && contentType.includes('application/json')) {
+            errorData = await res.json();
+          }
+          const errorMsg = errorData?.error || `Failed to load patient: ${res.status} ${res.statusText}`;
+          setError(errorMsg);
+          return;
+        }
+      
+        const data = await res.json();
+        if (data.success && data.data) {
+          setPatient(data.data);
+        } else {
+          setError(data.error || 'Failed to load patient');
+        }
+      } catch (error) {
+        console.error('Failed to fetch patient:', error);
+        setError('Failed to load patient. Please try again.');
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Failed to fetch patient:', error);
-      setError('Failed to load patient. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    fetchPatient();
+  }, [patientId, router]);
 
   const handleSubmit = async (formData: any) => {
     setSubmitting(true);

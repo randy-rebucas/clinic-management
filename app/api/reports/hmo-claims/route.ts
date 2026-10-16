@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { sanitizeSearch } from '@/lib/utils';
+import { isAdmin } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
+import { escapeRegex } from '@/lib/api/validate';
+
+// Bound the result set; the report returns every claim inline.
+const MAX_CLAIMS = 5000;
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   // Only admin and accountant can view HMO reports
-  if (session.role !== 'admin' && session.role !== 'accountant') {
+  if (!isAdmin(session) && session.role !== 'accountant') {
     return NextResponse.json(
       { success: false, error: 'Unauthorized' },
       { status: 403 }
@@ -26,13 +27,12 @@ export async function GET(request: NextRequest) {
     const provider = searchParams.get('provider');
     const status = searchParams.get('status');
 
-    // Get invoices with insurance/HMO
-    const query: any = {
+    const query: any = tenantFilter(tenantId, {
       insurance: { $exists: true, $ne: null },
-    };
+    });
 
     if (provider) {
-      query['insurance.provider'] = { $regex: sanitizeSearch(provider), $options: 'i' };
+      query['insurance.provider'] = { $regex: escapeRegex(provider.slice(0, 100)), $options: 'i' };
     }
 
     if (status) {
@@ -40,9 +40,11 @@ export async function GET(request: NextRequest) {
     }
 
     const invoices = await Invoice.find(query)
+      .select('invoiceNumber insurance total createdAt patient')
       .populate('patient', 'firstName lastName patientCode')
-      .populate('visit', 'visitCode date')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(MAX_CLAIMS)
+      .lean();
 
     // Group by provider
     const byProvider: Record<string, any> = {};
@@ -97,17 +99,17 @@ export async function GET(request: NextRequest) {
     // Calculate totals
     const totalClaims = invoices.length;
     const totalClaimAmount = invoices.reduce((sum: number, inv: any) => sum + (inv.insurance?.coverageAmount || inv.total || 0), 0);
-    const pendingClaims = invoices.filter(inv => inv.insurance?.status === 'pending').length;
-    const approvedClaims = invoices.filter(inv => inv.insurance?.status === 'approved').length;
-    const rejectedClaims = invoices.filter(inv => inv.insurance?.status === 'rejected').length;
-    const paidClaims = invoices.filter(inv => inv.insurance?.status === 'paid').length;
+    const pendingClaims = invoices.filter((inv: any) => inv.insurance?.status === 'pending').length;
+    const approvedClaims = invoices.filter((inv: any) => inv.insurance?.status === 'approved').length;
+    const rejectedClaims = invoices.filter((inv: any) => inv.insurance?.status === 'rejected').length;
+    const paidClaims = invoices.filter((inv: any) => inv.insurance?.status === 'paid').length;
 
     // Calculate backlog (pending + approved but not paid)
     const backlogCount = invoices.filter(
-      inv => inv.insurance?.status === 'pending' || inv.insurance?.status === 'approved'
+      (inv: any) => inv.insurance?.status === 'pending' || inv.insurance?.status === 'approved'
     ).length;
     const backlogAmount = invoices
-      .filter(inv => inv.insurance?.status === 'pending' || inv.insurance?.status === 'approved')
+      .filter((inv: any) => inv.insurance?.status === 'pending' || inv.insurance?.status === 'approved')
       .reduce((sum: number, inv: any) => sum + (inv.insurance?.coverageAmount || inv.total || 0), 0);
 
     // Age of claims (days since creation)

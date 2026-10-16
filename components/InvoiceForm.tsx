@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useId, FormEvent } from 'react';
 import { useSetting } from './SettingsContext';
 
 interface Patient {
@@ -69,6 +69,9 @@ interface InvoiceFormProps {
   services: Service[];
   onSubmit: (data: any) => void;
   onCancel?: () => void;
+  submitting?: boolean;
+  /** When provided, patient search is done server-side and `patients` holds the results. */
+  onPatientSearch?: (query: string) => void;
 }
 
 export default function InvoiceForm({
@@ -78,6 +81,8 @@ export default function InvoiceForm({
   services,
   onSubmit,
   onCancel,
+  submitting = false,
+  onPatientSearch,
 }: InvoiceFormProps) {
   const currency = useSetting('billingSettings.currency', 'PHP');
   const defaultTaxRate = useSetting('billingSettings.taxRate', 0);
@@ -91,6 +96,7 @@ export default function InvoiceForm({
     }).format(amount);
   };
   
+  const uid = useId();
   const [formData, setFormData] = useState({
     patient: initialData?.patient || '',
     visit: initialData?.visit || '',
@@ -113,26 +119,20 @@ export default function InvoiceForm({
     },
   });
 
-  const [patientSearch, setPatientSearch] = useState('');
+  const [patientSearchInput, setPatientSearch] = useState<string | null>(null);
   const [showPatientSearch, setShowPatientSearch] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [pickedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  // A preset patient (initialData) is resolved once it shows up in `patients`; an explicit pick wins.
+  const selectedPatient =
+    (pickedPatient && pickedPatient._id === formData.patient ? pickedPatient : null) ??
+    (formData.patient ? patients.find((p) => p._id === formData.patient) ?? null : null);
+  const patientSearch =
+    patientSearchInput ?? (selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : '');
   const [serviceSearch, setServiceSearch] = useState('');
   const [showServiceSearch, setShowServiceSearch] = useState(false);
   const [filteredServices, setFilteredServices] = useState<Service[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
-
-  useEffect(() => {
-    if (formData.patient) {
-      const patient = patients.find((p) => p._id === formData.patient);
-      setTimeout(() => {
-        setSelectedPatient(patient || null);
-        if (patient) {
-          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-        }
-      }, 0);
-    }
-  }, [formData.patient, patients]);
 
   // Fetch doctors for professional fee selection
   useEffect(() => {
@@ -200,23 +200,7 @@ export default function InvoiceForm({
     return { subtotal, professionalFee, discountTotal, afterDiscount, tax: taxAmount, total };
   };
   
-  // Update formData.tax when defaultTaxRate changes (for display purposes)
-  useEffect(() => {
-    if (defaultTaxRate > 0) {
-      const subtotal = formData.items.reduce((sum, item) => sum + item.total, 0);
-      const discountTotal = formData.discounts.reduce((sum, disc) => sum + disc.amount, 0);
-      const afterDiscount = subtotal - discountTotal;
-      const calculatedTax = afterDiscount * defaultTaxRate / 100;
-      // Don't update if user manually set tax to 0
-      if (formData.tax !== calculatedTax) {
-        setTimeout(() => {
-          setFormData(prev => ({ ...prev, tax: calculatedTax }));
-        }, 0);
-      }
-    }
-  }, [defaultTaxRate, formData.items, formData.discounts]);
-
-  const { subtotal, professionalFee, discountTotal, afterDiscount, tax, total } = calculateTotals();
+  const { subtotal, professionalFee, discountTotal, tax, total } = calculateTotals();
 
   const addItem = (service?: Service) => {
     const newItem: InvoiceItem = {
@@ -294,6 +278,7 @@ export default function InvoiceForm({
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     if (!formData.patient || !selectedPatient) {
       alert('Please select a valid patient');
       setShowPatientSearch(true);
@@ -320,7 +305,8 @@ export default function InvoiceForm({
       professionalFeeType: formData.professionalFeeType || undefined,
       professionalFeeNotes: formData.professionalFeeNotes || undefined,
       discounts: formData.discounts.length > 0 ? formData.discounts : undefined,
-      tax: formData.tax || 0,
+      // With a configured tax rate the tax is computed from the current items, not the stored field.
+      tax: tax || 0,
       insurance: formData.insurance.provider
         ? {
             provider: formData.insurance.provider,
@@ -338,7 +324,7 @@ export default function InvoiceForm({
     onSubmit(submitData);
   };
 
-  const filteredPatients = patients.filter((patient) => {
+  const filteredPatients = onPatientSearch ? patients : patients.filter((patient) => {
     const searchLower = patientSearch.toLowerCase();
     const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
     const patientCode = (patient.patientCode || '').toLowerCase();
@@ -364,18 +350,19 @@ export default function InvoiceForm({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-              <label className="block text-sm font-bold text-gray-900">
+              <label htmlFor={`${uid}-patient`} className="block text-sm font-bold text-gray-900">
                 Patient <span className="text-red-600">*</span>
               </label>
             </div>
             <div className="relative patient-search-container">
-              <input
+              <input id={`${uid}-patient`}
                 type="text"
                 required
                 value={patientSearch}
                 onChange={(e) => {
                   setPatientSearch(e.target.value);
                   setShowPatientSearch(true);
+                  onPatientSearch?.(e.target.value);
                   if (!e.target.value) {
                     setFormData({ ...formData, patient: '' });
                     setSelectedPatient(null);
@@ -410,8 +397,8 @@ export default function InvoiceForm({
             {/* Visit Selection (Optional) */}
             {formData.patient && visits.length > 0 && (
               <div className="mt-4">
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Visit (Optional)</label>
-                <select
+                <label htmlFor={`${uid}-visit`} className="block text-xs font-semibold text-gray-700 mb-2">Visit (Optional)</label>
+                <select id={`${uid}-visit`}
                   value={formData.visit}
                   onChange={(e) => setFormData({ ...formData, visit: e.target.value })}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -450,6 +437,7 @@ export default function InvoiceForm({
                   }}
                   onFocus={() => setShowServiceSearch(true)}
                   placeholder="Search services..."
+                  aria-label="Search services to add"
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                 />
                 {showServiceSearch && filteredServices.length > 0 && (
@@ -491,6 +479,7 @@ export default function InvoiceForm({
                           type="text"
                           value={item.description}
                           onChange={(e) => updateItem(index, 'description', e.target.value)}
+                          aria-label={`Item ${index + 1} description`}
                           required
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                         />
@@ -502,6 +491,7 @@ export default function InvoiceForm({
                           min="1"
                           value={item.quantity}
                           onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                          aria-label={`Item ${index + 1} quantity`}
                           required
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                         />
@@ -514,6 +504,7 @@ export default function InvoiceForm({
                           step="0.01"
                           value={item.unitPrice}
                           onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                          aria-label={`Item ${index + 1} unit price`}
                           required
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
                         />
@@ -530,9 +521,10 @@ export default function InvoiceForm({
                         <button
                           type="button"
                           onClick={() => removeItem(index)}
+                          aria-label={`Remove item ${index + 1}`}
                           className="w-full px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors font-semibold text-sm"
                         >
-                          ×
+                          <span aria-hidden="true">×</span>
                         </button>
                       </div>
                     </div>
@@ -606,6 +598,7 @@ export default function InvoiceForm({
                         <select
                           value={discount.type}
                           onChange={(e) => updateDiscount(index, 'type', e.target.value)}
+                          aria-label={`Discount ${index + 1} type`}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                         >
                           <option value="pwd">PWD</option>
@@ -623,6 +616,7 @@ export default function InvoiceForm({
                           max="100"
                           value={discount.percentage || ''}
                           onChange={(e) => updateDiscount(index, 'percentage', parseFloat(e.target.value) || 0)}
+                          aria-label={`Discount ${index + 1} percentage`}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm"
                         />
                       </div>
@@ -634,6 +628,7 @@ export default function InvoiceForm({
                           step="0.01"
                           value={discount.amount}
                           onChange={(e) => updateDiscount(index, 'amount', parseFloat(e.target.value) || 0)}
+                          aria-label={`Discount ${index + 1} amount`}
                           required
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm"
                         />
@@ -644,6 +639,7 @@ export default function InvoiceForm({
                           type="text"
                           value={discount.reason || ''}
                           onChange={(e) => updateDiscount(index, 'reason', e.target.value)}
+                          aria-label={`Discount ${index + 1} reason`}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm"
                         />
                       </div>
@@ -651,9 +647,10 @@ export default function InvoiceForm({
                         <button
                           type="button"
                           onClick={() => removeDiscount(index)}
+                          aria-label={`Remove discount ${index + 1}`}
                           className="w-full px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors font-semibold text-sm"
                         >
-                          ×
+                          <span aria-hidden="true">×</span>
                         </button>
                       </div>
                     </div>
@@ -675,10 +672,10 @@ export default function InvoiceForm({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                <label htmlFor={`${uid}-pf-amount`} className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
                   Amount
                 </label>
-                <input
+                <input id={`${uid}-pf-amount`}
                   type="number"
                   min="0"
                   step="0.01"
@@ -690,10 +687,10 @@ export default function InvoiceForm({
                 <p className="text-xs text-gray-600 mt-1">Doctor&apos;s professional fee separate from service charges</p>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                <label htmlFor={`${uid}-pf-type`} className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
                   Type
                 </label>
-                <select
+                <select id={`${uid}-pf-type`}
                   value={formData.professionalFeeType || ''}
                   onChange={(e) => setFormData({ ...formData, professionalFeeType: e.target.value as any })}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -706,10 +703,10 @@ export default function InvoiceForm({
                 </select>
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                <label htmlFor={`${uid}-pf-doctor`} className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
                   Doctor (Optional)
                 </label>
-                <select
+                <select id={`${uid}-pf-doctor`}
                   value={formData.professionalFeeDoctor || ''}
                   onChange={(e) => setFormData({ ...formData, professionalFeeDoctor: e.target.value })}
                   disabled={loadingDoctors}
@@ -726,10 +723,10 @@ export default function InvoiceForm({
                 <p className="text-xs text-gray-600 mt-1">Assign the professional fee to a specific doctor</p>
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                <label htmlFor={`${uid}-pf-notes`} className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
                   Notes (Optional)
                 </label>
-                <input
+                <input id={`${uid}-pf-notes`}
                   type="text"
                   value={formData.professionalFeeNotes || ''}
                   onChange={(e) => setFormData({ ...formData, professionalFeeNotes: e.target.value })}
@@ -753,10 +750,10 @@ export default function InvoiceForm({
             <div className="flex flex-col gap-4">
               {/* Tax */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
+                <label htmlFor={`${uid}-tax`} className="block text-xs font-semibold text-gray-700 mb-2">
                   Tax {defaultTaxRate > 0 ? `(${defaultTaxRate}% applied automatically)` : '(Manual)'}
                 </label>
-                <input
+                <input id={`${uid}-tax`}
                   type="number"
                   min="0"
                   step="0.01"
@@ -772,8 +769,8 @@ export default function InvoiceForm({
                 <h4 className="text-sm font-bold text-gray-900 mb-3">Insurance/HMO (Optional)</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Provider</label>
-                    <input
+                    <label htmlFor={`${uid}-insurance-provider`} className="block text-xs font-semibold text-gray-700 mb-2">Provider</label>
+                    <input id={`${uid}-insurance-provider`}
                       type="text"
                       value={formData.insurance.provider}
                       onChange={(e) =>
@@ -786,8 +783,8 @@ export default function InvoiceForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Policy Number</label>
-                    <input
+                    <label htmlFor={`${uid}-insurance-policy`} className="block text-xs font-semibold text-gray-700 mb-2">Policy Number</label>
+                    <input id={`${uid}-insurance-policy`}
                       type="text"
                       value={formData.insurance.policyNumber}
                       onChange={(e) =>
@@ -800,8 +797,8 @@ export default function InvoiceForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Member ID</label>
-                    <input
+                    <label htmlFor={`${uid}-insurance-member-id`} className="block text-xs font-semibold text-gray-700 mb-2">Member ID</label>
+                    <input id={`${uid}-insurance-member-id`}
                       type="text"
                       value={formData.insurance.memberId}
                       onChange={(e) =>
@@ -814,8 +811,8 @@ export default function InvoiceForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Coverage Type</label>
-                    <select
+                    <label htmlFor={`${uid}-insurance-coverage`} className="block text-xs font-semibold text-gray-700 mb-2">Coverage Type</label>
+                    <select id={`${uid}-insurance-coverage`}
                       value={formData.insurance.coverageType}
                       onChange={(e) =>
                         setFormData({
@@ -886,8 +883,8 @@ export default function InvoiceForm({
                 Cancel
               </button>
             )}
-            <button type="submit" className="px-4 py-2.5 text-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-md">
-              Create Invoice
+            <button type="submit" disabled={submitting} aria-busy={submitting} className="px-4 py-2.5 text-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed">
+              {submitting ? 'Creating…' : 'Create Invoice'}
             </button>
           </div>
         </div>

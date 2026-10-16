@@ -21,7 +21,7 @@ export default function ResultsInfoPanel({
   }
 
   return (
-    <div className="pt-3 border-t border-gray-200 space-y-2 text-sm text-gray-600">
+    <div className="pt-3 border-t border-gray-200 space-y-2 text-sm text-gray-600" role="status">
       {(debouncedSearchQuery || activeFilterCount > 0) && (
         <p className="font-medium text-gray-700">
           Found <span className="font-bold text-gray-900">{filteredPatients.length}</span>{' '}

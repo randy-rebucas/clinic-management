@@ -1,21 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
-import Specialization from '@/models/Specialization';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+import { createDoctorSchema, resolveSpecialization, validationMessage } from './_lib/doctor-input';
 
 export async function GET() {
-  // User authentication check
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to read doctors
   const permissionCheck = await requirePermission(session, 'doctors', 'read');
   if (permissionCheck) {
     return permissionCheck;
@@ -23,43 +18,27 @@ export async function GET() {
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build doctor query with tenant filter
-    const doctorQuery: any = {};
-    if (tenantId) {
-      doctorQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      // If no tenant, get doctors without tenantId (backward compatibility)
-      doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const doctors = await Doctor.find(doctorQuery)
+
+    const doctors = await Doctor.find(tenantFilter(tenantId))
       .populate('specializationId', 'name description category')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     return NextResponse.json({ success: true, data: doctors });
   } catch (error: any) {
     console.error('Error fetching doctors:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to fetch doctors' },
+      { success: false, error: 'Failed to fetch doctors' },
       { status: 500 }
     );
   }
 }
 
 export async function POST(request: NextRequest) {
-  // User authentication check
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to write/create doctors (typically admin only)
   const permissionCheck = await requirePermission(session, 'doctors', 'write');
   if (permissionCheck) {
     return permissionCheck;
@@ -67,79 +46,42 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
-    const body = await request.json();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
+    const parsed = await parseBody(request, createDoctorSchema);
+    if (isValidationError(parsed)) return parsed;
 
-    // Check subscription limit for creating doctors
-    if (tenantId) {
-      const { checkSubscriptionLimit } = await import('@/lib/subscription-limits');
-      const limitCheck = await checkSubscriptionLimit(tenantId, 'createDoctor');
-      if (!limitCheck.allowed) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: limitCheck.reason || 'Subscription limit exceeded',
-            limit: limitCheck.limit,
-            current: limitCheck.current,
-            remaining: limitCheck.remaining,
-          },
-          { status: 403 }
-        );
-      }
+    const { checkSubscriptionLimit } = await import('@/lib/subscription-limits');
+    const limitCheck = await checkSubscriptionLimit(tenantId, 'createDoctor');
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: limitCheck.reason || 'Subscription limit exceeded',
+          limit: limitCheck.limit,
+          current: limitCheck.current,
+          remaining: limitCheck.remaining,
+        },
+        { status: 403 }
+      );
     }
-    
-    // Ensure doctor is created with tenantId
-    if (tenantId && !body.tenantId) {
-      body.tenantId = new Types.ObjectId(tenantId);
+
+    const resolved = await resolveSpecialization(parsed.data);
+    if ('error' in resolved) {
+      return NextResponse.json({ success: false, error: resolved.error }, { status: 400 });
     }
-    
-    // Handle specialization: convert specialization string to specializationId
-    if (body.specialization && !body.specializationId) {
-      const specializationName = body.specialization.trim();
-      
-      if (!specializationName) {
-        return NextResponse.json(
-          { success: false, error: 'Specialization is required' },
-          { status: 400 }
-        );
-      }
-      
-      // Find or create specialization globally (not tenant-scoped)
-      let specialization = await Specialization.findOne({ name: specializationName });
-      
-      if (!specialization) {
-        // Create new specialization if it doesn't exist (globally)
-        specialization = await Specialization.create({
-          name: specializationName,
-          active: true,
-          category: 'Specialty', // Default category for custom specializations
-        });
-      }
-      
-      // Replace specialization string with specializationId
-      body.specializationId = specialization._id;
-      delete body.specialization;
-    }
-    
-    // Validate that specializationId exists
-    if (!body.specializationId) {
+    if (!resolved.specializationId) {
       return NextResponse.json(
         { success: false, error: 'Specialization is required' },
         { status: 400 }
       );
     }
-    
-    const doctor = await Doctor.create(body);
-    // Populate the specializationId after creation
+
+    const doctor = await Doctor.create({ ...resolved, tenantId: tenantObjectId });
     await doctor.populate('specializationId', 'name description category');
     return NextResponse.json({ success: true, data: doctor }, { status: 201 });
   } catch (error: any) {
     if (error.name === 'ValidationError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: validationMessage(error) },
         { status: 400 }
       );
     }
@@ -149,10 +91,10 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       );
     }
+    console.error('Error creating doctor:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to create doctor' },
       { status: 500 }
     );
   }
 }
-

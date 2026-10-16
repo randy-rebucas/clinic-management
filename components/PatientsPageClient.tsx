@@ -46,6 +46,7 @@ export default function PatientsPageClient() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedSegmentFlags, setSelectedSegmentFlags] = useState<Record<string, boolean>>({});
   const selectAllCheckboxRef = useRef<HTMLInputElement>(null);
+  const requestIdRef = useRef(0);
   const router = useRouter();
 
   // Update indeterminate state for select-all checkbox
@@ -56,28 +57,38 @@ export default function PatientsPageClient() {
     }
   }, [selectedPatients.length, patients.length]);
 
+  // A new search/sort/filter always starts at page 1.
+  const resetPage = useCallback(() => {
+    setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+  }, []);
+
   // Debounce search query
   useEffect(() => {
+    if (searchQuery === debouncedSearchQuery) return;
     const timer = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery);
+      resetPage();
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, debouncedSearchQuery, resetPage]);
 
   const handleSearchForm = useCallback((e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     // Only update debouncedSearchQuery if not already set (prevents double fetch)
     if (debouncedSearchQuery !== searchQuery) {
       setDebouncedSearchQuery(searchQuery);
+      resetPage();
     }
-  }, [debouncedSearchQuery, searchQuery]);
+  }, [debouncedSearchQuery, searchQuery, resetPage]);
 
-  // Fetch patients when filters or search change
-  useEffect(() => {
-    fetchPatients();
-  }, [debouncedSearchQuery, sortBy, JSON.stringify(filters), pagination.page]);
+  const handleSortChange = useCallback((value: SortOption) => {
+    setSortBy(value);
+    resetPage();
+  }, [resetPage]);
 
   const fetchPatients = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    const isStale = () => requestId !== requestIdRef.current;
     try {
       setLoading(true);
       setError(null);
@@ -127,6 +138,8 @@ export default function PatientsPageClient() {
       }
 
       const data = await parseApiResponse<Patient[]>(res);
+      // Ignore responses that arrive after a newer search/page request.
+      if (isStale()) return;
 
       if (data.success && data.data) {
         setPatients(data.data);
@@ -137,6 +150,7 @@ export default function PatientsPageClient() {
         throw new ApiError(res.status, data.error || 'Failed to fetch patients');
       }
     } catch (err) {
+      if (isStale()) return;
       const apiError = err instanceof ApiError ? err : new ApiError(500, 'Unknown error', err);
       const message = formatErrorMessage(apiError);
       console.error('Failed to fetch patients:', apiError);
@@ -145,9 +159,16 @@ export default function PatientsPageClient() {
       const timer = setTimeout(() => setError(null), 5000);
       return () => clearTimeout(timer);
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
   }, [debouncedSearchQuery, filters, sortBy, pagination.page, pagination.limit, router]);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchPatients();
+    };
+    load();
+  }, [fetchPatients]);
 
   // Patients are already filtered and sorted on the server, apply client-side segmentation filters
   const filteredPatients = useMemo(() => {
@@ -301,7 +322,7 @@ export default function PatientsPageClient() {
                     title={`Send bulk SMS or email (${selectedPatients.length} selected)`}
                     aria-label="Send bulk communications"
                   >
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                     <span className="hidden sm:inline">Communicate</span>
@@ -314,7 +335,7 @@ export default function PatientsPageClient() {
                     title="Export patient data"
                     aria-label="Export patients"
                   >
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2m0 0v-8m0 8a9 9 0 018.354-8.646M3.646 3.646a9 9 0 1016.708 0M9 5h.01M15 5h.01" />
                     </svg>
                     <span className="hidden sm:inline">Export</span>
@@ -324,7 +345,7 @@ export default function PatientsPageClient() {
                   href="/patients/new"
                   className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg font-semibold text-sm inline-flex items-center gap-2 flex-shrink-0"
                 >
-                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                   <span className="hidden sm:inline">Add Patient</span>
@@ -347,7 +368,7 @@ export default function PatientsPageClient() {
               onSearchChange={setSearchQuery}
               onSearchSubmit={handleSearchForm}
               sortBy={sortBy}
-              onSortChange={setSortBy}
+              onSortChange={handleSortChange}
               showFilters={showFilters}
               onShowFiltersChange={setShowFilters}
               activeFilterCount={activeFilterCount}

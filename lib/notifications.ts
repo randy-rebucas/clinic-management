@@ -7,7 +7,20 @@ import { Types } from 'mongoose';
 export interface CreateNotificationOptions {
   userId: string | Types.ObjectId;
   tenantId?: string | Types.ObjectId; // Tenant ID for multi-tenant support
-  type: 'appointment' | 'visit' | 'prescription' | 'lab_result' | 'invoice' | 'reminder' | 'system' | 'broadcast';
+  type:
+    | 'appointment'
+    | 'visit'
+    | 'prescription'
+    | 'lab_result'
+    | 'invoice'
+    | 'reminder'
+    | 'system'
+    | 'broadcast'
+    | 'visit_followup_reminder'
+    | 'membership_expiry_reminder'
+    | 'referral_followup_reminder'
+    | 'referral_escalation'
+    | 'patient_reengagement';
   priority?: 'low' | 'normal' | 'high' | 'urgent';
   title: string;
   message: string;

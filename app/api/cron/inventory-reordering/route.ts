@@ -1,49 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import { processInventoryReordering } from '@/lib/automations/inventory-reordering';
-import { getTenantContext } from '@/lib/tenant';
+
+export const maxDuration = 300;
 
 /**
- * Cron job to automatically create reorder requests for inventory
- * Runs daily at 9:00 AM
+ * Sends each tenant a daily reorder digest.
+ * Schedule: see vercel.json. Auth: Authorization: Bearer $CRON_SECRET.
  */
 export async function GET(request: NextRequest) {
-  // Authenticate request
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-  
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-  }
-  
+  const denied = requireCron(request);
+  if (denied) return denied;
+
   try {
-    const tenantContext = await getTenantContext();
-    const tenantId = tenantContext.tenantId;
-    
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'No tenant context found' },
-        { status: 400 }
-      );
-    }
-    
-    const result = await processInventoryReordering(tenantId);
-    
+    const result = await processInventoryReordering();
     return NextResponse.json({
       success: result.success,
       message: 'Inventory reordering processed',
       data: result,
     });
-  } catch (error: any) {
-    console.error('Error in inventory reordering cron:', error);
-    return NextResponse.json(
-      { success: false, error: error.message || 'Failed to process inventory reordering' },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('[Cron] inventory-reordering error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to process inventory-reordering' }, { status: 500 });
   }
 }

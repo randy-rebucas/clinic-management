@@ -1,35 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Notification from '@/models/Notification';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { requireNotificationScope, isNotificationScopeError } from '../_lib/scope';
 
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const scope = await requireNotificationScope();
+  if (isNotificationScopeError(scope)) return scope;
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
-    
-    const updateQuery: any = { user: session.userId, read: false };
-    if (tenantId) {
-      updateQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      updateQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
+
     const result = await Notification.updateMany(
-      updateQuery,
-      { read: true, readAt: new Date() }
+      { ...scope.ownFilter, read: false },
+      { $set: { read: true, readAt: new Date() } }
     );
 
     return NextResponse.json({
@@ -44,4 +27,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

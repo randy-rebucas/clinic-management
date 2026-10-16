@@ -1,31 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
-import { getTenantId } from '@/lib/tenant';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { checkSubscriptionStatus } from '@/lib/subscription';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    // Verify user is authenticated
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const ctx = await requireTenantSession();
+    if (isTenantSessionError(ctx)) return ctx;
+    const { session, tenantId } = ctx;
 
     // Only admin/owner may view billing status
     if (!['admin', 'owner'].includes(session.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    // Get tenant ID
-    const tenantId = await getTenantId();
-    if (!tenantId) {
-      return NextResponse.json(
-        { error: 'Tenant not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
     // Check subscription status

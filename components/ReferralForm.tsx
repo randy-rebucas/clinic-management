@@ -195,11 +195,12 @@ export default function ReferralForm({
             <div className="flex flex-col gap-4">
               {/* Referral Type */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
+                <label htmlFor="referral-type" className="block text-xs font-semibold text-gray-700 mb-2">
                   Referral Type <span className="text-red-600">*</span>
                 </label>
                 <select
                   required
+                  id="referral-type"
                   value={formData.type}
                   onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -212,13 +213,14 @@ export default function ReferralForm({
 
               {/* Patient Selection */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
+                <label htmlFor="referral-patient-search" className="block text-xs font-semibold text-gray-700 mb-2">
                   Patient <span className="text-red-600">*</span>
                 </label>
                 <div className="relative patient-search-container">
                   <input
                     type="text"
                     required
+                    id="referral-patient-search"
                     value={patientSearch}
                     onChange={(e) => {
                       setPatientSearch(e.target.value);
@@ -285,8 +287,9 @@ export default function ReferralForm({
               </div>
               <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referring Doctor (Optional)</label>
+                  <label htmlFor="referral-referring-doctor" className="block text-xs font-semibold text-gray-700 mb-2">Referring Doctor (Optional)</label>
                   <select
+                    id="referral-referring-doctor"
                     value={formData.referringDoctor || undefined}
                     onChange={(e) => setFormData({ ...formData, referringDoctor: e.target.value === 'none' ? '' : e.target.value })}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -301,11 +304,12 @@ export default function ReferralForm({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">
+                  <label htmlFor="referral-receiving-doctor" className="block text-xs font-semibold text-gray-700 mb-2">
                     Receiving Doctor <span className="text-red-600">*</span>
                   </label>
                   <select
                     required={formData.type === 'doctor_to_doctor'}
+                    id="referral-receiving-doctor"
                     value={formData.receivingDoctor}
                     onChange={(e) => setFormData({ ...formData, receivingDoctor: e.target.value })}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -336,9 +340,10 @@ export default function ReferralForm({
               </div>
               <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referring Clinic (Optional)</label>
+                  <label htmlFor="referral-referring-clinic" className="block text-xs font-semibold text-gray-700 mb-2">Referring Clinic (Optional)</label>
                   <input
                     type="text"
+                    id="referral-referring-clinic"
                     value={formData.referringClinic}
                     onChange={(e) => setFormData({ ...formData, referringClinic: e.target.value })}
                     placeholder="Name of referring clinic"
@@ -346,12 +351,13 @@ export default function ReferralForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">
+                  <label htmlFor="referral-contact-name" className="block text-xs font-semibold text-gray-700 mb-2">
                     Referring Contact Name <span className="text-red-600">*</span>
                   </label>
                   <input
                     type="text"
                     required={formData.type === 'external'}
+                    id="referral-contact-name"
                     value={formData.referringContact.name}
                     onChange={(e) => setFormData({
                       ...formData,
@@ -363,9 +369,10 @@ export default function ReferralForm({
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Contact Phone (Optional)</label>
+                    <label htmlFor="referral-contact-phone" className="block text-xs font-semibold text-gray-700 mb-2">Contact Phone (Optional)</label>
                     <input
                       type="tel"
+                      id="referral-contact-phone"
                       value={formData.referringContact.phone}
                       onChange={(e) => setFormData({
                         ...formData,
@@ -376,9 +383,10 @@ export default function ReferralForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Contact Email (Optional)</label>
+                    <label htmlFor="referral-contact-email" className="block text-xs font-semibold text-gray-700 mb-2">Contact Email (Optional)</label>
                     <input
                       type="email"
+                      id="referral-contact-email"
                       value={formData.referringContact.email}
                       onChange={(e) => setFormData({
                         ...formData,
@@ -390,9 +398,10 @@ export default function ReferralForm({
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Receiving Clinic (Optional)</label>
+                  <label htmlFor="referral-receiving-clinic" className="block text-xs font-semibold text-gray-700 mb-2">Receiving Clinic (Optional)</label>
                   <input
                     type="text"
+                    id="referral-receiving-clinic"
                     value={formData.receivingClinic}
                     onChange={(e) => setFormData({ ...formData, receivingClinic: e.target.value })}
                     placeholder="Name of receiving clinic"
@@ -416,11 +425,12 @@ export default function ReferralForm({
             <div className="flex flex-col gap-4">
               {/* Reason for Referral */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
+                <label htmlFor="referral-reason" className="block text-xs font-semibold text-gray-700 mb-2">
                   Reason for Referral <span className="text-red-600">*</span>
                 </label>
                 <textarea
                   required
+                  id="referral-reason"
                   value={formData.reason}
                   onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                   placeholder="Describe the reason for this referral"
@@ -432,11 +442,12 @@ export default function ReferralForm({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Urgency */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">
+                  <label htmlFor="referral-urgency" className="block text-xs font-semibold text-gray-700 mb-2">
                     Urgency <span className="text-red-600">*</span>
                   </label>
                   <select
                     required
+                    id="referral-urgency"
                     value={formData.urgency}
                     onChange={(e) => setFormData({ ...formData, urgency: e.target.value as any })}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -449,9 +460,10 @@ export default function ReferralForm({
 
                 {/* Specialty */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Required Specialty (Optional)</label>
+                  <label htmlFor="referral-specialty" className="block text-xs font-semibold text-gray-700 mb-2">Required Specialty (Optional)</label>
                   <input
                     type="text"
+                    id="referral-specialty"
                     value={formData.specialty}
                     onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
                     placeholder="e.g., Cardiology, Orthopedics"
@@ -475,8 +487,9 @@ export default function ReferralForm({
             <div className="flex flex-col gap-4">
               {/* Chief Complaint */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Chief Complaint (Optional)</label>
+                <label htmlFor="referral-chief-complaint" className="block text-xs font-semibold text-gray-700 mb-2">Chief Complaint (Optional)</label>
                 <textarea
+                  id="referral-chief-complaint"
                   value={formData.chiefComplaint}
                   onChange={(e) => setFormData({ ...formData, chiefComplaint: e.target.value })}
                   placeholder="Patient's chief complaint"
@@ -487,9 +500,10 @@ export default function ReferralForm({
 
               {/* Diagnosis */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Diagnosis (Optional)</label>
+                <label htmlFor="referral-diagnosis" className="block text-xs font-semibold text-gray-700 mb-2">Diagnosis (Optional)</label>
                 <input
                   type="text"
+                  id="referral-diagnosis"
                   value={formData.diagnosis}
                   onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
                   placeholder="Current diagnosis"
@@ -499,8 +513,9 @@ export default function ReferralForm({
 
               {/* Relevant History */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Relevant History (Optional)</label>
+                <label htmlFor="referral-relevant-history" className="block text-xs font-semibold text-gray-700 mb-2">Relevant History (Optional)</label>
                 <textarea
+                  id="referral-relevant-history"
                   value={formData.relevantHistory}
                   onChange={(e) => setFormData({ ...formData, relevantHistory: e.target.value })}
                   placeholder="Relevant medical history"
@@ -524,10 +539,11 @@ export default function ReferralForm({
             <div className="flex flex-col gap-4">
               {/* Medications */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Current Medications (Optional)</label>
+                <label htmlFor="referral-medication-input" className="block text-xs font-semibold text-gray-700 mb-2">Current Medications (Optional)</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
+                    id="referral-medication-input"
                     value={medicationInput}
                     onChange={(e) => setMedicationInput(e.target.value)}
                     onKeyPress={(e) => {
@@ -555,9 +571,10 @@ export default function ReferralForm({
                         <button
                           type="button"
                           onClick={() => removeMedication(index)}
+                          aria-label={`Remove ${med}`}
                           className="ml-1 p-0 min-w-0 hover:text-purple-900 font-bold"
                         >
-                          ×
+                          <span aria-hidden="true">×</span>
                         </button>
                       </span>
                     ))}
@@ -567,8 +584,9 @@ export default function ReferralForm({
 
               {/* Notes */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Additional Notes (Optional)</label>
+                <label htmlFor="referral-notes" className="block text-xs font-semibold text-gray-700 mb-2">Additional Notes (Optional)</label>
                 <textarea
+                  id="referral-notes"
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   placeholder="Any additional notes or instructions"
@@ -593,9 +611,10 @@ export default function ReferralForm({
                 </div>
                 {formData.followUpRequired && (
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-2">Follow-up Date (Optional)</label>
+                    <label htmlFor="referral-follow-up-date" className="block text-xs font-semibold text-gray-700 mb-2">Follow-up Date (Optional)</label>
                     <input
                       type="date"
+                      id="referral-follow-up-date"
                       value={formData.followUpDate}
                       onChange={(e) => setFormData({ ...formData, followUpDate: e.target.value })}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm"

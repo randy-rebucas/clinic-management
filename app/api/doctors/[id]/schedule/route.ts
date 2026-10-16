@@ -1,36 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import User from '@/models/User';
+import { isAdmin } from '@/app/lib/auth-helpers';
+import {
+  requireTenantSession,
+  isTenantSessionError,
+  tenantFilter,
+  isValidId,
+  notFound,
+} from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+import { scheduleEntrySchema, availabilityOverrideSchema, validationMessage } from '../../_lib/doctor-input';
+
+const scheduleUpdateSchema = z.object({
+  schedule: z.array(scheduleEntrySchema).max(50).optional(),
+  availabilityOverrides: z.array(availabilityOverrideSchema).max(500).optional(),
+});
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { tenantId } = ctx;
 
   try {
     await connectDB();
     const { id } = await params;
+    if (!isValidId(id)) return notFound('Doctor');
     const searchParams = request.nextUrl.searchParams;
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
-    const doctor = await Doctor.findById(id).select('schedule availabilityOverrides status');
+    const doctor = await Doctor.findOne(tenantFilter(tenantId, { _id: id }))
+      .select('schedule availabilityOverrides status')
+      .lean() as any;
 
     if (!doctor) {
-      return NextResponse.json(
-        { success: false, error: 'Doctor not found' },
-        { status: 404 }
-      );
+      return notFound('Doctor');
     }
 
-    // Get schedule for specific date range if provided
     const scheduleData = {
       weeklySchedule: doctor.schedule || [],
       availabilityOverrides: doctor.availabilityOverrides || [],
@@ -39,8 +51,7 @@ export async function GET(
     if (startDate && endDate) {
       const start = new Date(startDate);
       const end = new Date(endDate);
-      
-      // Filter overrides for the date range
+
       scheduleData.availabilityOverrides = (doctor.availabilityOverrides || []).filter(
         (override: any) => {
           const overrideDate = new Date(override.date);
@@ -63,14 +74,11 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Only admin or the doctor themselves can update schedule
-  if (session.role !== 'admin' && session.role !== 'doctor') {
+  if (!isAdmin(session) && session.role !== 'doctor') {
     return NextResponse.json(
       { success: false, error: 'Unauthorized' },
       { status: 403 }
@@ -80,22 +88,36 @@ export async function PUT(
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
+    if (!isValidId(id)) return notFound('Doctor');
 
-    const doctor = await Doctor.findByIdAndUpdate(
-      id,
-      {
-        schedule: body.schedule,
-        availabilityOverrides: body.availabilityOverrides,
-      },
+    // Doctors may only edit their own schedule.
+    if (!isAdmin(session)) {
+      const user = await User.findOne(tenantFilter(tenantId, { _id: session.userId }))
+        .select('doctorProfile')
+        .lean() as any;
+      if (!user?.doctorProfile || String(user.doctorProfile) !== id) {
+        return NextResponse.json(
+          { success: false, error: 'Unauthorized' },
+          { status: 403 }
+        );
+      }
+    }
+
+    const parsed = await parseBody(request, scheduleUpdateSchema);
+    if (isValidationError(parsed)) return parsed;
+
+    const update: Record<string, unknown> = {};
+    if (parsed.data.schedule !== undefined) update.schedule = parsed.data.schedule;
+    if (parsed.data.availabilityOverrides !== undefined) update.availabilityOverrides = parsed.data.availabilityOverrides;
+
+    const doctor = await Doctor.findOneAndUpdate(
+      tenantFilter(tenantId, { _id: id }),
+      { $set: update },
       { new: true, runValidators: true }
     ).select('schedule availabilityOverrides status');
 
     if (!doctor) {
-      return NextResponse.json(
-        { success: false, error: 'Doctor not found' },
-        { status: 404 }
-      );
+      return notFound('Doctor');
     }
 
     return NextResponse.json({ success: true, data: doctor });
@@ -103,7 +125,7 @@ export async function PUT(
     console.error('Error updating doctor schedule:', error);
     if (error.name === 'ValidationError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: validationMessage(error) },
         { status: 400 }
       );
     }
@@ -113,4 +135,3 @@ export async function PUT(
     );
   }
 }
-

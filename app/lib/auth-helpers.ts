@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { jwtVerify } from 'jose';
+import { cache } from 'react';
+import { createHmac } from 'crypto';
 import { redirect } from 'next/navigation';
 import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
 import Permission from '@/models/Permission';
 import { Types } from 'mongoose';
-import { verifySession } from './dal';
+import { verifySession, verifySessionToken, deriveKey } from './dal';
+import { safeEqual } from '@/lib/cron-auth';
 
 export interface JWTPayload {
   userId: string;
@@ -16,74 +17,25 @@ export interface JWTPayload {
   expiresAt?: number | Date;
 }
 
-// Use the same secret as dal.ts for consistency
-const secretKey = process.env.SESSION_SECRET;
-const encodedKey = new TextEncoder().encode(
-  secretKey ||
-    (process.env.NODE_ENV === 'production'
-      ? ''
-      : 'default-secret-key-change-in-production-dev-only')
-);
-
+/**
+ * Verify a staff session token (signature, type, expiry, revocation and user status).
+ * Socket tokens and patient tokens are rejected.
+ */
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
-  if (!secretKey && process.env.NODE_ENV === 'production') {
-    throw new Error('SESSION_SECRET environment variable is required in production');
-  }
-  try {
-    const { payload } = await jwtVerify(token, encodedKey, {
-      algorithms: ['HS256'],
-    });
-
-    // Validate required fields
-    if (
-      typeof payload !== 'object' ||
-      !payload ||
-      typeof (payload as any).userId !== 'string' ||
-      typeof (payload as any).email !== 'string' ||
-      typeof (payload as any).role !== 'string'
-    ) {
-      return null;
-    }
-
-    return payload as unknown as JWTPayload;
-  } catch (error) {
-    return null;
-  }
+  return verifySessionToken(token);
 }
 
 export async function getCurrentUser(request: NextRequest): Promise<JWTPayload | null> {
   try {
     // Check for session cookie (primary) or auth-token cookie (legacy) or Authorization header
+    const authHeader = request.headers.get('authorization') ?? '';
     const token = request.cookies.get('session')?.value ||
                   request.cookies.get('auth-token')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
+                  (authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '');
     if (!token) {
       return null;
     }
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return null;
-    }
-    await connectDB();
-    const user = await User.findById(payload.userId).select('isActive status tenantId').lean<{ isActive?: boolean; status?: string; tenantId?: string } | null>();
-
-    // Check if user exists and is active
-    if (!user) {
-      return null;
-    }
-
-    // Check user is active (support both isActive boolean and status string)
-    const isUserActive = user.isActive !== false && user.status !== 'inactive';
-    if (!isUserActive) {
-      return null;
-    }
-
-    // For multi-tenant, verify tenant matches if both have tenantId
-    if (payload.tenantId && user.tenantId && user.tenantId.toString() !== payload.tenantId) {
-      return null;
-    }
-
-    return payload;
+    return await verifySessionToken(token);
   } catch (error) {
     console.error('Error getting current user:', error);
     return null;
@@ -191,76 +143,61 @@ const defaultRolePermissions: Record<string, Record<string, string[]>> = {
   },
 };
 
+type PermissionSubject = { userId?: string; role?: string; roleId?: string; tenantId?: string } | null;
+
+/**
+ * Load every Permission document granted to this user or role in one query.
+ * Memoized per request, so many checks in one render cost a single round-trip.
+ */
+const loadGrantedPermissions = cache(async (userId: string, roleId: string, tenantId: string): Promise<Set<string>> => {
+  const owners: Record<string, Types.ObjectId>[] = [];
+  if (userId && Types.ObjectId.isValid(userId)) owners.push({ user: new Types.ObjectId(userId) });
+  if (roleId && Types.ObjectId.isValid(roleId)) owners.push({ role: new Types.ObjectId(roleId) });
+  if (owners.length === 0) return new Set();
+
+  await connectDB();
+  const tenantClause = tenantId && Types.ObjectId.isValid(tenantId)
+    ? { tenantId: new Types.ObjectId(tenantId) }
+    : { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
+
+  const docs = await Permission.find({ $and: [tenantClause, { $or: owners }] })
+    .select('resource actions')
+    .lean<{ resource: string; actions?: string[] }[]>();
+
+  const granted = new Set<string>();
+  for (const doc of docs) {
+    for (const action of doc.actions || []) granted.add(`${doc.resource}:${action}`);
+  }
+  return granted;
+});
+
+/**
+ * Build an in-memory permission checker for a session (one DB query in total).
+ */
+export async function getPermissionChecker(
+  session: PermissionSubject
+): Promise<(resource: string, action: string) => boolean> {
+  if (!session) return () => false;
+  if (session.role === 'admin' || session.role === 'owner') return () => true;
+
+  const granted = await loadGrantedPermissions(session.userId || '', session.roleId || '', session.tenantId || '');
+  const defaults = session.role ? defaultRolePermissions[session.role] : undefined;
+  return (resource: string, action: string) =>
+    granted.has(`${resource}:${action}`) || !!defaults?.[action]?.includes(resource);
+}
+
 /**
  * Check if user has permission (returns boolean)
  * Used for UI visibility checks
  */
 export async function hasPermission(
-  session: { userId?: string; role?: string; roleId?: string; tenantId?: string } | null,
+  session: PermissionSubject,
   resource: string,
   action: string
 ): Promise<boolean> {
-  if (!session) {
-    return false;
-  }
-
-  // Admins and owners have full access
-  if (session.role === 'admin' || session.role === 'owner') {
-    return true;
-  }
-
   try {
-    await connectDB();
-
-    // Build query for permissions
-    const permissionQuery: any = {
-      resource,
-      actions: action,
-    };
-
-    // Add tenant filter if available
-    if (session.tenantId) {
-      permissionQuery.tenantId = new Types.ObjectId(session.tenantId);
-    } else {
-      permissionQuery.$or = [
-        { tenantId: { $exists: false } },
-        { tenantId: null }
-      ];
-    }
-
-    // Check user-specific permission
-    if (session.userId) {
-      const userPermission = await Permission.findOne({
-        ...permissionQuery,
-        user: new Types.ObjectId(session.userId),
-      }).lean();
-
-      if (userPermission) {
-        return true;
-      }
-    }
-
-    // Check role-based permission
-    if (session.roleId) {
-      const rolePermission = await Permission.findOne({
-        ...permissionQuery,
-        role: new Types.ObjectId(session.roleId),
-      }).lean();
-
-      if (rolePermission) {
-        return true;
-      }
-    }
-
-    // Check default role permissions
-    if (session.role && defaultRolePermissions[session.role]) {
-      const rolePerms = defaultRolePermissions[session.role];
-      if (rolePerms[action]?.includes(resource)) {
-        return true;
-      }
-    }
-
-    return false;
+    const check = await getPermissionChecker(session);
+    return check(resource, action);
   } catch (error) {
     console.error('Error checking permission:', error);
     return false;
@@ -272,7 +209,7 @@ export async function hasPermission(
  * Returns null if allowed, or a 403 response if forbidden
  */
 export async function requirePermission(
-  session: { userId?: string; role?: string; roleId?: string; tenantId?: string } | null,
+  session: PermissionSubject,
   resource: string,
   action: string
 ): Promise<NextResponse | null> {
@@ -280,62 +217,9 @@ export async function requirePermission(
     return forbiddenResponse('No session provided');
   }
 
-  // Admins and owners have full access
-  if (session.role === 'admin' || session.role === 'owner') {
-    return null;
-  }
-
   try {
-    await connectDB();
-
-    // Build query for permissions - check both user-specific and role-based
-    const permissionQuery: any = {
-      resource,
-      actions: action,
-    };
-
-    // Add tenant filter if available
-    if (session.tenantId) {
-      permissionQuery.tenantId = new Types.ObjectId(session.tenantId);
-    } else {
-      permissionQuery.$or = [
-        { tenantId: { $exists: false } },
-        { tenantId: null }
-      ];
-    }
-
-    // Check user-specific permission first
-    if (session.userId) {
-      const userPermission = await Permission.findOne({
-        ...permissionQuery,
-        user: new Types.ObjectId(session.userId),
-      }).lean();
-
-      if (userPermission) {
-        return null; // Permission granted
-      }
-    }
-
-    // Check role-based permission
-    if (session.roleId) {
-      const rolePermission = await Permission.findOne({
-        ...permissionQuery,
-        role: new Types.ObjectId(session.roleId),
-      }).lean();
-
-      if (rolePermission) {
-        return null; // Permission granted
-      }
-    }
-
-    // Check default role permissions
-    if (session.role && defaultRolePermissions[session.role]) {
-      const rolePerms = defaultRolePermissions[session.role];
-      if (rolePerms[action]?.includes(resource)) {
-        return null; // Permission granted via default role permissions
-      }
-    }
-
+    const check = await getPermissionChecker(session);
+    if (check(resource, action)) return null;
     return forbiddenResponse(`Permission denied: Cannot ${action} ${resource}`);
   } catch (error) {
     console.error('Error checking permission:', error);
@@ -378,68 +262,30 @@ export async function requirePagePermission(
     redirect('/login');
   }
 
-  // Admins and owners have full access
-  if (session.role === 'admin' || session.role === 'owner') {
-    return;
-  }
-
+  let allowed = false;
   try {
-    await connectDB();
-
-    // Build query for permissions
-    const permissionQuery: any = {
-      resource,
-      actions: action,
-    };
-
-    // Add tenant filter if available
-    if (session.tenantId) {
-      permissionQuery.tenantId = new Types.ObjectId(session.tenantId);
-    } else {
-      permissionQuery.$or = [
-        { tenantId: { $exists: false } },
-        { tenantId: null }
-      ];
-    }
-
-    // Check user-specific permission
-    if (session.userId) {
-      const userPermission = await Permission.findOne({
-        ...permissionQuery,
-        user: new Types.ObjectId(session.userId),
-      }).lean();
-
-      if (userPermission) {
-        return; // Permission granted
-      }
-    }
-
-    // Check role-based permission
-    if (session.roleId) {
-      const rolePermission = await Permission.findOne({
-        ...permissionQuery,
-        role: new Types.ObjectId(session.roleId),
-      }).lean();
-
-      if (rolePermission) {
-        return; // Permission granted
-      }
-    }
-
-    // Check default role permissions
-    if (session.role && defaultRolePermissions[session.role]) {
-      const rolePerms = defaultRolePermissions[session.role];
-      if (rolePerms[action]?.includes(resource)) {
-        return; // Permission granted
-      }
-    }
-
-    // No permission - redirect to dashboard
-    redirect('/dashboard?error=access_denied');
+    const check = await getPermissionChecker(session);
+    allowed = check(resource, action);
   } catch (error) {
     console.error('Error checking page permission:', error);
     redirect('/dashboard?error=permission_error');
   }
+
+  if (!allowed) {
+    redirect('/dashboard?error=access_denied');
+  }
 }
 
+/**
+ * Token for a doctor's iCalendar feed URL. Keyed with a key derived from SESSION_SECRET
+ * and bound to the linked user's sessionVersion, so revoking sessions also revokes feed links.
+ */
+export function calendarFeedToken(doctorId: string, sessionVersion = 0): string {
+  return createHmac('sha256', deriveKey('calendar-feed'))
+    .update(`${doctorId}:${sessionVersion}`)
+    .digest('hex');
+}
 
+export function verifyCalendarFeedToken(doctorId: string, sessionVersion: number, token: string): boolean {
+  return safeEqual(calendarFeedToken(doctorId, sessionVersion), token);
+}

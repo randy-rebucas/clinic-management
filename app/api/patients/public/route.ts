@@ -1,9 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
+import Tenant from '@/models/Tenant';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { Types } from 'mongoose';
+import { getTenantContext } from '@/lib/tenant';
+import { isValidId } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+import { checkSubscriptionLimit } from '@/lib/subscription-limits';
+import { patientFieldsSchema, cleanPatientInput, nextPatientCode } from '@/lib/patient-schema';
+
+// Self-registration may only fill in demographic/medical history fields; status, tags,
+// segment flags, tenant links, codes and credentials are staff/system controlled.
+const publicRegistrationSchema = patientFieldsSchema
+  .omit({ active: true, tags: true, segmentFlags: true, discountEligibility: true })
+  .extend({
+    sex: z.enum(['male', 'female', 'other']).optional(),
+    tenantId: z.string().optional(),
+  });
 
 /**
  * Public endpoint for patient self-registration
@@ -16,260 +32,126 @@ export async function POST(request: NextRequest) {
   if (rateLimitResponse) {
     return rateLimitResponse;
   }
-  
+
   try {
     await connectDB();
-    
-    // Parse request body with error handling
-    let body;
-    try {
-      body = await request.json();
-    } catch (parseError: any) {
-      logger.error('Failed to parse request body', parseError as Error);
-      return NextResponse.json(
-        { success: false, error: 'Invalid request format. Please check your input and try again.' },
-        { status: 400 }
-      );
+
+    const parsed = await parseBody(request, publicRegistrationSchema);
+    if (isValidationError(parsed)) return parsed;
+    const { tenantId: requestedTenantId, ...fields } = parsed.data;
+
+    // The clinic comes from the subdomain; an explicit id is accepted only for an active clinic.
+    const ctx = await getTenantContext();
+    let tenantObjectId: Types.ObjectId | null = ctx.tenantId ? new Types.ObjectId(ctx.tenantId) : null;
+    if (!tenantObjectId && isValidId(requestedTenantId)) {
+      const tenant = await Tenant.findOne({ _id: requestedTenantId, status: 'active' }).select('_id').lean() as any;
+      if (tenant) tenantObjectId = tenant._id as Types.ObjectId;
     }
-    
-    // Validate body exists
-    if (!body || typeof body !== 'object') {
+    if (!tenantObjectId) {
       return NextResponse.json(
-        { success: false, error: 'Invalid request data. Please provide valid patient information.' },
-        { status: 400 }
-      );
-    }
-    
-    
-    // Validate required fields
-    if (!body.firstName || !body.lastName || !body.phone || !body.dateOfBirth) {
-      return NextResponse.json(
-        { success: false, error: 'Missing required fields: firstName, lastName, phone, and dateOfBirth are required' },
+        { success: false, error: 'Clinic not found. Please register through your clinic\'s page.' },
         { status: 400 }
       );
     }
 
-    // Get tenantId from body if provided
-    const tenantId = body.tenantId;
+    const limitCheck = await checkSubscriptionLimit(tenantObjectId, 'createPatient');
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'This clinic is not accepting online registrations right now. Please contact the clinic.' },
+        { status: 403 }
+      );
+    }
 
-    // Handle email - if provided, check for duplicates and normalize (tenant-scoped)
-    if (body.email && body.email.trim()) {
-      const normalizedEmail = body.email.toLowerCase().trim();
-      const emailQuery: any = { email: normalizedEmail };
-      if (tenantId) {
-        emailQuery.tenantIds = new Types.ObjectId(tenantId);
-      } else {
-        emailQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-      }
-      
-      const existingPatient = await Patient.findOne(emailQuery);
+    const data: Record<string, any> = cleanPatientInput(fields);
+
+    if (data.email) {
+      const existingPatient = await Patient.exists({ email: data.email, tenantIds: tenantObjectId });
       if (existingPatient) {
         return NextResponse.json(
           { success: false, error: 'A patient with this email already exists. Please use a different email or contact the clinic.' },
           { status: 409 }
         );
       }
-      body.email = normalizedEmail;
     } else {
-      // Generate a unique email placeholder if not provided
-      // Use patient code pattern to ensure uniqueness
-      const timestamp = Date.now();
       const randomSuffix = Math.random().toString(36).substring(2, 8);
-      body.email = `patient-${timestamp}-${randomSuffix}@clinic.local`;
+      data.email = `patient-${Date.now()}-${randomSuffix}@clinic.local`;
     }
-    
-    // Auto-generate patientCode if not provided
-    // Use retry mechanism to handle race conditions
-    if (!body.patientCode) {
-      let patientCode: string;
-      let attempts = 0;
-      const maxAttempts = 10;
-      
-      do {
-        attempts++;
-        if (attempts > maxAttempts) {
-          return NextResponse.json(
-            { success: false, error: 'Unable to generate unique patient code. Please try again or contact the clinic.' },
-            { status: 500 }
-          );
-        }
-        
-        // Find the highest patient code number (tenant-scoped)
-        const codeQuery: any = { 
-          patientCode: { $exists: true, $ne: null, $regex: /^CLINIC-\d+$/ }
-        };
-        if (tenantId) {
-          codeQuery.tenantIds = new Types.ObjectId(tenantId);
-        } else {
-          codeQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-        }
-        
-        const lastPatient = await Patient.findOne(codeQuery)
-          .sort({ patientCode: -1 })
-          .exec();
-        
-        let nextNumber = 1;
-        if (lastPatient?.patientCode) {
-          const match = lastPatient.patientCode.match(/(\d+)$/);
-          if (match) {
-            nextNumber = parseInt(match[1], 10) + attempts; // Add attempts to avoid collisions
-          }
-        }
-        
-        patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
-        
-        // Check if this code already exists (tenant-scoped)
-        const codeExistsQuery: any = { patientCode };
-        if (tenantId) {
-          codeExistsQuery.tenantIds = new Types.ObjectId(tenantId);
-        } else {
-          codeExistsQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-        }
-        
-        const existing = await Patient.findOne(codeExistsQuery);
-        if (!existing) {
-          break; // Code is available
-        }
-        
-        // If code exists, try next number
-        nextNumber++;
-        patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
-      } while (true);
-      
-      body.patientCode = patientCode;
-    }
-    
-    // Set default status for public registrations
-    body.active = body.active !== undefined ? body.active : true;
-    
-    // Create patient with retry on duplicate key error
-    let patient;
-    let createAttempts = 0;
-    const maxCreateAttempts = 5;
-    
-    while (createAttempts < maxCreateAttempts) {
+
+    let patient: any;
+    for (let attempt = 0; attempt < 3 && !patient; attempt++) {
       try {
-        patient = await Patient.create(body);
-        break; // Success
+        patient = await Patient.create({
+          ...data,
+          patientCode: await nextPatientCode(),
+          tenantIds: [tenantObjectId],
+          active: true,
+        });
       } catch (createError: any) {
-        createAttempts++;
-        
-        // If it's a duplicate key error for patientCode, generate a new one
-        if (createError.code === 11000 && createError.keyPattern?.patientCode) {
-          if (createAttempts >= maxCreateAttempts) {
-            return NextResponse.json(
-              { success: false, error: 'Unable to create patient due to code conflict. Please try again.' },
-              { status: 500 }
-            );
-          }
-          
-          // Generate a new patient code (tenant-scoped)
-          const codeQuery: any = { 
-            patientCode: { $exists: true, $ne: null, $regex: /^CLINIC-\d+$/ }
-          };
-          if (tenantId) {
-            codeQuery.tenantIds = new Types.ObjectId(tenantId);
-          } else {
-            codeQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-          }
-          
-          const lastPatient = await Patient.findOne(codeQuery)
-            .sort({ patientCode: -1 })
-            .exec();
-          
-          let nextNumber = 1;
-          if (lastPatient?.patientCode) {
-            const match = lastPatient.patientCode.match(/(\d+)$/);
-            if (match) {
-              nextNumber = parseInt(match[1], 10) + createAttempts + 1;
-            }
-          }
-          
-          body.patientCode = `CLINIC-${String(nextNumber).padStart(4, '0')}`;
-          continue; // Retry with new code
-        }
-        
-        // If it's not a duplicate key error, throw it
+        if (createError.code === 11000 && createError.keyPattern?.patientCode) continue;
         throw createError;
       }
     }
-    
+
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Failed to create patient. Please try again.' },
         { status: 500 }
       );
     }
-    
+
     logger.info('Public patient registration successful', {
       patientId: patient._id.toString(),
       patientCode: patient.patientCode,
-      email: patient.email,
     });
 
-    // Send welcome message (async, don't wait)
     import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
       sendWelcomeMessage({
         patientId: patient._id,
-        tenantId: patient.tenantIds?.[0],
+        tenantId: tenantObjectId,
         sendSMS: true,
         sendEmail: true,
         sendNotification: false,
       }).catch((error) => {
         console.error('Error sending welcome message:', error);
-        // Don't fail patient creation if welcome message fails
       });
     }).catch((error) => {
       console.error('Error loading welcome messages module:', error);
     });
-    
-    return NextResponse.json({ 
-      success: true, 
-      data: patient,
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        _id: patient._id,
+        patientCode: patient.patientCode,
+        firstName: patient.firstName,
+        lastName: patient.lastName,
+      },
       message: 'Patient registration successful. Your patient code is: ' + patient.patientCode
     }, { status: 201 });
   } catch (error: any) {
     logger.error('Error in public patient registration', error as Error, {
       name: error.name,
       code: error.code,
-      errors: error.errors,
-      message: error.message,
-      stack: error.stack,
     });
-    
-    // Handle validation errors
+
     if (error.name === 'ValidationError') {
-      // Extract validation error messages
       const validationErrors = Object.values(error.errors || {}).map((err: any) => err.message).join(', ');
       return NextResponse.json(
-        { success: false, error: validationErrors || error.message || 'Validation error occurred' },
+        { success: false, error: validationErrors || 'Validation error occurred' },
         { status: 400 }
       );
     }
-    
-    // Handle duplicate key errors (MongoDB)
+
     if (error.code === 11000) {
-      const field = error.keyPattern ? Object.keys(error.keyPattern)[0] : 'field';
       return NextResponse.json(
-        { success: false, error: `A patient with this ${field} already exists. Please use a different value or contact the clinic.` },
+        { success: false, error: 'A patient with these details already exists. Please contact the clinic.' },
         { status: 409 }
       );
     }
-    
-    // Handle connection errors
-    if (error.name === 'MongoServerError' || error.name === 'MongoNetworkError') {
-      return NextResponse.json(
-        { success: false, error: 'Database connection error. Please try again later or contact the clinic.' },
-        { status: 503 }
-      );
-    }
-    
-    // Generic error handler - ensure we always return a proper error message
-    const errorMessage = error.message || 'Failed to register patient. Please try again or contact the clinic.';
+
     return NextResponse.json(
-      { success: false, error: errorMessage },
+      { success: false, error: 'Failed to register patient. Please try again or contact the clinic.' },
       { status: 500 }
     );
   }
 }
-

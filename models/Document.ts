@@ -44,6 +44,7 @@ export interface IDocument extends Document {
   scanned?: boolean; // Whether document was scanned
   ocrText?: string; // OCR extracted text (for scanned documents)
   expiryDate?: Date; // For documents with expiry (e.g., medical certificates)
+  expiryAlertsSent?: number[];
   metadata?: { [key: string]: any }; // Additional metadata (e.g., cloudinaryPublicId)
   
   // Referral specific
@@ -172,6 +173,7 @@ const DocumentSchema: Schema = new Schema(
     scanned: { type: Boolean, default: false },
     ocrText: { type: String },
     expiryDate: { type: Date },
+    expiryAlertsSent: { type: [Number], default: undefined }, // day thresholds already alerted
     metadata: { type: Schema.Types.Mixed }, // Additional metadata
     referral: ReferralSchema,
     imaging: ImagingSchema,
@@ -204,7 +206,10 @@ DocumentSchema.index({ tenantId: 1, uploadedBy: 1, uploadDate: -1 }); // For upl
 DocumentSchema.index({ tenantId: 1, lastModifiedBy: 1 });
 DocumentSchema.index({ tenantId: 1, visit: 1, category: 1 }); // For visit-related documents
 DocumentSchema.index({ tenantId: 1, appointment: 1, category: 1 }); // For appointment-related documents
-DocumentSchema.index({ tenantId: 1, documentCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped document code
+DocumentSchema.index(
+  { tenantId: 1, documentCode: 1 },
+  { unique: true, name: 'uniq_tenant_documentCode', partialFilterExpression: { documentCode: { $type: 'string' } } }
+);
 
 // Pre-save hook to generate document code
 DocumentSchema.pre('save', async function (next) {

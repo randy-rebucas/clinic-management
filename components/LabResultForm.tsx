@@ -144,7 +144,7 @@ export default function LabResultForm({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-              <label className="block text-sm font-bold text-gray-900">
+              <label htmlFor="lab-patient-search" className="block text-sm font-bold text-gray-900">
                 Patient <span className="text-red-600">*</span>
               </label>
             </div>
@@ -152,6 +152,7 @@ export default function LabResultForm({
               <input
                 type="text"
                 required
+                id="lab-patient-search"
                 value={patientSearch}
                 onChange={(e) => {
                   setPatientSearch(e.target.value);
@@ -215,12 +216,13 @@ export default function LabResultForm({
             <div className="flex flex-col gap-4">
               {/* Test Type */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
+                <label htmlFor="lab-test-type" className="block text-xs font-semibold text-gray-700 mb-2">
                   Test Type <span className="text-red-600">*</span>
                 </label>
                 <input
                   type="text"
                   required
+                  id="lab-test-type"
                   value={formData.request.testType}
                   onChange={(e) => setFormData({
                     ...formData,
@@ -233,9 +235,10 @@ export default function LabResultForm({
 
               {/* Test Code (Optional) */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Test Code (Optional)</label>
+                <label htmlFor="lab-test-code" className="block text-xs font-semibold text-gray-700 mb-2">Test Code (Optional)</label>
                 <input
                   type="text"
+                  id="lab-test-code"
                   value={formData.request.testCode}
                   onChange={(e) => setFormData({
                     ...formData,
@@ -248,8 +251,9 @@ export default function LabResultForm({
 
               {/* Description */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Description (Optional)</label>
+                <label htmlFor="lab-description" className="block text-xs font-semibold text-gray-700 mb-2">Description (Optional)</label>
                 <textarea
+                  id="lab-description"
                   value={formData.request.description}
                   onChange={(e) => setFormData({
                     ...formData,
@@ -263,10 +267,11 @@ export default function LabResultForm({
 
               {/* Urgency */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
+                <label htmlFor="lab-urgency" className="block text-xs font-semibold text-gray-700 mb-2">
                   Urgency <span className="text-red-600">*</span>
                 </label>
                 <select
+                  id="lab-urgency"
                   value={formData.request.urgency}
                   onChange={(e) => setFormData({
                     ...formData,
@@ -312,8 +317,9 @@ export default function LabResultForm({
             <div className="flex flex-col gap-4">
               {/* Special Instructions */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Special Instructions (Optional)</label>
+                <label htmlFor="lab-special-instructions" className="block text-xs font-semibold text-gray-700 mb-2">Special Instructions (Optional)</label>
                 <textarea
+                  id="lab-special-instructions"
                   value={formData.request.specialInstructions}
                   onChange={(e) => setFormData({
                     ...formData,
@@ -327,8 +333,9 @@ export default function LabResultForm({
 
               {/* Preparation Notes */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Preparation Notes (Optional)</label>
+                <label htmlFor="lab-preparation-notes" className="block text-xs font-semibold text-gray-700 mb-2">Preparation Notes (Optional)</label>
                 <textarea
+                  id="lab-preparation-notes"
                   value={formData.request.preparationNotes}
                   onChange={(e) => setFormData({
                     ...formData,

@@ -74,23 +74,39 @@ class Logger {
 
   error(message: string, error?: Error, context?: Record<string, unknown>): void {
     this.log('error', message, context, error);
-    
-    // Send to monitoring service if available
-    if (this.isProduction && error) {
+
+    if (errorReporter && error) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { monitoring } = require('./monitoring');
-        if (monitoring.isEnabled()) {
-          monitoring.captureException(error, {
-            message,
-            ...context,
-          });
-        }
+        errorReporter(error, message, pickReportableContext(context));
       } catch {
-        // Monitoring not available, continue without it
+        // Error reporting must never break the caller.
       }
     }
   }
+}
+
+export type ErrorReporter = (error: Error, message: string, context: Record<string, string>) => void;
+
+let errorReporter: ErrorReporter | null = null;
+
+/** Registered by instrumentation.ts only when Sentry is configured; otherwise errors are just logged. */
+export function setErrorReporter(reporter: ErrorReporter | null): void {
+  errorReporter = reporter;
+}
+
+// Log context can hold anything (including patient data), so only these identifiers are reported.
+const REPORTABLE_CONTEXT_KEYS = ['path', 'method', 'route', 'routePath', 'routeType', 'digest', 'tenantId', 'userId', 'jobId', 'automation'];
+
+function pickReportableContext(context?: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!context) return out;
+  for (const key of REPORTABLE_CONTEXT_KEYS) {
+    const value = context[key];
+    if (typeof value === 'string' || typeof value === 'number') {
+      out[key] = key === 'path' || key === 'route' ? String(value).split('?')[0] : String(value);
+    }
+  }
+  return out;
 }
 
 // Export singleton instance

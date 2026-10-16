@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Modal, AlertDialog } from './ui/Modal';
@@ -61,6 +61,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [newNote, setNewNote] = useState({ note: '', isImportant: false });
+  const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
@@ -71,11 +72,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
   });
   const router = useRouter();
 
-  useEffect(() => {
-    fetchDoctor();
-  }, [doctorId]);
-
-  const fetchDoctor = async () => {
+  const fetchDoctor = useCallback(async () => {
     try {
       const res = await fetch(`/api/doctors/${doctorId}`);
       if (res.status === 401) {
@@ -91,10 +88,19 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [doctorId, router]);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchDoctor();
+    };
+    load();
+  }, [fetchDoctor]);
 
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    setSaving(true);
     try {
       const res = await fetch(`/api/doctors/${doctorId}/notes`, {
         method: 'POST',
@@ -116,6 +122,8 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
       console.error('Failed to add note:', error);
       setError('Failed to add note');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -125,8 +133,9 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
   };
 
   const handleDeleteNote = async () => {
-    if (noteToDelete === null) return;
+    if (noteToDelete === null || saving) return;
 
+    setSaving(true);
     try {
       const res = await fetch(`/api/doctors/${doctorId}/notes?index=${noteToDelete}`, {
         method: 'DELETE',
@@ -144,12 +153,15 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
       console.error('Failed to delete note:', error);
       setError('Failed to delete note');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleUpdateSchedule = async () => {
-    if (!doctor) return;
+    if (!doctor || saving) return;
 
+    setSaving(true);
     try {
       const updatedSchedule = [...(doctor.schedule || [])];
       const existingIndex = updatedSchedule.findIndex((s) => s.dayOfWeek === scheduleForm.dayOfWeek);
@@ -179,6 +191,8 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
       console.error('Failed to update schedule:', error);
       setError('Failed to update schedule');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -290,9 +304,10 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
             <div className="flex items-start gap-4">
               <Link 
                 href="/doctors"
+                aria-label="Back to doctors"
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
@@ -348,6 +363,7 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                       }
                       setActiveTab(tab.value as any);
                     }}
+                    aria-pressed={activeTab === tab.value}
                     className={`py-3 px-6 text-sm font-semibold border-b-2 transition-all duration-200 whitespace-nowrap relative ${
                       activeTab === tab.value
                         ? 'text-blue-600 bg-white'
@@ -565,8 +581,8 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                       </div>
                       <div className="flex flex-col gap-4">
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Day of Week</label>
-                          <select
+                          <label htmlFor="doctor-detail-day-of-week" className="block text-sm font-semibold text-gray-700 mb-2">Day of Week</label>
+                          <select id="doctor-detail-day-of-week"
                             value={scheduleForm.dayOfWeek.toString()}
                             onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfWeek: parseInt(e.target.value) })}
                             className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white transition-all"
@@ -580,8 +596,8 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">Start Time</label>
-                            <input
+                            <label htmlFor="doctor-detail-start-time" className="block text-sm font-semibold text-gray-700 mb-2">Start Time</label>
+                            <input id="doctor-detail-start-time"
                               type="time"
                               value={scheduleForm.startTime}
                               onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
@@ -589,8 +605,8 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                             />
                           </div>
                           <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">End Time</label>
-                            <input
+                            <label htmlFor="doctor-detail-end-time" className="block text-sm font-semibold text-gray-700 mb-2">End Time</label>
+                            <input id="doctor-detail-end-time"
                               type="time"
                               value={scheduleForm.endTime}
                               onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })}
@@ -616,9 +632,10 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                           </button>
                           <button 
                             onClick={handleUpdateSchedule}
+                            disabled={saving}
                             className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
                           >
-                            Save Schedule
+                            {saving ? 'Saving…' : 'Save Schedule'}
                           </button>
                         </div>
                       </div>
@@ -711,8 +728,8 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                       <form onSubmit={handleAddNote}>
                         <div className="flex flex-col gap-4">
                           <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">Note</label>
-                            <textarea
+                            <label htmlFor="doctor-detail-note" className="block text-sm font-semibold text-gray-700 mb-2">Note</label>
+                            <textarea id="doctor-detail-note"
                               required
                               value={newNote.note}
                               onChange={(e) => setNewNote({ ...newNote, note: e.target.value })}
@@ -740,9 +757,10 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
                             </button>
                             <button 
                               type="submit"
+                              disabled={saving}
                               className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
                             >
-                              Add Note
+                              {saving ? 'Saving…' : 'Add Note'}
                             </button>
                           </div>
                         </div>
@@ -840,9 +858,10 @@ export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
             </button>
             <button
               onClick={handleDeleteNote}
+              disabled={saving}
               className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold shadow-md"
             >
-              Delete
+              {saving ? 'Deleting…' : 'Delete'}
             </button>
           </AlertDialog>
         </div>

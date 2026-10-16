@@ -40,48 +40,47 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
   };
 
   useEffect(() => {
-    fetchItem();
-  }, [itemId]);
-
-  const fetchItem = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await fetch(`/api/inventory/${itemId}`);
+    const fetchItem = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch(`/api/inventory/${itemId}`);
       
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      if (!res.ok) {
-        const contentType = res.headers.get('content-type');
-        let errorData;
-        if (contentType && contentType.includes('application/json')) {
-          errorData = await res.json();
+        if (res.status === 401) {
+          router.push('/login');
+          return;
         }
-        const errorMsg = errorData?.error || `Failed to load inventory item: ${res.status} ${res.statusText}`;
-        setError(errorMsg);
-        return;
-      }
       
-      const data = await res.json();
-      if (data.success && data.data) {
-        setItem(data.data);
-        // Pre-fill with suggested values
-        setRestockQuantity(data.data.reorderQuantity?.toString() || '');
-        setUnitCost(data.data.unitCost?.toString() || '');
-        setSupplier(data.data.supplier || '');
-      } else {
-        setError(data.error || 'Failed to load inventory item');
+        if (!res.ok) {
+          const contentType = res.headers.get('content-type');
+          let errorData;
+          if (contentType && contentType.includes('application/json')) {
+            errorData = await res.json();
+          }
+          const errorMsg = errorData?.error || `Failed to load inventory item: ${res.status} ${res.statusText}`;
+          setError(errorMsg);
+          return;
+        }
+      
+        const data = await res.json();
+        if (data.success && data.data) {
+          setItem(data.data);
+          // Pre-fill with suggested values
+          setRestockQuantity(data.data.reorderQuantity?.toString() || '');
+          setUnitCost(data.data.unitCost?.toString() || '');
+          setSupplier(data.data.supplier || '');
+        } else {
+          setError(data.error || 'Failed to load inventory item');
+        }
+      } catch (error) {
+        console.error('Failed to fetch inventory item:', error);
+        setError('Failed to load inventory item. Please try again.');
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Failed to fetch inventory item:', error);
-      setError('Failed to load inventory item. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    fetchItem();
+  }, [itemId, router]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -99,9 +98,9 @@ export default function InventoryRestockClient({ itemId }: { itemId: string }) {
 
     setSubmitting(true);
     try {
-      const newQuantity = item!.quantity + quantity;
+      // Send a delta so the server applies it atomically against the current stock.
       const updateData: any = {
-        quantity: newQuantity,
+        delta: quantity,
       };
 
       // Update unit cost if provided

@@ -3,16 +3,10 @@
 
 import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
-import Patient from '@/models/Patient';
-import User from '@/models/User';
-import Doctor from '@/models/Doctor';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
 import { getSettings } from '@/lib/settings';
-import { sendEmail } from '@/lib/email';
-import { sendSMS } from '@/lib/sms';
-import { createNotification } from '@/lib/notifications';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { Types } from 'mongoose';
+import { getTenantStaff, safeNotify, pendingThreshold } from './shared';
 
 export interface TrialExpirationOptions {
   tenantId: string | Types.ObjectId;
@@ -93,12 +87,7 @@ export async function handleTrialExpiration(options: TrialExpirationOptions): Pr
  */
 async function sendTrialExpirationNotifications(tenant: any): Promise<void> {
   try {
-    // Get admin users
-    const adminUsers = await User.find({
-      tenantId: tenant._id,
-      role: 'admin',
-      active: true,
-    }).select('email phone firstName lastName');
+    const adminUsers = await getTenantStaff(tenant._id, ['admin'], '_id email name');
 
     const settings = await getSettings(tenant._id.toString());
     const clinicName = settings?.clinicName || tenant.name || 'Clinic';
@@ -121,39 +110,15 @@ async function sendTrialExpirationNotifications(tenant: any): Promise<void> {
         }
       }
 
-      // Send SMS
-      if (admin.phone) {
-        try {
-          let phoneNumber = admin.phone.trim();
-          if (!phoneNumber.startsWith('+')) {
-            phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-          }
-
-          const message = `Your ${clinicName} trial period has expired. Please subscribe to continue using the service. Visit ${subscriptionUrl}`;
-
-          await sendSMS({
-            to: phoneNumber,
-            message,
-          });
-        } catch (error) {
-          console.error(`Error sending trial expiration SMS to ${admin.phone}:`, error);
-        }
-      }
-
-      // Send in-app notification
-      try {
-        await createNotification({
-          userId: admin._id,
-          tenantId: tenant._id,
-          type: 'system',
-          priority: 'high',
-          title: 'Trial Period Expired',
-          message: 'Your trial period has expired. Please subscribe to continue using the service.',
-          actionUrl: subscriptionUrl,
-        });
-      } catch (error) {
-        console.error(`Error creating trial expiration notification for ${admin._id}:`, error);
-      }
+      await safeNotify({
+        userId: admin._id,
+        tenantId: tenant._id,
+        type: 'system',
+        priority: 'high',
+        title: 'Trial Period Expired',
+        message: 'Your trial period has expired. Please subscribe to continue using the service.',
+        actionUrl: subscriptionUrl,
+      });
     }
   } catch (error) {
     console.error('Error sending trial expiration notifications:', error);
@@ -254,7 +219,7 @@ export async function sendTrialExpirationWarnings(): Promise<{
   try {
     await connectDB();
 
-    // Find tenants with trials expiring in 3 days or less
+    // Find tenants with trials expiring in 3 days or less (warned at 3 and 1 day(s), each once)
     const now = new Date();
     const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
@@ -274,20 +239,17 @@ export async function sendTrialExpirationWarnings(): Promise<{
 
     for (const tenant of expiringTenants) {
       try {
-        // Get admin users
-        const adminUsers = await User.find({
-          tenantId: tenant._id,
-          role: 'admin',
-          active: true,
-        }).select('email phone firstName lastName');
-
-        const expiresAt = tenant.subscription?.expiresAt 
-          ? new Date(tenant.subscription.expiresAt) 
+        const expiresAt = tenant.subscription?.expiresAt
+          ? new Date(tenant.subscription.expiresAt)
           : null;
-        
+
         if (!expiresAt) continue;
 
-        const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        const daysRemaining = Math.max(1, Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+        const due = pendingThreshold(daysRemaining, [3, 1], tenant.subscription?.trialWarningsSent);
+        if (!due) continue;
+
+        const adminUsers = await getTenantStaff(tenant._id, ['admin'], '_id email name');
 
         const settings = await getSettings(tenant._id.toString());
         const clinicName = settings?.clinicName || tenant.name || 'Clinic';
@@ -309,22 +271,21 @@ export async function sendTrialExpirationWarnings(): Promise<{
             }
           }
 
-          // Send in-app notification
-          try {
-            await createNotification({
-              userId: admin._id,
-              tenantId: tenant._id,
-              type: 'system',
-              priority: 'high',
-              title: `Trial Expiring in ${daysRemaining} Day${daysRemaining !== 1 ? 's' : ''}`,
-              message: `Your trial period expires in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}. Please subscribe to continue.`,
-              actionUrl: subscriptionUrl,
-            });
-          } catch (error) {
-            console.error(`Error creating trial warning notification:`, error);
-          }
+          await safeNotify({
+            userId: admin._id,
+            tenantId: tenant._id,
+            type: 'system',
+            priority: 'high',
+            title: `Trial Expiring in ${daysRemaining} Day${daysRemaining !== 1 ? 's' : ''}`,
+            message: `Your trial period expires in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}. Please subscribe to continue.`,
+            actionUrl: subscriptionUrl,
+          });
         }
 
+        await Tenant.updateOne(
+          { _id: tenant._id },
+          { $addToSet: { 'subscription.trialWarningsSent': { $each: due.crossed } } }
+        );
         warningsSent++;
       } catch (error) {
         console.error(`Error sending warning for tenant ${tenant._id}:`, error);
@@ -365,10 +326,10 @@ function generateTrialExpirationEmail(tenant: any, clinicName: string, subscript
           <h1>⚠️ Trial Period Expired</h1>
         </div>
         <div class="content">
-          <p>Dear ${tenant.name || 'Valued Customer'},</p>
+          <p>Dear ${escapeHtml(tenant.name || 'Valued Customer')},</p>
           <div class="warning-box">
             <h2>Your trial period has expired</h2>
-            <p>Your 7-day trial period for ${clinicName} has ended. To continue using our services, please subscribe to one of our plans.</p>
+            <p>Your 7-day trial period for ${escapeHtml(clinicName)} has ended. To continue using our services, please subscribe to one of our plans.</p>
           </div>
           <p><strong>What happens now?</strong></p>
           <ul>
@@ -377,7 +338,7 @@ function generateTrialExpirationEmail(tenant: any, clinicName: string, subscript
             <li>Choose a plan to restore full access</li>
           </ul>
           <p style="text-align: center;">
-            <a href="${subscriptionUrl}" class="button">Subscribe Now</a>
+            <a href="${escapeHtml(subscriptionUrl)}" class="button">Subscribe Now</a>
           </p>
           <p>If you have any questions, please contact our support team.</p>
         </div>
@@ -423,10 +384,10 @@ function generateTrialWarningEmail(
           <h1>⏰ Trial Expiring Soon</h1>
         </div>
         <div class="content">
-          <p>Dear ${tenant.name || 'Valued Customer'},</p>
+          <p>Dear ${escapeHtml(tenant.name || 'Valued Customer')},</p>
           <div class="warning-box">
             <h2>Your trial expires in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}</h2>
-            <p>Your 7-day trial period for ${clinicName} will end soon. Subscribe now to continue enjoying all features without interruption.</p>
+            <p>Your 7-day trial period for ${escapeHtml(clinicName)} will end soon. Subscribe now to continue enjoying all features without interruption.</p>
           </div>
           <p><strong>Don't lose access to:</strong></p>
           <ul>
@@ -437,7 +398,7 @@ function generateTrialWarningEmail(
             <li>Billing and invoicing</li>
           </ul>
           <p style="text-align: center;">
-            <a href="${subscriptionUrl}" class="button">Subscribe Now</a>
+            <a href="${escapeHtml(subscriptionUrl)}" class="button">Subscribe Now</a>
           </p>
           <p>Choose a plan that fits your needs and continue managing your clinic seamlessly.</p>
         </div>

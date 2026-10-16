@@ -12,10 +12,10 @@ export async function GET(request: NextRequest) {
   const session = await verifySession();
   if (!session) return unauthorizedResponse();
 
-  const q = request.nextUrl.searchParams.get('q')?.trim() ?? '';
+  const q = (request.nextUrl.searchParams.get('q')?.trim() ?? '').slice(0, 100);
   const limit = Math.min(
     20,
-    Math.max(1, parseInt(request.nextUrl.searchParams.get('limit') ?? '10', 10))
+    Math.max(1, parseInt(request.nextUrl.searchParams.get('limit') ?? '10', 10) || 10)
   );
 
   if (!q || q.length < 2) {

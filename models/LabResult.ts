@@ -53,6 +53,10 @@ export interface ILabResult extends Document {
   notificationSent?: boolean;
   notificationSentAt?: Date;
   notificationMethod?: 'email' | 'sms' | 'both';
+  notificationAttempts?: number;
+  notificationFailedAt?: Date;
+  archived?: boolean;
+  archivedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -136,6 +140,10 @@ const LabResultSchema: Schema = new Schema(
       type: String,
       enum: ['email', 'sms', 'both'],
     },
+    notificationAttempts: { type: Number },
+    notificationFailedAt: { type: Date }, // set when retries are exhausted
+    archived: { type: Boolean },
+    archivedAt: { type: Date },
   },
   { timestamps: true }
 );
@@ -149,7 +157,12 @@ LabResultSchema.index({ tenantId: 1, status: 1 });
 LabResultSchema.index({ tenantId: 1, orderedBy: 1, orderDate: -1 }); // For orderer history
 LabResultSchema.index({ tenantId: 1, status: 1, orderDate: -1 }); // For status-based date queries
 LabResultSchema.index({ tenantId: 1, patient: 1, status: 1 }); // For patient's pending results
-LabResultSchema.index({ tenantId: 1, requestCode: 1 }, { unique: true, sparse: true }); // Tenant-scoped request code
+// Partial (not sparse): a sparse compound index still indexes docs without requestCode because tenantId is set.
+LabResultSchema.index(
+  { tenantId: 1, requestCode: 1 },
+  { unique: true, name: 'uniq_tenant_requestCode', partialFilterExpression: { requestCode: { $type: 'string' } } }
+);
+LabResultSchema.index({ tenantId: 1, archived: 1, createdAt: 1 });
 
 export default mongoose.models.LabResult || mongoose.model<ILabResult>('LabResult', LabResultSchema);
 

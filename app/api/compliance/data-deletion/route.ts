@@ -1,24 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin } from '@/app/lib/auth-helpers';
 import { createAuditLog, logDataDeletion } from '@/lib/audit';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import {
+  requireTenantSession,
+  isTenantSessionError,
+  patientTenantFilter,
+  tenantFilter,
+  notFound,
+} from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
+
+const deletionSchema = z.object({
+  patientId: zObjectId,
+  reason: z.string().trim().max(1000).optional(),
+  confirm: z.string().optional(),
+  mode: z.enum(['anonymize', 'delete']).optional(),
+});
 
 /**
  * Delete patient data (PH DPA - Right to be Forgotten)
  * WARNING: This is a destructive operation
+ *
+ * A Patient document can be shared by several clinics (tenantIds). Only the calling
+ * clinic's records are touched; the shared Patient document is anonymized/deleted only
+ * when no other clinic still references it, otherwise this clinic is detached from it.
  */
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Only admin can delete patient data
   if (!isAdmin(session)) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized - Admin access required' },
@@ -28,20 +42,10 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
-    
-    const body = await request.json();
-    const { patientId, reason, confirm } = body;
 
-    if (!patientId) {
-      return NextResponse.json(
-        { success: false, error: 'Patient ID required' },
-        { status: 400 }
-      );
-    }
+    const parsed = await parseBody(request, deletionSchema);
+    if (isValidationError(parsed)) return parsed;
+    const { patientId, reason, confirm } = parsed.data;
 
     if (confirm !== 'DELETE') {
       return NextResponse.json(
@@ -50,23 +54,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build query with tenant filter
-    const patientQuery: any = { _id: patientId };
-    if (tenantId) {
-      patientQuery.tenantIds = new Types.ObjectId(tenantId);
-    } else {
-      patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-    }
-    
-    const patient = await Patient.findOne(patientQuery);
+    const patient = await Patient.findOne(patientTenantFilter(tenantId, { _id: patientId }))
+      .select('tenantIds')
+      .lean() as any;
     if (!patient) {
-      return NextResponse.json(
-        { success: false, error: 'Patient not found' },
-        { status: 404 }
-      );
+      return notFound('Patient');
     }
 
-    // Get related models
+    const otherTenants = ((patient.tenantIds || []) as any[]).filter(
+      (t) => String(t) !== tenantId
+    );
+    const sharedWithOtherClinics = otherTenants.length > 0;
+
     const Visit = (await import('@/models/Visit')).default;
     const Appointment = (await import('@/models/Appointment')).default;
     const Prescription = (await import('@/models/Prescription')).default;
@@ -74,49 +73,55 @@ export async function POST(request: NextRequest) {
     const Invoice = (await import('@/models/Invoice')).default;
     const Document = (await import('@/models/Document')).default;
 
-    // Anonymize or delete related data
+    const scoped = () => tenantFilter(tenantId, { patient: patientId });
+
     // Option 1: Anonymize (recommended for medical records - keep for legal requirements)
     // Option 2: Delete (for complete removal - use with caution)
-
-    const deletionMode = body.mode || 'anonymize'; // 'anonymize' or 'delete'
+    const deletionMode = parsed.data.mode || 'anonymize';
 
     if (deletionMode === 'anonymize') {
-      // Anonymize patient data
-      await Patient.findByIdAndUpdate(patientId, {
-        firstName: '[ANONYMIZED]',
-        lastName: '[ANONYMIZED]',
-        email: `anonymized-${patientId}@deleted.local`,
-        phone: '[ANONYMIZED]',
-        address: {
-          street: '[ANONYMIZED]',
-          city: '[ANONYMIZED]',
-          province: '[ANONYMIZED]',
-          zipCode: '[ANONYMIZED]',
-        },
-        dateOfBirth: null,
-        identifiers: {},
-        emergencyContact: {},
-        notes: '[Data anonymized per PH DPA request]',
-      });
+      await Visit.updateMany(scoped(), { $set: { notes: '[Data anonymized]' } });
 
-      // Anonymize related records
-      await Visit.updateMany({ patient: patientId }, {
-        $set: { notes: '[Data anonymized]' },
-      });
+      if (sharedWithOtherClinics) {
+        await Patient.updateOne({ _id: patientId }, { $pull: { tenantIds: tenantObjectId } });
+      } else {
+        await Patient.updateOne({ _id: patientId }, {
+          $set: {
+            firstName: '[ANONYMIZED]',
+            lastName: '[ANONYMIZED]',
+            email: `anonymized-${patientId}@deleted.local`,
+            phone: '[ANONYMIZED]',
+            address: {
+              street: '[ANONYMIZED]',
+              city: '[ANONYMIZED]',
+              province: '[ANONYMIZED]',
+              zipCode: '[ANONYMIZED]',
+            },
+            dateOfBirth: null,
+            identifiers: {},
+            emergencyContact: {},
+            notes: '[Data anonymized per PH DPA request]',
+          },
+        });
+      }
     } else {
-      // Complete deletion (WARNING: This removes all data)
       await Promise.all([
-        Visit.deleteMany({ patient: patientId }),
-        Appointment.deleteMany({ patient: patientId }),
-        Prescription.deleteMany({ patient: patientId }),
-        LabResult.deleteMany({ patient: patientId }),
-        Invoice.deleteMany({ patient: patientId }),
-        Document.updateMany({ patient: patientId }, { status: 'deleted' }),
-        Patient.findByIdAndDelete(patientId),
+        Visit.deleteMany(scoped()),
+        Appointment.deleteMany(scoped()),
+        Prescription.deleteMany(scoped()),
+        LabResult.deleteMany(scoped()),
+        Invoice.deleteMany(scoped()),
+        Document.updateMany(scoped(), { $set: { status: 'deleted' } }),
       ]);
+
+      await Patient.updateOne({ _id: patientId }, { $pull: { tenantIds: tenantObjectId } });
+      // Only remove the shared patient record once no clinic references it any more.
+      await Patient.deleteOne({
+        _id: patientId,
+        $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }],
+      });
     }
 
-    // Log data deletion
     await logDataDeletion(
       session.userId,
       session.email,
@@ -142,6 +147,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         mode: deletionMode,
         reason: reason || 'PH DPA - Right to be Forgotten',
+        detachedOnly: sharedWithOtherClinics,
       },
       isSensitive: true,
     });
@@ -159,4 +165,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

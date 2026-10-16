@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, patientTenantFilter } from '@/lib/api/tenant-session';
 import logger from '@/lib/logger';
 
 /**
@@ -19,17 +19,18 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-  if (!session) return unauthorizedResponse();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  const permissionCheck = await requirePermission(session, 'patients', 'read');
+  const permissionCheck = await requirePermission(ctx.session, 'patients', 'read');
   if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
     const { id } = await params;
+    if (!isValidId(id)) return notFound('Patient');
 
-    const patient = await Patient.findById(id).select('+password').lean();
+    const patient = await Patient.findOne(patientTenantFilter(ctx.tenantId, { _id: id })).select('+password').lean();
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
@@ -73,8 +74,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-  if (!session) return unauthorizedResponse();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session } = ctx;
 
   const permissionCheck = await requirePermission(session, 'patients', 'write');
   if (permissionCheck) return permissionCheck;
@@ -82,6 +84,7 @@ export async function POST(
   try {
     await connectDB();
     const { id } = await params;
+    if (!isValidId(id)) return notFound('Patient');
 
     let body: { email?: string; password?: string };
     try {
@@ -103,7 +106,7 @@ export async function POST(
       );
     }
 
-    const patient = await Patient.findById(id);
+    const patient = await Patient.findOne(patientTenantFilter(ctx.tenantId, { _id: id }));
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
@@ -143,7 +146,8 @@ export async function POST(
 
     updates.password = await bcrypt.hash(password, 12);
 
-    await Patient.updateOne({ _id: patient._id }, { $set: updates });
+    // Bump sessionVersion so sessions issued under the old password stop working.
+    await Patient.updateOne({ _id: patient._id }, { $set: updates, $inc: { sessionVersion: 1 } });
 
     logger.info('Staff set patient app credentials', {
       patientId: id,

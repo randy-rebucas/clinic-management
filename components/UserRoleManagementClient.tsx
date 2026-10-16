@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Modal } from './ui/Modal';
 
 interface Role {
@@ -25,13 +25,9 @@ export default function UserRoleManagementClient() {
   const [success, setSuccess] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string>('');
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    fetchUsers();
-    fetchRoles();
-  }, []);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -71,9 +67,9 @@ export default function UserRoleManagementClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchRoles = async () => {
+  const fetchRoles = useCallback(async () => {
     try {
       const response = await fetch('/api/roles');
       const data = await response.json();
@@ -84,7 +80,14 @@ export default function UserRoleManagementClient() {
     } catch (err: any) {
       console.error('Failed to fetch roles:', err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      await Promise.all([fetchUsers(), fetchRoles()]);
+    };
+    load();
+  }, [fetchUsers, fetchRoles]);
 
   const handleEditRole = (user: User) => {
     setEditingUser(user);
@@ -93,8 +96,9 @@ export default function UserRoleManagementClient() {
   };
 
   const handleSaveRole = async () => {
-    if (!editingUser || !selectedRoleId) return;
+    if (!editingUser || !selectedRoleId || saving) return;
 
+    setSaving(true);
     try {
       setError(null);
       const response = await fetch(`/api/users/${editingUser._id}/role`, {
@@ -130,6 +134,8 @@ export default function UserRoleManagementClient() {
     } catch (err: any) {
       setError(err.message || 'Failed to update user role');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -280,14 +286,14 @@ export default function UserRoleManagementClient() {
             {editingUser && (
               <div className="flex flex-col gap-4">
                 <div className="bg-gray-50 rounded-lg p-3">
-                  <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">User</label>
+                  <p className="block text-xs font-semibold text-gray-500 mb-1 uppercase">User</p>
                   <p className="text-sm font-bold text-gray-900">{editingUser.name}</p>
                   <p className="text-xs text-gray-600">{editingUser.email}</p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Select Role</label>
-                  <select
+                  <label htmlFor="user-role-select-role" className="block text-sm font-semibold text-gray-700 mb-2">Select Role</label>
+                  <select id="user-role-select-role"
                     value={selectedRoleId}
                     onChange={(e) => setSelectedRoleId(e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
@@ -312,10 +318,10 @@ export default function UserRoleManagementClient() {
               </button>
               <button
                 onClick={handleSaveRole}
-                disabled={!selectedRoleId}
+                disabled={!selectedRoleId || saving}
                 className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 disabled:from-indigo-400 disabled:to-indigo-500 disabled:cursor-not-allowed transition-all text-sm font-semibold shadow-md"
               >
-                Save
+                {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>

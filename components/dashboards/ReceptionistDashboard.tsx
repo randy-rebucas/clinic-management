@@ -263,6 +263,8 @@ export default function ReceptionistDashboard() {
             </div>
             <div className="flex gap-2">
               <button
+                type="button"
+                aria-pressed={period === 'today'}
                 onClick={() => setPeriod('today')}
                 className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
                   period === 'today' 
@@ -273,6 +275,8 @@ export default function ReceptionistDashboard() {
                 Today
               </button>
               <button
+                type="button"
+                aria-pressed={period === 'week'}
                 onClick={() => setPeriod('week')}
                 className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
                   period === 'week' 
@@ -283,6 +287,8 @@ export default function ReceptionistDashboard() {
                 Week
               </button>
               <button
+                type="button"
+                aria-pressed={period === 'month'}
                 onClick={() => setPeriod('month')}
                 className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
                   period === 'month' 

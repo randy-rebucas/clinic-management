@@ -15,7 +15,7 @@ export default function BrandLogo({ size = 32, rounded = 'rounded-lg', className
         background: 'linear-gradient(135deg, #0EA5A4 0%, #2563EB 100%)',
       }}
     >
-      <svg width={size * 0.6} height={size * 0.6} viewBox="0 0 24 24" fill="none">
+      <svg width={size * 0.6} height={size * 0.6} viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path
           d="M12 2 L21 6 V12 C21 17 17 21 12 22 C7 21 3 17 3 12 V6 Z"
           fill="white"

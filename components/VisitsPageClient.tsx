@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 interface Visit {
@@ -64,42 +64,31 @@ export default function VisitsPageClient() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Set when redirected here from the new-visit page.
+  const [success, setSuccess] = useState<string | null>(() =>
+    searchParams.get('success') === 'true' ? 'Visit created successfully!' : null
+  );
+  const [requestedPage, setCurrentPage] = useState(1);
 
   // State for visits and queue
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [visitsError, setVisitsError] = useState<Error | null>(null);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [loadingQueue, setLoadingQueue] = useState(true);
 
   useEffect(() => {
-    fetchVisits();
-    fetchQueue();
-  }, []);
+    if (!success) return;
+    window.history.replaceState({}, '', '/visits');
+    const timer = setTimeout(() => setSuccess(null), 3000);
+    return () => clearTimeout(timer);
+  }, [success]);
 
-  useEffect(() => {
-    // Check for success message from query params (when redirected from new visit page)
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('success') === 'true') {
-      setSuccess('Visit created successfully!');
-      setTimeout(() => setSuccess(null), 3000);
-      // Clean up URL
-      window.history.replaceState({}, '', '/visits');
-    }
-
-    // Redirect on auth error
-    if (visitsError && visitsError.message && visitsError.message.includes('401')) {
-      router.push('/login');
-    }
-  }, [visitsError, router]);
-
-  const fetchVisits = async () => {
+  const fetchVisits = useCallback(async () => {
     try {
       setLoading(true);
-      setVisitsError(null);
+      setError(null);
       
       const response = await fetch('/api/visits');
       
@@ -117,13 +106,13 @@ export default function VisitsPageClient() {
       setVisits(data.data || data.visits || []);
     } catch (error) {
       console.error('Failed to fetch visits:', error);
-      setVisitsError(error instanceof Error ? error : new Error('Failed to fetch visits'));
+      setError(error instanceof Error ? error.message : 'Failed to fetch visits');
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
-  const fetchQueue = async () => {
+  const fetchQueue = useCallback(async () => {
     try {
       setLoadingQueue(true);
       
@@ -143,7 +132,14 @@ export default function VisitsPageClient() {
     } finally {
       setLoadingQueue(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    const load = async () => {
+      await Promise.all([fetchVisits(), fetchQueue()]);
+    };
+    load();
+  }, [fetchVisits, fetchQueue]);
 
   const filteredVisits = visits.filter(visit => {
     if (searchQuery) {
@@ -162,20 +158,11 @@ export default function VisitsPageClient() {
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredVisits.length / VISITS_PER_PAGE));
+  const currentPage = Math.min(requestedPage, totalPages);
   const paginatedVisits = filteredVisits.slice(
     (currentPage - 1) * VISITS_PER_PAGE,
     currentPage * VISITS_PER_PAGE
   );
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, filterStatus]);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [totalPages, currentPage]);
 
   const getStatusColor = (status: string): 'green' | 'blue' | 'red' | 'gray' => {
     switch (status) {
@@ -379,18 +366,26 @@ export default function VisitsPageClient() {
                     </div>
                     <input
                       type="text"
+                      aria-label="Search visits by patient name or visit code"
                       placeholder="Search by patient name or visit code..."
                       value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setCurrentPage(1);
+                      }}
                       className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm"
                     />
                     {searchQuery && (
                       <button
                         type="button"
-                        onClick={() => setSearchQuery('')}
+                        onClick={() => {
+                          setSearchQuery('');
+                          setCurrentPage(1);
+                        }}
+                        aria-label="Clear search"
                         className="absolute right-4 top-1/2 transform -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                       >
-                        <svg width="14" height="14" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg width="14" height="14" aria-hidden="true" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                         </svg>
                       </button>
@@ -399,8 +394,12 @@ export default function VisitsPageClient() {
                 </div>
                 <div className="min-w-[200px]">
                   <select
+                    aria-label="Filter by status"
                     value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
+                    onChange={(e) => {
+                      setFilterStatus(e.target.value);
+                      setCurrentPage(1);
+                    }}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
                   >
                     <option value="all">All Statuses</option>
@@ -414,6 +413,7 @@ export default function VisitsPageClient() {
                     onClick={() => {
                       setSearchQuery('');
                       setFilterStatus('all');
+                      setCurrentPage(1);
                     }}
                     className="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold whitespace-nowrap"
                   >
@@ -559,7 +559,7 @@ export default function VisitsPageClient() {
             </p>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
                 className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -569,7 +569,7 @@ export default function VisitsPageClient() {
                 Page {currentPage} of {totalPages}
               </span>
               <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
                 className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >

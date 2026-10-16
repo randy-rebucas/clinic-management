@@ -1,51 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { processDataRetentionForAllTenants, applyDataRetentionPolicy } from '@/lib/automations/data-retention';
-import { getTenantContext } from '@/lib/tenant';
+import { requireCron } from '@/lib/cron-auth';
+import { processDataRetentionForAllTenants } from '@/lib/automations/data-retention';
+
+export const maxDuration = 300;
 
 /**
- * Cron job to apply data retention policies
- * Runs weekly on Sunday at 2:00 AM
+ * Applies data retention policies for every active tenant (weekly).
+ * Schedule: see vercel.json. Auth: Authorization: Bearer $CRON_SECRET.
  */
 export async function GET(request: NextRequest) {
-  // Authenticate request
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-  }
+  const denied = requireCron(request);
+  if (denied) return denied;
 
   try {
-    const tenantContext = await getTenantContext();
-    const tenantId = tenantContext.tenantId;
-
-    let result;
-
-    if (tenantId) {
-      // Process for specific tenant
-      result = await applyDataRetentionPolicy(tenantId);
-    } else {
-      // Process for all tenants
-      result = await processDataRetentionForAllTenants();
-    }
-
+    const result = await processDataRetentionForAllTenants();
     return NextResponse.json({
       success: result.success,
       message: 'Data retention policy applied',
       data: result,
     });
-  } catch (error: any) {
-    console.error('Error in data retention cron:', error);
-    return NextResponse.json(
-      { success: false, error: error.message || 'Failed to process data retention' },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('[Cron] data-retention error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to process data-retention' }, { status: 500 });
   }
 }
-

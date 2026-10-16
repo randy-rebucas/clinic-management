@@ -1,21 +1,23 @@
 import connectDB from './mongodb';
 import Settings from '@/models/Settings';
 
-let cachedSettings: any = null;
-let cacheTimestamp: number = 0;
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+// Per-tenant cache. Kept short because other serverless instances can't be invalidated.
+const settingsCache = new Map<string, { value: any; at: number }>();
+const CACHE_DURATION = 60 * 1000; // 1 minute
 
 /**
  * Get settings from database (server-side only)
  * Uses caching to avoid repeated database calls
- * @param tenantId Optional tenant ID to get tenant-specific settings
+ * @param tenantId Tenant ID. Always pass it: without one you get the tenant-less
+ * legacy settings record, not the clinic's own settings.
  */
-export async function getSettings(tenantId?: string | null) {
-  // Return cached settings if still valid (but only if same tenant)
+export async function getSettings(tenantIdInput?: string | { toString(): string } | null) {
+  const tenantId: string | null = tenantIdInput ? String(tenantIdInput) : null;
   const now = Date.now();
   const cacheKey = tenantId || 'default';
-  if (cachedSettings && cachedSettings._cacheKey === cacheKey && (now - cacheTimestamp) < CACHE_DURATION) {
-    return cachedSettings;
+  const hit = settingsCache.get(cacheKey);
+  if (hit && now - hit.at < CACHE_DURATION) {
+    return hit.value;
   }
 
   try {
@@ -53,9 +55,7 @@ export async function getSettings(tenantId?: string | null) {
       ...settings.toObject(),
     };
     
-    // Cache the merged settings with tenant key
-    cachedSettings = { ...settingsObj, _cacheKey: cacheKey };
-    cacheTimestamp = now;
+    settingsCache.set(cacheKey, { value: settingsObj, at: now });
     
     // Return a Mongoose-like object with the merged data
     return settingsObj as any;
@@ -123,7 +123,7 @@ export function getDefaultSettings() {
       displayQueuePublicly: false,
     },
     generalSettings: {
-      timezone: 'UTC',
+      timezone: 'Asia/Manila',
       dateFormat: 'MM/DD/YYYY',
       timeFormat: '12h' as const,
       itemsPerPage: 20,
@@ -140,15 +140,15 @@ export function getDefaultSettings() {
       sidebarCollapsed: false,
       showNotifications: true,
     },
-    prescriptionPaperSize: 'A5' as const,
+    prescriptionPaperSize: 'A4' as 'A4' | 'A5',
   };
 }
 
 /**
  * Clear settings cache (call after updating settings)
  */
-export function clearSettingsCache() {
-  cachedSettings = null;
-  cacheTimestamp = 0;
+export function clearSettingsCache(tenantId?: string | null) {
+  if (tenantId) settingsCache.delete(String(tenantId));
+  else settingsCache.clear();
 }
 

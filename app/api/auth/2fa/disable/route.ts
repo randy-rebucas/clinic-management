@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verify as totpVerify } from 'otplib';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { verifyUserTotp } from '../totp';
 
 /**
  * POST /api/auth/2fa/disable
@@ -16,8 +17,16 @@ export async function POST(request: NextRequest) {
   const session = await verifySession();
   if (!session) return unauthorizedResponse();
 
+  const limited = await applyRateLimit(request, rateLimiters.authAccount, `2fa:${session.userId}`);
+  if (limited) return limited;
+
   try {
-    const { token } = await request.json();
+    let token: unknown;
+    try {
+      ({ token } = await request.json());
+    } catch {
+      token = undefined;
+    }
     if (!token || typeof token !== 'string') {
       return NextResponse.json({ success: false, error: 'TOTP token required to disable 2FA' }, { status: 400 });
     }
@@ -33,16 +42,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: '2FA is not currently enabled' }, { status: 400 });
     }
 
-    const result = await totpVerify({ token: token.trim(), secret: user.totpSecret });
-    const isValid = result?.valid === true;
-    if (!isValid) {
+    if (!(await verifyUserTotp(session.userId, token))) {
       return NextResponse.json({ success: false, error: 'Invalid or expired token' }, { status: 401 });
     }
 
-    await User.findByIdAndUpdate(session.userId, {
-      $unset: { totpSecret: '' },
-      totpEnabled: false,
-    });
+    await User.updateOne(
+      { _id: session.userId },
+      {
+        $unset: { totpSecret: '', totpPendingSecret: '', totpLastUsedStep: '' },
+        $set: { totpEnabled: false },
+      }
+    );
 
     return NextResponse.json({ success: true, message: '2FA has been disabled.' });
   } catch (error: any) {

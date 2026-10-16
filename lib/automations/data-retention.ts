@@ -1,10 +1,9 @@
 /**
  * Data Retention Policy Automation
- * Automatically archives or deletes old data based on retention policies
+ * Flags old records as archived; only audit logs are ever hard-deleted.
  */
 
 import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import Appointment from '@/models/Appointment';
 import Visit from '@/models/Visit';
 import Invoice from '@/models/Invoice';
@@ -14,7 +13,7 @@ import Document from '@/models/Document';
 import AuditLog from '@/models/AuditLog';
 import { getSettings } from '@/lib/settings';
 import logger from '@/lib/logger';
-import { Types } from 'mongoose';
+import { Types, Model } from 'mongoose';
 
 export interface RetentionPolicy {
   resource: 'patients' | 'appointments' | 'visits' | 'invoices' | 'lab-results' | 'prescriptions' | 'documents' | 'audit-logs';
@@ -33,6 +32,15 @@ export interface DataRetentionResult {
   };
   errors: string[];
 }
+
+/** Records touched per batch, and batches per resource per run (the job is weekly). */
+const BATCH_SIZE = 1000;
+const MAX_BATCHES = 20;
+/** Floors that caller-supplied policies cannot go below. */
+const MIN_ARCHIVE_DAYS = 30;
+const MIN_AUDIT_LOG_DELETE_DAYS = 365;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Get default retention policies
@@ -83,7 +91,7 @@ export function getDefaultRetentionPolicies(): RetentionPolicy[] {
 }
 
 /**
- * Apply data retention policy
+ * Apply data retention policy for one tenant
  */
 export async function applyDataRetentionPolicy(
   tenantId: string | Types.ObjectId,
@@ -102,9 +110,7 @@ export async function applyDataRetentionPolicy(
       };
     }
 
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
-      : tenantId;
+    const tenantIdObj = new Types.ObjectId(String(tenantId));
 
     const retentionPolicies = policies || getDefaultRetentionPolicies();
     const archived: { [resource: string]: number } = {};
@@ -113,37 +119,23 @@ export async function applyDataRetentionPolicy(
 
     for (const policy of retentionPolicies) {
       try {
-        // Archive old records
         if (policy.archiveAfterDays > 0) {
-          const archiveDate = new Date();
-          archiveDate.setDate(archiveDate.getDate() - policy.archiveAfterDays);
-
-          const archiveResult = await archiveRecords(
-            policy.resource,
-            tenantIdObj,
-            archiveDate
-          );
+          const days = Math.max(MIN_ARCHIVE_DAYS, policy.archiveAfterDays);
+          const archiveDate = new Date(Date.now() - days * DAY_MS);
+          const archiveResult = await archiveRecords(policy.resource, tenantIdObj, archiveDate);
           archived[policy.resource] = archiveResult.count;
         }
 
-        // Delete very old records
         if (policy.deleteAfterDays > 0) {
-          const deleteDate = new Date();
-          deleteDate.setDate(deleteDate.getDate() - policy.deleteAfterDays);
-
-          const deleteResult = await deleteRecords(
-            policy.resource,
-            tenantIdObj,
-            deleteDate
-          );
+          const deleteResult = await deleteRecords(policy.resource, tenantIdObj, policy.deleteAfterDays);
           deleted[policy.resource] = deleteResult.count;
         }
       } catch (error: any) {
         logger.error('Error applying retention policy', error as Error, {
           resource: policy.resource,
-          tenantId,
+          tenantId: String(tenantId),
         });
-        errors.push(`Failed to process ${policy.resource}: ${error.message}`);
+        errors.push(`Failed to process ${policy.resource}`);
       }
     }
 
@@ -154,15 +146,34 @@ export async function applyDataRetentionPolicy(
       errors,
     };
   } catch (error: any) {
-    logger.error('Error applying data retention policy', error as Error, { tenantId });
+    logger.error('Error applying data retention policy', error as Error, { tenantId: String(tenantId) });
     return {
       success: false,
       archived: {},
       deleted: {},
-      errors: [error.message || 'Failed to apply retention policy'],
+      errors: ['Failed to apply retention policy'],
     };
   }
 }
+
+/** Flag matching records in bounded batches (ids first, so each batch is capped). */
+async function archiveInBatches(
+  model: Model<any>,
+  filter: Record<string, unknown>,
+  update: Record<string, unknown>
+): Promise<number> {
+  let count = 0;
+  for (let i = 0; i < MAX_BATCHES; i++) {
+    const ids = (await model.find(filter).select('_id').limit(BATCH_SIZE).lean()).map((d: any) => d._id);
+    if (ids.length === 0) break;
+    const res = await model.updateMany({ _id: { $in: ids } }, { $set: update });
+    count += res.modifiedCount ?? ids.length;
+    if (ids.length < BATCH_SIZE) break;
+  }
+  return count;
+}
+
+const notArchived = { archived: { $ne: true } };
 
 /**
  * Archive records older than specified date
@@ -172,155 +183,63 @@ async function archiveRecords(
   tenantId: Types.ObjectId,
   archiveDate: Date
 ): Promise<{ count: number }> {
-  let count = 0;
+  const flag = { archived: true, archivedAt: new Date() };
+  const older = { tenantId, createdAt: { $lt: archiveDate }, ...notArchived };
 
   switch (resource) {
     case 'appointments':
-      const appointments = await Appointment.find({
-        tenantId,
-        createdAt: { $lt: archiveDate },
-        $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-      });
-      count = appointments.length;
-      if (count > 0) {
-        // Add archived field if it doesn't exist in schema
-        await Appointment.updateMany(
-          { _id: { $in: appointments.map(a => a._id) } },
-          { $set: { archived: true, archivedAt: new Date() } }
-        );
-      }
-      break;
-
+      return { count: await archiveInBatches(Appointment, older, flag) };
     case 'visits':
-      const visits = await Visit.find({
-        tenantId,
-        createdAt: { $lt: archiveDate },
-        $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-      });
-      count = visits.length;
-      if (count > 0) {
-        await Visit.updateMany(
-          { _id: { $in: visits.map(v => v._id) } },
-          { $set: { archived: true, archivedAt: new Date() } }
-        );
-      }
-      break;
-
+      return { count: await archiveInBatches(Visit, older, flag) };
     case 'invoices':
-      const invoices = await Invoice.find({
-        tenantId,
-        createdAt: { $lt: archiveDate },
-        $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-      });
-      count = invoices.length;
-      if (count > 0) {
-        await Invoice.updateMany(
-          { _id: { $in: invoices.map(i => i._id) } },
-          { $set: { archived: true, archivedAt: new Date() } }
-        );
-      }
-      break;
-
+      // Unsettled invoices stay active regardless of age.
+      return { count: await archiveInBatches(Invoice, { ...older, status: { $in: ['paid', 'refunded'] } }, flag) };
     case 'lab-results':
-      const labResults = await LabResult.find({
-        tenantId,
-        createdAt: { $lt: archiveDate },
-        $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-      });
-      count = labResults.length;
-      if (count > 0) {
-        await LabResult.updateMany(
-          { _id: { $in: labResults.map(l => l._id) } },
-          { $set: { archived: true, archivedAt: new Date() } }
-        );
-      }
-      break;
-
+      return { count: await archiveInBatches(LabResult, older, flag) };
     case 'prescriptions':
-      const prescriptions = await Prescription.find({
-        tenantId,
-        createdAt: { $lt: archiveDate },
-        $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-      });
-      count = prescriptions.length;
-      if (count > 0) {
-        await Prescription.updateMany(
-          { _id: { $in: prescriptions.map(p => p._id) } },
-          { $set: { archived: true, archivedAt: new Date() } }
-        );
-      }
-      break;
-
+      return { count: await archiveInBatches(Prescription, older, flag) };
     case 'documents':
-      const documents = await Document.find({
-        tenantId,
-        uploadDate: { $lt: archiveDate },
-        status: { $ne: 'archived' },
-      });
-      count = documents.length;
-      await Document.updateMany(
-        { _id: { $in: documents.map(d => d._id) } },
-        { $set: { status: 'archived', lastModifiedDate: new Date() } }
-      );
-      break;
-
+      return {
+        count: await archiveInBatches(
+          Document,
+          { tenantId, uploadDate: { $lt: archiveDate }, status: 'active' },
+          { status: 'archived', lastModifiedDate: new Date() }
+        ),
+      };
     case 'audit-logs':
-      const auditLogs = await AuditLog.find({
-        tenantId,
-        createdAt: { $lt: archiveDate },
-        $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
-      });
-      count = auditLogs.length;
-      if (count > 0) {
-        await AuditLog.updateMany(
-          { _id: { $in: auditLogs.map(a => a._id) } },
-          { $set: { archived: true, archivedAt: new Date() } }
-        );
-      }
-      break;
-
+      return { count: await archiveInBatches(AuditLog, older, flag) };
     default:
       // Patients are never archived
-      break;
+      return { count: 0 };
   }
-
-  return { count };
 }
 
 /**
- * Delete records older than specified date
+ * Delete records older than the retention period. Only audit logs are ever deleted;
+ * clinical, billing and patient records are kept indefinitely.
  */
 async function deleteRecords(
   resource: RetentionPolicy['resource'],
   tenantId: Types.ObjectId,
-  deleteDate: Date
+  deleteAfterDays: number
 ): Promise<{ count: number }> {
-  let count = 0;
-
-  switch (resource) {
-    case 'audit-logs':
-      // Only audit logs can be deleted (after archiving)
-      const auditLogsToDelete = await AuditLog.find({
-        tenantId,
-        archived: true,
-        $or: [
-          { archivedAt: { $lt: deleteDate } },
-          { archivedAt: { $exists: false }, createdAt: { $lt: deleteDate } },
-        ],
-      });
-      count = auditLogsToDelete.length;
-      if (count > 0) {
-        await AuditLog.deleteMany({
-          _id: { $in: auditLogsToDelete.map(a => a._id) },
-        });
-      }
-      break;
-
-    default:
-      // Other resources are never deleted (only archived)
-      break;
+  if (resource !== 'audit-logs') {
+    return { count: 0 };
   }
 
+  const days = Math.max(MIN_AUDIT_LOG_DELETE_DAYS, deleteAfterDays);
+  const deleteDate = new Date(Date.now() - days * DAY_MS);
+  // Age is judged by when the event happened, never by when it was archived.
+  const filter = { tenantId, archived: true, createdAt: { $lt: deleteDate } };
+
+  let count = 0;
+  for (let i = 0; i < MAX_BATCHES; i++) {
+    const ids = (await AuditLog.find(filter).select('_id').limit(BATCH_SIZE).lean()).map((d: any) => d._id);
+    if (ids.length === 0) break;
+    const res = await AuditLog.deleteMany({ _id: { $in: ids }, tenantId });
+    count += res.deletedCount ?? 0;
+    if (ids.length < BATCH_SIZE) break;
+  }
   return { count };
 }
 
@@ -343,10 +262,9 @@ export async function processDataRetentionForAllTenants(): Promise<{
     let totalArchived = 0;
     let totalDeleted = 0;
 
-    for (const tenant of tenants) {
+    for (const tenant of tenants as any[]) {
       try {
-        const tenantId = tenant._id?.toString() || tenant._id;
-        const result = await applyDataRetentionPolicy(tenantId as string | Types.ObjectId);
+        const result = await applyDataRetentionPolicy(String(tenant._id));
         if (result.success) {
           tenantsProcessed++;
           totalArchived += Object.values(result.archived).reduce((a, b) => a + b, 0);
@@ -354,7 +272,7 @@ export async function processDataRetentionForAllTenants(): Promise<{
         }
       } catch (error: any) {
         logger.error('Error processing retention for tenant', error as Error, {
-          tenantId: tenant._id,
+          tenantId: String(tenant._id),
         });
       }
     }
@@ -375,4 +293,3 @@ export async function processDataRetentionForAllTenants(): Promise<{
     };
   }
 }
-

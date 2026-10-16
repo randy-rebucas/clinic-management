@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { toDateKey } from './utils/dateKey';
+import { useModalA11y } from './hooks/useModalA11y';
 import QRCode from 'react-qr-code';
 
 type TabType = 'overview' | 'appointments' | 'visits' | 'prescriptions' | 'lab-results' | 'invoices' | 'documents' | 'security';
@@ -55,6 +57,10 @@ export default function PatientPortalClient() {
   const [referrals, setReferrals] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<TabType | null>(null);
   const [showQRCode, setShowQRCode] = useState(false);
+  const [loginQr, setLoginQr] = useState<{ qrData: string; expiresAt: string } | null>(null);
+  const [loginQrLoading, setLoginQrLoading] = useState(false);
+  const [loginQrError, setLoginQrError] = useState<string | null>(null);
+  const [loginQrNotice, setLoginQrNotice] = useState<string | null>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [cancellingAppointment, setCancellingAppointment] = useState<string | null>(null);
 
@@ -83,26 +89,14 @@ export default function PatientPortalClient() {
   
   const router = useRouter();
 
-  // Set initial active tab based on screen size
-  useEffect(() => {
-    const handleResize = () => {
-      // On desktop (md breakpoint = 768px), default to overview tab
-      if (window.innerWidth >= 768 && activeTab === null) {
-        setActiveTab(null);
-      }
-    };
-    
-    // Set initial state
-    handleResize();
-    
-    // No need to listen to resize - just set on mount
-  }, []);
+  const closeQRCode = () => setShowQRCode(false);
+  const closeBookingModal = () => {
+    if (!bookingLoading) setShowBookingModal(false);
+  };
+  const qrModalRef = useModalA11y<HTMLDivElement>(showQRCode, closeQRCode);
+  const bookingModalRef = useModalA11y<HTMLDivElement>(showBookingModal, closeBookingModal);
 
-  useEffect(() => {
-    fetchPatientData();
-  }, []);
-
-  const fetchPatientData = async () => {
+  const fetchPatientData = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch('/api/patients/session?include=all');
@@ -130,7 +124,14 @@ export default function PatientPortalClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchPatientData();
+    };
+    load();
+  }, [fetchPatientData]);
 
   const handleLogout = async () => {
     try {
@@ -250,13 +251,13 @@ export default function PatientPortalClient() {
   const getMinDate = () => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+    return toDateKey(tomorrow);
   };
 
   const getMaxDate = () => {
     const maxDate = new Date();
     maxDate.setDate(maxDate.getDate() + 60); // 60 days ahead
-    return maxDate.toISOString().split('T')[0];
+    return toDateKey(maxDate);
   };
 
   const cancelAppointment = async (appointmentId: string) => {
@@ -350,14 +351,46 @@ export default function PatientPortalClient() {
     return age;
   };
 
-  const getQRCodeData = () => {
-    if (!patient) return '';
-    return JSON.stringify({
-      patientId: patient._id,
-      patientCode: patient.patientCode,
-      type: 'patient_login',
-      timestamp: Date.now(),
-    });
+  const openQRCode = async () => {
+    setShowQRCode(true);
+    setLoginQrNotice(null);
+    if (loginQr || loginQrLoading) return;
+    setLoginQrLoading(true);
+    setLoginQrError(null);
+    try {
+      const res = await fetch('/api/patients/me/login-qr', { method: 'POST' });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success && data.data?.qrData) {
+        setLoginQr({ qrData: data.data.qrData, expiresAt: data.data.expiresAt });
+      } else {
+        setLoginQrError(data?.error || 'Could not create your login QR code. Please try again.');
+      }
+    } catch {
+      setLoginQrError('Could not create your login QR code. Please check your connection and try again.');
+    } finally {
+      setLoginQrLoading(false);
+    }
+  };
+
+  const revokeLoginQr = async () => {
+    if (loginQrLoading) return;
+    setLoginQrLoading(true);
+    setLoginQrError(null);
+    setLoginQrNotice(null);
+    try {
+      const res = await fetch('/api/patients/me/login-qr', { method: 'DELETE' });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        setLoginQr(null);
+        setLoginQrNotice('Your login QR code has been revoked. Open this dialog again to create a new one.');
+      } else {
+        setLoginQrError(data?.error || 'Could not revoke your login QR code. Please try again.');
+      }
+    } catch {
+      setLoginQrError('Could not revoke your login QR code. Please check your connection and try again.');
+    } finally {
+      setLoginQrLoading(false);
+    }
   };
 
   const handleSetupCredentials = async (e: React.FormEvent) => {
@@ -679,7 +712,7 @@ export default function PatientPortalClient() {
                   <ul className="space-y-2">
                     {patient.preExistingConditions.map((condition, idx) => (
                       <li key={idx} className="flex items-center gap-2 bg-white/50 p-3 rounded-lg border border-gray-200">
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        <span aria-hidden="true" className={`w-2 h-2 rounded-full flex-shrink-0 ${
                           condition.status === 'active' ? 'bg-red-500' :
                           condition.status === 'chronic' ? 'bg-amber-500' : 'bg-green-500'
                         }`}></span>
@@ -1042,10 +1075,11 @@ export default function PatientPortalClient() {
 
               {/* Email */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                <label htmlFor="portal-cred-email" className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Login Email <span className="font-normal text-gray-500">(optional)</span>
                 </label>
                 <input
+                  id="portal-cred-email"
                   type="email"
                   value={credEmail}
                   onChange={(e) => setCredEmail(e.target.value)}
@@ -1060,10 +1094,11 @@ export default function PatientPortalClient() {
 
               {/* New password */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                <label htmlFor="portal-cred-password" className="block text-sm font-semibold text-gray-700 mb-1.5">
                   {hasPassword ? 'New Password' : 'Set Password'} <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="portal-cred-password"
                   type="password"
                   value={credPassword}
                   onChange={(e) => setCredPassword(e.target.value)}
@@ -1077,10 +1112,11 @@ export default function PatientPortalClient() {
 
               {/* Confirm */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                <label htmlFor="portal-cred-confirm" className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Confirm Password <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="portal-cred-confirm"
                   type="password"
                   value={credConfirm}
                   onChange={(e) => setCredConfirm(e.target.value)}
@@ -1095,10 +1131,11 @@ export default function PatientPortalClient() {
               {/* Current password — only shown when one is already set */}
               {hasPassword && (
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  <label htmlFor="portal-cred-current" className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Current Password <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="portal-cred-current"
                     type="password"
                     value={credCurrent}
                     onChange={(e) => setCredCurrent(e.target.value)}
@@ -1163,8 +1200,9 @@ export default function PatientPortalClient() {
                 <button
                   onClick={() => setActiveTab(null)}
                   className="p-1.5 -ml-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  aria-label="Back to overview"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
@@ -1181,11 +1219,12 @@ export default function PatientPortalClient() {
             </div>
             <div className="flex items-center gap-1 sm:gap-3">
               <button
-                onClick={() => setShowQRCode(true)}
+                onClick={openQRCode}
                 className="p-2 sm:p-2.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                 title="Show QR Code"
+                aria-label="Show QR code"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                 </svg>
               </button>
@@ -1198,8 +1237,11 @@ export default function PatientPortalClient() {
               <button
                 onClick={() => setShowMobileMenu(!showMobileMenu)}
                 className="sm:hidden p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+                aria-label={showMobileMenu ? 'Close menu' : 'Open menu'}
+                aria-expanded={showMobileMenu}
+                aria-controls="patient-portal-mobile-menu"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                 </svg>
               </button>
@@ -1209,7 +1251,7 @@ export default function PatientPortalClient() {
         
         {/* Mobile dropdown menu */}
         {showMobileMenu && (
-          <div className="sm:hidden border-t border-gray-100 bg-white">
+          <div id="patient-portal-mobile-menu" className="sm:hidden border-t border-gray-100 bg-white">
             <button
               onClick={() => {
                 handleLogout();
@@ -1402,9 +1444,13 @@ export default function PatientPortalClient() {
       {showQRCode && (
         <div 
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowQRCode(false)}
+          onClick={closeQRCode}
         >
-          <div 
+          <div
+            ref={qrModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="patient-qr-title"
             className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 sm:p-8 mx-4"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1414,25 +1460,57 @@ export default function PatientPortalClient() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 flex-1">Your QR Code</h3>
+              <h3 id="patient-qr-title" className="text-xl font-bold text-gray-900 flex-1">Your QR Code</h3>
               <button
-                onClick={() => setShowQRCode(false)}
+                onClick={closeQRCode}
                 className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                aria-label="Close QR code"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
-            <div className="bg-white p-6 rounded-xl border-2 border-gray-200 flex items-center justify-center shadow-md">
-              <QRCode value={getQRCodeData()} size={200} className="w-full max-w-[200px] h-auto" />
+            <div className="bg-white p-6 rounded-xl border-2 border-gray-200 flex items-center justify-center shadow-md min-h-[200px]">
+              {loginQr ? (
+                <QRCode value={loginQr.qrData} size={200} className="w-full max-w-[200px] h-auto" />
+              ) : loginQrLoading ? (
+                <p className="text-sm text-gray-600" role="status">Creating your login QR code...</p>
+              ) : (
+                <p className="text-sm text-gray-600 text-center">No active login QR code.</p>
+              )}
             </div>
+            {loginQrError && (
+              <p className="text-center text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 mt-4" role="alert">
+                {loginQrError}
+              </p>
+            )}
+            {loginQrNotice && (
+              <p className="text-center text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg p-3 mt-4" role="status">
+                {loginQrNotice}
+              </p>
+            )}
             <p className="text-center text-sm font-semibold text-gray-700 mt-6">
-              Scan this code at the clinic for quick check-in
+              Scan this code to sign in to your patient portal. Keep it private.
             </p>
+            {loginQr?.expiresAt && (
+              <p className="text-center text-xs text-gray-500 mt-2">
+                Expires {formatDateTime(loginQr.expiresAt)}
+              </p>
+            )}
             <p className="text-center text-xs text-gray-500 mt-2">
               Patient Code: <span className="font-bold text-gray-700">{patient.patientCode}</span>
             </p>
+            {loginQr && (
+              <button
+                type="button"
+                onClick={revokeLoginQr}
+                disabled={loginQrLoading}
+                className="mt-4 w-full px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loginQrLoading ? 'Revoking...' : 'Revoke this QR code'}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1441,9 +1519,13 @@ export default function PatientPortalClient() {
       {showBookingModal && (
         <div 
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => !bookingLoading && setShowBookingModal(false)}
+          onClick={closeBookingModal}
         >
-          <div 
+          <div
+            ref={bookingModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="patient-booking-title"
             className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto mx-4"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1456,16 +1538,17 @@ export default function PatientPortalClient() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900">Book Appointment</h3>
+                  <h3 id="patient-booking-title" className="text-xl font-bold text-gray-900">Book Appointment</h3>
                   <p className="text-sm text-gray-600 mt-0.5">Schedule your next visit</p>
                 </div>
               </div>
               <button
-                onClick={() => !bookingLoading && setShowBookingModal(false)}
+                onClick={closeBookingModal}
                 className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
                 disabled={bookingLoading}
+                aria-label="Close booking dialog"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -1504,10 +1587,11 @@ export default function PatientPortalClient() {
                 <>
                   {/* Select Doctor */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="patient-booking-doctor" className="block text-sm font-semibold text-gray-700 mb-2">
                       Select Doctor <span className="text-red-500">*</span>
                     </label>
                     <select
+                      id="patient-booking-doctor"
                       value={selectedDoctor}
                       onChange={(e) => handleDoctorChange(e.target.value)}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none bg-white transition-all text-sm"
@@ -1525,10 +1609,11 @@ export default function PatientPortalClient() {
 
                   {/* Select Date */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="patient-booking-date" className="block text-sm font-semibold text-gray-700 mb-2">
                       Select Date <span className="text-red-500">*</span>
                     </label>
                     <input
+                      id="patient-booking-date"
                       type="date"
                       value={selectedDate}
                       onChange={(e) => handleDateChange(e.target.value)}
@@ -1541,9 +1626,9 @@ export default function PatientPortalClient() {
 
                   {/* Select Time */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <p id="patient-booking-time-label" className="block text-sm font-semibold text-gray-700 mb-2">
                       Select Time <span className="text-red-500">*</span>
-                    </label>
+                    </p>
                     {loadingSlots ? (
                       <div className="flex items-center justify-center py-8">
                         <div className="animate-spin rounded-full h-8 w-8 border-4 border-emerald-100 border-t-emerald-600"></div>
@@ -1558,11 +1643,12 @@ export default function PatientPortalClient() {
                         No available slots for this date. Please try another date.
                       </p>
                     ) : (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                      <div role="group" aria-labelledby="patient-booking-time-label" className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                         {availableSlots.map((slot) => (
                           <button
                             key={slot}
                             type="button"
+                            aria-pressed={selectedTime === slot}
                             onClick={() => setSelectedTime(slot)}
                             className={`px-3 py-2.5 rounded-lg text-sm font-semibold transition-all ${
                               selectedTime === slot
@@ -1580,10 +1666,11 @@ export default function PatientPortalClient() {
 
                   {/* Reason */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="patient-booking-reason" className="block text-sm font-semibold text-gray-700 mb-2">
                       Reason for Visit <span className="text-gray-500 text-xs font-normal">(optional)</span>
                     </label>
                     <textarea
+                      id="patient-booking-reason"
                       value={bookingReason}
                       onChange={(e) => setBookingReason(e.target.value)}
                       placeholder="e.g., General checkup, Follow-up, Consultation..."

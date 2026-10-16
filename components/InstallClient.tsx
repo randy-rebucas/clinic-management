@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface InstallCheck {
@@ -19,24 +19,38 @@ interface InstallClientProps {
   initialChecks: InstallCheck;
 }
 
+// The first step whose requirements aren't met yet.
+function firstIncompleteStep(checks: InstallCheck) {
+  if (!(checks.nodeVersionValid && checks.dependenciesInstalled)) return 1;
+  if (!(checks.environmentConfigured && checks.databaseConnected)) return 2;
+  if (!checks.databaseReset) return 3;
+  return 4;
+}
+
 export default function InstallClient({ initialChecks }: InstallClientProps) {
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState(1);
+  const checks = initialChecks;
+  const [currentStep, setCurrentStep] = useState(() => firstIncompleteStep(initialChecks));
   const [installing, setInstalling] = useState(false);
-  const [checks] = useState<InstallCheck>(initialChecks);
   const [resetting, setResetting] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [installSecret, setInstallSecret] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Auto-advance to next step if current step is complete
-    if (currentStep === 1 && checks.nodeVersionValid && checks.dependenciesInstalled) {
-      setCurrentStep(2);
-    } else if (currentStep === 2 && checks.environmentConfigured && checks.databaseConnected) {
-      setCurrentStep(3);
-    } else if (currentStep === 3 && checks.databaseReset) {
-      setCurrentStep(4);
+  const INSTALL_AUTH_ERROR =
+    'Install request was rejected. The server must have INSTALL_SECRET set (at least 32 characters), and the install secret you entered must match it exactly.';
+
+  const installFetch = async (url: string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set('Authorization', `Bearer ${installSecret}`);
+    const response = await fetch(url, { ...init, headers });
+    if (response.status === 401 || response.status === 403) {
+      setAuthError(INSTALL_AUTH_ERROR);
+      return null;
     }
-  }, [checks, currentStep]);
+    setAuthError(null);
+    return response;
+  };
 
   const refreshPage = () => {
     router.refresh();
@@ -45,9 +59,10 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
   const handleInstallDependencies = async () => {
     setInstalling(true);
     try {
-      const response = await fetch('/api/install/dependencies', {
+      const response = await installFetch('/api/install/dependencies', {
         method: 'POST',
       });
+      if (!response) return;
       const data = await response.json();
       
       if (data.success) {
@@ -70,9 +85,10 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
 
     setResetting(true);
     try {
-      const response = await fetch('/api/install/reset', {
+      const response = await installFetch('/api/install/reset', {
         method: 'POST',
       });
+      if (!response) return;
       const data = await response.json();
       
       if (data.success) {
@@ -121,7 +137,7 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
             <div className="flex items-center justify-between">
               {steps.map((step, index) => (
                 <div key={step.number} className="flex items-center flex-1">
-                  <div className="flex flex-col items-center flex-1">
+                  <div className="flex flex-col items-center flex-1" aria-current={currentStep === step.number ? 'step' : undefined}>
                     <div
                       className={`w-12 h-12 rounded-full flex items-center justify-center font-semibold transition-all ${
                         currentStep >= step.number
@@ -130,9 +146,12 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
                       }`}
                     >
                       {currentStep > step.number ? (
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
+                        <>
+                          <svg aria-hidden="true" className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span className="sr-only">Completed: </span>
+                        </>
                       ) : (
                         step.number
                       )}
@@ -158,6 +177,29 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
 
           {/* Step Content */}
           <div className="p-8">
+            <div className="mb-6 border border-gray-200 rounded-lg p-4">
+              <label htmlFor="install-secret" className="block text-sm font-semibold text-gray-700 mb-1">
+                Install secret
+              </label>
+              <input
+                id="install-secret"
+                type="password"
+                autoComplete="off"
+                value={installSecret}
+                onChange={(e) => setInstallSecret(e.target.value)}
+                aria-describedby="install-secret-help"
+                aria-invalid={authError ? true : undefined}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p id="install-secret-help" className="text-xs text-gray-500 mt-1">
+                Must match the INSTALL_SECRET value configured on the server (at least 32 characters). Required for installer actions.
+              </p>
+              {authError && (
+                <p className="mt-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3" role="alert">
+                  {authError}
+                </p>
+              )}
+            </div>
             <>
                 {/* Step 1: Prerequisites */}
                 {currentStep === 1 && (
@@ -298,13 +340,13 @@ export default function InstallClient({ initialChecks }: InstallClientProps) {
                       <h3 className="font-semibold text-blue-900 mb-3">Required Environment Variables</h3>
                       <div className="space-y-3">
                         <div>
-                          <label className="text-sm font-medium text-blue-800">MONGODB_URI</label>
+                          <p className="text-sm font-medium text-blue-800">MONGODB_URI</p>
                           <p className="text-xs text-blue-700 mt-1">
                             Your MongoDB connection string (e.g., <code>mongodb://localhost:27017/myclinicsoft</code> or MongoDB Atlas connection string)
                           </p>
                         </div>
                         <div>
-                          <label className="text-sm font-medium text-blue-800">SESSION_SECRET</label>
+                          <p className="text-sm font-medium text-blue-800">SESSION_SECRET</p>
                           <p className="text-xs text-blue-700 mt-1">
                             A secure random string (minimum 32 characters). Generate with: <code>openssl rand -base64 32</code>
                           </p>

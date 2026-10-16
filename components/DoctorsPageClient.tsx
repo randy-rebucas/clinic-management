@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Modal } from './ui/Modal';
@@ -51,6 +51,7 @@ export default function DoctorsPageClient() {
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [showCustomSpecialization, setShowCustomSpecialization] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [specializations, setSpecializations] = useState<string[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; doctorId: string | null; doctorName: string }>({
     show: false,
@@ -72,13 +73,8 @@ export default function DoctorsPageClient() {
   });
   const router = useRouter();
 
-  useEffect(() => {
-    fetchDoctors();
-    fetchCurrentUser();
-    fetchSpecializations();
-  }, []);
   
-  const fetchSpecializations = async () => {
+  const fetchSpecializations = useCallback(async () => {
     try {
       const res = await fetch('/api/specializations');
       if (res.ok) {
@@ -97,9 +93,9 @@ export default function DoctorsPageClient() {
       // Fallback to hardcoded list
       setSpecializations([]);
     }
-  };
+  }, []);
 
-  const fetchCurrentUser = async () => {
+  const fetchCurrentUser = useCallback(async () => {
     try {
       const res = await fetch('/api/user/me');
       if (res.ok) {
@@ -112,9 +108,9 @@ export default function DoctorsPageClient() {
     } catch (error) {
       console.error('Failed to fetch current user:', error);
     }
-  };
+  }, []);
 
-  const fetchDoctors = async () => {
+  const fetchDoctors = useCallback(async () => {
     try {
       const res = await fetch('/api/doctors');
       
@@ -142,10 +138,19 @@ export default function DoctorsPageClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    const load = async () => {
+      await Promise.all([fetchDoctors(), fetchCurrentUser(), fetchSpecializations()]);
+    };
+    load();
+  }, [fetchDoctors, fetchCurrentUser, fetchSpecializations]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    setSaving(true);
     try {
       const res = await fetch('/api/doctors', {
         method: 'POST',
@@ -196,6 +201,8 @@ export default function DoctorsPageClient() {
       console.error('Failed to create doctor:', error);
       setError('Failed to create doctor');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -213,6 +220,8 @@ export default function DoctorsPageClient() {
   };
 
   const handleDelete = async (doctorId: string) => {
+    if (saving) return;
+    setSaving(true);
     try {
       const res = await fetch(`/api/doctors/${doctorId}`, {
         method: 'DELETE',
@@ -237,6 +246,8 @@ export default function DoctorsPageClient() {
       console.error('Failed to delete doctor:', error);
       setError('Failed to delete doctor');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -412,6 +423,7 @@ export default function DoctorsPageClient() {
             <div className="flex border-b border-gray-200 bg-gray-50/50">
               <button
                 onClick={() => setViewMode('list')}
+                aria-pressed={viewMode === 'list'}
                 className={`px-6 py-3 text-sm font-semibold transition-all duration-200 relative ${
                   viewMode === 'list'
                     ? 'text-blue-600 bg-white'
@@ -430,6 +442,7 @@ export default function DoctorsPageClient() {
               </button>
               <button
                 onClick={() => setViewMode('roster')}
+                aria-pressed={viewMode === 'roster'}
                 className={`px-6 py-3 text-sm font-semibold transition-all duration-200 relative ${
                   viewMode === 'roster'
                     ? 'text-blue-600 bg-white'
@@ -448,6 +461,7 @@ export default function DoctorsPageClient() {
               </button>
               <button
                 onClick={() => setViewMode('performance')}
+                aria-pressed={viewMode === 'performance'}
                 className={`px-6 py-3 text-sm font-semibold transition-all duration-200 relative ${
                   viewMode === 'performance'
                     ? 'text-blue-600 bg-white'
@@ -494,9 +508,10 @@ export default function DoctorsPageClient() {
             <button 
               type="button"
               onClick={() => deleteConfirm.doctorId && handleDelete(deleteConfirm.doctorId)}
+              disabled={saving}
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold shadow-md"
             >
-              Delete
+              {saving ? 'Deleting…' : 'Delete'}
             </button>
           </div>
         </div>
@@ -522,8 +537,8 @@ export default function DoctorsPageClient() {
             <div className="flex flex-col gap-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Title</label>
-                  <input
+                  <label htmlFor="doctor-title" className="block text-sm font-semibold text-gray-700 mb-1.5">Title</label>
+                  <input id="doctor-title"
                     type="text"
                     value={formData.title}
                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -532,8 +547,8 @@ export default function DoctorsPageClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">First Name <span className="text-red-500">*</span></label>
-                  <input
+                  <label htmlFor="doctor-first-name" className="block text-sm font-semibold text-gray-700 mb-1.5">First Name <span className="text-red-500">*</span></label>
+                  <input id="doctor-first-name"
                     type="text"
                     required
                     value={formData.firstName}
@@ -542,8 +557,8 @@ export default function DoctorsPageClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Last Name <span className="text-red-500">*</span></label>
-                  <input
+                  <label htmlFor="doctor-last-name" className="block text-sm font-semibold text-gray-700 mb-1.5">Last Name <span className="text-red-500">*</span></label>
+                  <input id="doctor-last-name"
                     type="text"
                     required
                     value={formData.lastName}
@@ -552,8 +567,8 @@ export default function DoctorsPageClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email <span className="text-red-500">*</span></label>
-                  <input
+                  <label htmlFor="doctor-email" className="block text-sm font-semibold text-gray-700 mb-1.5">Email <span className="text-red-500">*</span></label>
+                  <input id="doctor-email"
                     type="email"
                     required
                     value={formData.email}
@@ -562,8 +577,8 @@ export default function DoctorsPageClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Phone <span className="text-red-500">*</span></label>
-                  <input
+                  <label htmlFor="doctor-phone" className="block text-sm font-semibold text-gray-700 mb-1.5">Phone <span className="text-red-500">*</span></label>
+                  <input id="doctor-phone"
                     type="tel"
                     required
                     value={formData.phone}
@@ -572,8 +587,8 @@ export default function DoctorsPageClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Specialization <span className="text-red-500">*</span></label>
-                  <select
+                  <label htmlFor="doctor-specialization" className="block text-sm font-semibold text-gray-700 mb-1.5">Specialization <span className="text-red-500">*</span></label>
+                  <select id="doctor-specialization"
                     required
                     value={showCustomSpecialization ? 'Other' : formData.specialization}
                     onChange={(e) => {
@@ -599,6 +614,7 @@ export default function DoctorsPageClient() {
                     <input
                       type="text"
                       required
+                      aria-label="Custom specialization"
                       placeholder="Enter specialization"
                       value={formData.specialization}
                       onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
@@ -607,8 +623,8 @@ export default function DoctorsPageClient() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">License Number <span className="text-red-500">*</span></label>
-                  <input
+                  <label htmlFor="doctor-license-number" className="block text-sm font-semibold text-gray-700 mb-1.5">License Number <span className="text-red-500">*</span></label>
+                  <input id="doctor-license-number"
                     type="text"
                     required
                     value={formData.licenseNumber}
@@ -617,8 +633,8 @@ export default function DoctorsPageClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">PTR</label>
-                  <input
+                  <label htmlFor="doctor-ptr" className="block text-sm font-semibold text-gray-700 mb-1.5">PTR</label>
+                  <input id="doctor-ptr"
                     type="text"
                     value={formData.ptr}
                     onChange={(e) => setFormData({ ...formData, ptr: e.target.value })}
@@ -626,8 +642,8 @@ export default function DoctorsPageClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Department</label>
-                  <input
+                  <label htmlFor="doctor-department" className="block text-sm font-semibold text-gray-700 mb-1.5">Department</label>
+                  <input id="doctor-department"
                     type="text"
                     value={formData.department}
                     onChange={(e) => setFormData({ ...formData, department: e.target.value })}
@@ -636,8 +652,8 @@ export default function DoctorsPageClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Status</label>
-                  <select
+                  <label htmlFor="doctor-status" className="block text-sm font-semibold text-gray-700 mb-1.5">Status</label>
+                  <select id="doctor-status"
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white transition-all"
@@ -658,9 +674,10 @@ export default function DoctorsPageClient() {
                 </button>
                 <button 
                   type="submit"
+                  disabled={saving}
                   className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
                 >
-                  Add Doctor
+                  {saving ? 'Saving…' : 'Add Doctor'}
                 </button>
               </div>
             </div>
@@ -682,6 +699,7 @@ export default function DoctorsPageClient() {
                 </div>
                 <input
                   type="text"
+                  aria-label="Search doctors"
                   placeholder="Search by name, specialization, or email..."
                   value={searchQuery || ''}
                   onChange={(e) => setSearchQuery(e.target.value || '')}
@@ -690,9 +708,10 @@ export default function DoctorsPageClient() {
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
+                    aria-label="Clear search"
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
@@ -700,6 +719,7 @@ export default function DoctorsPageClient() {
               </div>
               <div className="flex flex-wrap gap-3 items-center">
                 <select
+                  aria-label="Filter by status"
                   value={filterStatus || 'all'}
                   onChange={(e) => setFilterStatus(e.target.value || 'all')}
                   className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white font-medium transition-all"
@@ -935,7 +955,7 @@ export default function DoctorsPageClient() {
                                 </p>
                               </div>
                             ) : (
-                              <span className="text-xs text-gray-400">—</span>
+                              <span className="text-xs text-gray-400"><span aria-hidden="true">—</span><span className="sr-only">Not scheduled</span></span>
                             )}
                           </td>
                         );

@@ -11,8 +11,10 @@ interface EnvConfig {
 const envConfig: EnvConfig = {
   required: ['MONGODB_URI', 'SESSION_SECRET', 'CRON_SECRET', 'ENCRYPTION_KEY'],
   optional: [
-    'ROOT_DOMAIN', // Root domain for multi-tenant subdomain detection
-    'INSTALL_SECRET', // Required to access /api/install/* routes in production
+    'ROOT_DOMAIN', // Root domain for multi-tenant subdomain detection and the CSRF origin check
+    'INSTALL_SECRET', // Bearer secret for /api/install/* (all environments); routes are disabled when unset
+    'UPSTASH_REDIS_REST_URL', // Shared rate-limit store (falls back to per-instance memory when unset)
+    'UPSTASH_REDIS_REST_TOKEN',
     'LAB_WEBHOOK_SECRET', // HMAC secret for third-party lab webhook verification
     'DOCUMENT_SEAL_SECRET', // HMAC key for printed-document seals (falls back to a key derived from SESSION_SECRET)
     'DOCUMENT_VERIFY_BASE_URL', // Canonical origin printed in document QR codes, e.g. https://myclinicsoft.com
@@ -66,6 +68,14 @@ export function validateEnv(): { valid: boolean; errors: string[] } {
   // Validate ENCRYPTION_KEY — must be a 64-char hex string (32 bytes for AES-256)
   if (process.env.ENCRYPTION_KEY && !/^[0-9a-fA-F]{64}$/.test(process.env.ENCRYPTION_KEY)) {
     errors.push('ENCRYPTION_KEY must be a 64-character hex string (32 bytes for AES-256)');
+  }
+
+  if (!!process.env.UPSTASH_REDIS_REST_URL !== !!process.env.UPSTASH_REDIS_REST_TOKEN) {
+    errors.push('UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set together');
+  }
+
+  if (process.env.INSTALL_SECRET && process.env.INSTALL_SECRET.length < 32) {
+    errors.push('INSTALL_SECRET must be at least 32 characters long');
   }
 
   // Validate DOCUMENT_SEAL_SECRET length if set

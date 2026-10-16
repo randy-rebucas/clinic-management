@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useSyncExternalStore, FormEvent } from 'react';
 import Link from 'next/link';
+import { toDateKey } from './utils/dateKey';
 
 interface Clinic {
   _id: string;
@@ -38,18 +39,35 @@ interface BookingFormData {
   room?: string;
 }
 
+const subscribeNoop = () => () => {};
+
+/** Clinic subdomain from the current hostname, '' on the root domain (incl. www); not called during SSR. */
+function getHostSubdomain(): string {
+  const parts = window.location.hostname.split('.');
+  const firstPart = parts[0]?.toLowerCase() ?? '';
+  const isWww = firstPart === 'www';
+  const hasSubdomain = !isWww && (
+    (parts.length > 2) ||
+    (parts.length === 2 && firstPart !== 'localhost')
+  );
+  return hasSubdomain ? firstPart : '';
+}
+
 export default function PublicBookingClient() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [fetchedSlots, setAvailableSlots] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState('');
-  const [hasSubdomain, setHasSubdomain] = useState(false);
   const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null);
   const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
-  const [showClinicSelection, setShowClinicSelection] = useState(false);
+  const subdomain = useSyncExternalStore(subscribeNoop, getHostSubdomain, () => null);
+  // On the root domain the visitor first picks a clinic, then books on its subdomain.
+  const showClinicSelection = subdomain === '';
+  const slotsEnabled = Boolean(selectedDate && selectedDoctor && !showClinicSelection);
+  const availableSlots = slotsEnabled ? fetchedSlots : [];
   const [formData, setFormData] = useState<BookingFormData>({
     patientFirstName: '',
     patientLastName: '',
@@ -64,67 +82,63 @@ export default function PublicBookingClient() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
 
-  // Check for subdomain on mount and get tenant info
   useEffect(() => {
-    const checkSubdomain = async () => {
-      if (typeof window !== 'undefined') {
-        const hostname = window.location.hostname;
-        const parts = hostname.split('.');
-        // Extract potential subdomain (first part)
-        const firstPart = parts[0]?.toLowerCase();
-        // 'www' is not a subdomain - treat it as root domain
-        const isWww = firstPart === 'www';
-        // If hostname has more than 2 parts AND first part is not 'www', we have a subdomain
-        // Or if 2 parts and first is not 'localhost' or 'www'
-        const hasSubdomain = !isWww && (
-          (parts.length > 2) || 
-          (parts.length === 2 && firstPart !== 'localhost')
-        );
-        setHasSubdomain(hasSubdomain);
-        
-        if (!hasSubdomain) {
-          // No subdomain (including www), fetch available clinics
-          fetchClinics();
-          setShowClinicSelection(true);
-          setLoading(false);
-        } else {
-          // Has subdomain, get tenant info and fetch doctors
-          try {
-            const subdomain = firstPart;
-            const res = await fetch(`/api/tenants/public?subdomain=${subdomain}`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data.success && data.tenant) {
-                setSelectedClinic(data.tenant);
-              }
-            }
-          } catch (error) {
-            console.error('Failed to fetch tenant info:', error);
+    if (subdomain === null) return;
+    let cancelled = false;
+    const fetchClinics = async () => {
+      try {
+        const res = await fetch('/api/tenants/public');
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled && data.success && data.tenants) {
+            setAvailableClinics(data.tenants);
           }
-          fetchDoctors();
         }
+      } catch (error) {
+        console.error('Failed to fetch clinics:', error);
+      } finally {
+        if (!cancelled) setLoadingClinics(false);
       }
     };
-    
-    checkSubdomain();
-  }, []);
-
-  const fetchClinics = async () => {
-    try {
-      setLoadingClinics(true);
-      const res = await fetch('/api/tenants/public');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.tenants) {
-          setAvailableClinics(data.tenants);
+    const fetchClinicAndDoctors = async () => {
+      let clinic: Clinic | null = null;
+      try {
+        const res = await fetch(`/api/tenants/public?subdomain=${encodeURIComponent(subdomain)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.tenant) clinic = data.tenant;
         }
+      } catch (error) {
+        console.error('Failed to fetch tenant info:', error);
       }
-    } catch (error) {
-      console.error('Failed to fetch clinics:', error);
-    } finally {
-      setLoadingClinics(false);
+      if (cancelled) return;
+      if (clinic) setSelectedClinic(clinic);
+      try {
+        const url = clinic
+          ? `/api/appointments/public?tenantId=${clinic._id}`
+          : '/api/appointments/public';
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled && data.success) {
+            setDoctors(data.data.doctors || []);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch doctors:', error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    if (subdomain === '') {
+      fetchClinics();
+    } else {
+      fetchClinicAndDoctors();
     }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [subdomain]);
 
   const handleClinicSelect = (clinic: Clinic) => {
     setSelectedClinic(clinic);
@@ -134,57 +148,33 @@ export default function PublicBookingClient() {
       const rootDomain = window.location.hostname.split('.').slice(-2).join('.');
       const port = window.location.port ? `:${window.location.port}` : '';
       const bookingUrl = `${protocol}//${clinic.subdomain}.${rootDomain}${port}/book`;
-      window.location.href = bookingUrl;
+      window.open(bookingUrl, '_self');
     }
   };
 
+  const tenantId = selectedClinic?._id;
   useEffect(() => {
-    if (!showClinicSelection && selectedClinic) {
-      fetchDoctors();
-    }
-  }, [showClinicSelection, selectedClinic]);
-
-  useEffect(() => {
-    if (selectedDate && selectedDoctor && !showClinicSelection) {
-      fetchAvailableSlots(selectedDate, selectedDoctor);
-    } else {
-      setAvailableSlots([]);
-    }
-  }, [selectedDate, selectedDoctor, showClinicSelection]);
-
-  const fetchDoctors = async () => {
-    try {
-      const url = selectedClinic 
-        ? `/api/appointments/public?tenantId=${selectedClinic._id}`
-        : '/api/appointments/public';
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setDoctors(data.data.doctors || []);
+    if (!slotsEnabled) return;
+    let cancelled = false;
+    const fetchAvailableSlots = async () => {
+      try {
+        const tenantParam = tenantId ? `&tenantId=${tenantId}` : '';
+        const res = await fetch(`/api/appointments/public?date=${selectedDate}&doctorId=${selectedDoctor}${tenantParam}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled && data.success) {
+            setAvailableSlots(data.data.availableSlots || []);
+          }
         }
+      } catch (error) {
+        console.error('Failed to fetch available slots:', error);
       }
-    } catch (error) {
-      console.error('Failed to fetch doctors:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchAvailableSlots = async (date: string, doctorId: string) => {
-    try {
-      const tenantParam = selectedClinic ? `&tenantId=${selectedClinic._id}` : '';
-      const res = await fetch(`/api/appointments/public?date=${date}&doctorId=${doctorId}${tenantParam}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setAvailableSlots(data.data.availableSlots || []);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch available slots:', error);
-    }
-  };
+    };
+    fetchAvailableSlots();
+    return () => {
+      cancelled = true;
+    };
+  }, [slotsEnabled, selectedDate, selectedDoctor, tenantId]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -250,11 +240,11 @@ export default function PublicBookingClient() {
   const getMinDate = () => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+    return toDateKey(tomorrow);
   };
 
   // Show clinic selection if no subdomain
-  if (showClinicSelection && !hasSubdomain) {
+  if (showClinicSelection) {
     return (
       <div className="min-h-screen relative overflow-hidden">
         {/* Abstract Background Elements */}
@@ -441,10 +431,11 @@ export default function PublicBookingClient() {
                 </h2>
                 <div className="flex flex-col gap-4 md:flex-row md:flex-wrap">
                   <div className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="booking-first-name" className="block text-sm font-semibold text-gray-700 mb-2">
                       First Name <span className="text-red-500">*</span>
                     </label>
                     <input
+                      id="booking-first-name"
                       required
                       value={formData.patientFirstName}
                       onChange={(e) => setFormData({ ...formData, patientFirstName: e.target.value })}
@@ -452,10 +443,11 @@ export default function PublicBookingClient() {
                     />
                   </div>
                   <div className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
-                    <label className="block text-xs font-medium mb-2">
+                    <label htmlFor="booking-last-name" className="block text-xs font-medium mb-2">
                       Last Name <span className="text-red-500">*</span>
                     </label>
                     <input
+                      id="booking-last-name"
                       required
                       value={formData.patientLastName}
                       onChange={(e) => setFormData({ ...formData, patientLastName: e.target.value })}
@@ -463,10 +455,11 @@ export default function PublicBookingClient() {
                     />
                   </div>
                   <div className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
-                    <label className="block text-xs font-medium mb-2">
+                    <label htmlFor="booking-email" className="block text-xs font-medium mb-2">
                       Email <span className="text-red-500">*</span>
                     </label>
                     <input
+                      id="booking-email"
                       type="email"
                       required
                       value={formData.patientEmail}
@@ -475,10 +468,11 @@ export default function PublicBookingClient() {
                     />
                   </div>
                   <div className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
-                    <label className="block text-xs font-medium mb-2">
+                    <label htmlFor="booking-phone" className="block text-xs font-medium mb-2">
                       Phone <span className="text-red-500">*</span>
                     </label>
                     <input
+                      id="booking-phone"
                       type="tel"
                       required
                       value={formData.patientPhone}
@@ -502,10 +496,11 @@ export default function PublicBookingClient() {
                 </h2>
                 <div className="flex flex-col gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="booking-doctor" className="block text-sm font-semibold text-gray-700 mb-2">
                       Doctor <span className="text-red-500">*</span>
                     </label>
                     <select
+                      id="booking-doctor"
                       required
                       value={selectedDoctor}
                       onChange={(e) => {
@@ -524,10 +519,11 @@ export default function PublicBookingClient() {
                   </div>
                   <div className="flex flex-col gap-4 md:flex-row">
                     <div className="md:flex-1" style={{ flex: 1 }}>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label htmlFor="booking-date" className="block text-sm font-semibold text-gray-700 mb-2">
                         Preferred Date <span className="text-red-500">*</span>
                       </label>
                       <input
+                        id="booking-date"
                         type="date"
                         required
                         min={getMinDate()}
@@ -540,11 +536,12 @@ export default function PublicBookingClient() {
                       />
                     </div>
                     <div className="md:flex-1" style={{ flex: 1 }}>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label htmlFor="booking-time" className="block text-sm font-semibold text-gray-700 mb-2">
                         Preferred Time <span className="text-red-500">*</span>
                       </label>
                       {availableSlots.length > 0 ? (
                         <select
+                          id="booking-time"
                           required
                           value={formData.appointmentTime}
                           onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
@@ -559,6 +556,7 @@ export default function PublicBookingClient() {
                         </select>
                       ) : (
                         <input
+                          id="booking-time"
                           type="time"
                           required
                           value={formData.appointmentTime}
@@ -578,8 +576,9 @@ export default function PublicBookingClient() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Reason for Visit</label>
+                    <label htmlFor="booking-reason" className="block text-sm font-semibold text-gray-700 mb-2">Reason for Visit</label>
                     <textarea
+                      id="booking-reason"
                       value={formData.reason}
                       onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                       rows={4}
@@ -588,8 +587,9 @@ export default function PublicBookingClient() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Preferred Room (Optional)</label>
+                    <label htmlFor="booking-room" className="block text-sm font-semibold text-gray-700 mb-2">Preferred Room (Optional)</label>
                     <input
+                      id="booking-room"
                       value={formData.room}
                       onChange={(e) => setFormData({ ...formData, room: e.target.value })}
                       placeholder="e.g., Room 101"

@@ -8,7 +8,12 @@ export type NotificationType =
   | 'invoice' 
   | 'reminder' 
   | 'system' 
-  | 'broadcast';
+  | 'broadcast'
+  | 'visit_followup_reminder'
+  | 'membership_expiry_reminder'
+  | 'referral_followup_reminder'
+  | 'referral_escalation'
+  | 'patient_reengagement';
 
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
 
@@ -53,7 +58,21 @@ const NotificationSchema: Schema = new Schema(
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     type: {
       type: String,
-      enum: ['appointment', 'visit', 'prescription', 'lab_result', 'invoice', 'reminder', 'system', 'broadcast'],
+      enum: [
+        'appointment',
+        'visit',
+        'prescription',
+        'lab_result',
+        'invoice',
+        'reminder',
+        'system',
+        'broadcast',
+        'visit_followup_reminder',
+        'membership_expiry_reminder',
+        'referral_followup_reminder',
+        'referral_escalation',
+        'patient_reengagement',
+      ],
       required: true,
       index: true,
     },

@@ -1,22 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import connectDB from '@/lib/mongodb';
 import Notification from '@/models/Notification';
+
+export const maxDuration = 300;
 
 /**
  * Notification Cleanup Cron Job
  *
  * - Deletes read notifications older than 30 days.
  * - Deletes unread notifications older than 90 days.
- *
- * Schedule: 0 3 * * *  →  03:00 UTC daily.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const denied = requireCron(request);
+  if (denied) return denied;
 
   try {
     await connectDB();
@@ -36,9 +33,8 @@ export async function GET(request: NextRequest) {
       message: 'Notification cleanup processed',
       data: { deletedCount: result.deletedCount },
     });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Cron] notification-cleanup error:', msg);
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+  } catch (error) {
+    console.error('[Cron] notification-cleanup error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to clean up notifications' }, { status: 500 });
   }
 }

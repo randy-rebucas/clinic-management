@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
-import { getTenantContext } from '@/lib/tenant';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import mongoose from 'mongoose';
 import BackupRecord from '@/models/BackupRecord';
 
+const { EJSON } = mongoose.mongo.BSON;
+
 // GET /api/backups — list all backup records for the tenant
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-  if (!session) return unauthorizedResponse();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantObjectId } = ctx;
 
   if (!isAdmin(session)) {
     return NextResponse.json(
@@ -21,15 +23,13 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
 
     const { searchParams } = new URL(request.url);
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '20')));
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '20') || 20));
     const skip = (page - 1) * limit;
 
-    const filter = tenantId ? { tenantId } : {};
+    const filter = { tenantId: tenantObjectId };
 
     const [backups, total] = await Promise.all([
       BackupRecord.find(filter, { data: 0 }) // exclude raw data from list
@@ -54,10 +54,44 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/backups — create a new backup and store it in the database
+// Stay well under MongoDB's 16MB document limit (the snapshot is stored in one BackupRecord).
+const MAX_BACKUP_BYTES = 12 * 1024 * 1024;
+
+// Never copied into a backup: credentials, OTPs and device tokens.
+const SECRET_FIELDS = [
+  'password',
+  'defaultPassword',
+  'totpSecret',
+  'totpLastUsedStep',
+  'otp',
+  'otpExpiry',
+  'otpAttempts',
+  'loginQrTokenHash',
+  'loginQrTokenExpiry',
+  'pushToken',
+  'feedbackToken',
+  'resetPasswordToken',
+  'resetPasswordExpires',
+];
+const SECRET_PROJECTION = Object.fromEntries(SECRET_FIELDS.map((f) => [f, 0]));
+
+// Platform-level or credential-only collections that are not part of a clinic's data export.
+const SKIPPED_COLLECTIONS = new Set([
+  'backuprecords',
+  'mobiledevices',
+  'pushsubscriptions',
+  'paypalorders',
+  'counters',
+  'specializations',
+]);
+
+class BackupTooLargeError extends Error {}
+
+// POST /api/backups — snapshot THIS clinic's data (never other tenants', never credentials)
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
-  if (!session) return unauthorizedResponse();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
   if (!isAdmin(session)) {
     return NextResponse.json(
@@ -68,32 +102,40 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId || undefined;
 
     const body = await request.json().catch(() => ({}));
-    const label: string | undefined = body?.label?.trim() || undefined;
+    const label: string | undefined =
+      typeof body?.label === 'string' ? body.label.trim().slice(0, 200) || undefined : undefined;
 
     const db = mongoose.connection.db;
     if (!db) throw new Error('Database connection not available');
 
-    const collections = await db.listCollections().toArray();
+    const collections = await db.listCollections({}, { nameOnly: true }).toArray();
     const backupData: Record<string, unknown[]> = {};
+    let sizeBytes = 0;
 
     for (const col of collections) {
-      if (col.name.startsWith('system.') || col.name === 'backuprecords') continue;
+      if (col.name.startsWith('system.') || SKIPPED_COLLECTIONS.has(col.name)) continue;
 
-      const colRef = db.collection(col.name);
-      const docs = await colRef.find({}).toArray();
-      backupData[col.name] = docs;
+      const filter =
+        col.name === 'tenants'
+          ? { _id: tenantObjectId }
+          : { $or: [{ tenantId: tenantObjectId }, { tenantIds: tenantObjectId }] };
+
+      const docs: unknown[] = [];
+      for await (const doc of db.collection(col.name).find(filter, { projection: SECRET_PROJECTION })) {
+        sizeBytes += Buffer.byteLength(EJSON.stringify(doc), 'utf8');
+        if (sizeBytes > MAX_BACKUP_BYTES) throw new BackupTooLargeError();
+        docs.push(doc);
+      }
+      if (docs.length) backupData[col.name] = docs;
     }
 
     const collectionNames = Object.keys(backupData);
     const totalDocuments = Object.values(backupData).reduce((s, d) => s + d.length, 0);
-    const sizeBytes = Buffer.byteLength(JSON.stringify(backupData), 'utf8');
 
     const record = await BackupRecord.create({
-      tenantId,
+      tenantId: tenantObjectId,
       createdBy: session.userId,
       createdByEmail: session.email,
       label,
@@ -101,7 +143,7 @@ export async function POST(request: NextRequest) {
       collections: collectionNames,
       totalDocuments,
       sizeBytes,
-      version: '1.0',
+      version: '2.0',
       data: backupData,
     });
 
@@ -113,7 +155,7 @@ export async function POST(request: NextRequest) {
       action: 'backup',
       resource: 'system',
       resourceId: record._id as any,
-      description: `Database backup created${label ? `: ${label}` : ''}`,
+      description: `Clinic data backup created${label ? `: ${label}` : ''}`,
       metadata: { collections: collectionNames, totalDocuments, sizeBytes },
     });
 
@@ -124,6 +166,16 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof BackupTooLargeError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Your clinic data is too large for an in-app backup (limit ~12MB). Use MongoDB Atlas snapshots or mongodump (scripts/backup/backup.sh) instead.',
+        },
+        { status: 413 }
+      );
+    }
     console.error('Error creating backup:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to create backup' },

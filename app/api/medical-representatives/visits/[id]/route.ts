@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
+import { isValidId, notFound } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+import { requireRepSession, isRepSessionError } from '../../_lib/rep-session';
 
-interface VisitData {
-  clinicName: string;
-  clinicLocation: string;
-  purpose: string;
-  date: string;
-  time: string;
-  duration: number;
-  status: 'scheduled' | 'completed' | 'cancelled';
-  notes?: string;
-}
+const updateVisitSchema = z.object({
+  clinicName: z.string().trim().min(1).max(200),
+  clinicLocation: z.string().trim().min(1).max(300),
+  purpose: z.string().trim().min(1).max(500),
+  date: z.coerce.date(),
+  time: z.string().trim().regex(/^\d{2}:\d{2}$/, 'Time must be in HH:mm format.'),
+  duration: z.coerce.number().int().positive().max(24 * 60).optional(),
+  status: z.enum(['scheduled', 'completed', 'cancelled']).optional(),
+  notes: z.preprocess((v) => (v === null ? undefined : v), z.string().trim().max(2000).optional()),
+});
 
 /**
  * PUT /api/medical-representatives/visits/[id]
@@ -23,56 +26,36 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
 
-    if (session.role !== 'medical-representative') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
+    const { id: visitId } = await params;
+    if (!isValidId(visitId)) return notFound('Visit');
 
-    let body: VisitData;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { success: false, error: 'Invalid request body' },
-        { status: 400 }
-      );
-    }
+    const parsed = await parseBody(request, updateVisitSchema);
+    if (isValidationError(parsed)) return parsed;
+    const body = parsed.data;
 
     await connectDB();
 
-    const { id: visitId } = await params;
-
     const updatedVisit = await MedicalRepresentativeVisit.findOneAndUpdate(
-      { _id: visitId, userId: session.userId },
+      { ...rep.ownerFilter, _id: visitId },
       {
-        clinicName: body.clinicName,
-        clinicLocation: body.clinicLocation,
-        purpose: body.purpose,
-        date: new Date(body.date),
-        time: body.time,
-        duration: body.duration || 60,
-        status: body.status || 'scheduled',
-        notes: body.notes || '',
+        $set: {
+          clinicName: body.clinicName,
+          clinicLocation: body.clinicLocation,
+          purpose: body.purpose,
+          date: body.date,
+          time: body.time,
+          duration: body.duration || 60,
+          status: body.status || 'scheduled',
+          notes: body.notes || '',
+        },
       },
-      { new: true }
+      { new: true, runValidators: true }
     ).lean();
 
-    if (!updatedVisit) {
-      return NextResponse.json(
-        { success: false, error: 'Visit not found' },
-        { status: 404 }
-      );
-    }
+    if (!updatedVisit) return notFound('Visit');
 
     return NextResponse.json({
       success: true,
@@ -82,7 +65,7 @@ export async function PUT(
   } catch (error: any) {
     console.error('Update visit error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -97,35 +80,20 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
 
-    if (session.role !== 'medical-representative') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
+    const { id: visitId } = await params;
+    if (!isValidId(visitId)) return notFound('Visit');
 
     await connectDB();
 
-    const { id: visitId } = await params;
     const deletedVisit = await MedicalRepresentativeVisit.findOneAndDelete({
+      ...rep.ownerFilter,
       _id: visitId,
-      userId: session.userId,
     }).lean();
 
-    if (!deletedVisit) {
-      return NextResponse.json(
-        { success: false, error: 'Visit not found' },
-        { status: 404 }
-      );
-    }
+    if (!deletedVisit) return notFound('Visit');
 
     return NextResponse.json({
       success: true,
@@ -134,7 +102,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error('Delete visit error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }

@@ -4,10 +4,10 @@
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
 import { Types } from 'mongoose';
+import { automationEnabled } from './shared';
 
 export interface WelcomeMessageOptions {
   patientId: string | Types.ObjectId;
@@ -29,39 +29,24 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
   try {
     await connectDB();
 
-    const settings = await getSettings();
-    const autoWelcomeMessages = (settings.automationSettings as any)?.autoWelcomeMessages !== false;
+    const rawTenant = options.tenantIds?.[0] ?? options.tenantId;
+    if (!rawTenant || !Types.ObjectId.isValid(String(rawTenant))) {
+      return { success: false, sent: false, error: 'Tenant is required' };
+    }
+    const tenantId = new Types.ObjectId(String(rawTenant));
 
-    if (!autoWelcomeMessages) {
+    const settings = await getSettings(tenantId.toString());
+    if (!automationEnabled(settings, 'autoWelcomeMessages')) {
       return { success: true, sent: false };
     }
 
-    const patientId = typeof options.patientId === 'string' 
-      ? new Types.ObjectId(options.patientId) 
-      : options.patientId;
-
-    const patient = await Patient.findById(patientId);
-
+    const patient = await Patient.findOne({ _id: options.patientId, tenantIds: tenantId });
     if (!patient) {
       return { success: false, sent: false, error: 'Patient not found' };
     }
 
-    // Multi-tenant support: use tenantIds if provided, fallback to tenantId or patient.tenantIds
-    let tenantId: Types.ObjectId | undefined = undefined;
-    if (options.tenantIds && options.tenantIds.length > 0) {
-      tenantId = typeof options.tenantIds[0] === 'string' ? new Types.ObjectId(options.tenantIds[0]) : options.tenantIds[0];
-    } else if (options.tenantId) {
-      tenantId = typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId;
-    } else if (Array.isArray(patient.tenantIds) && patient.tenantIds.length > 0) {
-      tenantId = patient.tenantIds[0];
-    } else if (patient.tenantId) {
-      tenantId = patient.tenantId;
-    }
-
     const clinicName = settings.clinicName || 'Our Clinic';
     const clinicPhone = settings.clinicPhone || '';
-    const clinicEmail = settings.clinicEmail || '';
-    const clinicWebsite = settings.clinicWebsite || '';
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
 
     const welcomeMessage = generateWelcomeSMS(patient, clinicName, clinicPhone);
@@ -72,13 +57,8 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
     // Send SMS if enabled and phone available
     if (options.sendSMS !== false && patient.phone) {
       try {
-        let phoneNumber = patient.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-        }
-
         const smsResult = await sendSMS({
-          to: phoneNumber,
+          to: patient.phone,
           message: welcomeMessage,
         });
 
@@ -119,7 +99,7 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
     return { 
       success: false,
       sent: false,
-      error: error.message || 'Failed to send welcome message' 
+      error: 'Failed to send welcome message',
     };
   }
 }
@@ -135,14 +115,14 @@ function generateWelcomeSMS(patient: any, clinicName: string, clinicPhone: strin
  * Generate welcome email
  */
 function generateWelcomeEmail(patient: any, settings: any, baseUrl: string): { subject: string; html: string } {
-  const clinicName = settings.clinicName || 'Our Clinic';
-  const clinicAddress = settings.clinicAddress || '';
-  const clinicPhone = settings.clinicPhone || '';
-  const clinicEmail = settings.clinicEmail || '';
-  const clinicWebsite = settings.clinicWebsite || baseUrl;
-  const bookingUrl = `${baseUrl}/book`;
-
-  const subject = `Welcome to ${clinicName}!`;
+  const subject = `Welcome to ${settings.clinicName || 'Our Clinic'}!`;
+  const clinicName = escapeHtml(settings.clinicName || 'Our Clinic');
+  const clinicAddress = escapeHtml(settings.clinicAddress || '');
+  const clinicPhone = escapeHtml(settings.clinicPhone || '');
+  const clinicEmail = escapeHtml(settings.clinicEmail || '');
+  const clinicWebsite = escapeHtml(settings.clinicWebsite || baseUrl);
+  const bookingUrl = escapeHtml(`${baseUrl}/book`);
+  const patientCode = escapeHtml(patient.patientCode || 'N/A');
 
   const html = `
     <!DOCTYPE html>
@@ -164,10 +144,10 @@ function generateWelcomeEmail(patient: any, settings: any, baseUrl: string): { s
           <h1>Welcome to ${clinicName}!</h1>
         </div>
         <div class="content">
-          <p>Dear ${patient.firstName} ${patient.lastName},</p>
+          <p>Dear ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)},</p>
           <p>Thank you for registering with ${clinicName}. We're excited to have you as a patient!</p>
           <div class="info-box">
-            <p><strong>Your Patient Code:</strong> ${patient.patientCode || 'N/A'}</p>
+            <p><strong>Your Patient Code:</strong> ${patientCode}</p>
             <p>Please keep this code for your records. You'll need it when booking appointments or accessing your records.</p>
           </div>
           <h2>What's Next?</h2>

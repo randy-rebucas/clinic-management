@@ -3,12 +3,21 @@
 
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
-import Patient from '@/models/Patient';
 import { getSettings } from '@/lib/settings';
-import { createNotification, createInvoiceNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
 import { Types } from 'mongoose';
+import {
+  forEachTenant,
+  automationEnabled,
+  getTenantTimezone,
+  delivered,
+  daysUntilInTz,
+  displayDate,
+  errorMessage,
+  BATCH_LIMIT,
+  type AutomationTenant,
+} from './shared';
 
 export interface PaymentReminderOptions {
   invoiceId?: string | Types.ObjectId;
@@ -17,6 +26,24 @@ export interface PaymentReminderOptions {
   sendSMS?: boolean;
   sendEmail?: boolean;
   sendNotification?: boolean;
+}
+
+/** Reminder schedule in days since the invoice: 7, 14, 30, then weekly until MAX_REMINDER_DAYS. */
+const MAX_REMINDER_DAYS = 180;
+
+/** The latest schedule level reached after `daysSinceInvoice` days, or null before the first. */
+function dueReminderLevel(daysSinceInvoice: number): number | null {
+  if (daysSinceInvoice < 7) return null;
+  if (daysSinceInvoice < 14) return 7;
+  if (daysSinceInvoice < 30) return 14;
+  if (daysSinceInvoice > MAX_REMINDER_DAYS) return null;
+  return 30 + Math.floor((daysSinceInvoice - 30) / 7) * 7;
+}
+
+function reminderLevelName(daysSinceInvoice: number): 'first' | 'second' | 'final' {
+  if (daysSinceInvoice >= 30) return 'final';
+  if (daysSinceInvoice >= 14) return 'second';
+  return 'first';
 }
 
 /**
@@ -30,41 +57,24 @@ export async function sendPaymentReminder(options: PaymentReminderOptions): Prom
   try {
     await connectDB();
 
-    const settings = await getSettings();
-    const autoPaymentReminders = (settings.automationSettings as any)?.autoPaymentReminders !== false;
+    if (!options.tenantId || !options.invoiceId) {
+      return { success: false, sent: false, error: 'Tenant and invoice are required' };
+    }
+    const tenantId = new Types.ObjectId(String(options.tenantId));
 
-    if (!autoPaymentReminders) {
+    const settings = await getSettings(tenantId.toString());
+    if (!automationEnabled(settings, 'autoPaymentReminders')) {
       return { success: true, sent: false };
     }
 
-    // Get invoice with patient
-    const invoiceQuery: any = {};
-    if (options.invoiceId) {
-      invoiceQuery._id = typeof options.invoiceId === 'string' 
-        ? new Types.ObjectId(options.invoiceId) 
-        : options.invoiceId;
-    }
-    if (options.tenantId) {
-      invoiceQuery.tenantId = typeof options.tenantId === 'string' 
-        ? new Types.ObjectId(options.tenantId) 
-        : options.tenantId;
-    }
-
-    const invoice = await Invoice.findOne(invoiceQuery)
+    const invoice = await Invoice.findOne({ _id: options.invoiceId, tenantId })
       .populate('patient', 'firstName lastName email phone')
       .populate('visit', 'visitCode date');
 
     if (!invoice) {
       return { success: false, sent: false, error: 'Invoice not found' };
     }
-
-    // Check if invoice has outstanding balance
-    if (!invoice.outstandingBalance || invoice.outstandingBalance <= 0) {
-      return { success: true, sent: false };
-    }
-
-    // Check if invoice is already paid
-    if (invoice.status === 'paid') {
+    if (!invoice.outstandingBalance || invoice.outstandingBalance <= 0 || invoice.status === 'paid') {
       return { success: true, sent: false };
     }
 
@@ -73,175 +83,127 @@ export async function sendPaymentReminder(options: PaymentReminderOptions): Prom
       return { success: false, sent: false, error: 'Patient not found' };
     }
 
-    // Calculate days overdue
-    const invoiceDate = new Date(invoice.createdAt);
-    const today = new Date();
-    const daysSinceInvoice = Math.floor((today.getTime() - invoiceDate.getTime()) / (1000 * 60 * 60 * 24));
-    
-    // Determine reminder level based on days overdue
-    let reminderLevel: 'first' | 'second' | 'final' = 'first';
-    let urgency = 'normal';
-    
-    if (daysSinceInvoice >= 30) {
-      reminderLevel = 'final';
-      urgency = 'urgent';
-    } else if (daysSinceInvoice >= 14) {
-      reminderLevel = 'second';
-      urgency = 'high';
-    }
-
-    const reminderMessage = generateReminderMessage(invoice, daysSinceInvoice, reminderLevel);
-    const emailContent = generateReminderEmail(invoice, daysSinceInvoice, reminderLevel);
+    const tz = await getTenantTimezone(tenantId);
+    const daysSinceInvoice = Math.max(0, -daysUntilInTz(invoice.createdAt, tz));
+    const reminderLevel = reminderLevelName(daysSinceInvoice);
 
     let sent = false;
 
-    // Send SMS if enabled and phone available
     if (options.sendSMS !== false && patient.phone) {
       try {
-        let phoneNumber = patient.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-        }
-
-        const smsResult = await sendSMS({
-          to: phoneNumber,
-          message: reminderMessage,
-        });
-
-        if (smsResult.success) {
-          sent = true;
-        }
+        const smsResult = await sendSMS({ to: patient.phone, message: generateReminderMessage(invoice, daysSinceInvoice, reminderLevel) });
+        if (delivered(smsResult)) sent = true;
       } catch (error) {
         console.error('Error sending payment reminder SMS:', error);
       }
     }
 
-    // Send email if enabled and email available
     if (options.sendEmail !== false && patient.email) {
       try {
-        const emailResult = await sendEmail({
-          to: patient.email,
-          subject: emailContent.subject,
-          html: emailContent.html,
-        });
-
-        if (emailResult.success) {
-          sent = true;
-        }
+        const emailContent = generateReminderEmail(invoice, daysSinceInvoice, reminderLevel, displayDate(invoice.createdAt, tz));
+        const emailResult = await sendEmail({ to: patient.email, subject: emailContent.subject, html: emailContent.html });
+        if (delivered(emailResult)) sent = true;
       } catch (error) {
         console.error('Error sending payment reminder email:', error);
       }
     }
 
-    // Send in-app notification
-    if (options.sendNotification !== false && patient._id) {
-      try {
-        await createInvoiceNotification(patient._id, invoice);
-        sent = true;
-      } catch (error) {
-        console.error('Error creating payment reminder notification:', error);
-      }
-    }
-
+    // Patients have no User account, so no in-app notification is created here.
     return { success: true, sent };
   } catch (error: any) {
     console.error('Error sending payment reminder:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send payment reminder' 
+      error: 'Failed to send payment reminder',
     };
   }
 }
 
-/**
- * Process all overdue invoices and send reminders
- * This should be called by a cron job
- */
-export async function processPaymentReminders(tenantId?: string | Types.ObjectId): Promise<{
+type PaymentRemindersResult = {
   success: boolean;
   processed: number;
   sent: number;
   errors: number;
   results: Array<{ invoiceId: string; success: boolean; error?: string }>;
-}> {
+};
+
+async function processTenant(tenant: AutomationTenant): Promise<PaymentRemindersResult> {
+  const out: PaymentRemindersResult = { success: true, processed: 0, sent: 0, errors: 0, results: [] };
+
+  const settings = await getSettings(tenant.tenantId);
+  if (!automationEnabled(settings, 'autoPaymentReminders')) return out;
+
+  const now = new Date();
+  const invoices = await Invoice.find({
+    tenantId: tenant.tenantObjectId,
+    status: { $in: ['unpaid', 'partial'] },
+    outstandingBalance: { $gt: 0 },
+    createdAt: {
+      $lte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+      $gte: new Date(now.getTime() - (MAX_REMINDER_DAYS + 1) * 24 * 60 * 60 * 1000),
+    },
+  })
+    .select('_id createdAt paymentRemindersSent')
+    .sort({ createdAt: 1 })
+    .limit(BATCH_LIMIT * 4)
+    .lean();
+
+  for (const invoice of invoices as any[]) {
+    const daysSinceInvoice = Math.max(0, -daysUntilInTz(invoice.createdAt, tenant.timezone, now));
+    const level = dueReminderLevel(daysSinceInvoice);
+    if (level === null) continue;
+    if ((invoice.paymentRemindersSent || []).some((r: any) => r.level >= level)) continue;
+
+    out.processed++;
+    try {
+      const result = await sendPaymentReminder({
+        invoiceId: invoice._id,
+        tenantId: tenant.tenantObjectId,
+        daysOverdue: daysSinceInvoice,
+        sendSMS: true,
+        sendEmail: true,
+      });
+      out.results.push({ invoiceId: String(invoice._id), success: result.success, error: result.error });
+
+      if (result.success && result.sent) {
+        out.sent++;
+        await Invoice.updateOne(
+          { _id: invoice._id, tenantId: tenant.tenantObjectId },
+          { $push: { paymentRemindersSent: { level, sentAt: new Date() } } }
+        );
+      } else if (!result.success) {
+        out.errors++;
+      }
+    } catch (error) {
+      out.errors++;
+      out.results.push({ invoiceId: String(invoice._id), success: false, error: errorMessage(error) });
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Process overdue invoices and send reminders (7, 14, 30 days, then weekly; each level once).
+ * Without a tenantId every active tenant is processed.
+ */
+export async function processPaymentReminders(tenantId?: string | Types.ObjectId): Promise<PaymentRemindersResult> {
   try {
     await connectDB();
-
-    const settings = await getSettings();
-    const autoPaymentReminders = (settings.automationSettings as any)?.autoPaymentReminders !== false;
-
-    if (!autoPaymentReminders) {
-      return { success: true, processed: 0, sent: 0, errors: 0, results: [] };
-    }
-
-    // Build query for unpaid/partial invoices
-    const query: any = {
-      status: { $in: ['unpaid', 'partial'] },
-      outstandingBalance: { $gt: 0 },
-    };
-
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
-
-    // Get all invoices with outstanding balance
-    const invoices = await Invoice.find(query)
-      .populate('patient', 'firstName lastName email phone')
-      .sort({ createdAt: 1 }); // Oldest first
-
-    const results: Array<{ invoiceId: string; success: boolean; error?: string }> = [];
-    let sent = 0;
-    let errors = 0;
-
-    for (const invoice of invoices) {
-      const invoiceDate = new Date(invoice.createdAt);
-      const today = new Date();
-      const daysSinceInvoice = Math.floor((today.getTime() - invoiceDate.getTime()) / (1000 * 60 * 60 * 24));
-
-      // Send reminders based on schedule:
-      // - 7 days: First reminder
-      // - 14 days: Second reminder
-      // - 30 days: Final notice
-      const shouldRemind = 
-        (daysSinceInvoice === 7) || 
-        (daysSinceInvoice === 14) || 
-        (daysSinceInvoice === 30) ||
-        (daysSinceInvoice > 30 && daysSinceInvoice % 7 === 0); // Weekly after 30 days
-
-      if (shouldRemind) {
-        const result = await sendPaymentReminder({
-          invoiceId: invoice._id,
-          tenantId: invoice.tenantId,
-          daysOverdue: daysSinceInvoice,
-          sendSMS: true,
-          sendEmail: true,
-          sendNotification: true,
-        });
-
-        results.push({
-          invoiceId: invoice._id.toString(),
-          success: result.success,
-          error: result.error,
-        });
-
-        if (result.success && result.sent) {
-          sent++;
-        } else if (!result.success) {
-          errors++;
-        }
+    const runs = await forEachTenant(tenantId, processTenant);
+    const total: PaymentRemindersResult = { success: runs.every((r) => r.success), processed: 0, sent: 0, errors: 0, results: [] };
+    for (const run of runs) {
+      if (!run.result) {
+        total.errors++;
+        continue;
       }
+      total.processed += run.result.processed;
+      total.sent += run.result.sent;
+      total.errors += run.result.errors;
+      total.results.push(...run.result.results);
     }
-
-    return {
-      success: true,
-      processed: invoices.length,
-      sent,
-      errors,
-      results,
-    };
+    return total;
   } catch (error: any) {
     console.error('Error processing payment reminders:', error);
     return {
@@ -249,7 +211,7 @@ export async function processPaymentReminders(tenantId?: string | Types.ObjectId
       processed: 0,
       sent: 0,
       errors: 1,
-      results: [{ invoiceId: 'unknown', success: false, error: error.message }],
+      results: [],
     };
   }
 }
@@ -285,7 +247,8 @@ function generateReminderMessage(
 function generateReminderEmail(
   invoice: any,
   daysOverdue: number,
-  level: 'first' | 'second' | 'final'
+  level: 'first' | 'second' | 'final',
+  invoiceDateText: string
 ): { subject: string; html: string } {
   const patient = invoice.patient as any;
   const amount = invoice.outstandingBalance?.toFixed(2) || '0.00';
@@ -329,14 +292,14 @@ function generateReminderEmail(
           <h1>${urgencyText}</h1>
         </div>
         <div class="content">
-          <p>Dear ${patient.firstName} ${patient.lastName},</p>
+          <p>Dear ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)},</p>
           ${level === 'final' 
             ? '<p><strong>This is a final notice regarding your outstanding balance.</strong></p>'
             : '<p>This is a reminder regarding your outstanding invoice balance.</p>'
           }
           <div class="info-box">
-            <p><strong>Invoice Number:</strong> ${invoiceNumber}</p>
-            <p><strong>Invoice Date:</strong> ${new Date(invoice.createdAt).toLocaleDateString()}</p>
+            <p><strong>Invoice Number:</strong> ${escapeHtml(invoiceNumber)}</p>
+            <p><strong>Invoice Date:</strong> ${escapeHtml(invoiceDateText)}</p>
             <p><strong>Days Overdue:</strong> ${daysOverdue} days</p>
             <p class="amount">Outstanding Balance: ${amount}</p>
           </div>

@@ -1,46 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { createAuditLog, logDataExport } from '@/lib/audit';
+import { isAdmin } from '@/app/lib/auth-helpers';
+import { logDataExport } from '@/lib/audit';
+import {
+  requireTenantSession,
+  isTenantSessionError,
+  patientTenantFilter,
+  tenantFilter,
+  notFound,
+} from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
+
+const exportSchema = z.object({
+  patientId: zObjectId,
+});
 
 /**
  * Export patient data (PH DPA - Right to Data Portability)
  */
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
+  if (!isAdmin(session) && session.role !== 'doctor') {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden - Admin or doctor access required' },
+      { status: 403 }
+    );
   }
 
   try {
     await connectDB();
-    const body = await request.json();
-    const { patientId } = body;
+    const parsed = await parseBody(request, exportSchema);
+    if (isValidationError(parsed)) return parsed;
+    const { patientId } = parsed.data;
 
-    if (!patientId) {
-      return NextResponse.json(
-        { success: false, error: 'Patient ID required' },
-        { status: 400 }
-      );
-    }
-
-    // Get patient data
-    const patient = await Patient.findById(patientId)
-      .populate('visits')
-      .populate('appointments')
-      .lean();
+    const patient = await Patient.findOne(patientTenantFilter(tenantId, { _id: patientId })).lean() as any;
 
     if (!patient) {
-      return NextResponse.json(
-        { success: false, error: 'Patient not found' },
-        { status: 404 }
-      );
+      return notFound('Patient');
     }
+    // Do not reveal which other clinics this patient is registered with.
+    delete patient.tenantIds;
 
-    // Get related data
     const Visit = (await import('@/models/Visit')).default;
     const Appointment = (await import('@/models/Appointment')).default;
     const Prescription = (await import('@/models/Prescription')).default;
@@ -48,22 +53,20 @@ export async function POST(request: NextRequest) {
     const Invoice = (await import('@/models/Invoice')).default;
     const Document = (await import('@/models/Document')).default;
 
+    const scoped = (extra: Record<string, unknown> = {}) => tenantFilter(tenantId, { patient: patientId, ...extra });
+
     const [visits, appointments, prescriptions, labResults, invoices, documents] = await Promise.all([
-      Visit.find({ patient: patientId }).lean(),
-      Appointment.find({ patient: patientId }).lean(),
-      Prescription.find({ patient: patientId }).lean(),
-      LabResult.find({ patient: patientId }).lean(),
-      Invoice.find({ patient: patientId }).lean(),
-      Document.find({ patient: patientId, status: 'active' }).lean(),
+      Visit.find(scoped()).lean(),
+      Appointment.find(scoped()).lean(),
+      Prescription.find(scoped()).lean(),
+      LabResult.find(scoped()).lean(),
+      Invoice.find(scoped()).lean(),
+      Document.find(scoped({ status: 'active' })).lean(),
     ]);
 
-    // Compile export data
     const exportData = {
       exportDate: new Date().toISOString(),
-      patient: {
-        ...patient,
-        // Remove sensitive fields if needed
-      },
+      patient,
       visits,
       appointments,
       prescriptions,
@@ -75,7 +78,6 @@ export async function POST(request: NextRequest) {
       })),
     };
 
-    // Log data export
     await logDataExport(
       session.userId,
       session.email,
@@ -93,7 +95,8 @@ export async function POST(request: NextRequest) {
           invoices: invoices.length,
           documents: documents.length,
         },
-      }
+      },
+      tenantId
     );
 
     return NextResponse.json({
@@ -114,4 +117,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

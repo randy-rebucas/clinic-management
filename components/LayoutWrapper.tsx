@@ -55,7 +55,7 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
       }}
     >
       <ContentHeader user={user} />
-      <main>{children}</main>
+      <main id="main-content" tabIndex={-1} className="focus:outline-none">{children}</main>
     </div>
   );
 }

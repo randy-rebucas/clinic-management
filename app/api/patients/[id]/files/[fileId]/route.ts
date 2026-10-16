@@ -1,35 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, patientTenantFilter } from '@/lib/api/tenant-session';
+import { Types } from 'mongoose';
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; fileId: string }> }
 ) {
-  // User authentication check
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(ctx.session, 'patients', 'update');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
     const { id, fileId } = await params;
-    const patient = await Patient.findByIdAndUpdate(
-      id,
-      { $pull: { attachments: { _id: fileId } } },
+    if (!isValidId(id) || !isValidId(fileId)) return notFound('Patient');
+
+    const patient = await Patient.findOneAndUpdate(
+      patientTenantFilter(ctx.tenantId, { _id: id }),
+      { $pull: { attachments: { _id: new Types.ObjectId(fileId) } } },
       { new: true }
     );
 
-    if (!patient) {
-      return NextResponse.json(
-        { success: false, error: 'Patient not found' },
-        { status: 404 }
-      );
-    }
+    if (!patient) return notFound('Patient');
 
     return NextResponse.json({ success: true, data: {} });
   } catch (error: any) {
@@ -40,4 +37,3 @@ export async function DELETE(
     );
   }
 }
-

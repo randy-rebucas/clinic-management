@@ -72,8 +72,8 @@ export default function PatientFiltersSection({
             <button
               onClick={() => setShowSegmentationFilter(!showSegmentationFilter)}
               className="w-full flex items-center justify-between p-4 text-left font-semibold text-gray-700 hover:bg-blue-100 transition-colors"
+              type="button"
               aria-expanded={showSegmentationFilter}
-              aria-label="Toggle patient segmentation filters"
             >
               <span className="text-sm">Advanced Segmentation</span>
               <svg
@@ -81,6 +81,7 @@ export default function PatientFiltersSection({
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>

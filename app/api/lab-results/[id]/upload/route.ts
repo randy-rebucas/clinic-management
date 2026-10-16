@@ -1,79 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
+import { validateUpload } from '@/lib/upload-validation';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(session, 'lab-results', 'update');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
     const { id } = await params;
+    if (!isValidId(id)) return notFound('Lab result');
+
     const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const notes = formData.get('notes') as string | null;
+    const file = formData.get('file');
+    const notes = formData.get('notes');
 
-    if (!file) {
+    const check = await validateUpload(file instanceof File ? file : null);
+    if (!check.ok) {
+      return NextResponse.json({ success: false, error: check.error }, { status: check.status });
+    }
+
+    const labResult = await LabResult.findOne(tenantFilter(tenantId, { _id: id }));
+    if (!labResult) return notFound('Lab result');
+
+    const { checkStorageLimit } = await import('@/lib/storage-tracking');
+    const storageCheck = await checkStorageLimit(tenantId, check.buffer.length);
+    if (!storageCheck.allowed) {
       return NextResponse.json(
-        { success: false, error: 'No file provided' },
-        { status: 400 }
+        {
+          success: false,
+          error: storageCheck.reason || 'Storage limit exceeded',
+          storageUsage: storageCheck.currentUsage,
+        },
+        { status: 403 }
       );
     }
 
-    // Get tenant context
-    const { getTenantContext } = await import('@/lib/tenant');
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    // Check storage limit before uploading
-    if (tenantId) {
-      const { checkStorageLimit } = await import('@/lib/storage-tracking');
-      const storageCheck = await checkStorageLimit(tenantId, file.size);
-      if (!storageCheck.allowed) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: storageCheck.reason || 'Storage limit exceeded',
-            storageUsage: storageCheck.currentUsage,
-          },
-          { status: 403 }
-        );
-      }
-    }
-
-    const labResult = await LabResult.findById(id);
-    if (!labResult) {
-      return NextResponse.json(
-        { success: false, error: 'Lab result not found' },
-        { status: 404 }
-      );
-    }
-
-    // Convert file to base64 (in production, use S3/Cloudinary)
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    const base64 = buffer.toString('base64');
-    const dataUrl = `data:${file.type};base64,${base64}`;
-
-    const attachment = {
-      filename: file.name,
-      contentType: file.type,
-      size: file.size,
-      url: dataUrl,
+    labResult.attachments.push({
+      filename: check.filename,
+      contentType: check.contentType,
+      size: check.buffer.length,
+      url: `data:${check.contentType};base64,${check.buffer.toString('base64')}`,
       uploadDate: new Date(),
-      notes: notes || undefined,
+      notes: typeof notes === 'string' && notes ? notes.slice(0, 2000) : undefined,
       uploadedBy: session.userId,
-    };
-
-    labResult.attachments.push(attachment);
+    } as any);
 
     // Update status to completed if results are uploaded
     if (labResult.status === 'ordered' || labResult.status === 'in-progress') {
@@ -84,8 +65,8 @@ export async function POST(
     }
 
     await labResult.save();
-    await labResult.populate('patient', 'firstName lastName patientCode email phone');
-    await labResult.populate('visit', 'visitCode date');
+    await labResult.populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } });
+    await labResult.populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } });
     await labResult.populate('orderedBy', 'name email');
 
     return NextResponse.json({ success: true, data: labResult });
@@ -97,4 +78,3 @@ export async function POST(
     );
   }
 }
-

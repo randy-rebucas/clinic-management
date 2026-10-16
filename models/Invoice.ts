@@ -57,6 +57,9 @@ export interface IInvoice extends Document {
   outstandingBalance?: number; // Calculated: total - totalPaid
   totalPaid?: number; // Sum of all payments
   status: 'unpaid' | 'partial' | 'paid' | 'refunded';
+  archived?: boolean;
+  archivedAt?: Date;
+  paymentRemindersSent?: Array<{ level: number; sentAt: Date }>;
   createdAt: Date;
   createdBy?: Types.ObjectId;
   updatedAt: Date;
@@ -153,6 +156,13 @@ const InvoiceSchema: Schema = new Schema(
     status: { type: String, enum: ['unpaid', 'partial', 'paid', 'refunded'], default: 'unpaid' },
     createdAt: { type: Date, default: Date.now },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    archived: { type: Boolean },
+    archivedAt: { type: Date },
+    // Payment reminder sent markers (level = days since invoice)
+    paymentRemindersSent: {
+      type: [{ level: Number, sentAt: Date, _id: false }],
+      default: undefined,
+    },
   },
   { timestamps: true }
 );
@@ -161,7 +171,11 @@ const InvoiceSchema: Schema = new Schema(
 InvoiceSchema.index({ tenantId: 1, patient: 1, createdAt: -1 });
 InvoiceSchema.index({ tenantId: 1, visit: 1 });
 InvoiceSchema.index({ tenantId: 1, status: 1 });
-InvoiceSchema.index({ tenantId: 1, invoiceNumber: 1 });
+InvoiceSchema.index(
+  { tenantId: 1, invoiceNumber: 1 },
+  { unique: true, name: 'uniq_tenant_invoiceNumber', partialFilterExpression: { invoiceNumber: { $type: 'string' } } }
+);
+InvoiceSchema.index({ tenantId: 1, archived: 1, createdAt: 1 });
 InvoiceSchema.index({ tenantId: 1, createdBy: 1 });
 InvoiceSchema.index({ tenantId: 1, createdBy: 1, createdAt: -1 }); // For creator history
 InvoiceSchema.index({ tenantId: 1, status: 1, createdAt: -1 }); // For status-based date queries

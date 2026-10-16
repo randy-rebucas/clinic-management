@@ -2,42 +2,24 @@
 
 This directory contains automated tests for MyClinicSoft.
 
-## Test Frameworks
+## Test Framework
 
-The project uses two testing frameworks:
-
-1. **Vitest** - Fast, modern testing framework (recommended)
-2. **Jest** - Alternative testing framework (for compatibility)
+Tests use **Vitest** (`vitest.config.ts`). Jest is not used.
 
 ## Running Tests
 
-### Vitest (Recommended)
-
 ```bash
 # Run all tests
-npm run test
+pnpm run test
 
 # Run tests in watch mode
-npm run test:watch
+pnpm run test:watch
 
 # Run tests with coverage
-npm run test:coverage
+pnpm run test:coverage
 
 # Run tests with UI
-npm run test:ui
-```
-
-### Jest
-
-```bash
-# Run all tests
-npm run test:jest
-
-# Run tests in watch mode
-npm run test:jest:watch
-
-# Run tests with coverage
-npm run test:jest:coverage
+pnpm run test:ui
 ```
 
 ## Test Structure
@@ -104,7 +86,8 @@ vi.mock('@/lib/mongodb', () => ({
 
 ## Test Data
 
-- Use test database or in-memory database
+- Never connect to a real database: mock `@/lib/mongodb` and the models a test touches
+  (`vitest.config.ts` points MONGODB_URI at an unreachable address as a safeguard)
 - Clean up test data after each test
 - Use factories for test data generation
 
@@ -115,7 +98,7 @@ Tests should run automatically in CI/CD pipeline:
 ```yaml
 # Example GitHub Actions
 - name: Run tests
-  run: npm run test:coverage
+  run: pnpm run test:coverage
 ```
 
 ## Notes

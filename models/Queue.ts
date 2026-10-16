@@ -122,26 +122,26 @@ QueueSchema.index({ tenantId: 1, doctor: 1, status: 1, priority: 1 });
 QueueSchema.index({ tenantId: 1, room: 1, status: 1 });
 QueueSchema.index({ tenantId: 1, checkedIn: 1, status: 1 });
 QueueSchema.index({ tenantId: 1, qrCode: 1 });
-QueueSchema.index({ tenantId: 1, queueNumber: 1 }, { unique: true, sparse: true }); // Tenant-scoped queue number
+QueueSchema.index(
+  { tenantId: 1, queueNumber: 1 },
+  { unique: true, name: 'uniq_tenant_queueNumber', partialFilterExpression: { queueNumber: { $type: 'string' } } }
+);
 
-// Pre-validate hook to generate queue number (runs before validation)
+// Fallback only: routes normally allocate the number via nextQueueNumber (per tenant, clinic-local day).
+// Imported lazily because lib/queue-number imports this model.
 QueueSchema.pre('validate', async function (next) {
-  if (!this.queueNumber) {
-    const prefix = this.queueType === 'appointment' ? 'A' : this.queueType === 'walk-in' ? 'W' : 'F';
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
-    
-    // Count today's queues of this type
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
-    const count = await mongoose.models.Queue?.countDocuments({
-      queueType: this.queueType,
-      queuedAt: { $gte: startOfDay, $lte: endOfDay },
-    }) || 0;
-    
-    this.queueNumber = `${prefix}${dateStr}-${String(count + 1).padStart(3, '0')}`;
+  if (this.queueNumber || !this.tenantId) return next();
+  try {
+    const [{ nextQueueNumber }, { getTenantTimezone }] = await Promise.all([
+      import('@/lib/queue-number'),
+      import('@/lib/clinic-timezone'),
+    ]);
+    const tz = await getTenantTimezone(this.tenantId as Types.ObjectId);
+    this.queueNumber = await nextQueueNumber(this.tenantId as Types.ObjectId, this.queueType as string, tz);
+    next();
+  } catch (err) {
+    next(err as Error);
   }
-  next();
 });
 
 // Pre-save hook to calculate consultation duration

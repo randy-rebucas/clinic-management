@@ -28,44 +28,43 @@ export default function InventoryEditClient({ itemId }: { itemId: string }) {
   const router = useRouter();
 
   useEffect(() => {
-    fetchItem();
-  }, [itemId]);
-
-  const fetchItem = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await fetch(`/api/inventory/${itemId}`);
+    const fetchItem = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch(`/api/inventory/${itemId}`);
       
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      if (!res.ok) {
-        const contentType = res.headers.get('content-type');
-        let errorData;
-        if (contentType && contentType.includes('application/json')) {
-          errorData = await res.json();
+        if (res.status === 401) {
+          router.push('/login');
+          return;
         }
-        const errorMsg = errorData?.error || `Failed to load inventory item: ${res.status} ${res.statusText}`;
-        setError(errorMsg);
-        return;
-      }
       
-      const data = await res.json();
-      if (data.success && data.data) {
-        setItem(data.data);
-      } else {
-        setError(data.error || 'Failed to load inventory item');
+        if (!res.ok) {
+          const contentType = res.headers.get('content-type');
+          let errorData;
+          if (contentType && contentType.includes('application/json')) {
+            errorData = await res.json();
+          }
+          const errorMsg = errorData?.error || `Failed to load inventory item: ${res.status} ${res.statusText}`;
+          setError(errorMsg);
+          return;
+        }
+      
+        const data = await res.json();
+        if (data.success && data.data) {
+          setItem(data.data);
+        } else {
+          setError(data.error || 'Failed to load inventory item');
+        }
+      } catch (error) {
+        console.error('Failed to fetch inventory item:', error);
+        setError('Failed to load inventory item. Please try again.');
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Failed to fetch inventory item:', error);
-      setError('Failed to load inventory item. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    fetchItem();
+  }, [itemId, router]);
 
   const handleSubmit = async (formData: any) => {
     setSubmitting(true);
@@ -185,10 +184,12 @@ export default function InventoryEditClient({ itemId }: { itemId: string }) {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex items-center gap-4">
               <button 
+                type="button"
                 onClick={handleCancel}
+                aria-label="Back to inventory item"
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>

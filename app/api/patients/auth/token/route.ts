@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SignJWT } from 'jose';
 import bcrypt from 'bcryptjs';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
-import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { Types } from 'mongoose';
-
-const TOKEN_TTL = '30d'; // third-party tokens live longer than browser sessions
-const TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
+import { applyAuthRateLimits } from '@/lib/middleware/rate-limit';
+import { issuePatientToken, PATIENT_TOKEN_TTL_SECONDS } from '@/app/lib/dal';
+import {
+  consumePatientOtp,
+  dummyPasswordHash,
+  invalidTenantResponse,
+  otpFailureResponse,
+  parseOptionalTenantId,
+  phoneFilter,
+} from '../shared';
 
 /**
  * POST /api/patients/auth/token
@@ -29,15 +33,13 @@ const TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
  *
  * The returned token is an HS256 JWT with the same payload shape as the
  * patient_session cookie, so every /api/patients/me/* endpoint accepts it
- * via the Authorization: Bearer header.
+ * via the Authorization: Bearer header. Tokens live 7 days (`expiresIn`) and
+ * are revoked when the patient changes their password.
  *
- * Rate-limited: 5 requests per 15 minutes per IP (auth limiter).
+ * Rate-limited per IP and per account.
  */
 export async function POST(request: NextRequest) {
-  const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
-  if (rateLimitResponse) return rateLimitResponse;
-
-  let body: Record<string, any>;
+  let body: Record<string, unknown>;
   try {
     body = await request.json();
   } catch {
@@ -50,11 +52,11 @@ export async function POST(request: NextRequest) {
   const method = typeof body.method === 'string' ? body.method : '';
 
   if (method === 'password') {
-    return handlePasswordLogin(body);
+    return handlePasswordLogin(request, body);
   }
 
   if (method === 'otp') {
-    return handleOtpLogin(body);
+    return handleOtpLogin(request, body);
   }
 
   return NextResponse.json(
@@ -69,10 +71,11 @@ export async function POST(request: NextRequest) {
 
 // ── Email + password ──────────────────────────────────────────────────────────
 
-async function handlePasswordLogin(body: Record<string, any>): Promise<NextResponse> {
+async function handlePasswordLogin(request: NextRequest, body: Record<string, unknown>): Promise<NextResponse> {
   const email = typeof body.email === 'string' ? body.email.toLowerCase().trim() : '';
   const password = typeof body.password === 'string' ? body.password : '';
-  const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : undefined;
+  const tenant = parseOptionalTenantId(body.tenantId);
+  if (!tenant.ok) return invalidTenantResponse();
 
   if (!email || !password) {
     return NextResponse.json(
@@ -81,35 +84,24 @@ async function handlePasswordLogin(body: Record<string, any>): Promise<NextRespo
     );
   }
 
+  const limited = await applyAuthRateLimits(request, `patient-login:${email}`);
+  if (limited) return limited;
+
   try {
     await connectDB();
 
-    const query: any = { email };
-    if (tenantId) query.tenantIds = new Types.ObjectId(tenantId);
+    const query: Record<string, unknown> = { email };
+    if (tenant.tenantId) query.tenantIds = tenant.tenantId;
 
     const patient = await Patient.findOne(query).select('+password');
 
-    const credentialError = NextResponse.json(
-      { success: false, error: 'Invalid email or password' },
-      { status: 401 }
-    );
-
-    if (!patient) return credentialError;
-
-    if (!patient.password) {
+    const match = await bcrypt.compare(password, patient?.password || dummyPasswordHash());
+    if (!patient || !patient.password || !match) {
       return NextResponse.json(
-        {
-          success: false,
-          error:
-            'This account has no password set. Use "otp" method or set credentials at /api/patients/auth/setup-credentials.',
-          code: 'NO_PASSWORD',
-        },
+        { success: false, error: 'Invalid email or password' },
         { status: 401 }
       );
     }
-
-    const match = await bcrypt.compare(password, patient.password);
-    if (!match) return credentialError;
 
     if (patient.active === false) {
       return NextResponse.json(
@@ -118,7 +110,7 @@ async function handlePasswordLogin(body: Record<string, any>): Promise<NextRespo
       );
     }
 
-    const token = await issueToken(patient);
+    const token = await issuePatientToken(patient);
     logger.info('Patient Bearer token issued (password)', { patientId: patient._id.toString() });
     return tokenResponse(token, patient);
   } catch (error: any) {
@@ -132,10 +124,11 @@ async function handlePasswordLogin(body: Record<string, any>): Promise<NextRespo
 
 // ── Phone OTP ─────────────────────────────────────────────────────────────────
 
-async function handleOtpLogin(body: Record<string, any>): Promise<NextResponse> {
+async function handleOtpLogin(request: NextRequest, body: Record<string, unknown>): Promise<NextResponse> {
   const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
   const otp = typeof body.otp === 'string' ? body.otp.trim() : '';
-  const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : undefined;
+  const tenant = parseOptionalTenantId(body.tenantId);
+  if (!tenant.ok) return invalidTenantResponse();
 
   if (!phone || !otp) {
     return NextResponse.json(
@@ -144,59 +137,19 @@ async function handleOtpLogin(body: Record<string, any>): Promise<NextResponse> 
     );
   }
 
+  const limited = await applyAuthRateLimits(request, `otp:${phone}`);
+  if (limited) return limited;
+
   try {
-    await connectDB();
+    const filter: Record<string, unknown> = phoneFilter(phone);
+    if (tenant.tenantId) filter.tenantIds = tenant.tenantId;
 
-    const query: any = { $or: [{ phone }, { 'contacts.phone': phone }] };
-    if (tenantId) query.tenantIds = new Types.ObjectId(tenantId);
+    const result = await consumePatientOtp(filter, otp);
+    if (!result.ok) return otpFailureResponse(result.reason);
 
-    const patient = await Patient.findOne(query).select('+otp +otpExpiry +otpAttempts');
-
-    const invalidError = NextResponse.json(
-      { success: false, error: 'Invalid or expired OTP' },
-      { status: 401 }
-    );
-
-    if (!patient || patient.active === false) return invalidError;
-    if (!patient.otp || !patient.otpExpiry) return invalidError;
-
-    if (new Date() > patient.otpExpiry) {
-      await Patient.updateOne(
-        { _id: patient._id },
-        { $unset: { otp: 1, otpExpiry: 1 }, $set: { otpAttempts: 0 } }
-      );
-      return NextResponse.json(
-        { success: false, error: 'OTP has expired. Please request a new one.' },
-        { status: 401 }
-      );
-    }
-
-    const attempts = patient.otpAttempts ?? 0;
-    if (attempts >= 5) {
-      await Patient.updateOne(
-        { _id: patient._id },
-        { $unset: { otp: 1, otpExpiry: 1 }, $set: { otpAttempts: 0 } }
-      );
-      return NextResponse.json(
-        { success: false, error: 'Too many incorrect attempts. Please request a new OTP.' },
-        { status: 429 }
-      );
-    }
-
-    const otpMatch = await bcrypt.compare(otp, patient.otp);
-    if (!otpMatch) {
-      await Patient.updateOne({ _id: patient._id }, { $inc: { otpAttempts: 1 } });
-      return invalidError;
-    }
-
-    await Patient.updateOne(
-      { _id: patient._id },
-      { $unset: { otp: 1, otpExpiry: 1 }, $set: { otpAttempts: 0 } }
-    );
-
-    const token = await issueToken(patient);
-    logger.info('Patient Bearer token issued (OTP)', { patientId: patient._id.toString() });
-    return tokenResponse(token, patient);
+    const token = await issuePatientToken(result.patient);
+    logger.info('Patient Bearer token issued (OTP)', { patientId: result.patient._id.toString() });
+    return tokenResponse(token, result.patient);
   } catch (error: any) {
     logger.error('Error in patient token (OTP)', error as Error);
     return NextResponse.json(
@@ -208,31 +161,13 @@ async function handleOtpLogin(body: Record<string, any>): Promise<NextResponse> 
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function issueToken(patient: any): Promise<string> {
-  const secretKey = process.env.SESSION_SECRET;
-  if (!secretKey) throw new Error('SESSION_SECRET is not configured');
-
-  const encodedKey = new TextEncoder().encode(secretKey);
-
-  return new SignJWT({
-    patientId: patient._id.toString(),
-    patientCode: patient.patientCode ?? '',
-    type: 'patient',
-    email: patient.email ?? `patient-${patient.patientCode}@clinic.local`,
-  })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime(TOKEN_TTL)
-    .sign(encodedKey);
-}
-
 function tokenResponse(token: string, patient: any): NextResponse {
   return NextResponse.json({
     success: true,
     message: 'Authentication successful',
     token,
     tokenType: 'Bearer',
-    expiresIn: TOKEN_TTL_SECONDS,
+    expiresIn: PATIENT_TOKEN_TTL_SECONDS,
     patient: {
       id: patient._id.toString(),
       patientCode: patient.patientCode ?? null,

@@ -1,34 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Notification from '@/models/Notification';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { Types } from 'mongoose';
+import { requireNotificationScope, isNotificationScopeError } from '../_lib/scope';
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const scope = await requireNotificationScope();
+  if (isNotificationScopeError(scope)) return scope;
 
   try {
     await connectDB();
-    
-    // Use tenantId from session directly; avoid extra DB lookup via getTenantContext()
-    const tenantId = session.tenantId;
-    
-    const unreadQuery: any = {
-      user: session.userId,
-      read: false,
-    };
-    if (tenantId) {
-      unreadQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      unreadQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const unreadCount = await Notification.countDocuments(unreadQuery);
+
+    const unreadCount = await Notification.countDocuments({ ...scope.ownFilter, read: false });
 
     return NextResponse.json({
       success: true,
@@ -42,4 +24,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

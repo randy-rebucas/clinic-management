@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useModalA11y } from './hooks/useModalA11y';
 
 interface Membership {
   _id: string;
@@ -58,6 +59,9 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
   const [selectedMembership, setSelectedMembership] = useState<Membership | null>(null);
   const [showPointsModal, setShowPointsModal] = useState(false);
   const [pointsForm, setPointsForm] = useState({ type: 'earn', points: 0, description: '' });
+  const [savingPoints, setSavingPoints] = useState(false);
+  const detailsModalRef = useModalA11y<HTMLDivElement>(showModal && !!selectedMembership, () => setShowModal(false));
+  const pointsModalRef = useModalA11y<HTMLDivElement>(showPointsModal, () => setShowPointsModal(false));
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [currentUserMembership, setCurrentUserMembership] = useState<Membership | null>(null);
   const [loadingUserMembership, setLoadingUserMembership] = useState(true);
@@ -141,12 +145,18 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
   }, []);
 
   useEffect(() => {
-    fetchMemberships();
+    const load = async () => {
+      await fetchMemberships();
+    };
+    load();
   }, [fetchMemberships]);
 
   useEffect(() => {
-    fetchCurrentUserMembership();
-  }, []);
+    const load = async () => {
+      await fetchCurrentUserMembership();
+    };
+    load();
+  }, [fetchCurrentUserMembership]);
 
   const handleViewDetails = async (membership: Membership) => {
     try {
@@ -162,8 +172,9 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
   };
 
   const handleAddPoints = async () => {
-    if (!selectedMembership) return;
+    if (!selectedMembership || savingPoints) return;
 
+    setSavingPoints(true);
     try {
       const response = await fetch(`/api/memberships/${selectedMembership._id}/points`, {
         method: 'POST',
@@ -199,6 +210,8 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
     } catch (error) {
       setMessage({ type: 'error', text: 'An error occurred' });
       setTimeout(() => setMessage(null), 5000);
+    } finally {
+      setSavingPoints(false);
     }
   };
 
@@ -526,6 +539,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                     </div>
                     <input
                       type="text"
+                      aria-label="Search memberships"
                       placeholder="Search by member name..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -535,6 +549,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                 </div>
                 <div style={{ minWidth: '160px' }}>
                   <select
+                    aria-label="Filter by tier"
                     value={tierFilter}
                     onChange={(e) => setTierFilter(e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
@@ -547,6 +562,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                 </div>
                 <div style={{ minWidth: '160px' }}>
                   <select
+                    aria-label="Filter by status"
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
@@ -629,6 +645,7 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                           View
                         </button>
                         <select
+                          aria-label={`Upgrade tier for ${getPatientName(membership.patient)}`}
                           onChange={(e) => {
                             if (e.target.value) handleUpgradeTier(membership, e.target.value);
                             e.target.value = '';
@@ -651,8 +668,8 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
 
           {/* Membership Details Modal */}
           {showModal && selectedMembership && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div ref={detailsModalRef} role="dialog" aria-modal="true" aria-labelledby="membership-details-title" className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
                 <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-emerald-100/50 flex justify-between items-center">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-emerald-500 rounded-lg">
@@ -660,10 +677,10 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
                     </div>
-                    <h2 className="text-xl font-bold text-gray-900">Membership Details</h2>
+                    <h2 id="membership-details-title" className="text-xl font-bold text-gray-900">Membership Details</h2>
                   </div>
-                  <button onClick={() => setShowModal(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <button onClick={() => setShowModal(false)} aria-label="Close" className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
@@ -759,8 +776,8 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
 
           {/* Points Adjustment Modal */}
           {showPointsModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div ref={pointsModalRef} role="dialog" aria-modal="true" aria-labelledby="points-modal-title" className="bg-white rounded-xl shadow-xl w-full max-w-md">
                 <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-emerald-100/50">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-emerald-500 rounded-lg">
@@ -768,13 +785,13 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                       </svg>
                     </div>
-                    <h2 className="text-xl font-bold text-gray-900">Adjust Points</h2>
+                    <h2 id="points-modal-title" className="text-xl font-bold text-gray-900">Adjust Points</h2>
                   </div>
                 </div>
                 <div className="p-6 space-y-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Transaction Type</label>
-                    <select
+                    <label htmlFor="points-transaction-type" className="block text-sm font-semibold text-gray-700 mb-2">Transaction Type</label>
+                    <select id="points-transaction-type"
                       value={pointsForm.type}
                       onChange={(e) => setPointsForm({ ...pointsForm, type: e.target.value as any })}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
@@ -785,8 +802,8 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Points</label>
-                    <input
+                    <label htmlFor="points-amount" className="block text-sm font-semibold text-gray-700 mb-2">Points</label>
+                    <input id="points-amount"
                       type="number"
                       value={pointsForm.points}
                       onChange={(e) => setPointsForm({ ...pointsForm, points: parseInt(e.target.value) || 0 })}
@@ -795,8 +812,8 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
-                    <input
+                    <label htmlFor="points-description" className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
+                    <input id="points-description"
                       type="text"
                       value={pointsForm.description}
                       onChange={(e) => setPointsForm({ ...pointsForm, description: e.target.value })}
@@ -814,9 +831,10 @@ export default function MembershipsPageClient({ user }: MembershipsPageClientPro
                   </button>
                   <button
                     onClick={handleAddPoints}
+                    disabled={savingPoints}
                     className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-md"
                   >
-                    Save
+                    {savingPoints ? 'Saving…' : 'Save'}
                   </button>
                 </div>
               </div>

@@ -1,46 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { isAdmin } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { applyDataRetentionPolicy, getDefaultRetentionPolicies } from '@/lib/automations/data-retention';
+
+const policySchema = z.object({
+  resource: z.enum(['patients', 'appointments', 'visits', 'invoices', 'lab-results', 'prescriptions', 'documents', 'audit-logs']),
+  archiveAfterDays: z.number().int().min(0).max(36500),
+  deleteAfterDays: z.number().int().min(0).max(36500),
+});
+
+const applySchema = z.object({
+  policies: z.array(policySchema).max(20).optional(),
+});
 
 /**
  * Apply data retention policy
  * POST /api/data-retention/apply
  */
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Only admins can apply retention policies
-  const permissionCheck = await requirePermission(session, 'settings', 'write');
-  if (permissionCheck) {
-    return permissionCheck;
+  if (!isAdmin(session)) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized - Admin access required' },
+      { status: 403 }
+    );
   }
 
   try {
     await connectDB();
 
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'Tenant not found' },
-        { status: 404 }
-      );
+    // An empty body means "apply the default policies".
+    const text = await request.text();
+    let raw: unknown = {};
+    if (text.trim()) {
+      try {
+        raw = JSON.parse(text);
+      } catch {
+        return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+      }
     }
-
-    const body = await request.json();
-    const { policies } = body;
+    const parsed = applySchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json({ success: false, error: 'Validation failed' }, { status: 400 });
+    }
 
     const result = await applyDataRetentionPolicy(
       tenantId,
-      policies || getDefaultRetentionPolicies()
+      parsed.data.policies || getDefaultRetentionPolicies()
     );
 
     return NextResponse.json({
@@ -55,4 +66,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

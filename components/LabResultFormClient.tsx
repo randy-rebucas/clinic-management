@@ -19,33 +19,25 @@ export default function LabResultFormClient({ patientId }: { patientId?: string 
   const router = useRouter();
 
   useEffect(() => {
-    fetchPatients();
-  }, []);
-
-  const fetchPatients = async () => {
-    try {
-      const res = await fetch('/api/patients');
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      const data = await res.json();
-      if (data.success) {
-        setPatients(data.data);
-        if (patientId) {
-          // Pre-select patient if patientId is provided
-          const patient = data.data.find((p: Patient) => p._id === patientId);
-          if (patient) {
-            // This will be handled by the form component
-          }
+    const fetchPatients = async () => {
+      try {
+        const res = await fetch('/api/patients');
+        if (res.status === 401) {
+          router.push('/login');
+          return;
         }
+        const data = await res.json();
+        if (data.success) {
+          setPatients(data.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch patients:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Failed to fetch patients:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    fetchPatients();
+  }, [router]);
 
   const handleSubmit = async (formData: {
     patient: string;
@@ -55,6 +47,7 @@ export default function LabResultFormClient({ patientId }: { patientId?: string 
     requestedBy?: string;
     [key: string]: unknown;
   }) => {
+    if (submitting) return;
     setSubmitting(true);
     try {
       const res = await fetch('/api/lab-results', {
@@ -111,10 +104,12 @@ export default function LabResultFormClient({ patientId }: { patientId?: string 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex items-center gap-4">
               <button 
+                type="button"
                 onClick={handleCancel}
+                aria-label="Back to lab results"
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>

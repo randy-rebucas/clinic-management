@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { isAdmin } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { parseDateParam } from '@/app/api/reports/_lib/report-range';
+import { computeDoctorStats } from '../_lib/doctor-stats';
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   // Only admin and accountants can view all doctor productivity
-  if (session.role !== 'admin' && session.role !== 'accountant') {
+  if (!isAdmin(session) && session.role !== 'accountant') {
     return NextResponse.json(
       { success: false, error: 'Unauthorized' },
       { status: 403 }
@@ -24,94 +25,44 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
+    const tz = await getTenantTimezone(tenantId);
 
-    const doctors = await Doctor.find({ status: 'active' })
-      .populate('specializationId', 'name description category');
+    const start = parseDateParam(startDate, tz, 'start');
+    const end = parseDateParam(endDate, tz, 'end');
+    if ((startDate && !start) || (endDate && !end)) {
+      return NextResponse.json({ success: false, error: 'Invalid date range' }, { status: 400 });
+    }
 
-    // Import models for productivity calculation
-    const Appointment = (await import('@/models/Appointment')).default;
-    const Visit = (await import('@/models/Visit')).default;
-    const Prescription = (await import('@/models/Prescription')).default;
-    const Invoice = (await import('@/models/Invoice')).default;
-    
-    const productivityReports = await Promise.all(
-      doctors.map(async (doctor) => {
-        try {
+    const doctors = await Doctor.find(tenantFilter(tenantId, { status: 'active' }))
+      .select('firstName lastName specializationId')
+      .populate('specializationId', 'name description category')
+      .lean() as any[];
 
-          const dateQuery: any = {};
-          if (startDate || endDate) {
-            dateQuery.date = {};
-            if (startDate) dateQuery.date.$gte = new Date(startDate);
-            if (endDate) {
-              const end = new Date(endDate);
-              end.setHours(23, 59, 59, 999);
-              dateQuery.date.$lte = end;
-            }
-          }
+    const stats = await computeDoctorStats(tenantId, doctors.map((d) => d._id), { start, end });
 
-          const appointmentQuery: any = { doctor: doctor._id };
-          if (startDate || endDate) {
-            appointmentQuery.appointmentDate = {};
-            if (startDate) appointmentQuery.appointmentDate.$gte = new Date(startDate);
-            if (endDate) {
-              const end = new Date(endDate);
-              end.setHours(23, 59, 59, 999);
-              appointmentQuery.appointmentDate.$lte = end;
-            }
-          }
-
-          const [appointments, visits, prescriptions] = await Promise.all([
-            Appointment.find(appointmentQuery),
-            Visit.find({ provider: doctor._id, ...dateQuery }),
-            Prescription.find({ prescribedBy: doctor._id, ...dateQuery }),
-          ]);
-
-          const totalAppointments = appointments.length;
-          const completedAppointments = appointments.filter(a => a.status === 'completed').length;
-          const totalRevenue = visits.length > 0
-            ? (await Invoice.find({
-                visit: { $in: visits.map(v => v._id) },
-                ...(startDate || endDate ? {
-                  createdAt: {
-                    ...(startDate ? { $gte: new Date(startDate) } : {}),
-                    ...(endDate ? { $lte: new Date(endDate + 'T23:59:59.999Z') } : {}),
-                  },
-                } : {}),
-              })).reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0)
-            : 0;
-
-          return {
-            doctor: {
-              _id: doctor._id,
-              name: `${doctor.firstName} ${doctor.lastName}`,
-              specialization: doctor.specialization,
-            },
-            summary: {
-              totalAppointments,
-              completedAppointments,
-              totalVisits: visits.length,
-              totalPrescriptions: prescriptions.length,
-              totalRevenue,
-            },
-            metrics: {
-              completionRate: totalAppointments > 0
-                ? ((completedAppointments / totalAppointments) * 100).toFixed(2)
-                : 0,
-            },
-          };
-        } catch (error) {
-          console.error(`Error calculating productivity for doctor ${doctor._id}:`, error);
-          return {
-            doctor: {
-              _id: doctor._id,
-              name: `${doctor.firstName} ${doctor.lastName}`,
-              specialization: (doctor.specializationId as any)?.name || 'Unknown',
-            },
-            error: 'Failed to calculate productivity',
-          };
-        }
-      })
-    );
+    const productivityReports = doctors.map((doctor) => {
+      const s = stats.get(String(doctor._id))!;
+      const completedAppointments = s.appointmentsByStatus.completed || 0;
+      return {
+        doctor: {
+          _id: doctor._id,
+          name: `${doctor.firstName} ${doctor.lastName}`,
+          specialization: doctor.specializationId?.name || 'Unknown',
+        },
+        summary: {
+          totalAppointments: s.totalAppointments,
+          completedAppointments,
+          totalVisits: s.totalVisits,
+          totalPrescriptions: s.totalPrescriptions,
+          totalRevenue: s.totalRevenue,
+        },
+        metrics: {
+          completionRate: s.totalAppointments > 0
+            ? ((completedAppointments / s.totalAppointments) * 100).toFixed(2)
+            : 0,
+        },
+      };
+    });
 
     return NextResponse.json({
       success: true,
@@ -129,4 +80,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

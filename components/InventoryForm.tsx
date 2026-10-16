@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useId, FormEvent } from 'react';
 
 interface InventoryFormProps {
   initialData?: {
@@ -28,6 +28,7 @@ export default function InventoryForm({
   onCancel,
   isEdit = false,
 }: InventoryFormProps) {
+  const uid = useId();
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
     category: initialData?.category || 'medicine' as 'medicine' | 'supply' | 'equipment' | 'other',
@@ -111,10 +112,10 @@ export default function InventoryForm({
           <div className="flex flex-col md:flex-row gap-4 flex-wrap">
             {/* Item Name */}
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-gray-700 mb-2">
+              <label htmlFor={`${uid}-name`} className="block text-xs font-semibold text-gray-700 mb-2">
                 Item Name <span className="text-red-600">*</span>
               </label>
-              <input
+              <input id={`${uid}-name`}
                 type="text"
                 required
                 value={formData.name}
@@ -126,10 +127,10 @@ export default function InventoryForm({
 
             {/* Category */}
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-gray-700 mb-2">
+              <label htmlFor={`${uid}-category`} className="block text-xs font-semibold text-gray-700 mb-2">
                 Category <span className="text-red-600">*</span>
               </label>
-              <select
+              <select id={`${uid}-category`}
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -143,8 +144,8 @@ export default function InventoryForm({
 
             {/* SKU */}
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-gray-700 mb-2">SKU (Stock Keeping Unit)</label>
-              <input
+              <label htmlFor={`${uid}-sku`} className="block text-xs font-semibold text-gray-700 mb-2">SKU (Stock Keeping Unit)</label>
+              <input id={`${uid}-sku`}
                 type="text"
                 value={formData.sku}
                 onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
@@ -169,10 +170,10 @@ export default function InventoryForm({
 
             {/* Quantity */}
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-gray-700 mb-2">
+              <label htmlFor={`${uid}-quantity`} className="block text-xs font-semibold text-gray-700 mb-2">
                 Quantity <span className="text-red-600">*</span>
               </label>
-              <input
+              <input id={`${uid}-quantity`}
                 type="number"
                 required
                 min="0"
@@ -185,10 +186,10 @@ export default function InventoryForm({
 
             {/* Unit */}
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-gray-700 mb-2">
+              <label htmlFor={`${uid}-unit`} className="block text-xs font-semibold text-gray-700 mb-2">
                 Unit <span className="text-red-600">*</span>
               </label>
-              <input
+              <input id={`${uid}-unit`}
                 type="text"
                 required
                 value={formData.unit}
@@ -200,8 +201,8 @@ export default function InventoryForm({
 
             {/* Unit Cost */}
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-gray-700 mb-2">Unit Cost</label>
-              <input
+              <label htmlFor={`${uid}-unit-cost`} className="block text-xs font-semibold text-gray-700 mb-2">Unit Cost</label>
+              <input id={`${uid}-unit-cost`}
                 type="number"
                 min="0"
                 step="0.01"
@@ -214,10 +215,10 @@ export default function InventoryForm({
 
             {/* Reorder Level */}
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-gray-700 mb-2">
+              <label htmlFor={`${uid}-reorder-level`} className="block text-xs font-semibold text-gray-700 mb-2">
                 Reorder Level <span className="text-red-600">*</span>
               </label>
-              <input
+              <input id={`${uid}-reorder-level`}
                 type="number"
                 required
                 min="0"
@@ -231,8 +232,8 @@ export default function InventoryForm({
 
             {/* Reorder Quantity */}
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-gray-700 mb-2">Reorder Quantity</label>
-              <input
+              <label htmlFor={`${uid}-reorder-quantity`} className="block text-xs font-semibold text-gray-700 mb-2">Reorder Quantity</label>
+              <input id={`${uid}-reorder-quantity`}
                 type="number"
                 min="0"
                 value={formData.reorderQuantity}
@@ -259,8 +260,8 @@ export default function InventoryForm({
 
             {/* Supplier */}
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-gray-700 mb-2">Supplier</label>
-              <input
+              <label htmlFor={`${uid}-supplier`} className="block text-xs font-semibold text-gray-700 mb-2">Supplier</label>
+              <input id={`${uid}-supplier`}
                 type="text"
                 value={formData.supplier}
                 onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
@@ -271,8 +272,8 @@ export default function InventoryForm({
 
             {/* Expiry Date */}
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-gray-700 mb-2">Expiry Date</label>
-              <input
+              <label htmlFor={`${uid}-expiry-date`} className="block text-xs font-semibold text-gray-700 mb-2">Expiry Date</label>
+              <input id={`${uid}-expiry-date`}
                 type="date"
                 value={formData.expiryDate}
                 onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
@@ -283,8 +284,8 @@ export default function InventoryForm({
 
             {/* Location */}
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-gray-700 mb-2">Storage Location</label>
-              <input
+              <label htmlFor={`${uid}-location`} className="block text-xs font-semibold text-gray-700 mb-2">Storage Location</label>
+              <input id={`${uid}-location`}
                 type="text"
                 value={formData.location}
                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
@@ -306,6 +307,7 @@ export default function InventoryForm({
             <h3 className="text-lg font-bold text-gray-900">Notes</h3>
           </div>
           <textarea
+            aria-label="Notes"
             rows={3}
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}

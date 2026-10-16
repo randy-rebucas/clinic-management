@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
-import { getTenantId } from '@/lib/tenant';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { createPayPalOrder } from '@/lib/paypal';
 import { SUBSCRIPTION_PACKAGES, SubscriptionPlan } from '@/lib/subscription-packages';
 import connectDB from '@/lib/mongodb';
@@ -11,35 +10,22 @@ const VALID_PLANS: SubscriptionPlan[] = ['basic', 'professional', 'enterprise'];
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify user is authenticated
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const ctx = await requireTenantSession();
+    if (isTenantSessionError(ctx)) return ctx;
+    const { session, tenantId } = ctx;
 
     // Only admin/owner may manage billing
     if (!['admin', 'owner'].includes(session.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get tenant ID
-    const tenantId = await getTenantId();
-    if (!tenantId) {
-      return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
-    }
-
-    // Cross-validate: header-derived tenantId must match session tenantId
-    if (session.tenantId && tenantId !== session.tenantId) {
-      return NextResponse.json({ error: 'Tenant mismatch' }, { status: 403 });
-    }
-
-    const body = await request.json();
-    const planName = (body.plan as string)?.toLowerCase() as SubscriptionPlan;
+    const body = await request.json().catch(() => ({}));
+    const planName = (typeof body?.plan === 'string' ? body.plan.toLowerCase() : '') as SubscriptionPlan;
     const billingCycle: 'monthly' | 'yearly' = body.billingCycle === 'yearly' ? 'yearly' : 'monthly';
 
     if (!planName || !VALID_PLANS.includes(planName)) {
       return NextResponse.json(
-        { error: `Invalid plan. Must be one of: ${VALID_PLANS.join(', ')}` },
+        { success: false, error: `Invalid plan. Must be one of: ${VALID_PLANS.join(', ')}` },
         { status: 400 }
       );
     }
@@ -92,7 +78,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error creating subscription order:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to create order' },
+      { success: false, error: 'Failed to create order' },
       { status: 500 }
     );
   }

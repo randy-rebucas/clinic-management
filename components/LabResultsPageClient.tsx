@@ -30,39 +30,38 @@ export default function LabResultsPageClient() {
   const router = useRouter();
 
   useEffect(() => {
+    const fetchLabResults = async () => {
+      try {
+        const res = await fetch('/api/lab-results');
+      
+        if (res.status === 401) {
+          router.push('/login');
+          return;
+        }
+      
+        const contentType = res.headers.get('content-type');
+        let data;
+        if (contentType && contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const text = await res.text();
+          console.error('API returned non-JSON response:', text.substring(0, 500));
+          data = { success: false, error: `API error: ${res.status} ${res.statusText}` };
+        }
+      
+        if (data.success) {
+          setLabResults(data.data);
+        } else {
+          console.error('Failed to fetch lab results:', data.error);
+        }
+      } catch (error) {
+        console.error('Failed to fetch lab results:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchLabResults();
-  }, []);
-
-  const fetchLabResults = async () => {
-    try {
-      const res = await fetch('/api/lab-results');
-      
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      const contentType = res.headers.get('content-type');
-      let data;
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        console.error('API returned non-JSON response:', text.substring(0, 500));
-        data = { success: false, error: `API error: ${res.status} ${res.statusText}` };
-      }
-      
-      if (data.success) {
-        setLabResults(data.data);
-      } else {
-        console.error('Failed to fetch lab results:', data.error);
-      }
-    } catch (error) {
-      console.error('Failed to fetch lab results:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [router]);
 
   const getStatusColor = (status: string): 'green' | 'blue' | 'yellow' | 'gray' | 'red' => {
     switch (status) {
@@ -163,6 +162,7 @@ export default function LabResultsPageClient() {
                     </div>
                     <input
                       type="text"
+                      aria-label="Search lab results by patient name, request code, or test type"
                       placeholder="Search by patient name, request code, or test type..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -170,10 +170,12 @@ export default function LabResultsPageClient() {
                     />
                     {searchQuery && (
                       <button
+                        type="button"
                         onClick={() => setSearchQuery('')}
+                        aria-label="Clear search"
                         className="absolute right-4 top-1/2 transform -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                       >
-                        <svg width="14" height="14" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg width="14" height="14" aria-hidden="true" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                         </svg>
                       </button>
@@ -182,6 +184,7 @@ export default function LabResultsPageClient() {
                 </div>
                 <div className="min-w-[200px]">
                   <select
+                    aria-label="Filter by status"
                     value={filterStatus}
                     onChange={(e) => setFilterStatus(e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none transition-all text-sm bg-white"

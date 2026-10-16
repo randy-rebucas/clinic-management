@@ -1,76 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import { User, Role } from '@/models';
-import { verifySession } from '@/app/lib/dal';
 import { isAdmin } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
 import { sanitizeSearch } from '@/lib/utils';
+import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zEmail, zObjectId } from '@/lib/api/validate';
+import { checkSubscriptionLimit } from '@/lib/subscription-limits';
+import { validatePasswordPolicy } from '@/lib/user-invite';
+
+const USER_STATUSES = ['active', 'inactive', 'suspended'] as const;
+
+const createUserSchema = z.object({
+  name: z.string().trim().min(2).max(200),
+  email: zEmail,
+  password: z.string().min(8).max(200),
+  role: zObjectId,
+  status: z.enum(USER_STATUSES).optional(),
+});
 
 // GET /api/users - Get all users
 export async function GET(request: NextRequest) {
   try {
-    const session = await verifySession();
-    if (!session?.userId) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
+    const ctx = await requireTenantSession();
+    if (isTenantSessionError(ctx)) return ctx;
+    const { session, tenantId } = ctx;
 
-    // Only admins can view all users
     if (!isAdmin(session)) {
       return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
     }
 
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const role = searchParams.get('role');
     const search = searchParams.get('search');
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '50')));
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
+    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '50') || 50));
     const skip = (page - 1) * limit;
 
-    // Build query
-    const query: any = {};
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    const extra: Record<string, unknown> = {};
+    if (status && (USER_STATUSES as readonly string[]).includes(status)) extra.status = status;
+    if (role) {
+      if (!isValidId(role)) {
+        return NextResponse.json({ success: true, data: [], pagination: { page, limit, total: 0, pages: 0 } });
+      }
+      extra.role = role;
     }
-    
-    if (status) query.status = status;
-    if (role) query.role = role;
     if (search) {
       const safeSearch = sanitizeSearch(search);
-      const searchConditions = [
+      extra.$or = [
         { name: { $regex: safeSearch, $options: 'i' } },
         { email: { $regex: safeSearch, $options: 'i' } },
       ];
-      
-      // Combine tenant filter with search conditions
-      const tenantFilter: any = {};
-      if (tenantId) {
-        tenantFilter.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      query.$and = [
-        tenantFilter,
-        { $or: searchConditions }
-      ];
     }
+    const query = tenantFilter(tenantId, extra);
 
     const [users, total] = await Promise.all([
       User.find(query)
-        .populate('role', 'name displayName level')
-        .select('-password')
+        .populate({ path: 'role', select: 'name displayName level', match: tenantFilter(tenantId) })
+        .select('-password -totpSecret')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -90,17 +80,16 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Error fetching users:', error);
-    return NextResponse.json({ success: false, error: error.message || 'Failed to fetch users' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to fetch users' }, { status: 500 });
   }
 }
 
 // POST /api/users - Create a new user (admin only)
 export async function POST(request: NextRequest) {
   try {
-    const session = await verifySession();
-    if (!session?.userId) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
+    const ctx = await requireTenantSession();
+    if (isTenantSessionError(ctx)) return ctx;
+    const { session, tenantId, tenantObjectId } = ctx;
 
     if (!isAdmin(session)) {
       return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
@@ -108,56 +97,54 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
-    const body = await request.json();
-    const { name, email, password, role, status } = body;
+    const parsed = await parseBody(request, createUserSchema);
+    if (isValidationError(parsed)) return parsed;
+    const { name, email, password, role, status } = parsed.data;
 
-    if (!name || !email || !password || !role) {
-      return NextResponse.json({ success: false, error: 'Name, email, password, and role are required' }, { status: 400 });
+    const passwordErrors = validatePasswordPolicy(password, { email, name });
+    if (passwordErrors.length > 0) {
+      return NextResponse.json({ success: false, error: passwordErrors.join(' ') }, { status: 400 });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+    const limitCheck = await checkSubscriptionLimit(tenantId, 'createUser');
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: limitCheck.reason || 'Subscription limit exceeded',
+          limit: limitCheck.limit,
+          current: limitCheck.current,
+          remaining: limitCheck.remaining,
+        },
+        { status: 403 }
+      );
+    }
+
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
       return NextResponse.json({ success: false, error: 'User with this email already exists' }, { status: 400 });
     }
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Verify role exists (tenant-scoped)
-    const roleQuery: any = { _id: role };
-    if (tenantId) {
-      roleQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      roleQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    const roleDoc = await Role.findOne(roleQuery);
+    const roleDoc = await Role.findOne(tenantFilter(tenantId, { _id: role }));
     if (!roleDoc) {
       return NextResponse.json({ success: false, error: 'Invalid role' }, { status: 400 });
     }
 
-    // Hash password
     const bcrypt = await import('bcryptjs');
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Ensure user is created with tenantId
-    const userData: any = {
+    const user = await User.create({
       name,
-      email: email.toLowerCase().trim(),
+      email,
       password: hashedPassword,
-      role,
+      role: roleDoc._id,
       status: status || 'active',
-    };
-    if (tenantId && !userData.tenantId) {
-      userData.tenantId = new Types.ObjectId(tenantId);
-    }
+      tenantId: tenantObjectId,
+    });
 
-    const user = await User.create(userData);
-
-    // Return user without password
     const userObj = user.toObject();
     delete userObj.password;
+    delete userObj.totpSecret;
 
     return NextResponse.json({
       success: true,
@@ -169,7 +156,6 @@ export async function POST(request: NextRequest) {
     if (error.code === 11000) {
       return NextResponse.json({ success: false, error: 'User with this email already exists' }, { status: 400 });
     }
-    return NextResponse.json({ success: false, error: error.message || 'Failed to create user' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to create user' }, { status: 500 });
   }
 }
-

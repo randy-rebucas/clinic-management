@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useModalA11y } from './hooks/useModalA11y';
 
 interface Service {
   _id: string;
@@ -90,7 +91,10 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
   }, [categoryFilter, statusFilter, search]);
 
   useEffect(() => {
-    fetchServices();
+    const load = async () => {
+      await fetchServices();
+    };
+    load();
   }, [fetchServices]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -191,6 +195,9 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
       notes: '',
     });
   };
+
+  const closeModal = () => { setShowModal(false); resetForm(); };
+  const modalRef = useModalA11y<HTMLDivElement>(showModal, closeModal);
 
   const getCategoryBadge = (category: string) => {
     const cat = CATEGORIES.find(c => c.value === category);
@@ -346,6 +353,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                     </div>
                     <input
                       type="text"
+                      aria-label="Search services"
                       placeholder="Search services..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -353,8 +361,8 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                     />
                     {search && (
                       <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
-                        <button onClick={() => setSearch('')} className="cursor-pointer p-1 text-gray-400 hover:text-gray-600">
-                          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
+                        <button onClick={() => setSearch('')} aria-label="Clear search" className="cursor-pointer p-1 text-gray-400 hover:text-gray-600">
+                          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                             <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
                           </svg>
                         </button>
@@ -366,6 +374,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                 {/* Category Dropdown */}
                 <div style={{ minWidth: '180px' }}>
                   <select
+                    aria-label="Filter by category"
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
@@ -380,6 +389,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                 {/* Status Dropdown */}
                 <div style={{ minWidth: '140px' }}>
                   <select
+                    aria-label="Filter by status"
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
@@ -468,17 +478,19 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                       <div className="flex gap-2 items-center flex-shrink-0">
                         <button
                           onClick={() => handleEdit(service)}
+                          aria-label={`Edit ${service.name}`}
                           className="p-2.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </button>
                         <button
                           onClick={() => handleDelete(service)}
+                          aria-label={`Delete ${service.name}`}
                           className="p-2.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
@@ -493,8 +505,8 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
 
         {/* Add/Edit Modal */}
         {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="service-modal-title" className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
               <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100/50">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-purple-500 rounded-lg">
@@ -502,7 +514,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900">
+                  <h2 id="service-modal-title" className="text-xl font-bold text-gray-900">
                     {editingService ? 'Edit Service' : 'Add New Service'}
                   </h2>
                 </div>
@@ -511,11 +523,11 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Code */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="service-code" className="block text-sm font-medium text-gray-700 mb-1">
                       Service Code
                       <span className="text-xs text-gray-500 ml-1">(leave empty to auto-generate)</span>
                     </label>
-                    <input
+                    <input id="service-code"
                       type="text"
                       value={formData.code}
                       onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
@@ -526,8 +538,8 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
 
                   {/* Category */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-                    <select
+                    <label htmlFor="service-category" className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                    <select id="service-category"
                       value={formData.category}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value as Service['category'] })}
                       required
@@ -541,8 +553,8 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
 
                   {/* Name */}
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Service Name *</label>
-                    <input
+                    <label htmlFor="service-name" className="block text-sm font-medium text-gray-700 mb-1">Service Name *</label>
+                    <input id="service-name"
                       type="text"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -553,8 +565,8 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
 
                   {/* Description */}
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                    <textarea
+                    <label htmlFor="service-description" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea id="service-description"
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                       rows={2}
@@ -564,8 +576,8 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
 
                   {/* Price */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Unit Price (PHP) *</label>
-                    <input
+                    <label htmlFor="service-unit-price" className="block text-sm font-medium text-gray-700 mb-1">Unit Price (PHP) *</label>
+                    <input id="service-unit-price"
                       type="number"
                       value={formData.unitPrice}
                       onChange={(e) => setFormData({ ...formData, unitPrice: parseFloat(e.target.value) || 0 })}
@@ -578,8 +590,8 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
 
                   {/* Unit */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
-                    <input
+                    <label htmlFor="service-unit" className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                    <input id="service-unit"
                       type="text"
                       value={formData.unit}
                       onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
@@ -590,8 +602,8 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
 
                   {/* Duration */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Duration (minutes)</label>
-                    <input
+                    <label htmlFor="service-duration" className="block text-sm font-medium text-gray-700 mb-1">Duration (minutes)</label>
+                    <input id="service-duration"
                       type="number"
                       value={formData.duration}
                       onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 0 })}
@@ -602,8 +614,8 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
 
                   {/* Type */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                    <input
+                    <label htmlFor="service-type" className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                    <input id="service-type"
                       type="text"
                       value={formData.type}
                       onChange={(e) => setFormData({ ...formData, type: e.target.value })}
@@ -636,8 +648,8 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
 
                   {/* Notes */}
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                    <textarea
+                    <label htmlFor="service-notes" className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea id="service-notes"
                       value={formData.notes}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                       rows={2}
@@ -650,7 +662,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                 <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
                   <button
                     type="button"
-                    onClick={() => { setShowModal(false); resetForm(); }}
+                    onClick={closeModal}
                     className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-semibold"
                   >
                     Cancel

@@ -45,7 +45,7 @@ export default function AdminDashboard() {
         if (statsRes.ok) {
           const statsData = await statsRes.json();
           if (statsData.success && statsData.data) {
-            setStats(statsData.data.stats || stats);
+            setStats((prev) => statsData.data.stats || prev);
           }
         }
 
@@ -54,7 +54,7 @@ export default function AdminDashboard() {
         if (healthRes.ok) {
           const healthData = await healthRes.json();
           if (healthData.success) {
-            setServices(healthData.data?.services || services);
+            setServices((prev) => healthData.data?.services || prev);
           }
         }
 

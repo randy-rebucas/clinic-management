@@ -36,39 +36,38 @@ export default function ReferralsPageClient() {
   const router = useRouter();
 
   useEffect(() => {
+    const fetchReferrals = async () => {
+      try {
+        const res = await fetch('/api/referrals');
+      
+        if (res.status === 401) {
+          router.push('/login');
+          return;
+        }
+      
+        const contentType = res.headers.get('content-type');
+        let data;
+        if (contentType && contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const text = await res.text();
+          console.error('API returned non-JSON response:', text.substring(0, 500));
+          data = { success: false, error: `API error: ${res.status} ${res.statusText}` };
+        }
+      
+        if (data.success) {
+          setReferrals(data.data);
+        } else {
+          console.error('Failed to fetch referrals:', data.error);
+        }
+      } catch (error) {
+        console.error('Failed to fetch referrals:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchReferrals();
-  }, []);
-
-  const fetchReferrals = async () => {
-    try {
-      const res = await fetch('/api/referrals');
-      
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      const contentType = res.headers.get('content-type');
-      let data;
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        console.error('API returned non-JSON response:', text.substring(0, 500));
-        data = { success: false, error: `API error: ${res.status} ${res.statusText}` };
-      }
-      
-      if (data.success) {
-        setReferrals(data.data);
-      } else {
-        console.error('Failed to fetch referrals:', data.error);
-      }
-    } catch (error) {
-      console.error('Failed to fetch referrals:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [router]);
 
   const getStatusColor = (status: string): 'green' | 'blue' | 'yellow' | 'red' | 'gray' => {
     switch (status) {
@@ -184,6 +183,7 @@ export default function ReferralsPageClient() {
                     </div>
                     <input
                       type="text"
+                      aria-label="Search referrals by patient name, referral code, or referring doctor"
                       placeholder="Search by patient name, referral code, or referring doctor..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -191,10 +191,12 @@ export default function ReferralsPageClient() {
                     />
                     {searchQuery && (
                       <button
+                        type="button"
                         onClick={() => setSearchQuery('')}
+                        aria-label="Clear search"
                         className="absolute right-4 top-1/2 transform -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                       >
-                        <svg width="14" height="14" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg width="14" height="14" aria-hidden="true" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                         </svg>
                       </button>
@@ -203,6 +205,7 @@ export default function ReferralsPageClient() {
                 </div>
                 <div className="min-w-[200px]">
                   <select
+                    aria-label="Filter by status"
                     value={filterStatus}
                     onChange={(e) => setFilterStatus(e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all text-sm bg-white"
@@ -217,6 +220,7 @@ export default function ReferralsPageClient() {
                 </div>
                 <div className="min-w-[200px]">
                   <select
+                    aria-label="Filter by type"
                     value={filterType}
                     onChange={(e) => setFilterType(e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all text-sm bg-white"

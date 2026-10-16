@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useModalA11y } from './hooks/useModalA11y';
 
 interface Company {
   name: string;
@@ -116,7 +117,10 @@ export default function MedicalRepsManagementClient() {
   }, [searchQuery, statusFilter]);
 
   useEffect(() => {
-    fetchReps();
+    const load = async () => {
+      await fetchReps();
+    };
+    load();
   }, [fetchReps]);
 
   const handleOpenModal = (rep?: MedicalRep) => {
@@ -165,6 +169,8 @@ export default function MedicalRepsManagementClient() {
     setEditingRep(null);
     setFormData(initialFormData);
   };
+
+  const modalRef = useModalA11y<HTMLDivElement>(showModal, handleCloseModal);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -418,6 +424,7 @@ export default function MedicalRepsManagementClient() {
                     </div>
                     <input
                       type="text"
+                      aria-label="Search medical representatives"
                       placeholder="Search by name, email, or company..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -425,8 +432,8 @@ export default function MedicalRepsManagementClient() {
                     />
                     {searchQuery && (
                       <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
-                        <button onClick={() => setSearchQuery('')} className="cursor-pointer p-1 text-gray-400 hover:text-gray-600">
-                          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
+                        <button onClick={() => setSearchQuery('')} aria-label="Clear search" className="cursor-pointer p-1 text-gray-400 hover:text-gray-600">
+                          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                             <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
                           </svg>
                         </button>
@@ -436,6 +443,7 @@ export default function MedicalRepsManagementClient() {
                 </div>
                 <div style={{ minWidth: '160px' }}>
                   <select
+                    aria-label="Filter by status"
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none"
@@ -554,8 +562,8 @@ export default function MedicalRepsManagementClient() {
 
         {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="rep-modal-title" className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-amber-100/50">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-amber-500 rounded-lg">
@@ -563,7 +571,7 @@ export default function MedicalRepsManagementClient() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                 </div>
-                <h2 className="text-xl font-bold text-gray-900">
+                <h2 id="rep-modal-title" className="text-xl font-bold text-gray-900">
                   {editingRep ? 'Edit Medical Representative' : 'Add Medical Representative'}
                 </h2>
               </div>
@@ -584,8 +592,8 @@ export default function MedicalRepsManagementClient() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                  <select
+                  <label htmlFor="rep-title" className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                  <select id="rep-title"
                     value={formData.title}
                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
@@ -599,8 +607,8 @@ export default function MedicalRepsManagementClient() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
-                  <select
+                  <label htmlFor="rep-status" className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                  <select id="rep-status"
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'inactive' | 'on-leave' })}
                     required
@@ -612,8 +620,8 @@ export default function MedicalRepsManagementClient() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
-                  <input
+                  <label htmlFor="rep-first-name" className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                  <input id="rep-first-name"
                     type="text"
                     value={formData.firstName}
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
@@ -622,8 +630,8 @@ export default function MedicalRepsManagementClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
-                  <input
+                  <label htmlFor="rep-last-name" className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                  <input id="rep-last-name"
                     type="text"
                     value={formData.lastName}
                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
@@ -632,8 +640,8 @@ export default function MedicalRepsManagementClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                  <input
+                  <label htmlFor="rep-email" className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                  <input id="rep-email"
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -642,8 +650,8 @@ export default function MedicalRepsManagementClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <input
+                  <label htmlFor="rep-phone" className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <input id="rep-phone"
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -665,8 +673,8 @@ export default function MedicalRepsManagementClient() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
-                  <input
+                  <label htmlFor="rep-company-name" className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
+                  <input id="rep-company-name"
                     type="text"
                     value={formData.companyName}
                     onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
@@ -674,8 +682,8 @@ export default function MedicalRepsManagementClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Company Phone</label>
-                  <input
+                  <label htmlFor="rep-company-phone" className="block text-sm font-medium text-gray-700 mb-1">Company Phone</label>
+                  <input id="rep-company-phone"
                     type="tel"
                     value={formData.companyPhone}
                     onChange={(e) => setFormData({ ...formData, companyPhone: e.target.value })}
@@ -683,8 +691,8 @@ export default function MedicalRepsManagementClient() {
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Company Email</label>
-                  <input
+                  <label htmlFor="rep-company-email" className="block text-sm font-medium text-gray-700 mb-1">Company Email</label>
+                  <input id="rep-company-email"
                     type="email"
                     value={formData.companyEmail}
                     onChange={(e) => setFormData({ ...formData, companyEmail: e.target.value })}
@@ -706,8 +714,8 @@ export default function MedicalRepsManagementClient() {
                   </div>
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Products (comma-separated)</label>
-                  <input
+                  <label htmlFor="rep-products" className="block text-sm font-medium text-gray-700 mb-1">Products (comma-separated)</label>
+                  <input id="rep-products"
                     type="text"
                     value={formData.products}
                     onChange={(e) => setFormData({ ...formData, products: e.target.value })}
@@ -716,8 +724,8 @@ export default function MedicalRepsManagementClient() {
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Territory (comma-separated)</label>
-                  <input
+                  <label htmlFor="rep-territory" className="block text-sm font-medium text-gray-700 mb-1">Territory (comma-separated)</label>
+                  <input id="rep-territory"
                     type="text"
                     value={formData.territory}
                     onChange={(e) => setFormData({ ...formData, territory: e.target.value })}
@@ -726,8 +734,8 @@ export default function MedicalRepsManagementClient() {
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
-                  <textarea
+                  <label htmlFor="rep-bio" className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
+                  <textarea id="rep-bio"
                     value={formData.bio}
                     onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
                     rows={3}
@@ -736,8 +744,8 @@ export default function MedicalRepsManagementClient() {
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Internal Notes</label>
-                  <textarea
+                  <label htmlFor="rep-internal-notes" className="block text-sm font-medium text-gray-700 mb-1">Internal Notes</label>
+                  <textarea id="rep-internal-notes"
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     rows={3}

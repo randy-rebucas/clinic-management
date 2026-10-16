@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
+import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
 
 /**
  * PUT /api/medical-representatives/notifications
@@ -9,21 +9,8 @@ import MedicalRepresentative from '@/models/MedicalRepresentative';
  */
 export async function PUT(request: NextRequest) {
   try {
-    // Verify session
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    if (session.role !== 'medical-representative') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
 
     let body;
     try {
@@ -37,9 +24,9 @@ export async function PUT(request: NextRequest) {
 
     await connectDB();
 
-    const medicalRep = await MedicalRepresentative.findOne({
-      userId: session.userId,
-    });
+    const repFilter: Record<string, unknown> = { userId: rep.userObjectId };
+    if (rep.ownerFilter.tenantId) repFilter.tenantIds = rep.ownerFilter.tenantId;
+    const medicalRep = await MedicalRepresentative.findOne(repFilter);
 
     if (!medicalRep) {
       return NextResponse.json(
@@ -48,25 +35,33 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Update notification preferences
-    if (typeof body.notificationsEnabled === 'boolean') {
+    if (typeof body?.notificationsEnabled === 'boolean') {
       medicalRep.notificationsEnabled = body.notificationsEnabled;
     }
-    if (typeof body.emailNotifications === 'boolean') {
+    if (typeof body?.emailNotifications === 'boolean') {
       medicalRep.emailNotifications = body.emailNotifications;
     }
 
     await medicalRep.save();
 
+    const result = medicalRep.toObject();
+    delete result.internalNotes;
+    delete result.paymentStatus;
+    delete result.paymentDate;
+    delete result.paymentAmount;
+    delete result.paymentMethod;
+    delete result.paymentReference;
+    delete result.password;
+
     return NextResponse.json({
       success: true,
       message: 'Notification preferences updated',
-      data: medicalRep,
+      data: result,
     });
   } catch (error: any) {
     console.error('Update notifications error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }

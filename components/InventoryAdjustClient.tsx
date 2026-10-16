@@ -24,44 +24,43 @@ export default function InventoryAdjustClient({ itemId }: { itemId: string }) {
   const router = useRouter();
 
   useEffect(() => {
-    fetchItem();
-  }, [itemId]);
-
-  const fetchItem = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await fetch(`/api/inventory/${itemId}`);
+    const fetchItem = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch(`/api/inventory/${itemId}`);
       
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      if (!res.ok) {
-        const contentType = res.headers.get('content-type');
-        let errorData;
-        if (contentType && contentType.includes('application/json')) {
-          errorData = await res.json();
+        if (res.status === 401) {
+          router.push('/login');
+          return;
         }
-        const errorMsg = errorData?.error || `Failed to load inventory item: ${res.status} ${res.statusText}`;
-        setError(errorMsg);
-        return;
-      }
       
-      const data = await res.json();
-      if (data.success && data.data) {
-        setItem(data.data);
-      } else {
-        setError(data.error || 'Failed to load inventory item');
+        if (!res.ok) {
+          const contentType = res.headers.get('content-type');
+          let errorData;
+          if (contentType && contentType.includes('application/json')) {
+            errorData = await res.json();
+          }
+          const errorMsg = errorData?.error || `Failed to load inventory item: ${res.status} ${res.statusText}`;
+          setError(errorMsg);
+          return;
+        }
+      
+        const data = await res.json();
+        if (data.success && data.data) {
+          setItem(data.data);
+        } else {
+          setError(data.error || 'Failed to load inventory item');
+        }
+      } catch (error) {
+        console.error('Failed to fetch inventory item:', error);
+        setError('Failed to load inventory item. Please try again.');
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Failed to fetch inventory item:', error);
-      setError('Failed to load inventory item. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    fetchItem();
+  }, [itemId, router]);
 
   const calculateNewQuantity = () => {
     if (!item || !adjustmentAmount) return null;
@@ -101,19 +100,15 @@ export default function InventoryAdjustClient({ itemId }: { itemId: string }) {
 
     setSubmitting(true);
     try {
-      let newQuantity: number;
-      switch (adjustmentType) {
-        case 'add':
-          newQuantity = item!.quantity + amount;
-          break;
-        case 'subtract':
-          newQuantity = Math.max(0, item!.quantity - amount);
-          break;
-        case 'set':
-          newQuantity = amount;
-          break;
-        default:
-          newQuantity = item!.quantity;
+      // add/subtract send a delta applied atomically on the server; "set" is an absolute value.
+      const quantityChange =
+        adjustmentType === 'set'
+          ? { quantity: amount }
+          : { delta: adjustmentType === 'add' ? amount : -amount };
+
+      if ('delta' in quantityChange && quantityChange.delta === 0) {
+        alert('Please enter an amount greater than zero');
+        return;
       }
 
       const res = await fetch(`/api/inventory/${itemId}`, {
@@ -122,7 +117,7 @@ export default function InventoryAdjustClient({ itemId }: { itemId: string }) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          quantity: newQuantity,
+          ...quantityChange,
           notes: item!.notes 
             ? `${item!.notes}\n\nAdjustment (${adjustmentType} ${amount} ${item!.unit}): ${reason || 'No reason provided'}`
             : `Adjustment (${adjustmentType} ${amount} ${item!.unit}): ${reason || 'No reason provided'}`,

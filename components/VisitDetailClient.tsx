@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VisitForm from './VisitForm';
+import { formatApiError } from './utils/apiError';
 
 export interface Visit {
   _id: string;
@@ -114,15 +115,12 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
   const [providerName, setProviderName] = useState('Dr. Provider');
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [statusUpdating, setStatusUpdating] = useState(false);
 
   const router = useRouter();
 
-  useEffect(() => {
-    fetchVisit();
-    fetchUser();
-  }, [visitId]);
-
-  const fetchUser = async () => {
+  const fetchUser = useCallback(async () => {
     try {
       const res = await fetch('/api/user/me');
       if (res.ok) {
@@ -134,9 +132,9 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
     } catch (error) {
       console.error('Failed to fetch user:', error);
     }
-  };
+  }, []);
 
-  const fetchVisit = async () => {
+  const fetchVisit = useCallback(async () => {
     try {
       const res = await fetch(`/api/visits/${visitId}`);
       if (res.status === 401) {
@@ -157,9 +155,22 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
     } finally {
       setLoading(false);
     }
+  }, [router, visitId]);
+
+  useEffect(() => {
+    const load = async () => {
+      await Promise.all([fetchVisit(), fetchUser()]);
+    };
+    load();
+  }, [fetchVisit, fetchUser]);
+
+  const readError = async (res: Response, fallback: string) => {
+    const data = await res.json().catch(() => null);
+    return formatApiError(data, fallback);
   };
 
-  const handleUpdate = async (formData: any) => {
+  const handleUpdate = async (formData: any): Promise<boolean> => {
+    setActionError(null);
     try {
       const res = await fetch(`/api/visits/${visitId}`, {
         method: 'PUT',
@@ -171,21 +182,34 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setVisit(data.data);
-          setEditing(false);
-          alert('Visit updated successfully!');
-        }
+      if (res.status === 401) {
+        router.push('/login');
+        return false;
       }
+      if (!res.ok) {
+        setActionError(await readError(res, 'Failed to update visit'));
+        return false;
+      }
+      const data = await res.json();
+      if (!data.success) {
+        setActionError(formatApiError(data, 'Failed to update visit'));
+        return false;
+      }
+      setVisit(data.data);
+      setEditing(false);
+      alert('Visit updated successfully!');
+      return true;
     } catch (error) {
       console.error('Failed to update visit:', error);
-      alert('Failed to update visit');
+      setActionError('Failed to update visit');
+      return false;
     }
   };
 
   const handleStatusChange = async (status: string) => {
+    if (statusUpdating) return;
+    setActionError(null);
+    setStatusUpdating(true);
     try {
       const res = await fetch(`/api/visits/${visitId}`, {
         method: 'PUT',
@@ -193,18 +217,30 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
         body: JSON.stringify({ status }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setVisit(data.data);
-        }
+      if (res.status === 401) {
+        router.push('/login');
+        return;
+      }
+      if (!res.ok) {
+        setActionError(await readError(res, `Failed to change visit status to ${status}`));
+        return;
+      }
+      const data = await res.json();
+      if (data.success) {
+        setVisit(data.data);
+      } else {
+        setActionError(formatApiError(data, `Failed to change visit status to ${status}`));
       }
     } catch (error) {
       console.error('Failed to update status:', error);
+      setActionError('Failed to update visit status. Please try again.');
+    } finally {
+      setStatusUpdating(false);
     }
   };
 
-  const handleFileUpload = async (file: File, notes?: string) => {
+  const handleFileUpload = async (file: File, notes?: string): Promise<boolean> => {
+    setActionError(null);
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -217,20 +253,22 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
         body: formData,
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setVisit(data.data);
-          alert('File uploaded successfully!');
-        } else {
-          alert('Failed to upload file: ' + (data.error || 'Unknown error'));
-        }
-      } else {
-        alert('Failed to upload file');
+      if (!res.ok) {
+        setActionError(await readError(res, 'Failed to upload file'));
+        return false;
       }
+      const data = await res.json();
+      if (data.success) {
+        setVisit(data.data);
+        alert('File uploaded successfully!');
+        return true;
+      }
+      setActionError('Failed to upload file: ' + (data.error || 'Unknown error'));
+      return false;
     } catch (error) {
       console.error('Failed to upload file:', error);
-      alert('Failed to upload file');
+      setActionError('Failed to upload file');
+      return false;
     }
   };
 
@@ -281,15 +319,31 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
     <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6">
+          {actionError && (
+            <div role="alert" className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm flex items-start justify-between gap-3">
+              <p className="text-sm text-red-700">{actionError}</p>
+              <button
+                type="button"
+                onClick={() => setActionError(null)}
+                aria-label="Dismiss error"
+                className="text-red-500 hover:text-red-700"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
           {/* Header */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-4">
                 <Link
                   href="/visits"
+                  aria-label="Back to visits"
                   className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </Link>
@@ -314,6 +368,8 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
                 <select
                   value={visit.status}
                   onChange={(e) => handleStatusChange(e.target.value)}
+                  disabled={statusUpdating}
+                  aria-label="Visit status"
                   className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm bg-white font-semibold"
                 >
                   <option value="open">Open</option>
@@ -864,7 +920,7 @@ export default function VisitDetailClient({ visitId }: { visitId: string }) {
 
 
 
-function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string) => void }) {
+function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string) => Promise<boolean> }) {
   const [file, setFile] = useState<File | null>(null);
   const [notes, setNotes] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -875,7 +931,8 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
 
     setUploading(true);
     try {
-      await onUpload(file, notes || undefined);
+      const ok = await onUpload(file, notes || undefined);
+      if (!ok) return;
       setFile(null);
       setNotes('');
       // Reset file input
@@ -892,9 +949,9 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
         <form onSubmit={handleSubmit}>
           <div className="flex flex-col gap-4">
             <div>
-              <p className="text-sm font-semibold text-gray-900 mb-2">
+              <label htmlFor="visit-file-input" className="block text-sm font-semibold text-gray-900 mb-2">
                 Upload Clinical Image or Document
-              </p>
+              </label>
               <input
                 id="visit-file-input"
                 type="file"
@@ -905,8 +962,9 @@ function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string
               />
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900 mb-2">Notes (Optional)</p>
+              <label htmlFor="visit-file-notes" className="block text-sm font-semibold text-gray-900 mb-2">Notes (Optional)</label>
               <input
+                id="visit-file-notes"
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}

@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Modal } from './ui/Modal';
+import { formatApiError } from './utils/apiError';
 
 interface Prescription {
   _id: string;
@@ -94,14 +95,10 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
   });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [dispensing, setDispensing] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    fetchPrescription();
-    fetchClinicSettings();
-  }, [prescriptionId]);
-
-  const fetchClinicSettings = async () => {
+  const fetchClinicSettings = useCallback(async () => {
     try {
       const res = await fetch('/api/settings');
       if (res.status === 401) {
@@ -119,9 +116,9 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
     } catch (error) {
       console.error('Failed to fetch clinic settings:', error);
     }
-  };
+  }, [router]);
 
-  const fetchPrescription = async () => {
+  const fetchPrescription = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -142,7 +139,14 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
     } finally {
       setLoading(false);
     }
-  };
+  }, [prescriptionId, router]);
+
+  useEffect(() => {
+    const load = async () => {
+      await Promise.all([fetchPrescription(), fetchClinicSettings()]);
+    };
+    load();
+  }, [fetchPrescription, fetchClinicSettings]);
 
   const showNotification = (message: string, type: 'error' | 'success') => {
     if (type === 'error') {
@@ -155,6 +159,8 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
   };
 
   const handleDispense = async () => {
+    if (dispensing) return;
+    setDispensing(true);
     try {
       const res = await fetch(`/api/prescriptions/${prescriptionId}/dispense`, {
         method: 'POST',
@@ -176,14 +182,17 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
           });
           showNotification('Dispense recorded successfully!', 'success');
         } else {
-          showNotification('Error: ' + data.error, 'error');
+          showNotification(formatApiError(data, 'Failed to record dispense'), 'error');
         }
       } else {
-        showNotification('Failed to record dispense', 'error');
+        const data = await res.json().catch(() => null);
+        showNotification(formatApiError(data, 'Failed to record dispense'), 'error');
       }
     } catch (error) {
       console.error('Failed to record dispense:', error);
       showNotification('Failed to record dispense', 'error');
+    } finally {
+      setDispensing(false);
     }
   };
 
@@ -288,10 +297,12 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-4">
                 <button
+                  type="button"
                   onClick={() => router.push('/prescriptions')}
+                  aria-label="Back to prescriptions"
                   className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
@@ -633,7 +644,14 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                   <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Dispensed</p>
                   <p className="text-sm font-bold text-gray-900">{totalDispensed}</p>
                 </div>
-                <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden border border-gray-300">
+                <div
+                  role="progressbar"
+                  aria-label="Quantity dispensed"
+                  aria-valuemin={0}
+                  aria-valuemax={totalPrescribed}
+                  aria-valuenow={Math.min(totalDispensed, totalPrescribed)}
+                  className="w-full h-3 bg-gray-200 rounded-full overflow-hidden border border-gray-300"
+                >
                   <div
                     className="h-full bg-gradient-to-r from-purple-500 to-purple-600 transition-all duration-300 shadow-sm"
                     style={{ width: `${totalPrescribed > 0 ? (totalDispensed / totalPrescribed) * 100 : 0}%` }}
@@ -743,10 +761,10 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
               <div className="py-4">
                 <div className="flex flex-col gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="dispense-pharmacy-name" className="block text-sm font-semibold text-gray-700 mb-2">
                       Pharmacy Name <span className="text-red-600">*</span>
                     </label>
-                    <input
+                    <input id="dispense-pharmacy-name"
                       type="text"
                       required
                       value={dispenseForm.pharmacyName}
@@ -755,10 +773,10 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label htmlFor="dispense-quantity" className="block text-sm font-semibold text-gray-700 mb-2">
                       Quantity Dispensed <span className="text-red-600">*</span>
                     </label>
-                    <input
+                    <input id="dispense-quantity"
                       type="number"
                       required
                       min="1"
@@ -772,8 +790,8 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Tracking Number</label>
-                    <input
+                    <label htmlFor="dispense-tracking-number" className="block text-sm font-semibold text-gray-700 mb-2">Tracking Number</label>
+                    <input id="dispense-tracking-number"
                       type="text"
                       value={dispenseForm.trackingNumber}
                       onChange={(e) => setDispenseForm({ ...dispenseForm, trackingNumber: e.target.value })}
@@ -781,8 +799,8 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
-                    <textarea
+                    <label htmlFor="dispense-notes" className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
+                    <textarea id="dispense-notes"
                       value={dispenseForm.notes}
                       onChange={(e) => setDispenseForm({ ...dispenseForm, notes: e.target.value })}
                       rows={3}
@@ -791,16 +809,20 @@ export default function PrescriptionDetailClient({ prescriptionId }: { prescript
                   </div>
                   <div className="flex justify-end gap-3 pt-2">
                     <button
+                      type="button"
                       onClick={() => setShowDispenseForm(false)}
                       className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold border border-gray-200"
                     >
                       Cancel
                     </button>
                     <button
+                      type="button"
                       onClick={handleDispense}
-                      className="px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold shadow-md"
+                      disabled={dispensing}
+                      aria-busy={dispensing}
+                      className="px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      Record Dispense
+                      {dispensing ? 'Recording…' : 'Record Dispense'}
                     </button>
                   </div>
                 </div>
