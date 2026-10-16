@@ -1,8 +1,8 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
+import { TIER, type MembershipTier, type MembershipStatus } from '@/lib/memberships';
 
-export type MembershipTier = 'bronze' | 'silver' | 'gold' | 'platinum';
-export type MembershipStatus = 'active' | 'inactive' | 'expired' | 'suspended';
+export type { MembershipTier, MembershipStatus };
 
 export interface IMembership extends Document {
   // Tenant reference for multi-tenant support
@@ -42,6 +42,7 @@ export interface IMembership extends Document {
       type: 'visit' | 'appointment' | 'invoice';
       id: Types.ObjectId;
     };
+    performedBy?: Types.ObjectId; // Staff user who recorded it
     createdAt: Date;
   }>;
   
@@ -68,6 +69,7 @@ const TransactionSchema: Schema = new Schema(
       },
       id: { type: Schema.Types.ObjectId },
     },
+    performedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     createdAt: { type: Date, default: Date.now },
   },
   { _id: false }
@@ -146,17 +148,10 @@ MembershipSchema.pre('validate', async function (this: IMembership, next) {
 // Set tier benefits
 MembershipSchema.pre('save', async function (this: IMembership, next) {
 
-  // Set tier-based benefits
-  const tierBenefits: Record<MembershipTier, { discount: number; benefits: string[] }> = {
-    bronze: { discount: 5, benefits: ['points_earn'] },
-    silver: { discount: 10, benefits: ['points_earn', 'priority_booking'] },
-    gold: { discount: 15, benefits: ['points_earn', 'priority_booking', 'free_consultation_monthly'] },
-    platinum: { discount: 20, benefits: ['points_earn', 'priority_booking', 'free_consultation_monthly', 'discount_on_procedures'] },
-  };
-
-  const tierConfig = tierBenefits[this.tier];
+  // Set tier-based benefits (the table lives in lib/memberships so pages show the same terms)
+  const tierConfig = TIER[this.tier];
   this.discountPercentage = tierConfig.discount;
-  this.benefits = tierConfig.benefits;
+  this.benefits = [...tierConfig.benefits];
 
   next();
 });

@@ -8,11 +8,11 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
 import { Types } from 'mongoose';
 import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenantFilter, isValidId } from '@/lib/api/tenant-session';
-import { parseBody, isValidationError, zObjectId, asString } from '@/lib/api/validate';
+import { parseBody, isValidationError, zObjectId, asString, escapeRegex } from '@/lib/api/validate';
 import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
+import { INVOICE_STATUSES, OPEN_STATUSES, agingRange, isAgingKey } from '@/lib/invoices';
 import { invoiceEditableSchema, computeInvoiceTotals } from './_lib/totals';
 
-const INVOICE_STATUSES = ['unpaid', 'partial', 'paid', 'refunded'];
 const MAX_RESULTS = 1000;
 
 export async function GET(request: NextRequest) {
@@ -33,6 +33,11 @@ export async function GET(request: NextRequest) {
     const patientId = asString(searchParams.get('patientId'));
     const visitId = asString(searchParams.get('visitId'));
     const status = asString(searchParams.get('status'));
+    const aging = asString(searchParams.get('aging'));
+    const search = (asString(searchParams.get('search')) || '').trim().slice(0, 100);
+    const pageParam = searchParams.get('page');
+    const page = Math.max(parseInt(pageParam || '1', 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '', 10) || 20, 1), 100);
 
     const query: Record<string, unknown> = tenantFilter(tenantId);
     if (patientId) {
@@ -43,8 +48,54 @@ export async function GET(request: NextRequest) {
       if (!isValidId(visitId)) return NextResponse.json({ success: true, data: [] });
       query.visit = new Types.ObjectId(visitId);
     }
-    if (status && INVOICE_STATUSES.includes(status)) {
+    // "open" = a balance still to collect (unpaid or part paid); otherwise one known status.
+    if (status === 'open') {
+      query.status = { $in: OPEN_STATUSES };
+    } else if (status && (INVOICE_STATUSES as string[]).includes(status)) {
       query.status = status;
+    }
+    // Aging buckets only make sense for balances still open.
+    if (isAgingKey(aging)) {
+      if (!query.status) query.status = { $in: OPEN_STATUSES };
+      query.createdAt = agingRange(aging);
+    }
+    if (search) {
+      // Invoice number, or the name / code / phone of a patient of this clinic.
+      const rx = new RegExp(escapeRegex(search), 'i');
+      const words = search.split(/\s+/).filter(Boolean).map((w) => new RegExp(escapeRegex(w), 'i'));
+      const patientIds = await Patient.find(
+        patientTenantFilter(tenantId, {
+          $or: [
+            { patientCode: rx },
+            { phone: rx },
+            words.length > 1 ? { $and: words.map((w) => ({ $or: [{ firstName: w }, { lastName: w }] })) } : { $or: [{ firstName: rx }, { lastName: rx }] },
+          ],
+        })
+      )
+        .select('_id')
+        .limit(500)
+        .lean();
+      query.$or = [{ invoiceNumber: rx }, { patient: { $in: patientIds.map((p) => p._id) } }];
+    }
+
+    // Paged when `page` is passed (the invoices list): list fields only, newest first.
+    if (pageParam) {
+      const [rows, total] = await Promise.all([
+        Invoice.find(query)
+          .select('invoiceNumber patient visit total totalPaid outstandingBalance status createdAt')
+          .populate({ path: 'patient', select: 'firstName lastName patientCode', match: patientTenantFilter(tenantId) })
+          .populate({ path: 'visit', select: 'visitCode', match: tenantFilter(tenantId) })
+          .sort({ createdAt: -1, _id: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+        Invoice.countDocuments(query),
+      ]);
+      return NextResponse.json({
+        success: true,
+        data: rows,
+        pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) },
+      });
     }
 
     const invoices = await Invoice.find(query)
@@ -99,8 +150,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (body.visit && !(await Visit.exists(tenantFilter(tenantId, { _id: new Types.ObjectId(body.visit) })))) {
-      return NextResponse.json({ success: false, error: 'Invalid visit selected' }, { status: 400 });
+    // The visit must be this patient's, so an invoice never links someone else's visit.
+    if (
+      body.visit &&
+      !(await Visit.exists(tenantFilter(tenantId, { _id: new Types.ObjectId(body.visit), patient: new Types.ObjectId(body.patient) })))
+    ) {
+      return NextResponse.json({ success: false, error: 'That visit is not one of this patient’s visits.' }, { status: 400 });
     }
     if (
       body.professionalFeeDoctor &&

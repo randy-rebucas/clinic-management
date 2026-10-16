@@ -19,16 +19,18 @@ import {
   labResultMetaSchema,
 } from '@/lib/document-schema';
 import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
-
-const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+import { escapeRegex } from '@/lib/api/validate';
+import { createAuditLog } from '@/lib/audit';
+import { EXPIRING_DAYS, MAX_DOCUMENT_BYTES } from '@/lib/documents';
 
 export async function GET(request: NextRequest) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
   const { session, tenantObjectId } = ctx;
 
-  // Check permission to read documents (using patients permission as documents are patient-related)
-  const permissionCheck = await requirePermission(session, 'patients', 'read');
+  // Documents have their own permission. This used to check patients:read, which let medical
+  // representatives (who may read patients) list every patient's files.
+  const permissionCheck = await requirePermission(session, 'documents', 'read');
   if (permissionCheck) {
     return permissionCheck;
   }
@@ -41,36 +43,60 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const documentType = searchParams.get('documentType');
     const status = searchParams.get('status') || 'active';
-    const search = searchParams.get('search');
+    const search = searchParams.get('search')?.trim().slice(0, 100);
     const visitId = searchParams.get('visitId');
-    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50', 10) || 50, 1), 200);
+    const pageParam = searchParams.get('page');
+    const paged = pageParam !== null;
+    const page = Math.max(1, parseInt(pageParam || '1', 10) || 1);
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || (paged ? '25' : '50'), 10) || 50, 1), 200);
 
-    const query: any = {
-      tenantId: tenantObjectId,
-      status: ['active', 'archived'].includes(status) ? status : 'active',
-    };
+    const and: Record<string, unknown>[] = [
+      { tenantId: tenantObjectId },
+      // "all" is active and archived; deleted documents are never listed.
+      { status: status === 'all' ? { $in: ['active', 'archived'] } : status === 'archived' ? 'archived' : 'active' },
+    ];
 
     if (patientId) {
       if (!isValidId(patientId)) return NextResponse.json({ success: true, data: [], total: 0 });
-      query.patient = new Types.ObjectId(patientId);
+      and.push({ patient: new Types.ObjectId(patientId) });
     }
-    if (category) query.category = String(category);
-    if (documentType) query.documentType = String(documentType);
+    if (category && (DOCUMENT_CATEGORIES as readonly string[]).includes(category)) and.push({ category });
+    if (documentType) and.push({ documentType: String(documentType).slice(0, 20) });
     if (visitId) {
       if (!isValidId(visitId)) return NextResponse.json({ success: true, data: [], total: 0 });
-      query.visit = new Types.ObjectId(visitId);
+      and.push({ visit: new Types.ObjectId(visitId) });
     }
+    // Not filed to any patient yet.
+    if (searchParams.get('filed') === 'none') and.push({ $or: [{ patient: { $exists: false } }, { patient: null }] });
+    if (searchParams.get('confidential') === '1') and.push({ isConfidential: true });
+    // Expired, or expiring within the window (certificates count by their "valid until").
+    if (searchParams.get('expiring') === '1') {
+      const horizon = new Date(Date.now() + EXPIRING_DAYS * 86400000);
+      and.push({ $or: [{ expiryDate: { $lte: horizon } }, { expiryDate: { $exists: false }, 'medicalCertificate.validUntil': { $lte: horizon } }] });
+    }
+    // Partial words match (the text index only matched whole words), and patients by name.
     if (search) {
-      query.$text = { $search: search.slice(0, 200) };
+      const rx = new RegExp(escapeRegex(search), 'i');
+      const words = search.split(/\s+/).filter(Boolean).map((w) => new RegExp(escapeRegex(w), 'i'));
+      const patients = await Patient.find({ tenantIds: tenantObjectId, $and: words.map((w) => ({ $or: [{ firstName: w }, { lastName: w }, { patientCode: w }] })) })
+        .select('_id')
+        .limit(200)
+        .lean();
+      and.push({
+        $or: [{ title: rx }, { documentCode: rx }, { originalFilename: rx }, { tags: rx }, ...(patients.length ? [{ patient: { $in: patients.map((p) => p._id) } }] : [])],
+      });
     }
+    const query = { $and: and };
 
     const [documents, total] = await Promise.all([
       Document.find(query)
-        .select('-ocrText')
+        // List fields only: never the file itself (inline files are whole data URLs) or OCR text.
+        .select('-ocrText -url -metadata')
         .populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } })
         .populate('uploadedBy', 'name')
         .populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } })
-        .sort({ uploadDate: -1 })
+        .sort({ uploadDate: -1, _id: -1 })
+        .skip(paged ? (page - 1) * limit : 0)
         .limit(limit)
         .lean(),
       Document.countDocuments(query),
@@ -80,6 +106,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: documents.map((d: any) => withStreamUrls(d)),
       total,
+      ...(paged ? { pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) } } : {}),
     });
   } catch (error: any) {
     console.error('Error fetching documents:', error);
@@ -105,8 +132,7 @@ export async function POST(request: NextRequest) {
   if (isTenantSessionError(ctx)) return ctx;
   const { session, tenantId, tenantObjectId } = ctx;
 
-  // Check permission to write documents (using patients permission as documents are patient-related)
-  const permissionCheck = await requirePermission(session, 'patients', 'write');
+  const permissionCheck = await requirePermission(session, 'documents', 'write');
   if (permissionCheck) {
     return permissionCheck;
   }
@@ -127,6 +153,10 @@ export async function POST(request: NextRequest) {
     const tagsRaw = str('tags', 2000);
     const notes = str('notes', 5000);
     const scanned = formData.get('scanned') === 'true';
+    // Staff only: kept out of the patient's portal (which shows their other documents).
+    const isConfidential = formData.get('confidential') === 'true';
+    const expiryRaw = str('expiryDate', 40);
+    const expiryDate = expiryRaw && !Number.isNaN(Date.parse(expiryRaw)) ? new Date(expiryRaw) : undefined;
 
     if (category && !(DOCUMENT_CATEGORIES as readonly string[]).includes(category)) {
       return NextResponse.json({ success: false, error: 'Invalid category' }, { status: 400 });
@@ -159,8 +189,9 @@ export async function POST(request: NextRequest) {
       }
     }
     if (visitId) {
-      if (!isValidId(visitId) || !(await Visit.exists({ _id: visitId, tenantId: tenantObjectId }))) {
-        return NextResponse.json({ success: false, error: 'Invalid visit' }, { status: 400 });
+      // The visit must be this clinic's, and the chosen patient's.
+      if (!isValidId(visitId) || !(await Visit.exists({ _id: visitId, tenantId: tenantObjectId, ...(patientId ? { patient: patientId } : {}) }))) {
+        return NextResponse.json({ success: false, error: 'That visit isn’t one of this patient’s visits.' }, { status: 400 });
       }
     }
 
@@ -235,18 +266,38 @@ export async function POST(request: NextRequest) {
       status: 'active',
       tags,
       notes,
+      isConfidential,
       metadata: cloudinaryMeta,
     };
+    if (expiryDate) documentData.expiryDate = expiryDate;
 
     if (patientId) documentData.patient = new Types.ObjectId(patientId);
     if (visitId) documentData.visit = new Types.ObjectId(visitId);
 
     if (finalCategory === 'referral' && referralData) documentData.referral = referralData;
     if (finalCategory === 'imaging' && imagingData) documentData.imaging = imagingData;
-    if (finalCategory === 'medical_certificate' && medicalCertificateData) documentData.medicalCertificate = medicalCertificateData;
+    if (finalCategory === 'medical_certificate' && medicalCertificateData && medicalCertificateData !== 'invalid') {
+      // The model requires an issue date; one left blank is the day it was filed. Its "valid
+      // until" is the document's expiry, so the expiry alerts pick certificates up.
+      documentData.medicalCertificate = { ...medicalCertificateData, issueDate: medicalCertificateData.issueDate || new Date() };
+      if (medicalCertificateData.validUntil && !expiryDate) documentData.expiryDate = new Date(medicalCertificateData.validUntil);
+    }
     if (finalCategory === 'laboratory_result' && labResultData) documentData.labResultMetadata = labResultData;
 
     const document = await Document.create(documentData);
+
+    void createAuditLog({
+      userId: session.userId,
+      userEmail: session.email,
+      userRole: session.role,
+      tenantId,
+      action: 'create',
+      resource: 'document',
+      resourceId: document._id,
+      dataSubject: patientId,
+      isSensitive: Boolean(patientId),
+      description: `Uploaded document ${document.documentCode}${isConfidential ? ' (staff only)' : ''}`,
+    });
 
     await document.populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } });
     await document.populate('uploadedBy', 'name');

@@ -4,6 +4,7 @@ import Patient from '@/models/Patient';
 import Queue from '@/models/Queue';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { aheadOf } from '@/lib/queue-order';
 
 /**
  * GET /api/patients/me/queue
@@ -60,8 +61,7 @@ export async function GET(request: NextRequest) {
       const waitingAhead = await Queue.countDocuments({
         tenantId: (queueEntry as any).tenantId,
         status: 'waiting',
-        priority: { $lte: (queueEntry as any).priority },
-        queuedAt: { $lt: (queueEntry as any).queuedAt },
+        ...aheadOf(queueEntry as any),
       });
       position = waitingAhead + 1;
     }

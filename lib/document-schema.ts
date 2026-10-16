@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { zObjectId } from '@/lib/api/validate';
 
-export const DOCUMENT_CATEGORIES = [
-  'referral', 'laboratory_result', 'imaging', 'medical_certificate', 'prescription', 'invoice', 'id', 'insurance', 'other',
-] as const;
+import { DOCUMENT_CATEGORY_KEYS } from '@/lib/documents';
+
+export const DOCUMENT_CATEGORIES = DOCUMENT_CATEGORY_KEYS;
 
 const optDate = z.union([z.string().max(40), z.date()]).nullable().optional();
 const s = (max = 500) => z.string().max(max);

@@ -6,6 +6,8 @@ import Invoice from '@/models/Invoice';
 import Service from '@/models/Service';
 import Visit from '@/models/Visit';
 import Doctor from '@/models/Doctor';
+import User from '@/models/User';
+import { OPEN_STATUSES } from '@/lib/invoices';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
 import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
@@ -40,16 +42,32 @@ export async function GET(
     const invoiceData: any = await Invoice.findOne(tenantFilter(tenantId, { _id: new Types.ObjectId(id) }))
       .populate({
         path: 'patient',
-        select: 'firstName lastName patientCode email phone dateOfBirth address',
+        select: 'firstName lastName patientCode phone dateOfBirth',
         match: patientTenantFilter(tenantId),
       })
-      .populate('visit', 'visitCode date visitType')
-      .populate('professionalFeeDoctor', 'firstName lastName')
-      .populate('createdBy', 'name email')
+      .populate({ path: 'visit', select: 'visitCode date visitType', match: tenantFilter(tenantId) })
+      .populate({ path: 'professionalFeeDoctor', select: 'firstName lastName', match: tenantFilter(tenantId) })
+      .populate({ path: 'createdBy', select: 'name', model: User })
+      .populate({ path: 'payments.processedBy', select: 'name', model: User })
       .lean();
 
     if (!invoiceData) {
       return notFound('Invoice');
+    }
+
+    // What else this patient still owes, so the cashier can collect it in the same visit.
+    if (invoiceData.patient?._id) {
+      const [other] = await Invoice.aggregate([
+        {
+          $match: tenantFilter(tenantId, {
+            patient: invoiceData.patient._id,
+            _id: { $ne: invoiceData._id },
+            status: { $in: OPEN_STATUSES },
+          }),
+        },
+        { $group: { _id: null, amount: { $sum: { $ifNull: ['$outstandingBalance', 0] } }, count: { $sum: 1 } } },
+      ]);
+      invoiceData.patientOtherOpen = { amount: Math.round((other?.amount || 0) * 100) / 100, count: other?.count || 0 };
     }
 
     // Populate items.serviceId from this clinic's catalog only
@@ -120,8 +138,11 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'Refunded invoices cannot be modified' }, { status: 409 });
     }
 
-    if (body.visit && !(await Visit.exists(tenantFilter(tenantId, { _id: new Types.ObjectId(body.visit) })))) {
-      return NextResponse.json({ success: false, error: 'Invalid visit selected' }, { status: 400 });
+    if (
+      body.visit &&
+      !(await Visit.exists(tenantFilter(tenantId, { _id: new Types.ObjectId(body.visit), patient: current.patient })))
+    ) {
+      return NextResponse.json({ success: false, error: 'That visit is not one of this patient’s visits.' }, { status: 400 });
     }
     if (
       body.professionalFeeDoctor &&

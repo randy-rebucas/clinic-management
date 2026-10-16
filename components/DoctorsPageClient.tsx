@@ -1,1073 +1,630 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import Link from 'next/link';
-import { Modal } from './ui/Modal';
-import { MEDICAL_SPECIALIZATIONS } from '@/lib/constants/specializations';
+import { useRouter } from 'next/navigation';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
+import { FIELD, FOCUS_RING, ICON, Svg } from './appointments/shared';
+import { SERIES } from './dashboards/charts';
+import WeekBoard, { type Roster } from './doctors/WeekBoard';
+import DoctorPerformance from './doctors/Performance';
+import { DOCTOR_STATE, doctorName, initials, specialtyOf, statusOf, type DoctorRow } from './doctors/shared';
+import { DOCTOR_STATUSES, dayHours, hoursRange, weekSummary, type DoctorStatus } from '@/lib/doctors';
+import type { DoctorPermissions } from '@/lib/doctors-page';
 
-interface Doctor {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  specialization?: string; // Fallback for legacy data
-  specializationId?: {
-    _id: string;
-    name: string;
-    description?: string;
-    category?: string;
-  };
-  licenseNumber: string;
-  ptr?: string;
-  title?: string;
-  department?: string;
-  status?: 'active' | 'inactive' | 'on-leave';
-  schedule?: Array<{
-    dayOfWeek: number;
-    startTime: string;
-    endTime: string;
-    isAvailable: boolean;
-  }>;
-  performanceMetrics?: {
-    totalAppointments: number;
-    completedAppointments: number;
-    cancelledAppointments: number;
-    noShowAppointments: number;
-    averageRating?: number;
-  };
+type View = 'list' | 'week' | 'performance';
+
+const ROW_GRID = 'lg:grid lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1.4fr)_minmax(0,1.2fr)_6.5rem_3.5rem] lg:items-center lg:gap-4';
+
+const ICONS = {
+  ...ICON,
+  plus: 'M12 4v16m8-8H4',
+  user: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
+  edit: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
+  people: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z',
+};
+
+function Mark({ text, query }: { text: string; query: string }) {
+  const q = query.trim();
+  if (!q) return <>{text}</>;
+  const at = text.toLowerCase().indexOf(q.toLowerCase());
+  if (at === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, at)}
+      <mark className="rounded-sm bg-brand-teal-light px-0.5 text-inherit">{text.slice(at, at + q.length)}</mark>
+      {text.slice(at + q.length)}
+    </>
+  );
 }
 
-export default function DoctorsPageClient() {
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'roster' | 'performance'>('list');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [success, setSuccess] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [showCustomSpecialization, setShowCustomSpecialization] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [specializations, setSpecializations] = useState<string[]>([]);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; doctorId: string | null; doctorName: string }>({
-    show: false,
-    doctorId: null,
-    doctorName: '',
-  });
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    specialization: '',
-    licenseNumber: '',
-    ptr: '',
-    title: '',
-    department: 'No Department',
-    status: 'active' as const,
-    schedule: [] as Array<{ dayOfWeek: number; startTime: string; endTime: string; isAvailable: boolean }>,
-  });
+export default function DoctorsPageClient({ permissions, initialView }: { permissions: DoctorPermissions; initialView: View }) {
   const router = useRouter();
+  const [view, setView] = useState<View>(initialView);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<DoctorStatus | ''>('');
+  const [specialty, setSpecialty] = useState('');
+  const [week, setWeek] = useState<string | null>(null);
 
-  
-  const fetchSpecializations = useCallback(async () => {
-    try {
-      const res = await fetch('/api/specializations');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.data) {
-          // Extract names from specialization objects, fallback to hardcoded list
-          const specNames = data.data.map((s: any) => s.name);
-          setSpecializations(specNames.length > 0 ? specNames : MEDICAL_SPECIALIZATIONS);
-        }
-      } else {
-        // Fallback to hardcoded list if API fails
-        setSpecializations([]);
-      }
-    } catch (err) {
-      console.error('Failed to fetch specializations:', err);
-      // Fallback to hardcoded list
-      setSpecializations([]);
-    }
-  }, []);
+  const list = useKeyedFetch<DoctorRow[]>('/api/doctors');
+  const current = useKeyedFetch<Roster>('/api/doctors/roster');
+  const other = useKeyedFetch<Roster>(week ? `/api/doctors/roster?week=${week}` : null);
+  const weekRoster = week ? (other.value ?? current.value) : current.value;
+  const weekDimmed = week ? other.loading || other.valueUrl !== `/api/doctors/roster?week=${week}` : current.loading && current.value !== null;
 
-  const fetchCurrentUser = useCallback(async () => {
-    try {
-      const res = await fetch('/api/user/me');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.user) {
-          setCurrentUserRole(data.user.role);
-          setCurrentUser(data.user);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch current user:', error);
-    }
-  }, []);
+  const doctors = useMemo(() => list.value ?? [], [list.value]);
+  const loaded = list.value !== null;
+  const q = search.trim().toLowerCase();
+  const rows = doctors
+    .filter((d) => {
+      if (status && statusOf(d) !== status) return false;
+      if (specialty && specialtyOf(d) !== specialty) return false;
+      if (!q) return true;
+      return [doctorName(d), specialtyOf(d), d.email, d.licenseNumber, d.department ?? ''].some((v) => v.toLowerCase().includes(q));
+    })
+    .sort((a, b) => DOCTOR_STATUSES.indexOf(statusOf(a)) - DOCTOR_STATUSES.indexOf(statusOf(b)) || a.lastName.localeCompare(b.lastName));
 
-  const fetchDoctors = useCallback(async () => {
-    try {
-      const res = await fetch('/api/doctors');
-      
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      const contentType = res.headers.get('content-type');
-      let data;
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        console.error('API returned non-JSON response:', text.substring(0, 500));
-        data = { success: false, error: `API error: ${res.status} ${res.statusText}` };
-      }
-      if (data.success) {
-        setDoctors(data.data);
-      } else {
-        console.error('Failed to fetch doctors:', data.error);
-      }
-    } catch (error) {
-      console.error('Failed to fetch doctors:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [router]);
+  const chips: { key: string; label: string; clear: () => void }[] = [];
+  if (status) chips.push({ key: 'status', label: DOCTOR_STATE[status].label, clear: () => setStatus('') });
+  if (specialty) chips.push({ key: 'spec', label: specialty, clear: () => setSpecialty('') });
+  const narrowed = chips.length > 0 || q !== '';
+  const clearAll = () => {
+    setStatus('');
+    setSpecialty('');
+    setSearch('');
+  };
+  const specialties = [...new Set(doctors.map(specialtyOf).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
-  useEffect(() => {
-    const load = async () => {
-      await Promise.all([fetchDoctors(), fetchCurrentUser(), fetchSpecializations()]);
-    };
-    load();
-  }, [fetchDoctors, fetchCurrentUser, fetchSpecializations]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const views: { key: View; label: string }[] = [
+    { key: 'list', label: 'Doctors' },
+    { key: 'week', label: 'Week' },
+    ...(permissions.canSeePerformance ? [{ key: 'performance' as const, label: 'Workload' }] : []),
+  ];
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const onTabKey = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
+    const next = e.key === 'ArrowRight' ? (i + 1) % views.length : e.key === 'ArrowLeft' ? (i - 1 + views.length) % views.length : e.key === 'Home' ? 0 : e.key === 'End' ? views.length - 1 : null;
+    if (next === null) return;
     e.preventDefault();
-    if (saving) return;
-    setSaving(true);
-    try {
-      const res = await fetch('/api/doctors', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const contentType = res.headers.get('content-type');
-      let data;
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        console.error('API returned non-JSON response:', text.substring(0, 500));
-        setError('Failed to create doctor: API error');
-        setTimeout(() => setError(null), 5000);
-        return;
-      }
-      if (data.success) {
-        setShowForm(false);
-        setFormData({
-          firstName: '',
-          lastName: '',
-          email: '',
-          phone: '',
-          specialization: '',
-          licenseNumber: '',
-          ptr: '',
-          title: '',
-          department: 'No Department',
-          status: 'active',
-          schedule: [],
-        });
-        setShowCustomSpecialization(false);
-        setSuccess('Doctor added successfully!');
-        setTimeout(() => setSuccess(null), 3000);
-        fetchDoctors();
-      } else {
-        setError('Error: ' + data.error);
-        setTimeout(() => setError(null), 5000);
-      }
-    } catch (error) {
-      console.error('Failed to create doctor:', error);
-      setError('Failed to create doctor');
-      setTimeout(() => setError(null), 5000);
-    } finally {
-      setSaving(false);
-    }
+    choose(views[next].key);
+    tabRefs.current[next]?.focus();
   };
-
-  const getDayName = (dayOfWeek: number) => {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    return days[dayOfWeek];
-  };
-
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
-  const handleDelete = async (doctorId: string) => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/doctors/${doctorId}`, {
-        method: 'DELETE',
-      });
-
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const data = await res.json();
-      if (data.success) {
-        setDeleteConfirm({ show: false, doctorId: null, doctorName: '' });
-        setSuccess('Doctor deleted successfully!');
-        setTimeout(() => setSuccess(null), 3000);
-        fetchDoctors();
-      } else {
-        setError('Error: ' + data.error);
-        setTimeout(() => setError(null), 5000);
-      }
-    } catch (error) {
-      console.error('Failed to delete doctor:', error);
-      setError('Failed to delete doctor');
-      setTimeout(() => setError(null), 5000);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const canDelete = currentUserRole === 'doctor' || currentUserRole === 'admin';
-
-  const handleAddSelfAsDoctor = async () => {
-    try {
-      // Ensure doctors list is loaded
-      if (loading) {
-        await fetchDoctors();
-      }
-
-      // Fetch current user info if not already loaded
-      let userData = currentUser;
-      if (!userData) {
-        const res = await fetch('/api/user/me');
-        if (!res.ok) {
-          setError('Failed to fetch user information');
-          setTimeout(() => setError(null), 5000);
-          return;
-        }
-        const data = await res.json();
-        if (!data.success || !data.user) {
-          setError('User information not available');
-          setTimeout(() => setError(null), 5000);
-          return;
-        }
-        userData = data.user;
-        setCurrentUser(userData);
-      }
-
-      // Check if user already has a doctor profile
-      if (userData.doctorProfile) {
-        setError('You already have a doctor profile linked to your account');
-        setTimeout(() => setError(null), 5000);
-        return;
-      }
-
-      // Check if a doctor with this email already exists
-      const existingDoctor = doctors.find(d => d.email.toLowerCase() === (userData.email || '').toLowerCase());
-      if (existingDoctor) {
-        setError('A doctor profile with your email already exists');
-        setTimeout(() => setError(null), 5000);
-        return;
-      }
-
-      // Pre-fill form with user information
-      const nameParts = (userData.name || '').split(' ');
-      const firstName = nameParts[0] || '';
-      const lastName = nameParts.slice(1).join(' ') || '';
-
-      setFormData({
-        firstName: firstName,
-        lastName: lastName,
-        email: userData.email || '',
-        phone: userData.phone || '',
-        specialization: '',
-        licenseNumber: '',
-        ptr: '',
-        title: 'Dr.',
-        department: 'No Department',
-        status: 'active',
-        schedule: [],
-      });
-      setShowCustomSpecialization(false);
-
-      setShowForm(true);
-    } catch (error) {
-      console.error('Failed to add self as doctor:', error);
-      setError('Failed to add self as doctor');
-      setTimeout(() => setError(null), 5000);
-    }
-  };
-
-
-  if (loading) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: '400px' }}>
-            <div className="relative">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading doctors...</p>
-          </div>
-        </div>
-      </section>
-    );
+  function choose(v: View) {
+    setView(v);
+    window.history.replaceState(null, '', v === 'list' ? '/doctors' : `/doctors?view=${v}`);
   }
 
-  const filteredDoctors = doctors.filter(doctor => {
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const name = `${doctor.firstName} ${doctor.lastName}`.toLowerCase();
-      // Handle both specializationId (populated) and specialization (legacy)
-      const specialization = (typeof doctor.specializationId === 'object' && doctor.specializationId?.name
-        ? doctor.specializationId.name
-        : doctor.specialization || '').toLowerCase();
-      const email = (doctor.email || '').toLowerCase();
-      if (!name.includes(query) && !specialization.includes(query) && !email.includes(query)) return false;
-    }
-    if (filterStatus !== 'all' && doctor.status !== filterStatus) return false;
-    return true;
-  });
-
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
-          {/* Notifications */}
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm font-medium text-red-800">{error}</p>
-              </div>
-            </div>
-          )}
-          {success && (
-            <div className="bg-green-50 border-l-4 border-green-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm font-medium text-green-800">{success}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Doctors & Staff</h1>
-                    <p className="text-sm sm:text-base text-gray-600 mt-1">Manage doctor profiles, schedules, and performance metrics</p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                <button 
-                  onClick={handleAddSelfAsDoctor}
-                  className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 inline-flex items-center gap-2 shadow-md hover:shadow-lg font-medium text-sm"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  Add Self as Doctor
-                </button>
-                <button 
-                  onClick={() => setShowForm(true)}
-                  className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 inline-flex items-center gap-2 shadow-md hover:shadow-lg font-medium text-sm"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Doctor
-                </button>
-              </div>
-            </div>
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-7xl mx-auto flex flex-col gap-6">
+        <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Doctors</h1>
+            <p className="text-sm sm:text-base text-gray-600 mt-1">Who practises here, when they’re in, and how to reach them.</p>
           </div>
-
-          {/* View Mode Tabs */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="flex border-b border-gray-200 bg-gray-50/50">
-              <button
-                onClick={() => setViewMode('list')}
-                aria-pressed={viewMode === 'list'}
-                className={`px-6 py-3 text-sm font-semibold transition-all duration-200 relative ${
-                  viewMode === 'list'
-                    ? 'text-blue-600 bg-white'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                {viewMode === 'list' && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-blue-600"></span>
-                )}
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                  Doctor Profiles
-                </span>
-              </button>
-              <button
-                onClick={() => setViewMode('roster')}
-                aria-pressed={viewMode === 'roster'}
-                className={`px-6 py-3 text-sm font-semibold transition-all duration-200 relative ${
-                  viewMode === 'roster'
-                    ? 'text-blue-600 bg-white'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                {viewMode === 'roster' && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-blue-600"></span>
-                )}
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  Duty Roster
-                </span>
-              </button>
-              <button
-                onClick={() => setViewMode('performance')}
-                aria-pressed={viewMode === 'performance'}
-                className={`px-6 py-3 text-sm font-semibold transition-all duration-200 relative ${
-                  viewMode === 'performance'
-                    ? 'text-blue-600 bg-white'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                {viewMode === 'performance' && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-blue-600"></span>
-                )}
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                  Performance Reports
-                </span>
-              </button>
-            </div>
-          </div>
-
-      {/* Delete Confirmation Modal */}
-      <Modal open={deleteConfirm.show} onOpenChange={(open) => {
-        if (!open) setDeleteConfirm({ show: false, doctorId: null, doctorName: '' });
-      }} className="max-w-md">
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-red-100 rounded-full">
-              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-900">Delete Doctor</h2>
-          </div>
-          <p className="text-sm text-gray-600 mb-6 leading-relaxed">
-            Are you sure you want to delete <strong className="text-gray-900">{deleteConfirm.doctorName}</strong>? This action cannot be undone and will also delete the associated user account.
-          </p>
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-            <button 
-              type="button" 
-              onClick={() => setDeleteConfirm({ show: false, doctorId: null, doctorName: '' })}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
-            >
-              Cancel
-            </button>
-            <button 
-              type="button"
-              onClick={() => deleteConfirm.doctorId && handleDelete(deleteConfirm.doctorId)}
-              disabled={saving}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold shadow-md"
-            >
-              {saving ? 'Deleting…' : 'Delete'}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Form Modal */}
-      <Modal open={showForm} onOpenChange={(open) => {
-        if (!open) {
-          setShowForm(false);
-          setShowCustomSpecialization(false);
-        }
-      }} className="max-w-3xl">
-        <div className="p-6 sm:p-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900">Add New Doctor</h2>
-          </div>
-          <form onSubmit={handleSubmit}>
-            <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="doctor-title" className="block text-sm font-semibold text-gray-700 mb-1.5">Title</label>
-                  <input id="doctor-title"
-                    type="text"
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    placeholder="Dr., Prof., etc."
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="doctor-first-name" className="block text-sm font-semibold text-gray-700 mb-1.5">First Name <span className="text-red-500">*</span></label>
-                  <input id="doctor-first-name"
-                    type="text"
-                    required
-                    value={formData.firstName}
-                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="doctor-last-name" className="block text-sm font-semibold text-gray-700 mb-1.5">Last Name <span className="text-red-500">*</span></label>
-                  <input id="doctor-last-name"
-                    type="text"
-                    required
-                    value={formData.lastName}
-                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="doctor-email" className="block text-sm font-semibold text-gray-700 mb-1.5">Email <span className="text-red-500">*</span></label>
-                  <input id="doctor-email"
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="doctor-phone" className="block text-sm font-semibold text-gray-700 mb-1.5">Phone <span className="text-red-500">*</span></label>
-                  <input id="doctor-phone"
-                    type="tel"
-                    required
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="doctor-specialization" className="block text-sm font-semibold text-gray-700 mb-1.5">Specialization <span className="text-red-500">*</span></label>
-                  <select id="doctor-specialization"
-                    required
-                    value={showCustomSpecialization ? 'Other' : formData.specialization}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === 'Other') {
-                        setShowCustomSpecialization(true);
-                        setFormData({ ...formData, specialization: '' });
-                      } else {
-                        setShowCustomSpecialization(false);
-                        setFormData({ ...formData, specialization: value });
-                      }
-                    }}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white transition-all"
-                  >
-                    <option value="">Select Specialization</option>
-                    {specializations.map((spec) => (
-                      <option key={spec} value={spec}>
-                        {spec}
-                      </option>
-                    ))}
-                  </select>
-                  {showCustomSpecialization && (
-                    <input
-                      type="text"
-                      required
-                      aria-label="Custom specialization"
-                      placeholder="Enter specialization"
-                      value={formData.specialization}
-                      onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-                      className="w-full mt-2 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                    />
-                  )}
-                </div>
-                <div>
-                  <label htmlFor="doctor-license-number" className="block text-sm font-semibold text-gray-700 mb-1.5">License Number <span className="text-red-500">*</span></label>
-                  <input id="doctor-license-number"
-                    type="text"
-                    required
-                    value={formData.licenseNumber}
-                    onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="doctor-ptr" className="block text-sm font-semibold text-gray-700 mb-1.5">PTR</label>
-                  <input id="doctor-ptr"
-                    type="text"
-                    value={formData.ptr}
-                    onChange={(e) => setFormData({ ...formData, ptr: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="doctor-department" className="block text-sm font-semibold text-gray-700 mb-1.5">Department</label>
-                  <input id="doctor-department"
-                    type="text"
-                    value={formData.department}
-                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                    placeholder="No Department"
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="doctor-status" className="block text-sm font-semibold text-gray-700 mb-1.5">Status</label>
-                  <select id="doctor-status"
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white transition-all"
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="on-leave">On Leave</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 mt-2">
-                <button 
-                  type="button" 
-                  onClick={() => setShowForm(false)}
-                  className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  disabled={saving}
-                  className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
-                >
-                  {saving ? 'Saving…' : 'Add Doctor'}
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
-      </Modal>
-
-      {/* List View */}
-      {viewMode === 'list' && (
-        <>
-          {/* Search and Filters */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
-            <div className="flex flex-col gap-4">
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <input
-                  type="text"
-                  aria-label="Search doctors"
-                  placeholder="Search by name, specialization, or email..."
-                  value={searchQuery || ''}
-                  onChange={(e) => setSearchQuery(e.target.value || '')}
-                  className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    aria-label="Clear search"
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-3 items-center">
-                <select
-                  aria-label="Filter by status"
-                  value={filterStatus || 'all'}
-                  onChange={(e) => setFilterStatus(e.target.value || 'all')}
-                  className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white font-medium transition-all"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="on-leave">On Leave</option>
-                </select>
-                {(searchQuery || filterStatus !== 'all') && (
-                  <button
-                    onClick={() => {
-                      setSearchQuery('');
-                      setFilterStatus('all');
-                    }}
-                    className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
-                  >
-                    Clear Filters
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 sm:p-6 border-b border-gray-200 bg-gray-50/50">
-              <h3 className="text-lg sm:text-xl font-bold text-gray-900">Doctor Profiles</h3>
-              <div className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
-                {filteredDoctors.length} {filteredDoctors.length === 1 ? 'doctor' : 'doctors'}
-              </div>
-            </div>
-            {filteredDoctors.length === 0 ? (
-              <div className="p-12 text-center">
-                <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-4">
-                  <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-                <h4 className="text-lg font-bold text-gray-900 mb-2">
-                  {searchQuery || filterStatus !== 'all' ? 'No doctors match your filters' : 'No doctors found'}
-                </h4>
-                <p className="text-sm text-gray-600 mb-4">
-                  {searchQuery || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Get started by adding your first doctor'}
-                </p>
-                {!searchQuery && filterStatus === 'all' && (
-                  <button 
-                    onClick={() => setShowForm(true)}
-                    className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
-                  >
-                    Add First Doctor
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {filteredDoctors.map((doctor) => (
-                  <div key={doctor._id} className="p-4 sm:p-6 hover:bg-gray-50/50 transition-colors">
-                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                      <div className="flex items-start gap-4 flex-1 min-w-0">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-lg font-bold flex-shrink-0 shadow-md">
-                          {doctor.firstName.charAt(0)}{doctor.lastName.charAt(0)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2 mb-2">
-                            <h4 className="text-lg font-bold text-gray-900">
-                              {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
-                            </h4>
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                              doctor.status === 'active'
-                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                : doctor.status === 'inactive'
-                                ? 'bg-gray-100 text-gray-700 border border-gray-200'
-                                : 'bg-amber-100 text-amber-700 border border-amber-200'
-                            }`}>
-                              {doctor.status || 'active'}
-                            </span>
-                          </div>
-                          <p className="text-sm font-medium text-gray-700 mb-1">
-                            {typeof doctor.specializationId === 'object' && doctor.specializationId?.name
-                              ? doctor.specializationId.name
-                              : doctor.specialization || 'Not specified'}
-                          </p>
-                          {doctor.department && doctor.department !== 'No Department' && (
-                            <p className="text-xs text-gray-600 mb-2">{doctor.department}</p>
-                          )}
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-3 text-xs text-gray-600">
-                            <div className="flex items-center gap-1.5">
-                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                              </svg>
-                              <span className="truncate">{doctor.email}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                              </svg>
-                              <span>{doctor.phone}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                              <span>License: {doctor.licenseNumber}</span>
-                            </div>
-                            {doctor.ptr && (
-                              <div className="flex items-center gap-1.5">
-                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                <span>PTR: {doctor.ptr}</span>
-                              </div>
-                            )}
-                          </div>
-                          {doctor.schedule && doctor.schedule.length > 0 && (
-                            <div className="mt-3">
-                              <p className="text-xs font-semibold text-gray-700 mb-2">Schedule:</p>
-                              <div className="flex flex-wrap gap-2">
-                                {doctor.schedule
-                                  .filter((s) => s.isAvailable)
-                                  .map((s, idx) => (
-                                    <span key={idx} className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                                      {getDayName(s.dayOfWeek).substring(0, 3)} {formatTime(s.startTime)}-{formatTime(s.endTime)}
-                                    </span>
-                                  ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex gap-2 flex-shrink-0">
-                        <Link 
-                          href={`/doctors/${doctor._id}`}
-                          className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-semibold inline-flex items-center gap-1.5"
-                        >
-                          <span>View</span>
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </Link>
-                        {/* // edit button */}
-                        <Link
-                          href={`/doctors/${doctor._id}/edit`}
-                          className="px-4 py-2 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 transition-colors text-sm font-semibold inline-flex items-center gap-1.5"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          <span>Edit</span>
-                        </Link>
-                        {/* // delete button */}
-                        {canDelete && (
-                          <button
-                            onClick={() => setDeleteConfirm({
-                              show: true,
-                              doctorId: doctor._id,
-                              doctorName: `${doctor.firstName} ${doctor.lastName}`,
-                            })}
-                            className="px-4 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors text-sm font-semibold inline-flex items-center gap-1.5"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            <span>Delete</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {permissions.myDoctorId && (
+              <Link href={`/doctors/${permissions.myDoctorId}`} className={`inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+                <Svg d={ICONS.user} />
+                Your profile and hours
+              </Link>
+            )}
+            {permissions.canAdd && !permissions.myDoctorId && (
+              <Link href="/doctors/new?self=1" className={`inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+                <Svg d={ICONS.user} />
+                Add yourself as a doctor
+              </Link>
+            )}
+            {permissions.canAdd && (
+              <Link href="/doctors/new" className={`inline-flex items-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+                <Svg d={ICONS.plus} />
+                Add doctor
+              </Link>
             )}
           </div>
-          </>
-        )}
+        </header>
 
-      {/* Roster View */}
-      {viewMode === 'roster' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-4 sm:p-6 border-b border-gray-200 bg-gray-50/50">
-            <h3 className="text-lg sm:text-xl font-bold text-gray-900">Duty Roster</h3>
-            <p className="text-sm text-gray-600 mt-1">Weekly schedule overview for active doctors</p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left py-4 px-4 sm:px-6 text-sm font-bold text-gray-900 sticky left-0 bg-gray-50 z-10">Doctor</th>
-                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                    <th key={day} className="text-center py-4 px-3 sm:px-4 text-sm font-bold text-gray-900 min-w-[100px]">
-                      {day}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {doctors.filter(d => d.status === 'active').length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center">
-                      <div className="flex flex-col items-center gap-2">
-                        <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <p className="text-sm font-medium text-gray-900">No active doctors</p>
-                        <p className="text-xs text-gray-600">Add doctors to see their schedules</p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  doctors.filter(d => d.status === 'active').map((doctor) => (
-                    <tr key={doctor._id} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="py-4 px-4 sm:px-6 sticky left-0 bg-white z-10">
-                        <p className="text-sm font-bold text-gray-900">
-                          {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
-                        </p>
-                        <p className="text-xs text-gray-600 mt-0.5">
-                          {typeof doctor.specializationId === 'object' && doctor.specializationId?.name
-                            ? doctor.specializationId.name
-                            : doctor.specialization || 'Not specified'}
-                        </p>
-                      </td>
-                      {[0, 1, 2, 3, 4, 5, 6].map((day) => {
-                        const schedule = doctor.schedule?.find((s) => s.dayOfWeek === day);
-                        return (
-                          <td key={day} className="text-center py-4 px-3 sm:px-4">
-                            {schedule && schedule.isAvailable ? (
-                              <div className="inline-flex flex-col items-center gap-1 px-3 py-2 bg-emerald-50 rounded-lg border border-emerald-200">
-                                <p className="text-xs font-semibold text-emerald-700">
-                                  {formatTime(schedule.startTime)}
-                                </p>
-                                <p className="text-xs font-semibold text-emerald-700">-</p>
-                                <p className="text-xs font-semibold text-emerald-700">
-                                  {formatTime(schedule.endTime)}
-                                </p>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-gray-400"><span aria-hidden="true">—</span><span className="sr-only">Not scheduled</span></span>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        {loaded ? (
+          <DoctorInsights
+            doctors={doctors}
+            roster={current.value}
+            rosterError={current.error}
+            onRetryRoster={current.reload}
+            status={status}
+            specialty={specialty}
+            onStatus={(s) => {
+              setStatus((cur) => (cur === s ? '' : s));
+              choose('list');
+            }}
+            onSpecialty={(s) => {
+              setSpecialty((cur) => (cur === s ? '' : s));
+              choose('list');
+            }}
+            onWeek={() => choose('week')}
+          />
+        ) : !list.error ? (
+          <div className="h-[220px] animate-pulse rounded-lg border border-gray-200 bg-white" aria-hidden="true" />
+        ) : null}
+
+        <div role="tablist" aria-label="Doctors views" className="flex gap-1 border-b border-gray-200">
+          {views.map((v, i) => (
+            <button
+              key={v.key}
+              ref={(el) => {
+                tabRefs.current[i] = el;
+              }}
+              role="tab"
+              id={`doc-tab-${v.key}`}
+              aria-selected={view === v.key}
+              aria-controls={`doc-panel-${v.key}`}
+              tabIndex={view === v.key ? 0 : -1}
+              onClick={() => choose(v.key)}
+              onKeyDown={(e) => onTabKey(e, i)}
+              className={`-mb-px border-b-2 px-3.5 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal ${view === v.key ? 'border-brand-teal-dark text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
+            >
+              {v.label}
+              {v.key === 'list' && loaded && <span className="ml-1.5 font-mono text-xs font-medium text-gray-500">{doctors.length}</span>}
+            </button>
+          ))}
         </div>
-      )}
 
-      {/* Performance View */}
-      {viewMode === 'performance' && (
-        <div className="grid grid-cols-1 gap-4">
-          {doctors.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-4">
-                <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <h4 className="text-lg font-bold text-gray-900 mb-2">No performance data available</h4>
-              <p className="text-sm text-gray-600">Performance metrics will appear here once doctors have appointments</p>
-            </div>
-          ) : (
-            doctors.map((doctor) => {
-              const metrics = doctor.performanceMetrics;
-              const total = metrics?.totalAppointments || 0;
-              const completed = metrics?.completedAppointments || 0;
-              const cancelled = metrics?.cancelledAppointments || 0;
-              const noShow = metrics?.noShowAppointments || 0;
-              const cancellationRate = total > 0 ? ((cancelled) / total) * 100 : 0;
-              const noShowRate = total > 0 ? ((noShow) / total) * 100 : 0;
-              const completionRate = total > 0 ? (completed / total) * 100 : 0;
-
-              return (
-                <div key={doctor._id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white text-lg font-bold shadow-md">
-                        {doctor.firstName.charAt(0)}{doctor.lastName.charAt(0)}
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-bold text-gray-900">
-                          {doctor.title || 'Dr.'} {doctor.firstName} {doctor.lastName}
-                        </h3>
-                        <p className="text-sm text-gray-600">
-                          {typeof doctor.specializationId === 'object' && doctor.specializationId?.name
-                            ? doctor.specializationId.name
-                            : doctor.specialization || 'Not specified'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Link 
-                        href={`/doctors/${doctor._id}`}
-                        className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-semibold inline-flex items-center gap-1.5"
-                      >
-                        <span>View</span>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </Link>
-                      {canDelete && (
-                        <button
-                          onClick={() => setDeleteConfirm({
-                            show: true,
-                            doctorId: doctor._id,
-                            doctorName: `${doctor.firstName} ${doctor.lastName}`,
-                          })}
-                          className="px-4 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors text-sm font-semibold inline-flex items-center gap-1.5"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                          <span>Delete</span>
-                        </button>
-                      )}
-                    </div>
+        <div role="tabpanel" id={`doc-panel-${view}`} aria-labelledby={`doc-tab-${view}`} className="flex flex-col gap-4">
+          {view === 'list' && (
+            <>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2 lg:flex-row">
+                  <div role="search" className="relative flex-1">
+                    <label htmlFor="doc-search" className="sr-only">
+                      Search doctors
+                    </label>
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                      <Svg d={ICONS.search} />
+                    </span>
+                    <input
+                      id="doc-search"
+                      type="search"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search by name, specialty, email or licence number"
+                      autoComplete="off"
+                      className={`${FIELD} pl-9`}
+                    />
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-                    <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200">
-                      <p className="text-2xl sm:text-3xl font-bold text-blue-700 mb-1">{total}</p>
-                      <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total</p>
-                    </div>
-                    <div className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200">
-                      <p className="text-2xl sm:text-3xl font-bold text-emerald-700 mb-1">{completed}</p>
-                      <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Completed</p>
-                    </div>
-                    <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200">
-                      <p className="text-2xl sm:text-3xl font-bold text-purple-700 mb-1">{completionRate.toFixed(1)}%</p>
-                      <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Completion</p>
-                    </div>
-                    <div className="p-4 bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200">
-                      <p className="text-2xl sm:text-3xl font-bold text-amber-700 mb-1">{cancellationRate.toFixed(1)}%</p>
-                      <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Cancelled</p>
-                    </div>
-                    <div className="p-4 bg-gradient-to-br from-red-50 to-red-100 rounded-xl border border-red-200">
-                      <p className="text-2xl sm:text-3xl font-bold text-red-700 mb-1">{noShowRate.toFixed(1)}%</p>
-                      <p className="text-xs font-semibold text-red-600 uppercase tracking-wide">No-Show</p>
-                    </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex">
+                    <label htmlFor="doc-status" className="sr-only">
+                      Status
+                    </label>
+                    <select id="doc-status" value={status} onChange={(e) => setStatus(e.target.value as DoctorStatus | '')} className={`${FIELD} lg:w-40`}>
+                      <option value="">Any status</option>
+                      {DOCTOR_STATUSES.map((s) => (
+                        <option key={s} value={s}>
+                          {DOCTOR_STATE[s].label}
+                        </option>
+                      ))}
+                    </select>
+                    <label htmlFor="doc-spec" className="sr-only">
+                      Specialty
+                    </label>
+                    <select id="doc-spec" value={specialty} onChange={(e) => setSpecialty(e.target.value)} className={`${FIELD} lg:w-56`}>
+                      <option value="">Any specialty</option>
+                      {specialties.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-              );
-            })
+                {chips.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2" aria-label="Active filters">
+                    {chips.map((c) => (
+                      <button
+                        key={c.key}
+                        type="button"
+                        onClick={c.clear}
+                        aria-label={`Remove filter ${c.label}`}
+                        className={`motion-chip-in inline-flex max-w-full items-center gap-1.5 rounded-md bg-brand-teal-light py-1 pl-2.5 pr-1.5 text-sm font-medium text-brand-teal-deep transition-colors hover:bg-brand-teal-light/60 ${FOCUS_RING}`}
+                      >
+                        <span className="truncate">{c.label}</span>
+                        <Svg d={ICONS.x} className="h-3.5 w-3.5 shrink-0" />
+                      </button>
+                    ))}
+                    <button type="button" onClick={clearAll} className={`rounded px-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+                      Clear all
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {list.error && (
+                <div role="alert" className="flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 p-4">
+                  <p className="text-sm font-medium text-red-800">The doctors didn&apos;t load ({list.error}).</p>
+                  <button type="button" onClick={list.reload} className={`inline-flex shrink-0 items-center gap-1.5 rounded text-sm font-semibold text-red-800 hover:text-red-900 ${FOCUS_RING}`}>
+                    <Svg d={ICONS.refresh} />
+                    Try again
+                  </button>
+                </div>
+              )}
+              <p className="sr-only" aria-live="polite">
+                {loaded ? `${rows.length} ${rows.length === 1 ? 'doctor' : 'doctors'}${narrowed ? ' match' : ''}.` : ''}
+              </p>
+
+              <div className="overflow-hidden rounded-lg border border-gray-200 bg-white" aria-busy={list.loading}>
+                <div className={`hidden ${ROW_GRID} border-b border-gray-200 bg-gray-50/60 px-4 py-2.5 text-sm font-medium text-gray-500`}>
+                  <span>Doctor</span>
+                  <span>Usual hours</span>
+                  <span>Contact</span>
+                  <span>Status</span>
+                  <span className="sr-only">Actions</span>
+                </div>
+                {!loaded ? (
+                  list.error ? null : (
+                    <ul aria-hidden="true" className="divide-y divide-gray-100 animate-pulse">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <li key={i} className="flex items-center gap-4 px-4 py-3.5">
+                          <span className="h-9 w-9 rounded-md bg-gray-100" />
+                          <span className="flex-1 space-y-1.5">
+                            <span className="block h-3.5 w-44 rounded bg-gray-100" />
+                            <span className="block h-3 w-28 rounded bg-gray-50" />
+                          </span>
+                          <span className="hidden h-3 w-40 rounded bg-gray-100 lg:block" />
+                          <span className="h-5 w-16 rounded bg-gray-100" />
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                ) : rows.length === 0 ? (
+                  <Empty narrowed={narrowed} canAdd={permissions.canAdd} onClear={clearAll} />
+                ) : (
+                  <ul className={`divide-y divide-gray-100 transition-opacity duration-200 ${list.loading ? 'opacity-60' : ''}`}>
+                    {rows.map((d, i) => (
+                      <DoctorListRow key={d._id} doctor={d} index={i} query={search} mine={d._id === permissions.myDoctorId} canEdit={permissions.canEdit} onOpen={() => router.push(`/doctors/${d._id}`)} />
+                    ))}
+                  </ul>
+                )}
+                {loaded && doctors.length > 0 && (
+                  <p className="border-t border-gray-200 px-4 py-3 text-sm text-gray-600">
+                    {narrowed ? (
+                      <>
+                        <span className="font-mono text-gray-900">{rows.length}</span> of <span className="font-mono">{doctors.length}</span> doctors
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-mono text-gray-900">{doctors.length}</span> {doctors.length === 1 ? 'doctor' : 'doctors'}, active first
+                      </>
+                    )}
+                  </p>
+                )}
+              </div>
+            </>
           )}
-        </div>
-      )}
+
+          {view === 'week' &&
+            (weekRoster ? (
+              <WeekBoard roster={weekRoster} dimmed={weekDimmed} onWeek={(k) => setWeek(k && current.value?.days.includes(k) ? null : k)} />
+            ) : (week ? other.error : current.error) ? (
+              <div role="alert" className="flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 p-4">
+                <p className="text-sm font-medium text-red-800">The roster didn&apos;t load ({week ? other.error : current.error}).</p>
+                <button type="button" onClick={week ? other.reload : current.reload} className={`inline-flex shrink-0 items-center gap-1.5 rounded text-sm font-semibold text-red-800 hover:text-red-900 ${FOCUS_RING}`}>
+                  <Svg d={ICONS.refresh} />
+                  Try again
+                </button>
+              </div>
+            ) : (
+              <div className="h-80 animate-pulse rounded-lg border border-gray-200 bg-white" aria-hidden="true" />
+            ))}
+
+          {view === 'performance' && permissions.canSeePerformance && (current.value ? <DoctorPerformance today={current.value.today} /> : <div className="h-64 animate-pulse rounded-lg border border-gray-200 bg-white" aria-hidden="true" />)}
         </div>
       </div>
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pieces
+// ---------------------------------------------------------------------------
+
+function DoctorListRow({ doctor: d, index, query, mine, canEdit, onOpen }: { doctor: DoctorRow; index: number; query: string; mine: boolean; canEdit: boolean; onOpen: () => void }) {
+  const st = statusOf(d);
+  const hours = weekSummary(d.schedule);
+  const spec = specialtyOf(d);
+  const onRowClick = (e: React.MouseEvent<HTMLLIElement>) => {
+    if ((e.target as HTMLElement).closest('a,button')) return;
+    onOpen();
+  };
+
+  return (
+    <li
+      onClick={onRowClick}
+      className={`motion-row-in group flex cursor-pointer flex-col gap-2 px-4 py-3 transition-colors hover:bg-gray-50 ${ROW_GRID} ${st === 'inactive' ? 'text-gray-500' : ''}`}
+      style={{ animationDelay: `${Math.min(index * 18, 220)}ms` }}
+    >
+      <span className="flex min-w-0 items-center gap-3">
+        <span aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-sm font-semibold ${st === 'inactive' ? 'bg-gray-100 text-gray-500' : 'bg-brand-teal-light text-brand-teal-deep'}`}>
+          {initials(d)}
+        </span>
+        <span className="min-w-0">
+          <Link href={`/doctors/${d._id}`} className={`block truncate rounded font-semibold text-gray-900 hover:text-brand-teal-deep ${FOCUS_RING}`}>
+            <Mark text={doctorName(d)} query={query} />
+            {mine && <span className="ml-1.5 text-xs font-medium text-gray-500">(you)</span>}
+          </Link>
+          <span className="mt-0.5 block truncate text-xs text-gray-500">
+            {spec ? <Mark text={spec} query={query} /> : 'No specialty set'}
+            {d.department && d.department !== 'No Department' && ` · ${d.department}`}
+            {d.licenseNumber && (
+              <span className="font-mono">
+                {' · PRC '}
+                <Mark text={d.licenseNumber} query={query} />
+              </span>
+            )}
+          </span>
+        </span>
+      </span>
+
+      <span className="min-w-0 text-sm">
+        {st === 'inactive' ? (
+          <span className="text-gray-400">Not on the roster</span>
+        ) : hours ? (
+          <span className="block font-mono text-xs tabular-nums text-gray-900 lg:text-sm">{hours}</span>
+        ) : (
+          <span className="text-gray-500">No usual hours set</span>
+        )}
+      </span>
+
+      <span className="min-w-0 text-sm">
+        <a href={`mailto:${d.email}`} className={`block truncate rounded text-gray-700 hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+          <Mark text={d.email} query={query} />
+        </a>
+        {d.phone && (
+          <a href={`tel:${d.phone.replace(/[^+0-9]/g, '')}`} className={`block w-fit rounded font-mono text-xs text-gray-500 hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+            {d.phone}
+          </a>
+        )}
+      </span>
+
+      <span>
+        <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${DOCTOR_STATE[st].badge}`}>{DOCTOR_STATE[st].label}</span>
+      </span>
+
+      <span className="flex items-center justify-end gap-0.5">
+        {canEdit && (
+          <Link
+            href={`/doctors/${d._id}/edit`}
+            aria-label={`Edit ${doctorName(d)}’s profile`}
+            title="Edit profile"
+            className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 lg:opacity-60 lg:group-hover:opacity-100 lg:focus-visible:opacity-100 ${FOCUS_RING}`}
+          >
+            <Svg d={ICONS.edit} />
+          </Link>
+        )}
+        <span className="hidden text-gray-400 transition-colors group-hover:text-gray-700 lg:inline" aria-hidden="true">
+          <Svg d={ICONS.chevR} />
+        </span>
+      </span>
+    </li>
+  );
+}
+
+/**
+ * The three questions the front desk and the clinic owner ask of this page: who is in today
+ * (and how booked), what state the roster is in, and which specialties the clinic covers.
+ * Status and specialty filter the list; the counts stay clinic-wide.
+ */
+function DoctorInsights({
+  doctors,
+  roster,
+  rosterError,
+  onRetryRoster,
+  status,
+  specialty,
+  onStatus,
+  onSpecialty,
+  onWeek,
+}: {
+  doctors: DoctorRow[];
+  roster: Roster | null;
+  rosterError: string | null;
+  onRetryRoster: () => void;
+  status: DoctorStatus | '';
+  specialty: string;
+  onStatus: (s: DoctorStatus) => void;
+  onSpecialty: (s: string) => void;
+  onWeek: () => void;
+}) {
+  const counts = DOCTOR_STATUSES.map((s) => ({ s, n: doctors.filter((d) => statusOf(d) === s).length })).filter((c) => c.n > 0);
+  const total = doctors.length;
+
+  const specCounts = Object.entries(
+    doctors
+      .filter((d) => statusOf(d) !== 'inactive')
+      .reduce<Record<string, number>>((acc, d) => {
+        const s = specialtyOf(d) || 'No specialty set';
+        acc[s] = (acc[s] || 0) + 1;
+        return acc;
+      }, {})
+  ).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const shownSpecs = specCounts.slice(0, 5);
+  const specMax = Math.max(1, ...specCounts.map(([, n]) => n));
+
+  const today = roster?.today;
+  const inToday = roster && today
+    ? roster.doctors
+        .map((d) => ({ d, h: dayHours(d, today), booked: roster.bookings?.[d._id]?.[today]?.booked ?? null }))
+        .filter((x) => x.h.kind === 'working')
+        .sort((a, b) => (a.h.kind === 'working' && b.h.kind === 'working' ? a.h.start.localeCompare(b.h.start) : 0))
+    : [];
+  const awayToday = roster && today ? roster.doctors.filter((d) => {
+    const h = dayHours(d, today);
+    return h.kind === 'off' && h.timeOff;
+  }).length : 0;
+
+  let todayBody: ReactNode;
+  if (!roster) {
+    todayBody = rosterError ? (
+      <p className="mt-2 text-sm text-gray-600">
+        Today’s roster didn&apos;t load.{' '}
+        <button type="button" onClick={onRetryRoster} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+          Try again
+        </button>
+      </p>
+    ) : (
+      <div className="mt-3 h-24 animate-pulse rounded bg-gray-50" aria-hidden="true" />
+    );
+  } else {
+    todayBody = (
+      <>
+        <p className={`mt-2 font-mono text-3xl font-semibold tabular-nums ${inToday.length ? 'text-gray-900' : 'text-gray-500'}`}>{inToday.length}</p>
+        <p className="mt-1 text-sm text-gray-500">
+          {inToday.length === 0 ? 'No doctor has hours today.' : `${inToday.length === 1 ? 'doctor' : 'doctors'} working today`}
+          {awayToday > 0 && `, ${awayToday} on time off`}
+        </p>
+        {inToday.length > 0 && (
+          <ul className="mt-3 space-y-1.5">
+            {inToday.slice(0, 5).map(({ d, h, booked }) => (
+              <li key={d._id}>
+                <Link href={`/doctors/${d._id}`} className={`-mx-2 flex items-baseline justify-between gap-3 rounded px-2 py-1 text-sm hover:bg-gray-50 ${FOCUS_RING}`}>
+                  <span className="min-w-0 truncate text-gray-700">{doctorName(d)}</span>
+                  <span className="shrink-0 font-mono text-xs tabular-nums text-gray-500">
+                    {h.kind === 'working' && hoursRange(h.start, h.end)}
+                    {booked !== null && <span className="ml-2 text-gray-900">{booked} booked</span>}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button type="button" onClick={onWeek} className={`mt-3 rounded text-sm font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+          {inToday.length > 5 ? `See all ${inToday.length} on the week` : 'See the week'} →
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className="grid -mr-px -mb-px grid-cols-1 lg:grid-cols-3">
+        <section className="border-r border-b border-gray-200 p-5" aria-labelledby="doc-today-h">
+          <h2 id="doc-today-h" className="text-sm text-gray-600">
+            In today
+          </h2>
+          {todayBody}
+        </section>
+
+        <section className="border-r border-b border-gray-200 p-5" aria-labelledby="doc-status-h">
+          <h2 id="doc-status-h" className="text-sm text-gray-600">
+            On the roster
+          </h2>
+          <p className="mt-2 font-mono text-3xl font-semibold tabular-nums text-gray-900">{(total - (counts.find((c) => c.s === 'inactive')?.n ?? 0)).toLocaleString('en-US')}</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {total === 0 ? 'No doctors yet.' : `of ${total} ${total === 1 ? 'profile' : 'profiles'}; inactive doctors can’t be booked`}
+          </p>
+          {total > 0 && (
+            <>
+              <div className="mt-4 flex h-3 w-full gap-0.5 overflow-hidden rounded" aria-hidden="true">
+                {counts.map(({ s, n }, i) => (
+                  <span
+                    key={s}
+                    className={`motion-seg-grow h-full transition-opacity duration-200 ${DOCTOR_STATE[s].fill ? '' : 'ring-1 ring-inset ring-gray-300'}`}
+                    style={{ flexGrow: n, flexBasis: 0, background: DOCTOR_STATE[s].fill ?? '#FFFFFF', opacity: status && status !== s ? 0.3 : 1, animationDelay: `${i * 60}ms` }}
+                  />
+                ))}
+              </div>
+              <ul className="mt-3 divide-y divide-gray-100" role="group" aria-label="Filter by status">
+                {counts.map(({ s, n }) => {
+                  const on = status === s;
+                  return (
+                    <li key={s}>
+                      <button
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => onStatus(s)}
+                        className={`-mx-2 flex w-[calc(100%+1rem)] items-center justify-between rounded px-2 py-1.5 text-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal ${on ? 'bg-brand-teal-light/60' : ''}`}
+                      >
+                        <span className="flex items-center gap-2 text-gray-700">
+                          <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-sm ${DOCTOR_STATE[s].fill ? '' : 'ring-1 ring-inset ring-gray-400'}`} style={{ background: DOCTOR_STATE[s].fill ?? '#FFFFFF' }} />
+                          <span className={on ? 'font-semibold text-gray-900' : ''}>{DOCTOR_STATE[s].label}</span>
+                        </span>
+                        <span className="font-mono tabular-nums text-gray-900">{n}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+        </section>
+
+        <section className="border-r border-b border-gray-200 p-5" aria-labelledby="doc-spec-h">
+          <h2 id="doc-spec-h" className="text-sm text-gray-600">
+            Specialties covered
+          </h2>
+          <p className={`mt-2 font-mono text-3xl font-semibold tabular-nums ${specCounts.length ? 'text-gray-900' : 'text-gray-500'}`}>{specCounts.length}</p>
+          <p className="mt-1 text-sm text-gray-500">{specCounts.length === 0 ? 'No active doctors yet.' : 'among active and on-leave doctors'}</p>
+          {shownSpecs.length > 0 && (
+            <ul className="mt-3 space-y-1" role="group" aria-label="Filter by specialty">
+              {shownSpecs.map(([name, n], i) => {
+                const on = specialty === name;
+                const real = name !== 'No specialty set';
+                return (
+                  <li key={name}>
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      disabled={!real}
+                      onClick={() => onSpecialty(name)}
+                      aria-label={`${name}: ${n} ${n === 1 ? 'doctor' : 'doctors'}${on ? ', filtering' : ''}`}
+                      className={`-mx-2 block w-[calc(100%+1rem)] rounded px-2 py-1.5 text-left transition-colors enabled:hover:bg-gray-50 disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal ${on ? 'bg-brand-teal-light/60' : ''}`}
+                    >
+                      <span className="flex items-baseline justify-between gap-3 text-sm">
+                        <span className={`min-w-0 truncate ${on ? 'font-semibold text-gray-900' : real ? 'text-gray-700' : 'text-gray-500'}`}>{name}</span>
+                        <span className="shrink-0 font-mono tabular-nums text-gray-900">{n}</span>
+                      </span>
+                      <span className="mt-1 block h-1.5 rounded-r bg-gray-100" aria-hidden="true">
+                        <span className="motion-bar-grow block h-full rounded-r" style={{ width: `${(n / specMax) * 100}%`, background: on ? '#0A7F7E' : SERIES.teal, opacity: specialty && !on ? 0.3 : 1, animationDelay: `${i * 60}ms` }} />
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {specCounts.length > shownSpecs.length && (
+            <p className="mt-2 text-xs text-gray-500">
+              <span className="font-mono">{specCounts.length - shownSpecs.length}</span> more in the Specialty filter.
+            </p>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function Empty({ narrowed, canAdd, onClear }: { narrowed: boolean; canAdd: boolean; onClear: () => void }) {
+  return (
+    <div className="px-6 py-14 text-center">
+      <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md bg-gray-100 text-gray-500">
+        <Svg d={narrowed ? ICONS.search : ICONS.people} className="h-5 w-5" />
+      </div>
+      {narrowed ? (
+        <>
+          <p className="font-semibold text-gray-900">No doctors match</p>
+          <p className="mt-1 text-sm text-gray-500">Check the spelling, search by licence number or email, or loosen a filter.</p>
+          <button type="button" onClick={onClear} className={`mt-5 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+            Clear search and filters
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="font-semibold text-gray-900">No doctors yet</p>
+          <p className="mt-1 text-sm text-gray-500">Add the clinic’s doctors so patients can be booked with them and their notes and prescriptions carry their name.</p>
+          {canAdd && (
+            <Link href="/doctors/new" className={`mt-5 inline-flex items-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+              <Svg d={ICONS.plus} />
+              Add doctor
+            </Link>
+          )}
+        </>
+      )}
+    </div>
   );
 }

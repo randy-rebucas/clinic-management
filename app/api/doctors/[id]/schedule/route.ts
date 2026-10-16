@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
-import User from '@/models/User';
-import { isAdmin } from '@/app/lib/auth-helpers';
+import { getPermissionChecker, hasPermission } from '@/app/lib/auth-helpers';
+import { myDoctorProfileId } from '@/lib/doctor-access';
+import { WEEKDAY_LONG, hoursProblems, toMin } from '@/lib/doctors';
 import {
   requireTenantSession,
   isTenantSessionError,
@@ -25,7 +26,13 @@ export async function GET(
 ) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
-  const { tenantId } = ctx;
+  const { session, tenantId } = ctx;
+
+  // Hours are read by the roster (doctors:read) and by booking (appointments:read).
+  const can = await getPermissionChecker(session);
+  if (!can('doctors', 'read') && !can('appointments', 'read')) {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
+  }
 
   try {
     await connectDB();
@@ -78,26 +85,17 @@ export async function PUT(
   if (isTenantSessionError(ctx)) return ctx;
   const { session, tenantId } = ctx;
 
-  if (!isAdmin(session) && session.role !== 'doctor') {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    );
-  }
-
   try {
     await connectDB();
     const { id } = await params;
     if (!isValidId(id)) return notFound('Doctor');
 
-    // Doctors may only edit their own schedule.
-    if (!isAdmin(session)) {
-      const user = await User.findOne(tenantFilter(tenantId, { _id: session.userId }))
-        .select('doctorProfile')
-        .lean() as any;
-      if (!user?.doctorProfile || String(user.doctorProfile) !== id) {
+    // Whoever manages doctors (doctors:update) may change anyone's hours; a doctor their own.
+    if (!(await hasPermission(session, 'doctors', 'update'))) {
+      const mine = await myDoctorProfileId(tenantId, session.userId);
+      if (mine !== id) {
         return NextResponse.json(
-          { success: false, error: 'Unauthorized' },
+          { success: false, error: 'Only the doctor themselves or someone who manages doctors can change these hours.' },
           { status: 403 }
         );
       }
@@ -105,6 +103,24 @@ export async function PUT(
 
     const parsed = await parseBody(request, scheduleUpdateSchema);
     if (isValidationError(parsed)) return parsed;
+
+    if (parsed.data.schedule) {
+      const days = parsed.data.schedule.map((s) => s.dayOfWeek);
+      if (new Set(days).size !== days.length) {
+        return NextResponse.json({ success: false, error: 'Each weekday can have one set of hours.' }, { status: 400 });
+      }
+      const problems = hoursProblems(parsed.data.schedule);
+      const first = Object.keys(problems)[0];
+      if (first !== undefined) {
+        return NextResponse.json({ success: false, error: `${WEEKDAY_LONG[Number(first)]}: ${problems[Number(first)]}` }, { status: 400 });
+      }
+    }
+    const badOverride = parsed.data.availabilityOverrides?.find(
+      (o) => o.isAvailable && o.startTime && o.endTime && (toMin(o.endTime) ?? 0) <= (toMin(o.startTime) ?? 0)
+    );
+    if (badOverride) {
+      return NextResponse.json({ success: false, error: 'Changed hours must end after they start.' }, { status: 400 });
+    }
 
     const update: Record<string, unknown> = {};
     if (parsed.data.schedule !== undefined) update.schedule = parsed.data.schedule;

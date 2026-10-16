@@ -12,8 +12,18 @@ import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
 const optId = z.union([zObjectId, z.literal(''), z.null()]).optional().transform((v) => v || undefined);
 const optDate = z.union([z.string().max(40), z.date()]).nullable().optional();
 const s = (max = 2000) => z.string().max(max);
+/** Test names become object keys (abnormalFlags is a Mongo Map): no "." and no leading "$", or the save throws. */
+export const safeAnalyteKey = (k: string) => k.replace(/\./g, '').replace(/^\$+/, '').trim();
+function safeKeys<T>(rec: Record<string, T>) {
+  const out: Record<string, T> = {};
+  for (const [k, v] of Object.entries(rec)) {
+    const key = safeAnalyteKey(k);
+    if (key) out[key] = v;
+  }
+  return out;
+}
 // Results / reference ranges are free-form key→value maps of numbers or short strings.
-const valueMap = z.record(z.string().max(100), z.union([z.string().max(2000), z.number(), z.boolean(), z.null()]));
+const valueMap = z.record(z.string().max(100), z.union([z.string().max(2000), z.number(), z.boolean(), z.null()])).transform(safeKeys);
 
 export const labResultFieldsSchema = z.object({
   patient: zObjectId,
@@ -39,7 +49,7 @@ export const labResultFieldsSchema = z.object({
   resultDate: optDate,
   interpretation: s(20000).optional(),
   referenceRanges: valueMap.optional(),
-  abnormalFlags: z.record(z.string().max(100), z.enum(['high', 'low', 'normal'])).optional(),
+  abnormalFlags: z.record(z.string().max(100), z.enum(['high', 'low', 'normal'])).transform(safeKeys).optional(),
   status: z.enum(['ordered', 'in-progress', 'completed', 'reviewed', 'cancelled']).optional(),
   reviewedBy: optId,
   reviewedAt: optDate,

@@ -7,22 +7,9 @@ import { isAdmin } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
 import { requireNotificationScope, isNotificationScopeError } from './_lib/scope';
+import { GROUP_KEYS, NOTIFICATION_GROUPS, NOTIFICATION_TYPES, groupOf, type NotificationGroup } from '@/lib/notification-kinds';
 
-const NOTIFICATION_TYPES = [
-  'appointment',
-  'visit',
-  'prescription',
-  'lab_result',
-  'invoice',
-  'reminder',
-  'system',
-  'broadcast',
-  'visit_followup_reminder',
-  'membership_expiry_reminder',
-  'referral_followup_reminder',
-  'referral_escalation',
-  'patient_reengagement',
-] as const;
+const LIST_FIELDS = 'type priority title message relatedEntity actionUrl read readAt createdAt';
 
 const createNotificationSchema = z.object({
   user: zObjectId.optional(),
@@ -41,6 +28,12 @@ const createNotificationSchema = z.object({
   expiresAt: z.coerce.date().optional(),
 });
 
+/**
+ * GET /api/notifications — the caller's own notifications, newest first.
+ * `read` (true | false), `type` or `group` (see lib/notification-kinds), `limit`, and `before`
+ * (an ISO time: the page older than the last one shown). Also returns the unread count, unread
+ * counts per group, and whether older ones remain.
+ */
 export async function GET(request: NextRequest) {
   const scope = await requireNotificationScope();
   if (isNotificationScopeError(scope)) return scope;
@@ -51,6 +44,8 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const read = searchParams.get('read'); // 'true', 'false', or null for all
     const type = searchParams.get('type');
+    const group = searchParams.get('group') as NotificationGroup | null;
+    const before = searchParams.get('before');
     const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') || '50', 10) || 50));
 
     const query: Record<string, unknown> = { ...scope.ownFilter };
@@ -59,19 +54,34 @@ export async function GET(request: NextRequest) {
     }
     if (type && (NOTIFICATION_TYPES as readonly string[]).includes(type)) {
       query.type = type;
+    } else if (group && GROUP_KEYS.includes(group)) {
+      query.type = { $in: NOTIFICATION_GROUPS[group].types };
+    }
+    if (before) {
+      const t = new Date(before);
+      if (!Number.isNaN(t.getTime())) query.createdAt = { $lt: t };
     }
 
-    const notifications = await Notification.find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit);
+    const [rows, unreadByType] = await Promise.all([
+      Notification.find(query).select(LIST_FIELDS).sort({ createdAt: -1, _id: -1 }).limit(limit + 1).lean(),
+      Notification.aggregate<{ _id: string; n: number }>([{ $match: { ...scope.ownFilter, read: false } }, { $group: { _id: '$type', n: { $sum: 1 } } }]),
+    ]);
 
-    const unreadCount = await Notification.countDocuments({ ...scope.ownFilter, read: false });
+    const unreadByGroup: Partial<Record<NotificationGroup, number>> = {};
+    let unreadCount = 0;
+    for (const r of unreadByType) {
+      unreadCount += r.n;
+      const g = groupOf(r._id);
+      if (g) unreadByGroup[g] = (unreadByGroup[g] ?? 0) + r.n;
+    }
 
     return NextResponse.json({
       success: true,
       data: {
-        notifications,
+        notifications: rows.slice(0, limit),
+        hasMore: rows.length > limit,
         unreadCount,
+        unreadByGroup,
       },
     });
   } catch (error: any) {

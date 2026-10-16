@@ -28,6 +28,7 @@
     "db:reset:selective": "tsx scripts/reset-db.ts --selective",
     "db:stats": "tsx scripts/reset-db.ts --stats",
     "db:backup": "tsx scripts/db-backup.ts",
+    "db:backup:zip": "tsx scripts/db-backup-zip.ts",
     "db:restore": "tsx scripts/db-restore.ts",
     "db:migrate:audit": "tsx scripts/migrate-2026-10-audit.ts",
     "users:rotate-default-passwords": "tsx scripts/rotate-default-passwords.ts",

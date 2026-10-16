@@ -1,536 +1,341 @@
 'use client';
 
-import { useState, useEffect, FormEvent, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import dynamic from 'next/dynamic';
-import { useModalA11y } from './hooks/useModalA11y';
+import { Modal } from './ui/Modal';
+import { FIELD, FOCUS_RING, ICON, Svg } from './appointments/shared';
+import PatientSearch, { type PatientOption } from './patients/PatientSearch';
+import { useUnsavedChanges } from './hooks/useUnsavedChanges';
+import { VISIT_TYPES } from './visits/shared';
+import PatientSummary, { allergyList, usePatientSummary } from './visits/form/PatientSummary';
+import {
+  ADD_BUTTON,
+  DOSAGE_OPTIONS,
+  DURATION_OPTIONS,
+  FREQUENCY_OPTIONS,
+  FieldError,
+  Icd10Field,
+  Label,
+  MedicineNameField,
+  NoteArea,
+  REMOVE_BUTTON,
+  Section,
+  VitalsFields,
+  vitalsProblems,
+  vitalsSentence,
+  vitalsToRecord,
+  vitalsToText,
+  type VitalsText,
+} from './visits/form/parts';
 
 const SignaturePad = dynamic(() => import('./SignaturePad'), { ssr: false });
 
-interface VisitFormData {
-  patient: string;
-  visitType: 'consultation' | 'follow-up' | 'checkup' | 'emergency' | 'teleconsult' | 'vaccination';
-  chiefComplaint?: string;
-  historyOfPresentIllness?: string;
-  vitals?: {
-    bp?: string;
-    hr?: number;
-    rr?: number;
-    tempC?: number;
-    spo2?: number;
-    heightCm?: number;
-    weightKg?: number;
-    bmi?: number;
-  };
-  physicalExam?: {
-    general?: string;
-    headEent?: string;
-    heent?: string;
-    chest?: string;
-    lungs?: string;
-    cardiovascular?: string;
-    abdomen?: string;
-    extremities?: string;
-    neuro?: string;
-    neurological?: string;
-    skin?: string;
-    lymphNotes?: string;
-    breast?: string;
-    rectum?: string;
-    genitalia?: string;
-    musculoskeletal?: string;
-    other?: string;
-  };
-  admittingImpression?: string;
-  diagnoses: Array<{
-    code?: string;
-    description?: string;
-    primary?: boolean;
-  }>;
-  soapNotes?: {
-    subjective?: string;
-    objective?: string;
-    assessment?: string;
-    plan?: string;
-  };
-  treatmentPlan?: {
-    medications?: Array<{
-      name: string;
-      dosage: string;
-      frequency: string;
-      duration: string;
-      quantity?: number;
-      instructions?: string;
-      _highlightId?: number;
-    }>;
-    procedures?: Array<{
-      name: string;
-      description?: string;
-      scheduledDate?: string;
-    }>;
-    lifestyle?: Array<{
-      category: string;
-      instructions: string;
-    }>;
-    followUp?: {
-      date?: string;
-      instructions?: string;
-    };
-  };
+type VisitType = 'consultation' | 'follow-up' | 'checkup' | 'emergency' | 'teleconsult' | 'vaccination';
+
+/** The shape the visit API takes (and the detail page hands back in for editing). */
+export interface VisitFormData {
   _id?: string;
   status?: 'draft' | 'open' | 'closed' | 'cancelled';
-  followUpDate?: string;
-  notes?: string;
-  digitalSignature?: {
-    providerName: string;
-    signatureData: string;
+  patient: string;
+  visitType: VisitType;
+  chiefComplaint?: string;
+  historyOfPresentIllness?: string;
+  admittingImpression?: string;
+  vitals?: Partial<Record<'bp' | 'hr' | 'rr' | 'tempC' | 'spo2' | 'heightCm' | 'weightKg' | 'bmi', string | number | null>>;
+  physicalExam?: Record<string, string | undefined>;
+  diagnoses: Array<{ code?: string; description?: string; primary?: boolean }>;
+  soapNotes?: { subjective?: string; objective?: string; assessment?: string; plan?: string };
+  treatmentPlan?: {
+    medications?: Array<{ name: string; dosage: string; frequency: string; duration: string; quantity?: number; instructions?: string }>;
+    procedures?: Array<{ name: string; description?: string; scheduledDate?: string }>;
+    lifestyle?: Array<{ category: string; instructions: string }>;
+    followUp?: { date?: string | null; instructions?: string; reminderSent?: boolean };
   };
+  /** yyyy-MM-dd, or null to clear it. */
+  followUpDate?: string | null;
+  notes?: string;
+  digitalSignature?: { providerName: string; signatureData: string };
 }
 
 interface VisitFormProps {
   initialData?: Partial<VisitFormData>;
-  patients: Array<{ _id: string; firstName: string; lastName: string; email?: string; phone?: string; patientCode?: string }>;
-  /** Return (or resolve to) false when the save failed so the local draft is kept. */
+  /** The preselected patient (when the patient is locked or already chosen). */
+  patients: PatientOption[];
+  /** Return (or resolve to) false when the save failed so the local copy is kept. */
   onSubmit: (data: VisitFormData) => void | boolean | Promise<void | boolean>;
   onCancel?: () => void;
   onDraftSaved?: (draftId: string) => void;
   providerName: string;
   lockPatientSelection?: boolean;
+  /** Where pre-filled vital signs came from, e.g. "Taken at triage, queue A-12". */
+  vitalsSource?: string;
 }
 
-interface QuickHistoryData {
-  visits: Array<{ _id: string; visitCode?: string; date: string; status?: string; chiefComplaint?: string }>;
-  appointments: Array<{ _id: string; appointmentCode?: string; appointmentDate: string; appointmentTime?: string; status?: string }>;
-  prescriptions: Array<{ _id: string; prescriptionCode?: string; issuedAt: string; status?: string }>;
-  invoices: Array<{ _id: string; invoiceNumber?: string; createdAt: string; status?: string; outstandingBalance?: number }>;
-  labResults: Array<{ _id: string; requestCode?: string; orderDate: string; status?: string; testName?: string }>;
+// ---------------------------------------------------------------------------
+// Note state (strings while editing; converted once on save)
+// ---------------------------------------------------------------------------
+
+interface Dx {
+  _key: string;
+  code: string;
+  description: string;
+  primary: boolean;
+}
+interface Med {
+  _key: string;
+  name: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  quantity: string;
+  instructions: string;
+}
+interface Note {
+  patient: string;
+  visitType: VisitType;
+  chiefComplaint: string;
+  historyOfPresentIllness: string;
+  admittingImpression: string;
+  vitals: VitalsText;
+  exam: Record<ExamKey, string>;
+  soap: { subjective: string; objective: string; assessment: string; plan: string };
+  diagnoses: Dx[];
+  medications: Med[];
+  followUpDate: string;
+  followUpInstructions: string;
+  notes: string;
 }
 
-type HistoryEntityType = 'visit' | 'appointment' | 'prescription' | 'invoice' | 'lab-result';
+type ExamKey = 'general' | 'heent' | 'chest' | 'lungs' | 'cardiovascular' | 'abdomen' | 'extremities' | 'skin' | 'lymphNotes' | 'breast' | 'rectum' | 'genitalia' | 'musculoskeletal' | 'neurological' | 'other';
 
-interface SelectedHistoryItem {
-  type: HistoryEntityType;
-  id: string;
-  title: string;
-}
-
-
+const EXAM: { key: ExamKey; label: string; hint: string }[] = [
+  { key: 'general', label: 'General', hint: 'Appearance, alertness, distress' },
+  { key: 'heent', label: 'HEENT', hint: 'Head, eyes, ears, nose, throat' },
+  { key: 'chest', label: 'Chest', hint: 'Chest wall' },
+  { key: 'lungs', label: 'Lungs', hint: 'Breath sounds, wheeze, crackles' },
+  { key: 'cardiovascular', label: 'Heart', hint: 'Heart sounds, pulses' },
+  { key: 'abdomen', label: 'Abdomen', hint: 'Tenderness, masses, bowel sounds' },
+  { key: 'extremities', label: 'Extremities', hint: 'Edema, pulses, range of motion' },
+  { key: 'skin', label: 'Skin', hint: 'Rashes, lesions, turgor' },
+  { key: 'lymphNotes', label: 'Lymph nodes', hint: 'Palpable nodes' },
+  { key: 'breast', label: 'Breast', hint: '' },
+  { key: 'rectum', label: 'Rectum', hint: '' },
+  { key: 'genitalia', label: 'Genitalia', hint: '' },
+  { key: 'musculoskeletal', label: 'Musculoskeletal', hint: 'Joints, gait, strength' },
+  { key: 'neurological', label: 'Neurological', hint: 'Mental status, cranial nerves, reflexes' },
+  { key: 'other', label: 'Other', hint: '' },
+];
 
 const LOCAL_DRAFT_KEY = 'visit_form_draft';
 
-const EMPTY_QUICK_HISTORY: QuickHistoryData = {
-  visits: [],
-  appointments: [],
-  prescriptions: [],
-  invoices: [],
-  labResults: [],
-};
+let keySeq = 0;
+const newKey = () => `k${Date.now().toString(36)}${(keySeq++).toString(36)}`;
+const emptyDx = (primary: boolean): Dx => ({ _key: newKey(), code: '', description: '', primary });
+const emptyMed = (): Med => ({ _key: newKey(), name: '', dosage: '', frequency: '', duration: '', quantity: '', instructions: '' });
 
-/** Timestamp of the saved local draft, or null when there is none. */
-function readLocalDraftTimestamp(): string | null {
+function noteFrom(d?: Partial<VisitFormData> | null): Note {
+  const pe = d?.physicalExam ?? {};
+  const exam = Object.fromEntries(EXAM.map((e) => [e.key, ''])) as Record<ExamKey, string>;
+  for (const e of EXAM) exam[e.key] = pe[e.key] ?? '';
+  exam.heent = pe.headEent || pe.heent || '';
+  exam.neurological = pe.neurological || pe.neuro || '';
+  const followUp = d?.followUpDate || d?.treatmentPlan?.followUp?.date || '';
+  return {
+    patient: d?.patient ?? '',
+    visitType: (d?.visitType as VisitType) ?? 'consultation',
+    chiefComplaint: d?.chiefComplaint ?? '',
+    historyOfPresentIllness: d?.historyOfPresentIllness ?? '',
+    admittingImpression: d?.admittingImpression ?? '',
+    vitals: vitalsToText(d?.vitals),
+    exam,
+    soap: {
+      subjective: d?.soapNotes?.subjective ?? '',
+      objective: d?.soapNotes?.objective ?? '',
+      assessment: d?.soapNotes?.assessment ?? '',
+      plan: d?.soapNotes?.plan ?? '',
+    },
+    diagnoses: (d?.diagnoses ?? []).map((x) => ({ _key: newKey(), code: x.code ?? '', description: x.description ?? '', primary: Boolean(x.primary) })),
+    medications: (d?.treatmentPlan?.medications ?? []).map((m) => ({
+      _key: newKey(),
+      name: m.name ?? '',
+      dosage: m.dosage ?? '',
+      frequency: m.frequency ?? '',
+      duration: m.duration ?? '',
+      quantity: m.quantity != null ? String(m.quantity) : '',
+      instructions: m.instructions ?? '',
+    })),
+    followUpDate: followUp ? String(followUp).slice(0, 10) : '',
+    followUpInstructions: d?.treatmentPlan?.followUp?.instructions ?? '',
+    notes: d?.notes ?? '',
+  };
+}
+
+/** Everything but the React row keys, so "has anything changed" ignores them. */
+function snapshot(n: Note) {
+  return JSON.stringify(n, (k, v) => (k === '_key' ? undefined : v));
+}
+
+const medIsBlank = (m: Med) => !m.name.trim() && !m.dosage.trim() && !m.frequency.trim() && !m.duration.trim() && !m.instructions.trim();
+
+function readLocalDraft(): { timestamp: string; note: Note } | null {
   try {
     const raw = localStorage.getItem(LOCAL_DRAFT_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { timestamp?: string; data?: Partial<VisitFormData> };
-    return parsed?.data ? parsed.timestamp ?? '' : null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.note) return { timestamp: parsed.timestamp ?? '', note: { ...noteFrom(null), ...parsed.note } };
+    // Older copies kept the API shape plus a separate vitals object.
+    if (parsed?.data) return { timestamp: parsed.timestamp ?? '', note: noteFrom({ ...parsed.data, vitals: parsed.vitals ?? parsed.data.vitals }) };
+    return null;
   } catch {
-    // ignore corrupt data
     return null;
   }
 }
 
-export default function VisitForm({
-  initialData,
-  patients,
-  onSubmit,
-  onCancel,
-  onDraftSaved,
-  providerName,
-  lockPatientSelection = false,
-}: VisitFormProps) {
-  const [formData, setFormData] = useState<VisitFormData>(() => ({
-    _id: initialData?._id,
-    status: initialData?.status,
-    patient: initialData?.patient || '',
-    visitType: initialData?.visitType || 'consultation',
-    chiefComplaint: initialData?.chiefComplaint || '',
-    historyOfPresentIllness: initialData?.historyOfPresentIllness || '',
-    admittingImpression: initialData?.admittingImpression || '',
-    vitals: initialData?.vitals || {},
-    physicalExam: initialData?.physicalExam || {},
-    diagnoses: initialData?.diagnoses || [],
-    soapNotes: initialData?.soapNotes || {},
-    treatmentPlan: initialData?.treatmentPlan || {},
-    followUpDate: initialData?.followUpDate || '',
-    notes: initialData?.notes || '',
-  }));
+// ---------------------------------------------------------------------------
+// Form
+// ---------------------------------------------------------------------------
 
-  const [icd10Search, setIcd10Search] = useState('');
-  const [icd10Results, setIcd10Results] = useState<Array<{ code: string; description: string }>>([]);
-  const [showIcd10Search, setShowIcd10Search] = useState(false);
-  const [patientSearchInput, setPatientSearch] = useState<string | null>(null);
-  const [showPatientSearch, setShowPatientSearch] = useState(false);
-  const [pickedPatient, setSelectedPatient] = useState<{ _id: string; firstName: string; lastName: string; email?: string; phone?: string; patientCode?: string } | null>(null);
-  // An explicit pick wins; a preset/restored patient id is resolved from `patients`.
-  const selectedPatient =
-    (pickedPatient && pickedPatient._id === formData.patient ? pickedPatient : null) ??
-    (formData.patient ? patients.find((p) => p._id === formData.patient) ?? null : null);
-  const patientSearch =
-    patientSearchInput ?? (selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : '');
-  const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const [showSignaturePad, setShowSignaturePad] = useState(false);
-  const [activeTab, setActiveTab] = useState<'soap' | 'traditional' | 'treatment'>('soap');
-  // Dedicated vitals state, initialized from initialData.vitals
-  const [vitals, setVitals] = useState<VisitFormData['vitals']>(initialData?.vitals || {});
-  const [medicationNameOptions, setMedicationNameOptions] = useState<{ name: string; dosage?: string; frequency?: string; duration?: string; source?: string }[]>([]);
-  const [activeMedSuggestionIndex, setActiveMedSuggestionIndex] = useState<number | null>(null);
-  const [isDirty, setIsDirty] = useState(false);
+export default function VisitForm({ initialData, patients, onSubmit, onCancel, onDraftSaved, providerName, lockPatientSelection = false, vitalsSource }: VisitFormProps) {
+  const ids = useId();
+  const editingExisting = Boolean(initialData?._id);
+  const canSaveDraft = !editingExisting || initialData?.status === 'draft';
+
+  const [note, setNote] = useState<Note>(() => noteFrom(initialData));
+  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshot(noteFrom(initialData)));
+  const [signature, setSignature] = useState(initialData?.digitalSignature ?? null);
+  const [signedNow, setSignedNow] = useState(false);
+  const [showPad, setShowPad] = useState(false);
+  const [picked, setPicked] = useState<PatientOption | null>(() => patients.find((p) => p._id === initialData?.patient) ?? null);
+  const [draftId, setDraftId] = useState<string | undefined>(initialData?._id && initialData.status === 'draft' ? initialData._id : undefined);
+  const [draftState, setDraftState] = useState<{ kind: 'saving' | 'saved' | 'error'; message?: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const initializedRef = useRef(false);
-  // Draft feature state
-  const [draftId, setDraftId] = useState<string | undefined>(initialData?._id && initialData?.status === 'draft' ? initialData._id : undefined);
-  const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  // VisitForm is only mounted after client-side data loading (never during SSR/hydration), so
-  // localStorage can be read in the initializer. Only new visits offer the local draft.
-  const [localDraftTimestamp] = useState<string | null>(() =>
-    initialData?._id ? null : readLocalDraftTimestamp()
-  );
-  const [localDraftBanner, setLocalDraftBanner] = useState(localDraftTimestamp !== null);
-  const [showHistoryPreview, setShowHistoryPreview] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-  const [patientHistory, setQuickHistory] = useState<QuickHistoryData>(EMPTY_QUICK_HISTORY);
-  const quickHistory = formData.patient ? patientHistory : EMPTY_QUICK_HISTORY;
-  const [selectedHistoryItem, setSelectedHistoryItem] = useState<SelectedHistoryItem | null>(null);
-  const [historyDetail, setHistoryDetail] = useState<any | null>(null);
-  const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
-  const [historyDetailError, setHistoryDetailError] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
 
-  const chiefComplaintInputRef = useRef<HTMLInputElement | null>(null);
-  const router = useRouter();
+  // Only new visits offer the copy kept on this device, and only for the patient being seen.
+  const [localDraft, setLocalDraft] = useState(() => {
+    if (editingExisting) return null;
+    const d = readLocalDraft();
+    if (!d) return null;
+    if (lockPatientSelection && d.note.patient && d.note.patient !== initialData?.patient) return null;
+    return d;
+  });
 
-  // Auto-save to localStorage (debounced 1.5s) whenever form is dirty
+  const patient = picked && picked._id === note.patient ? picked : null;
+  const summary = usePatientSummary(note.patient || null, initialData?._id);
+  const allergies = allergyList(summary.data?.patient.allergies);
+
+  const dirty = snapshot(note) !== savedSnapshot || signedNow;
+  const set = useCallback(<K extends keyof Note>(key: K, value: Note[K]) => setNote((n) => ({ ...n, [key]: value })), []);
+
+  // --- Problems (shown once the user tries to save) ---------------------------
+
+  const vProblems = vitalsProblems(note.vitals);
+  const medProblems = useMemo(() => {
+    const out: Record<string, string> = {};
+    note.medications.forEach((m) => {
+      if (!medIsBlank(m) && !m.name.trim()) out[m._key] = 'Name the medicine, or remove this row.';
+      else if (m.quantity.trim() && !(Number(m.quantity) >= 0)) out[m._key] = 'Quantity should be a number.';
+    });
+    return out;
+  }, [note.medications]);
+  const patientProblem = !note.patient || (!lockPatientSelection && !patient && !editingExisting) ? 'Choose the patient this visit is for.' : null;
+  const problemCount = (patientProblem ? 1 : 0) + Object.keys(vProblems).length + Object.keys(medProblems).length;
+
+  // --- Unsaved changes --------------------------------------------------------
+
+  useUnsavedChanges(dirty, 'This note has changes that are not saved. Leave anyway?');
+
+  // Keep a copy on this device while a new note is being written (never for an existing one).
   useEffect(() => {
-    if (!isDirty) return;
-    const timer = setTimeout(() => {
+    if (!dirty || editingExisting) return;
+    const t = setTimeout(() => {
       try {
-        localStorage.setItem(
-          LOCAL_DRAFT_KEY,
-          JSON.stringify({ timestamp: new Date().toISOString(), data: formData, vitals })
-        );
-      } catch { /* quota exceeded etc */ }
+        localStorage.setItem(LOCAL_DRAFT_KEY, JSON.stringify({ timestamp: new Date().toISOString(), note }));
+      } catch {
+        // storage full or unavailable
+      }
     }, 1500);
-    return () => clearTimeout(timer);
-  }, [isDirty, formData, vitals]);
+    return () => clearTimeout(t);
+  }, [dirty, editingExisting, note]);
 
-  // Save draft to server
-  const handleSaveDraft = useCallback(async () => {
-    if (!formData.patient || (!lockPatientSelection && !selectedPatient)) {
-      alert('Please select a patient before saving a draft.');
-      return;
-    }
-    setDraftSaveStatus('saving');
-    try {
-      const payload = { ...formData, vitals, status: 'draft' };
-      let res: Response;
-      if (draftId) {
-        res = await fetch(`/api/visits/${draftId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } else {
-        res = await fetch('/api/visits', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      }
-      const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save draft');
-      const savedId: string = json.data._id;
-      setDraftId(savedId);
-      setIsDirty(false);
-      setDraftSaveStatus('saved');
-      onDraftSaved?.(savedId);
-      // Clear local draft once server draft exists
-      localStorage.removeItem(LOCAL_DRAFT_KEY);
-      setTimeout(() => setDraftSaveStatus('idle'), 3000);
-    } catch (err: any) {
-      console.error(err);
-      setDraftSaveStatus('error');
-      setTimeout(() => setDraftSaveStatus('idle'), 4000);
-    }
-  }, [formData, vitals, draftId, selectedPatient, onDraftSaved, lockPatientSelection]);
+  useEffect(() => {
+    if (draftState?.kind !== 'saved') return;
+    const t = setTimeout(() => setDraftState(null), 4000);
+    return () => clearTimeout(t);
+  }, [draftState]);
 
-  // Restore local draft
-  const restoreLocalDraft = useCallback(() => {
-    try {
-      const raw = localStorage.getItem(LOCAL_DRAFT_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as { data: Partial<VisitFormData>; vitals: VisitFormData['vitals'] };
-      if (parsed.data) setFormData(prev => ({ ...prev, ...parsed.data }));
-      if (parsed.vitals) setVitals(parsed.vitals);
-    } catch { /* ignore */ }
-    setLocalDraftBanner(false);
-  }, []);
+  // --- Payload ------------------------------------------------------------------
 
-  const dismissLocalDraft = useCallback(() => {
-    localStorage.removeItem(LOCAL_DRAFT_KEY);
-    setLocalDraftBanner(false);
-  }, []);
-
-  const fetchQuickHistory = useCallback(async (pid: string) => {
-    if (!pid) {
-      setQuickHistory({ visits: [], appointments: [], prescriptions: [], invoices: [], labResults: [] });
-      return;
-    }
-
-    setHistoryLoading(true);
-    setHistoryError(null);
-    try {
-      const [visitsRes, appointmentsRes, prescriptionsRes, invoicesRes, labsRes] = await Promise.all([
-        fetch(`/api/visits?patientId=${pid}`),
-        fetch(`/api/appointments?patientId=${pid}`),
-        fetch(`/api/prescriptions?patientId=${pid}`),
-        fetch(`/api/invoices?patientId=${pid}`),
-        fetch(`/api/lab-results?patientId=${pid}`),
-      ]);
-
-      if ([visitsRes, appointmentsRes, prescriptionsRes, invoicesRes, labsRes].some((res) => res.status === 401)) {
-        router.push('/login');
-        return;
-      }
-
-      const parseResponse = async (res: Response) => {
-        if (!res.ok) return [];
-        const json = await res.json();
-        return Array.isArray(json?.data) ? json.data : [];
-      };
-
-      const [visits, appointments, prescriptions, invoices, labResults] = await Promise.all([
-        parseResponse(visitsRes),
-        parseResponse(appointmentsRes),
-        parseResponse(prescriptionsRes),
-        parseResponse(invoicesRes),
-        parseResponse(labsRes),
-      ]);
-
-      setQuickHistory({
-        visits: visits
-          .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-          .slice(0, 5),
-        appointments: appointments
-          .sort((a: any, b: any) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime())
-          .slice(0, 5),
-        prescriptions: prescriptions
-          .sort((a: any, b: any) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())
-          .slice(0, 5),
-        invoices: invoices
-          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 5),
-        labResults: labResults
-          .sort((a: any, b: any) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
-          .slice(0, 5),
-      });
-      setSelectedHistoryItem(null);
-      setHistoryDetail(null);
-      setHistoryDetailError(null);
-    } catch (error) {
-      console.error('Failed to fetch quick history:', error);
-      setHistoryError('Unable to load patient history preview.');
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, [router]);
-
-  const fetchHistoryDetail = useCallback(async (item: SelectedHistoryItem) => {
-    const endpointMap: Record<HistoryEntityType, string> = {
-      visit: `/api/visits/${item.id}`,
-      appointment: `/api/appointments/${item.id}`,
-      prescription: `/api/prescriptions/${item.id}`,
-      invoice: `/api/invoices/${item.id}`,
-      'lab-result': `/api/lab-results/${item.id}`,
+  const payload = (): VisitFormData => {
+    const pe: Record<string, string> = {};
+    for (const e of EXAM) pe[e.key] = note.exam[e.key];
+    pe.headEent = note.exam.heent;
+    pe.neuro = note.exam.neurological;
+    const diagnoses = note.diagnoses
+      .filter((d) => d.code.trim() || d.description.trim())
+      .map((d) => ({ code: d.code.trim().toUpperCase(), description: d.description.trim(), primary: d.primary }));
+    if (diagnoses.length && !diagnoses.some((d) => d.primary)) diagnoses[0].primary = true;
+    // A draft saved during this session is the record to finish, not a reason for a second visit.
+    const recordId = draftId ?? initialData?._id;
+    const status = draftId ? 'draft' : initialData?.status;
+    return {
+      ...(recordId ? { _id: recordId } : {}),
+      ...(status ? { status } : {}),
+      patient: note.patient,
+      visitType: note.visitType,
+      chiefComplaint: note.chiefComplaint,
+      historyOfPresentIllness: note.historyOfPresentIllness,
+      admittingImpression: note.admittingImpression,
+      vitals: vitalsToRecord(note.vitals) ?? {},
+      physicalExam: pe,
+      diagnoses,
+      soapNotes: { ...note.soap },
+      treatmentPlan: {
+        // Procedures and advice are not edited here; carry them through untouched.
+        ...(initialData?.treatmentPlan?.procedures ? { procedures: initialData.treatmentPlan.procedures } : {}),
+        ...(initialData?.treatmentPlan?.lifestyle ? { lifestyle: initialData.treatmentPlan.lifestyle } : {}),
+        medications: note.medications
+          .filter((m) => !medIsBlank(m))
+          .map((m) => ({
+            name: m.name.trim(),
+            dosage: m.dosage.trim(),
+            frequency: m.frequency.trim(),
+            duration: m.duration.trim(),
+            ...(m.quantity.trim() ? { quantity: Number(m.quantity) } : {}),
+            instructions: m.instructions.trim(),
+          })),
+        followUp: { ...initialData?.treatmentPlan?.followUp, date: note.followUpDate || null, instructions: note.followUpInstructions },
+      },
+      followUpDate: note.followUpDate || null,
+      notes: note.notes,
+      // Only a signature drawn now is sent; resending an old one would re-sign it as the editor.
+      ...(signature && (signedNow || !editingExisting) ? { digitalSignature: signature } : {}),
     };
-
-    setHistoryDetailLoading(true);
-    setHistoryDetailError(null);
-    setHistoryDetail(null);
-    try {
-      const res = await fetch(endpointMap[item.type]);
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      if (!res.ok) {
-        throw new Error('Failed to load details');
-      }
-      const data = await res.json();
-      if (!data?.success) {
-        throw new Error(data?.error || 'Failed to load details');
-      }
-      setHistoryDetail(data.data);
-    } catch (error) {
-      console.error('Failed to fetch history detail:', error);
-      setHistoryDetailError('Unable to load item details.');
-    } finally {
-      setHistoryDetailLoading(false);
-    }
-  }, [router]);
-
-  // Track dirty state — fires after initial mount whenever formData or vitals change
-  useEffect(() => {
-    if (!initializedRef.current) {
-      initializedRef.current = true;
-      return;
-    }
-    setIsDirty(true);
-  }, [formData, vitals]);
-
-  // Block browser-level navigation (refresh / tab close)
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isDirty) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isDirty]);
-
-  // Block in-app link navigation when dirty
-  useEffect(() => {
-    if (!isDirty) return;
-    const handleLinkClick = (e: MouseEvent) => {
-      const anchor = (e.target as HTMLElement).closest('a[href]') as HTMLAnchorElement | null;
-      if (!anchor) return;
-      const href = anchor.getAttribute('href') ?? '';
-      if (!href || href.startsWith('#') || href === window.location.pathname) return;
-      if (!window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    };
-    document.addEventListener('click', handleLinkClick, true);
-    return () => document.removeEventListener('click', handleLinkClick, true);
-  }, [isDirty]);
-
-  useEffect(() => {
-    if (icd10Search.length >= 2) {
-      const timer = setTimeout(() => {
-        fetch(`/api/icd10/search?q=${encodeURIComponent(icd10Search)}`)
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success) {
-              setIcd10Results(data.data.slice(0, 10)); // Limit to 10 results
-            }
-          })
-          .catch(console.error);
-      }, 300);
-      return () => clearTimeout(timer);
-    } else {
-      // Using setTimeout to avoid synchronous setState in effect
-      setTimeout(() => {
-        setIcd10Results([]);
-      }, 0);
-    }
-  }, [icd10Search]);
-
-  // Fetch medication names for autocomplete
-  const fetchMedicationNames = useCallback((search: string = '') => {
-    fetch(`/api/medications/autocomplete?search=${encodeURIComponent(search)}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && Array.isArray(data.data)) {
-          setMedicationNameOptions(data.data);
-        }
-      })
-      .catch(() => setMedicationNameOptions([]));
-  }, []);
-
-  // Fetch on mount
-  useEffect(() => {
-    fetchMedicationNames();
-  }, [fetchMedicationNames]);
-
-  // Optionally, fetch as user types in any medication name input
-  // (for better UX, debounce in real use)
-  const handleMedicationNameInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    fetchMedicationNames(value);
   };
-  useEffect(() => {
-    if (!formData.patient) return;
-    const load = async () => {
-      await fetchQuickHistory(formData.patient);
-    };
-    load();
-  }, [formData.patient, fetchQuickHistory]);
 
-
-  useEffect(() => {
-
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.patient-search-container')) {
-        setShowPatientSearch(false);
-        setHighlightedIndex(-1);
-      }
-    };
-    if (showPatientSearch) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [showPatientSearch]);
-
-  // Use a key on the form to force remount when initialData changes
-  const formKey = JSON.stringify([
-    initialData?.patient,
-    initialData?.visitType,
-    initialData?.chiefComplaint,
-    initialData?.historyOfPresentIllness,
-    initialData?.admittingImpression,
-    initialData?.vitals,
-    initialData?.physicalExam,
-    initialData?.diagnoses,
-    initialData?.soapNotes,
-    initialData?.treatmentPlan,
-    initialData?.followUpDate,
-    initialData?.notes,
-  ]);
-
-  // Helper to format vitals for SOAP notes
-  function formatVitalsForSoap(vitals: any) {
-    if (!vitals || Object.keys(vitals).length === 0) return '';
-    const parts = [];
-    if (vitals.bp) parts.push(`BP: ${vitals.bp}`);
-    if (vitals.hr) parts.push(`HR: ${vitals.hr}`);
-    if (vitals.tempC) parts.push(`Temp: ${vitals.tempC}°C`);
-    if (vitals.spo2) parts.push(`SpO2: ${vitals.spo2}%`);
-    if (vitals.rr) parts.push(`RR: ${vitals.rr}`);
-    if (vitals.heightCm) parts.push(`Height: ${vitals.heightCm}cm`);
-    if (vitals.weightKg) parts.push(`Weight: ${vitals.weightKg}kg`);
-    if (vitals.bmi) parts.push(`BMI: ${vitals.bmi}`);
-    return parts.length ? 'Vitals: ' + parts.join(', ') : '';
-  }
+  const focusFirstProblem = () => {
+    requestAnimationFrame(() => {
+      const marked = document.querySelector<HTMLElement>('[data-visit-form] [aria-invalid="true"], [data-visit-form] [data-invalid="true"]');
+      const el = marked?.matches('input,select,textarea') ? marked : marked?.querySelector<HTMLElement>('input,select,textarea');
+      el?.focus();
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!formData.patient || (!lockPatientSelection && !selectedPatient)) {
-      alert('Please select a valid patient');
-      setShowPatientSearch(true);
+    if (submitting) return;
+    setAttempted(true);
+    if (problemCount > 0) {
+      focusFirstProblem();
       return;
     }
-    if (submitting) return;
     setSubmitting(true);
     try {
-      // Merge the separate `vitals` state back into formData before submitting
-      // (vitals inputs update the dedicated `vitals` state, not formData.vitals)
-      const ok = await onSubmit({ ...formData, vitals });
-      // Keep the local draft unless the save is confirmed, so a failed save can't lose the note.
+      const ok = await onSubmit(payload());
       if (ok !== false) {
-        setIsDirty(false);
+        setSavedSnapshot(snapshot(note));
+        setSignedNow(false);
         try {
           localStorage.removeItem(LOCAL_DRAFT_KEY);
         } catch {
@@ -542,1742 +347,555 @@ export default function VisitForm({
     }
   };
 
-  // Draft status badge label
-  const draftBadge = draftSaveStatus === 'saving'
-    ? 'Saving draft…'
-    : draftSaveStatus === 'saved'
-    ? '✓ Draft saved'
-    : draftSaveStatus === 'error'
-    ? '✗ Save failed'
-    : draftId
-    ? 'Draft'
-    : null;
-
-  const filteredPatients = patientSearch.trim()
-    ? patients
-        .filter((patient) => {
-          const searchLower = patientSearch.toLowerCase();
-          const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
-          const email = (patient.email || '').toLowerCase();
-          const phone = (patient.phone || '').toLowerCase();
-          const patientCode = (patient.patientCode || '').toLowerCase();
-          return fullName.includes(searchLower) || email.includes(searchLower) || phone.includes(searchLower) || patientCode.includes(searchLower);
-        })
-        .slice(0, 20)
-    : [];
-
-  const selectPatient = (patient: { _id: string; firstName: string; lastName: string; email?: string; phone?: string; patientCode?: string }) => {
-    setFormData({ ...formData, patient: patient._id });
-    setSelectedPatient(patient);
-    setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-    setShowPatientSearch(false);
-    setHighlightedIndex(-1);
-  };
-
-  const formatDate = (value?: string) => {
-    if (!value) return 'N/A';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'N/A';
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
-  const formatDateTime = (value?: string) => {
-    if (!value) return 'N/A';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'N/A';
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  };
-
-  const handleHistoryItemClick = (item: SelectedHistoryItem) => {
-    setSelectedHistoryItem(item);
-    fetchHistoryDetail(item);
-  };
-
-  const closeHistoryDrawer = () => {
-    setShowHistoryPreview(false);
-    setSelectedHistoryItem(null);
-    setHistoryDetail(null);
-    setHistoryDetailError(null);
-  };
-
-  const signatureDialogRef = useModalA11y<HTMLDivElement>(showSignaturePad, () => setShowSignaturePad(false));
-  const historyDialogRef = useModalA11y<HTMLDivElement>(showHistoryPreview, closeHistoryDrawer);
-
-  const historyTotalCount =
-    quickHistory.visits.length +
-    quickHistory.appointments.length +
-    quickHistory.prescriptions.length +
-    quickHistory.invoices.length +
-    quickHistory.labResults.length;
-
-  const addDiagnosis = () => {
-    setFormData({
-      ...formData,
-      diagnoses: [...formData.diagnoses, { code: '', description: '', primary: false }],
-    });
-  };
-
-  const removeDiagnosis = (index: number) => {
-    setFormData({
-      ...formData,
-      diagnoses: formData.diagnoses.filter((_, i) => i !== index),
-    });
-  };
-
-  const updateDiagnosis = (index: number, field: string, value: any) => {
-    const updated = [...formData.diagnoses];
-    updated[index] = { ...updated[index], [field]: value };
-    setFormData({ ...formData, diagnoses: updated });
-  };
-
-  const selectIcd10 = (code: string, description: string) => {
-    const lastIndex = formData.diagnoses.length - 1;
-    if (lastIndex >= 0) {
-      updateDiagnosis(lastIndex, 'code', code);
-      updateDiagnosis(lastIndex, 'description', description);
+  const saveDraft = async () => {
+    setAttempted(true);
+    if (patientProblem) {
+      setDraftState({ kind: 'error', message: 'Choose the patient before saving a draft.' });
+      focusFirstProblem();
+      return;
     }
-    setShowIcd10Search(false);
-    setIcd10Search('');
+    setDraftState({ kind: 'saving' });
+    try {
+      const body = JSON.stringify({ ...payload(), status: 'draft' });
+      const res = draftId
+        ? await fetch(`/api/visits/${draftId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body })
+        : await fetch('/api/visits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(json?.error || `Request failed (${res.status})`);
+      const savedId: string = json.data._id;
+      setDraftId(savedId);
+      setSavedSnapshot(snapshot(note));
+      setSignedNow(false);
+      setDraftState({ kind: 'saved' });
+      onDraftSaved?.(savedId);
+      try {
+        localStorage.removeItem(LOCAL_DRAFT_KEY);
+      } catch {
+        // storage unavailable
+      }
+    } catch (err) {
+      setDraftState({ kind: 'error', message: `The draft wasn’t saved (${err instanceof Error ? err.message : 'request failed'}). Your note is still here.` });
+    }
   };
 
-  const [newMedHighlight, setNewMedHighlight] = useState<number | null>(null);
-  const addMedication = () => {
-    setFormData(prev => {
-      const newMed = { name: '', dosage: '', frequency: '', duration: '', quantity: 1, instructions: '' };
-      setNewMedHighlight(Date.now());
-      return {
-        ...prev,
-        treatmentPlan: {
-          ...prev.treatmentPlan,
-          medications: [
-            { ...newMed, _highlightId: Date.now() },
-            ...(prev.treatmentPlan?.medications || []),
-          ],
-        },
-      };
+  // --- Rows ---------------------------------------------------------------------
+
+  const setDx = (key: string, patch: Partial<Dx>) =>
+    setNote((n) => ({ ...n, diagnoses: n.diagnoses.map((d) => (d._key === key ? { ...d, ...patch } : patch.primary ? { ...d, primary: false } : d)) }));
+  const removeDx = (key: string) =>
+    setNote((n) => {
+      const rest = n.diagnoses.filter((d) => d._key !== key);
+      if (rest.length && !rest.some((d) => d.primary)) rest[0] = { ...rest[0], primary: true };
+      return { ...n, diagnoses: rest };
     });
-    setTimeout(() => setNewMedHighlight(null), 3000);
-  };
+  const setMed = (key: string, patch: Partial<Med>) => setNote((n) => ({ ...n, medications: n.medications.map((m) => (m._key === key ? { ...m, ...patch } : m)) }));
 
-  const removeMedication = (index: number) => {
-    const medications = formData.treatmentPlan?.medications || [];
-    setFormData({
-      ...formData,
-      treatmentPlan: {
-        ...formData.treatmentPlan,
-        medications: medications.filter((_, i) => i !== index),
-      },
-    });
-  };
+  const sentence = vitalsSentence(note.vitals);
+  const medsToPrescribe = note.medications.filter((m) => m.name.trim()).length;
+  const primaryLabel = editingExisting && initialData?.status !== 'draft' ? 'Save changes' : 'Save visit';
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-  const handleSignatureSave = (signatureData: string) => {
-    setFormData({
-      ...formData,
-      digitalSignature: {
-        providerName,
-        signatureData,
-      },
-    });
-    setShowSignaturePad(false);
-  };
-
-  // Vitals provided later by the parent (e.g. queue vitals that load after the form) replace the
-  // current vitals; adjusting state during render avoids an extra effect pass.
-  const initialVitalsKey = JSON.stringify(initialData?.vitals ?? null);
-  const [syncedVitalsKey, setSyncedVitalsKey] = useState(initialVitalsKey);
-  if (syncedVitalsKey !== initialVitalsKey) {
-    setSyncedVitalsKey(initialVitalsKey);
-    setVitals(initialData?.vitals || {});
-  }
   return (
-    <form key={formKey} onSubmit={handleSubmit}>
-      {/* Local draft restore banner */}
-      {localDraftBanner && (
-        <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 bg-amber-50 border border-amber-300 rounded-lg text-sm">
-          <span className="text-amber-800 font-medium">
-            📝 You have an unsaved local draft from {new Date(localDraftTimestamp ?? '').toLocaleString()}. Restore it?
-          </span>
-          <div className="flex gap-2 shrink-0">
-            <button type="button" onClick={restoreLocalDraft} className="px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-xs font-semibold">Restore</button>
-            <button type="button" onClick={dismissLocalDraft} className="px-3 py-1.5 bg-white text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors text-xs font-semibold">Dismiss</button>
+    <form onSubmit={handleSubmit} noValidate data-visit-form className="flex flex-col gap-6">
+      {localDraft && (
+        <div role="status" className="motion-chip-in flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-amber-800">
+            <span className="font-semibold">A note you didn’t save is kept on this device</span>
+            {localDraft.timestamp && <> from <span className="font-mono">{new Date(localDraft.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span></>}.
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setNote({ ...localDraft.note, patient: lockPatientSelection ? note.patient : localDraft.note.patient });
+                setLocalDraft(null);
+              }}
+              className={`rounded-md bg-brand-teal-dark px-3 py-1.5 font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}
+            >
+              Bring it back
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  localStorage.removeItem(LOCAL_DRAFT_KEY);
+                } catch {
+                  // storage unavailable
+                }
+                setLocalDraft(null);
+              }}
+              className={`rounded-md border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900 hover:border-amber-500 ${FOCUS_RING}`}
+            >
+              Discard it
+            </button>
           </div>
         </div>
       )}
-      <div className="flex flex-col gap-6">
-        {/* Basic Information */}
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </div>
-              <h2 className="text-lg font-bold text-gray-900">Basic Information</h2>
-            </div>
-            {selectedPatient && (
-              <button
-                type="button"
-                onClick={() => setShowHistoryPreview(true)}
-                className="px-3 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors text-xs font-semibold inline-flex items-center gap-2 whitespace-nowrap"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Quick History Preview
-              </button>
-            )}
-          </div>
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1 min-w-[200px]">
-                <label htmlFor={lockPatientSelection ? undefined : 'visit-patient-search'} className="block text-sm font-semibold text-gray-700 mb-2">
-                  Patient <span className="text-red-500">*</span>
-                </label>
-                {lockPatientSelection ? (
-                  <p className="text-xs text-gray-600 mb-2">Patient linked from the current queue record</p>
-                ) : (
-                  <p className="text-xs text-gray-600 mb-2">Search by name, email, phone, or patient code</p>
-                )}
-                {lockPatientSelection ? (
-                  <div className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50">
-                    <p className="text-sm font-semibold text-gray-900">
-                      {selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : 'Loading patient...'}
+
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
+        <div className="flex min-w-0 flex-col gap-6">
+          {/* Patient and visit */}
+          <Section id={`${ids}-visit`} title="Patient and visit">
+            <div className="grid gap-4 px-5 py-4 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+              <div>
+                {lockPatientSelection || editingExisting ? (
+                  <>
+                    <p className="mb-1.5 text-sm font-medium text-gray-700">Patient</p>
+                    <p className="flex h-[38px] items-center gap-2 text-sm">
+                      <span className="font-semibold text-gray-900">
+                        {patient ? `${patient.firstName} ${patient.lastName}` : summary.data ? `${summary.data.patient.firstName} ${summary.data.patient.lastName}` : 'Loading…'}
+                      </span>
+                      {(patient?.patientCode || summary.data?.patient.patientCode) && (
+                        <span className="font-mono text-xs text-gray-500">{patient?.patientCode || summary.data?.patient.patientCode}</span>
+                      )}
                     </p>
-                    <p className="text-xs text-gray-600 mt-1">
-                      {selectedPatient?.patientCode ? `Patient Code: ${selectedPatient.patientCode}` : `Patient ID: ${formData.patient}`}
-                    </p>
-                  </div>
+                  </>
                 ) : (
-                  <div className="relative patient-search-container">
-                    <input
-                      type="text"
-                      required
-                      id="visit-patient-search"
-                      value={patientSearch}
-                      onChange={(e) => {
-                        setPatientSearch(e.target.value);
-                        setShowPatientSearch(true);
-                        setHighlightedIndex(-1);
-                        if (!e.target.value) {
-                          setFormData({ ...formData, patient: '' });
-                          setSelectedPatient(null);
-                        }
+                  <div data-invalid={attempted && Boolean(patientProblem)}>
+                    <PatientSearch
+                      value={patient}
+                      onChange={(p) => {
+                        setPicked(p);
+                        set('patient', p?._id ?? '');
                       }}
-                      onFocus={() => {
-                        setShowPatientSearch(true);
-                        setHighlightedIndex(-1);
-                      }}
-                      onKeyDown={(e) => {
-                        if (!showPatientSearch || filteredPatients.length === 0) return;
-
-                        if (e.key === 'ArrowDown') {
-                          e.preventDefault();
-                          setHighlightedIndex(prev =>
-                            prev < filteredPatients.length - 1 ? prev + 1 : prev
-                          );
-                        } else if (e.key === 'ArrowUp') {
-                          e.preventDefault();
-                          setHighlightedIndex(prev => prev > 0 ? prev - 1 : -1);
-                        } else if (e.key === 'Enter' && highlightedIndex >= 0) {
-                          e.preventDefault();
-                          selectPatient(filteredPatients[highlightedIndex]);
-                        } else if (e.key === 'Escape') {
-                          setShowPatientSearch(false);
-                          setHighlightedIndex(-1);
-                        }
-                      }}
-                      placeholder="Type to search patients..."
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+                      autoFocus={!note.patient}
                     />
-                    {showPatientSearch && patientSearch.trim() && (
-                      <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                        {filteredPatients.length > 0 ? (
-                          <div className="flex flex-col gap-1 p-1">
-                            {filteredPatients.map((patient, index) => (
-                              <button
-                                key={patient._id}
-                                type="button"
-                                onClick={() => {
-                                  selectPatient(patient);
-                                  setShowPatientSearch(false);
-                                }}
-                                onMouseEnter={() => setHighlightedIndex(index)}
-                                className={`w-full text-left px-4 py-2.5 rounded-lg transition-colors ${highlightedIndex === index
-                                  ? 'bg-blue-50 hover:bg-blue-100 border border-blue-200'
-                                  : 'hover:bg-gray-50 border border-transparent'
-                                  }`}
-                              >
-                                <div className="flex flex-col">
-                                  <span className="font-semibold text-sm text-gray-900">{patient.firstName} {patient.lastName}</span>
-                                  {(patient.email || patient.phone) && (
-                                    <span className="text-xs text-gray-600 mt-0.5">
-                                      {patient.email && patient.phone
-                                        ? `${patient.email} • ${patient.phone}`
-                                        : patient.email || patient.phone}
-                                      {patient.patientCode && ` • ${patient.patientCode}`}
-                                    </span>
-                                  )}
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="p-4 text-center">
-                            <p className="text-sm text-gray-600">No patients found</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {attempted && patientProblem && <FieldError id={`${ids}-patient-err`}>{patientProblem}</FieldError>}
                   </div>
                 )}
-                {formData.patient && !selectedPatient && !lockPatientSelection && (
-                  <p className="text-xs text-red-600 mt-1.5 font-medium">Please select a valid patient from the list</p>
-                )}
-              </div>
-              <div className="flex-1" style={{ minWidth: '200px' }}>
-                <label htmlFor="visit-type" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Visit Type <span className="text-red-500">*</span>
-                </label>
-                <p className="text-xs text-gray-600 mb-2">Select the type of visit being documented</p>
-                <select
-                  id="visit-type"
-                  value={formData.visitType}
-                  onChange={(e) => setFormData({ ...formData, visitType: e.target.value as any })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                >
-                  <option value="consultation">Consultation</option>
-                  <option value="follow-up">Follow-up</option>
-                  <option value="checkup">Checkup</option>
-                  <option value="emergency">Emergency</option>
-                  <option value="teleconsult">Teleconsult</option>
-                  <option value="vaccination">Vaccination</option>
-                </select>
-              </div>
-            </div>
-            <div className="w-full">
-              <label htmlFor="visit-chief-complaint" className="block text-sm font-semibold text-gray-700 mb-2">Chief Complaint</label>
-              <p className="text-xs text-gray-600 mb-2">Primary reason for the visit in the patient&apos;s own words</p>
-              <input
-                type="text"
-                id="visit-chief-complaint"
-                value={formData.chiefComplaint}
-                onChange={(e) => setFormData({ ...formData, chiefComplaint: e.target.value })}
-                ref={el => { chiefComplaintInputRef.current = el; }}
-                onFocus={e => {
-                  // Slide to top on focus with margin
-                  const yOffset = -125;
-                  const y = e.target.getBoundingClientRect().top + window.pageYOffset + yOffset;
-                  window.scrollTo({ top: y, behavior: 'smooth' });
-                }}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs for different note formats */}
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="border-b border-gray-200 bg-gray-50/50">
-            <div className="flex">
-              <button
-                type="button"
-                onClick={() => setActiveTab('soap')}
-                className={`px-6 py-3 border-b-2 transition-all relative text-sm font-semibold ${activeTab === 'soap'
-                  ? 'text-teal-600 bg-white'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                  }`}
-              >
-                {activeTab === 'soap' && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-teal-500 to-teal-600"></span>
-                )}
-                SOAP Notes
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('traditional')}
-                className={`px-6 py-3 border-b-2 transition-all relative text-sm font-semibold ${activeTab === 'traditional'
-                  ? 'text-teal-600 bg-white'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                  }`}
-              >
-                {activeTab === 'traditional' && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-teal-500 to-teal-600"></span>
-                )}
-                Traditional Format
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('treatment')}
-                className={`px-6 py-3 border-b-2 transition-all relative text-sm font-semibold ${activeTab === 'treatment'
-                  ? 'text-teal-600 bg-white'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                  }`}
-              >
-                {activeTab === 'treatment' && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-teal-500 to-teal-600"></span>
-                )}
-                Treatment Plan
-              </button>
-            </div>
-          </div>
-          <div className="p-5">
-            <>
-              {/* SOAP Notes Tab */}
-              {activeTab === 'soap' && (
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <label htmlFor="visit-soap-subjective" className="block text-sm font-semibold text-gray-700 mb-2">
-                      S - Subjective
-                    </label>
-                    <p className="text-xs text-gray-600 mb-2">Patient&apos;s description of symptoms, history, and concerns</p>
-                    <textarea
-                      id="visit-soap-subjective"
-                      value={formData.soapNotes?.subjective || ''}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          soapNotes: { ...formData.soapNotes, subjective: e.target.value },
-                        })
-                      }
-                      rows={4}
-                      placeholder="Patient reports..."
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="visit-soap-objective" className="block text-sm font-semibold text-gray-700 mb-2">
-                      O - Objective
-                    </label>
-                    <p className="text-xs text-gray-600 mb-2">Measurable observations, vital signs, and physical examination findings</p>
-                    <textarea
-                      id="visit-soap-objective"
-                      value={(() => {
-                        const vitalsText = formatVitalsForSoap(initialData?.vitals);
-                        const userText = formData.soapNotes?.objective || '';
-                        // If vitals present and not already in userText, prepend
-                        if (vitalsText && userText && !userText.startsWith(vitalsText)) {
-                          return vitalsText + '\n' + userText;
-                        } else if (vitalsText && !userText) {
-                          return vitalsText;
-                        } else {
-                          return userText;
-                        }
-                      })()}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          soapNotes: { ...formData.soapNotes, objective: e.target.value },
-                        })
-                      }
-                      rows={4}
-                      placeholder="Vitals: BP 120/80, HR 72, Temp 37°C. Physical exam findings..."
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="visit-soap-assessment" className="block text-sm font-semibold text-gray-700 mb-2">
-                      A - Assessment
-                    </label>
-                    <p className="text-xs text-gray-600 mb-2">Clinical impression, diagnosis, or differential diagnosis</p>
-                    <textarea
-                      id="visit-soap-assessment"
-                      value={formData.soapNotes?.assessment || ''}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          soapNotes: { ...formData.soapNotes, assessment: e.target.value },
-                        })
-                      }
-                      rows={3}
-                      placeholder="Clinical impression..."
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="visit-soap-plan" className="block text-sm font-semibold text-gray-700 mb-2">
-                      P - Plan
-                    </label>
-                    <p className="text-xs text-gray-600 mb-2">Treatment plan, medications, procedures, and follow-up instructions</p>
-                    <textarea
-                      id="visit-soap-plan"
-                      value={formData.soapNotes?.plan || ''}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          soapNotes: { ...formData.soapNotes, plan: e.target.value },
-                        })
-                      }
-                      rows={4}
-                      placeholder="Plan: Medications, procedures, follow-up..."
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Traditional Format Tab */}
-              {activeTab === 'traditional' && (
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <label htmlFor="visit-hpi" className="block text-sm font-semibold text-gray-700 mb-2">History of Present Illness</label>
-                    <p className="text-xs text-gray-600 mb-2">Detailed chronological description of the current illness or problem</p>
-                    <textarea
-                      id="visit-hpi"
-                      value={formData.historyOfPresentIllness}
-                      onChange={(e) => setFormData({ ...formData, historyOfPresentIllness: e.target.value })}
-                      rows={4}
-                      placeholder="Describe the onset, progression, and characteristics of the current problem..."
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                    />
-                  </div>
-                  <div>
-                    <p className="block text-sm font-semibold text-gray-700 mb-2">Vitals</p>
-                    <p className="text-xs text-gray-600 mb-2">Record patient&apos;s vital signs during the visit</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      <div>
-                        <label htmlFor="visit-vitals-bp" className="block text-xs font-semibold text-gray-600 mb-2">BP (Blood Pressure)</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Format: 120/80</p>
-                        <input
-                          type="text"
-                          id="visit-vitals-bp"
-                          value={(vitals?.bp ?? '')}
-                          onChange={(e) => setVitals({ ...vitals, bp: e.target.value })}
-                          placeholder="120/80"
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-vitals-hr" className="block text-xs font-semibold text-gray-600 mb-2">HR (Heart Rate)</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Beats per minute</p>
-                        <input
-                          type="number"
-                          id="visit-vitals-hr"
-                          value={(vitals?.hr ?? '')}
-                          onChange={(e) => setVitals({ ...vitals, hr: parseInt(e.target.value) || undefined })}
-                          placeholder="72"
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-vitals-temp" className="block text-xs font-semibold text-gray-600 mb-2">Temp (°C)</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Temperature in Celsius</p>
-                        <input
-                          type="number"
-                          step="0.1"
-                          id="visit-vitals-temp"
-                          value={(vitals?.tempC ?? '')}
-                          onChange={(e) => setVitals({ ...vitals, tempC: parseFloat(e.target.value) || undefined })}
-                          placeholder="37.0"
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-vitals-spo2" className="block text-xs font-semibold text-gray-600 mb-2">SpO2 (%)</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Oxygen saturation</p>
-                        <input
-                          type="number"
-                          id="visit-vitals-spo2"
-                          value={(vitals?.spo2 ?? '')}
-                          onChange={(e) => setVitals({ ...vitals, spo2: parseInt(e.target.value) || undefined })}
-                          placeholder="98"
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-vitals-rr" className="block text-xs font-semibold text-gray-600 mb-2">RR (Respiratory Rate)</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Breaths per minute</p>
-                        <input
-                          type="number"
-                          id="visit-vitals-rr"
-                          value={(vitals?.rr ?? '')}
-                          onChange={(e) => setVitals({ ...vitals, rr: parseInt(e.target.value) || undefined })}
-                          placeholder="16"
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-vitals-height" className="block text-xs font-semibold text-gray-600 mb-2">Height (cm)</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Height in centimeters</p>
-                        <input
-                          type="number"
-                          step="0.1"
-                          id="visit-vitals-height"
-                          value={(vitals?.heightCm ?? '')}
-                          onChange={(e) => setVitals({ ...vitals, heightCm: parseFloat(e.target.value) || undefined })}
-                          placeholder="170"
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-vitals-weight" className="block text-xs font-semibold text-gray-600 mb-2">Weight (kg)</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Weight in kilograms</p>
-                        <input
-                          type="number"
-                          step="0.1"
-                          id="visit-vitals-weight"
-                          value={(vitals?.weightKg ?? '')}
-                          onChange={(e) => setVitals({ ...vitals, weightKg: parseFloat(e.target.value) || undefined })}
-                          placeholder="70"
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-vitals-bmi" className="block text-xs font-semibold text-gray-600 mb-2">BMI</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Body Mass Index</p>
-                        <input
-                          type="number"
-                          step="0.1"
-                          id="visit-vitals-bmi"
-                          value={(vitals?.bmi ?? '')}
-                          onChange={(e) => setVitals({ ...vitals, bmi: parseFloat(e.target.value) || undefined })}
-                          placeholder="24.2"
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="block text-sm font-semibold text-gray-700 mb-2">Physical Examination</p>
-                    <p className="text-xs text-gray-600 mb-2">Document findings for each body system examined</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label htmlFor="visit-pe-general" className="block text-xs font-semibold text-gray-600 mb-2">General</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Overall appearance, alertness, distress level</p>
-                        <textarea
-                          id="visit-pe-general"
-                          value={formData.physicalExam?.general || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, general: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="General appearance..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-heent" className="block text-xs font-semibold text-gray-600 mb-2">Head/HEENT</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Head, eyes, ears, nose, throat findings</p>
-                        <textarea
-                          id="visit-pe-heent"
-                          value={formData.physicalExam?.headEent || formData.physicalExam?.heent || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, headEent: e.target.value, heent: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Head/HEENT findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-chest" className="block text-xs font-semibold text-gray-600 mb-2">Chest</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Chest wall and thoracic findings</p>
-                        <textarea
-                          id="visit-pe-chest"
-                          value={formData.physicalExam?.chest || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, chest: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Chest findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-lungs" className="block text-xs font-semibold text-gray-600 mb-2">Lungs</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Breath sounds, air entry, wheeze/crackles</p>
-                        <textarea
-                          id="visit-pe-lungs"
-                          value={formData.physicalExam?.lungs || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, lungs: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Lung findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-cardiovascular" className="block text-xs font-semibold text-gray-600 mb-2">Cardiovascular</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Heart sounds, pulses, peripheral circulation</p>
-                        <textarea
-                          id="visit-pe-cardiovascular"
-                          value={formData.physicalExam?.cardiovascular || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, cardiovascular: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Cardiovascular findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-abdomen" className="block text-xs font-semibold text-gray-600 mb-2">Abdomen</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Inspection, auscultation, palpation, percussion</p>
-                        <textarea
-                          id="visit-pe-abdomen"
-                          value={formData.physicalExam?.abdomen || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, abdomen: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Abdominal findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-extremities" className="block text-xs font-semibold text-gray-600 mb-2">Extremities</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Edema, deformities, pulses, range of motion</p>
-                        <textarea
-                          id="visit-pe-extremities"
-                          value={formData.physicalExam?.extremities || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, extremities: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Extremity findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-skin" className="block text-xs font-semibold text-gray-600 mb-2">Skin</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Rashes, lesions, hydration, turgor</p>
-                        <textarea
-                          id="visit-pe-skin"
-                          value={formData.physicalExam?.skin || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, skin: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Skin findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-lymph" className="block text-xs font-semibold text-gray-600 mb-2">Lymph Notes</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Lymph node findings and remarks</p>
-                        <textarea
-                          id="visit-pe-lymph"
-                          value={formData.physicalExam?.lymphNotes || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, lymphNotes: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Lymph findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-breast" className="block text-xs font-semibold text-gray-600 mb-2">Breast</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Inspection/palpation findings</p>
-                        <textarea
-                          id="visit-pe-breast"
-                          value={formData.physicalExam?.breast || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, breast: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Breast findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-rectum" className="block text-xs font-semibold text-gray-600 mb-2">Rectum</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Rectal examination findings</p>
-                        <textarea
-                          id="visit-pe-rectum"
-                          value={formData.physicalExam?.rectum || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, rectum: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Rectal findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-genitalia" className="block text-xs font-semibold text-gray-600 mb-2">Gentalia/Genitalia</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Genital examination findings</p>
-                        <textarea
-                          id="visit-pe-genitalia"
-                          value={formData.physicalExam?.genitalia || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, genitalia: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Genital findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-musculoskeletal" className="block text-xs font-semibold text-gray-600 mb-2">Musculoskeletal</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Joints, gait, deformities, strength</p>
-                        <textarea
-                          id="visit-pe-musculoskeletal"
-                          value={formData.physicalExam?.musculoskeletal || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, musculoskeletal: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Musculoskeletal findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="visit-pe-neurological" className="block text-xs font-semibold text-gray-600 mb-2">Neurological</label>
-                        <p className="text-xs text-gray-500 mb-1.5">Mental status, cranial nerves, reflexes</p>
-                        <textarea
-                          id="visit-pe-neurological"
-                          value={formData.physicalExam?.neurological || formData.physicalExam?.neuro || ''}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              physicalExam: { ...formData.physicalExam, neurological: e.target.value, neuro: e.target.value },
-                            })
-                          }
-                          rows={2}
-                          placeholder="Neurological findings..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                        />
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <label htmlFor="visit-admitting-impression" className="block text-sm font-semibold text-gray-700 mb-2">Admitting Impression</label>
-                      <p className="text-xs text-gray-600 mb-2">Primary clinical impression on admission/encounter</p>
-                      <textarea
-                        id="visit-admitting-impression"
-                        value={formData.admittingImpression || ''}
-                        onChange={(e) => setFormData({ ...formData, admittingImpression: e.target.value })}
-                        rows={3}
-                        placeholder="Enter admitting impression..."
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Treatment Plan Tab */}
-              {activeTab === 'treatment' && (
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <div className="flex justify-between items-center mb-3">
-                      <div>
-                        <p className="block text-sm font-semibold text-gray-700">Medications</p>
-                        <p className="text-xs text-gray-600 mt-1">Prescribed medications with dosage, frequency, and duration</p>
-                      </div>
-                      <button
-                        type="button"
-                        className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors text-sm font-semibold flex items-center gap-2 shadow-md"
-                        onClick={addMedication}
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Add Medication
-                      </button>
-                    </div>
-                    {formData.treatmentPlan?.medications && formData.treatmentPlan.medications.length > 0 ? (
-                      <div className="flex flex-col gap-3">
-                        {formData.treatmentPlan.medications.map((med, index) => (
-                          <div
-                            key={med._highlightId || index}
-                            className={`bg-gradient-to-r from-white to-emerald-50/50 border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all ${med._highlightId && newMedHighlight === med._highlightId ? 'ring-2 ring-emerald-400 ring-offset-2' : ''}`}
-                          >
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                              <div className="md:col-span-3">
-                                <label className="block text-xs font-semibold text-gray-700 mb-2">Medication Name</label>
-                                <div className="relative">
-                                  <input
-                                    type="text"
-                                    placeholder="e.g., Amoxicillin"
-                                    aria-label={`Medication ${index + 1} name`}
-                                    value={med.name}
-                                    autoComplete="off"
-                                    onFocus={() => {
-                                      setActiveMedSuggestionIndex(index);
-                                      fetchMedicationNames(med.name || '');
-                                    }}
-                                    onBlur={() => {
-                                      setTimeout(() => setActiveMedSuggestionIndex(null), 150);
-                                    }}
-                                    onChange={(e) => {
-                                      const medications = [...(formData.treatmentPlan?.medications || [])];
-                                      medications[index] = { ...med, name: e.target.value };
-                                      setFormData({
-                                        ...formData,
-                                        treatmentPlan: { ...formData.treatmentPlan, medications },
-                                      });
-                                      handleMedicationNameInput(e);
-                                      setActiveMedSuggestionIndex(index);
-                                    }}
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                                  />
-                                  {activeMedSuggestionIndex === index && medicationNameOptions.length > 0 && (() => {
-                                    const filtered = med.name
-                                      ? medicationNameOptions.filter((s) =>
-                                          s.name.toLowerCase().includes(med.name.toLowerCase())
-                                        )
-                                      : medicationNameOptions;
-                                    return filtered.length > 0 ? (
-                                      <div className="absolute z-20 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-52 overflow-y-auto">
-                                        <div className="flex flex-col gap-0.5 p-1">
-                                          {filtered.slice(0, 20).map((suggestion, i) => (
-                                            <button
-                                              key={i}
-                                              type="button"
-                                              onMouseDown={(e) => e.preventDefault()}
-                                              onClick={() => {
-                                                const medications = [...(formData.treatmentPlan?.medications || [])];
-                                                medications[index] = {
-                                                  ...med,
-                                                  name: suggestion.name,
-                                                  ...(suggestion.dosage ? { dosage: suggestion.dosage } : {}),
-                                                  ...(suggestion.frequency ? { frequency: suggestion.frequency } : {}),
-                                                  ...(suggestion.duration ? { duration: suggestion.duration } : {}),
-                                                };
-                                                setFormData({
-                                                  ...formData,
-                                                  treatmentPlan: { ...formData.treatmentPlan, medications },
-                                                });
-                                                setActiveMedSuggestionIndex(null);
-                                              }}
-                                              className="w-full text-left px-3 py-2 rounded-md hover:bg-emerald-50 transition-colors border border-transparent hover:border-emerald-200"
-                                            >
-                                              <div className="flex items-center justify-between gap-2">
-                                                <span className="text-sm font-medium text-gray-800">{suggestion.name}</span>
-                                                {(suggestion.dosage || suggestion.frequency) && (
-                                                  <span className="text-xs text-gray-400 shrink-0">{[suggestion.dosage, suggestion.frequency].filter(Boolean).join(' · ')}</span>
-                                                )}
-                                              </div>
-                                              {suggestion.source === 'catalog' && (
-                                                <span className="text-[10px] text-emerald-600 font-medium">catalog</span>
-                                              )}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    ) : null;
-                                  })()}
-                                </div>
-                              </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-700 mb-2">Dosage</label>
-                                <input
-                                  type="text"
-                                  placeholder="e.g., 500mg"
-                                  aria-label={`Medication ${index + 1} dosage`}
-                                  value={med.dosage}
-                                  list="dosage-options"
-                                  onChange={(e) => {
-                                    const medications = [...(formData.treatmentPlan?.medications || [])];
-                                    medications[index] = { ...med, dosage: e.target.value };
-                                    setFormData({
-                                      ...formData,
-                                      treatmentPlan: { ...formData.treatmentPlan, medications },
-                                    });
-                                  }}
-                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                                />
-                                {index === 0 && (
-                                  <datalist id="dosage-options">
-                                    {['5mg','10mg','25mg','50mg','100mg','125mg','200mg','250mg','400mg','500mg','625mg','875mg','1g','2g','5ml','10ml','15ml','20ml'].map((d) => (
-                                      <option value={d} key={d} />
-                                    ))}
-                                  </datalist>
-                                )}
-                              </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-700 mb-2">Frequency</label>
-                                <input
-                                  type="text"
-                                  placeholder="e.g., 3x daily"
-                                  aria-label={`Medication ${index + 1} frequency`}
-                                  value={med.frequency}
-                                  list="frequency-options"
-                                  onChange={(e) => {
-                                    const medications = [...(formData.treatmentPlan?.medications || [])];
-                                    medications[index] = { ...med, frequency: e.target.value };
-                                    setFormData({
-                                      ...formData,
-                                      treatmentPlan: { ...formData.treatmentPlan, medications },
-                                    });
-                                  }}
-                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                                />
-                                {index === 0 && (
-                                  <datalist id="frequency-options">
-                                    {['Once daily (OD)','Twice daily (BID)','Three times daily (TID)','Four times daily (QID)','Every 6 hours','Every 8 hours','Every 12 hours','Every 24 hours','At bedtime (HS)','As needed (PRN)','Once weekly','Twice weekly'].map((f) => (
-                                      <option value={f} key={f} />
-                                    ))}
-                                  </datalist>
-                                )}
-                              </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-700 mb-2">Duration</label>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="text"
-                                    placeholder="e.g., 7 days"
-                                    aria-label={`Medication ${index + 1} duration`}
-                                    value={med.duration}
-                                    list="duration-options"
-                                    onChange={(e) => {
-                                      const medications = [...(formData.treatmentPlan?.medications || [])];
-                                      medications[index] = { ...med, duration: e.target.value };
-                                      setFormData({
-                                        ...formData,
-                                        treatmentPlan: { ...formData.treatmentPlan, medications },
-                                      });
-                                    }}
-                                    className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                                  />
-                                </div>
-                                {index === 0 && (
-                                  <datalist id="duration-options">
-                                    {['1 day','3 days','5 days','7 days','10 days','14 days','3 weeks','1 month','2 months','3 months','6 months','Ongoing','Until finished'].map((d) => (
-                                      <option value={d} key={d} />
-                                    ))}
-                                  </datalist>
-                                )}
-                              </div>
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-700 mb-2">Quantity</label>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number"
-                                    aria-label={`Medication ${index + 1} quantity`}
-                                    value={med.quantity ? med.quantity.toString() : '1'}
-                                    onChange={(e) => {
-                                      const medications = [...(formData.treatmentPlan?.medications || [])];
-                                      medications[index] = { ...med, quantity: e.target.value ? parseInt(e.target.value) : undefined };
-                                      setFormData({
-                                        ...formData,
-                                        treatmentPlan: { ...formData.treatmentPlan, medications },
-                                      });
-                                    }}
-                                    className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                                  />
-                                  <button
-                                    type="button"
-                                    className="px-3 py-2.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-semibold border border-red-200 whitespace-nowrap"
-                                    onClick={() => removeMedication(index)}
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                              </div>
-                              {med.instructions && (
-                                <div className="md:col-span-4">
-                                  <label className="block text-xs font-semibold text-gray-700 mb-2">Instructions</label>
-                                  <input
-                                    type="text"
-                                    placeholder="Additional instructions..."
-                                    aria-label={`Medication ${index + 1} instructions`}
-                                    value={med.instructions}
-                                    onChange={(e) => {
-                                      const medications = [...(formData.treatmentPlan?.medications || [])];
-                                      medications[index] = { ...med, instructions: e.target.value };
-                                      setFormData({
-                                        ...formData,
-                                        treatmentPlan: { ...formData.treatmentPlan, medications },
-                                      });
-                                    }}
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 bg-white/50 rounded-lg border-2 border-dashed border-emerald-200">
-                        <p className="text-sm text-gray-600 font-medium">No medications added</p>
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label htmlFor="visit-follow-up-date" className="block text-sm font-semibold text-gray-700 mb-2">Follow-up Date</label>
-                    <p className="text-xs text-gray-600 mb-2">Schedule the next appointment or follow-up date</p>
-                    <input
-                      type="date"
-                      id="visit-follow-up-date"
-                      value={formData.followUpDate}
-                      onChange={(e) => setFormData({ ...formData, followUpDate: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="visit-follow-up-instructions" className="block text-sm font-semibold text-gray-700 mb-2">Follow-up Instructions</label>
-                    <p className="text-xs text-gray-600 mb-2">Instructions for the patient regarding follow-up care</p>
-                    <textarea
-                      id="visit-follow-up-instructions"
-                      value={formData.treatmentPlan?.followUp?.instructions || ''}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          treatmentPlan: {
-                            ...formData.treatmentPlan,
-                            followUp: {
-                              ...formData.treatmentPlan?.followUp,
-                              instructions: e.target.value,
-                              date: formData.followUpDate,
-                            },
-                          },
-                        })
-                      }
-                      rows={3}
-                      placeholder="Follow-up instructions..."
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          </div>
-        </div>
-
-        {/* Diagnoses Section */}
-        <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-200 rounded-xl p-5">
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
               </div>
               <div>
-                <div className='flex flex-col gap-1 md:flex-row md:items-center md:gap-2'>
-                  <h2 className="text-lg font-bold text-gray-900">Diagnoses (ICD-10)</h2>
-                  <a
-                    href="https://icd.who.int/browse10/2019/en"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded text-xs font-medium transition-colors border border-blue-200"
-                    title="Open WHO ICD-10 Browser"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Browse ICD-10
-                  </a>
-                </div>
-                <p className="text-xs text-gray-600 mt-1">Add ICD-10 coded diagnoses for this visit. Mark the primary diagnosis.</p>
+                <Label htmlFor={`${ids}-type`}>Visit type</Label>
+                <select id={`${ids}-type`} value={note.visitType} onChange={(e) => set('visitType', e.target.value as VisitType)} className={FIELD}>
+                  {VISIT_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor={`${ids}-cc`}>Chief complaint</Label>
+                <input
+                  id={`${ids}-cc`}
+                  type="text"
+                  value={note.chiefComplaint}
+                  onChange={(e) => set('chiefComplaint', e.target.value)}
+                  placeholder="In the patient’s words, e.g. “cough and fever for 3 days”"
+                  className={FIELD}
+                />
               </div>
             </div>
-            <button
-              type="button"
-              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-semibold flex items-center gap-2 shadow-md"
-              onClick={addDiagnosis}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Diagnosis
-            </button>
-          </div>
-          {formData.diagnoses.length === 0 ? (
-            <div className="text-center py-8 bg-white/50 rounded-lg border-2 border-dashed border-red-200">
-              <p className="text-sm text-gray-600 font-medium">No diagnoses added. Click &quot;Add Diagnosis&quot; to add one.</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {formData.diagnoses.map((diagnosis, index) => (
-                <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
-                  <div className="flex flex-col md:flex-row gap-4 flex-wrap">
-                    <div className="flex-1 relative" style={{ minWidth: '200px' }}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <label className="block text-xs font-semibold text-gray-700">ICD-10 Code</label>
+          </Section>
 
-                      </div>
-                      <p className="text-xs text-gray-500 mb-1.5">Start typing to search ICD-10 codes</p>
-                      <input
-                        type="text"
-                        aria-label={`Diagnosis ${index + 1} ICD-10 code`}
-                        value={diagnosis.code || ''}
-                        onChange={(e) => {
-                          updateDiagnosis(index, 'code', e.target.value);
-                          if (e.target.value.length >= 2) {
-                            setIcd10Search(e.target.value);
-                            setShowIcd10Search(true);
-                          }
-                        }}
-                        placeholder="E.g., E11.9"
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                      />
-                      {showIcd10Search && icd10Results.length > 0 && (
-                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                          {icd10Results.map((result, idx) => (
-                            <button
-                              key={idx}
-                              type="button"
-                              className="w-full text-left px-4 py-2.5 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-200"
-                              onClick={() => selectIcd10(result.code, result.description)}
-                            >
-                              <div className="flex flex-col items-start gap-1">
-                                <span className="text-sm font-semibold text-gray-900">{result.code}</span>
-                                <span className="text-xs text-gray-600">{result.description}</span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-[200px]">
-                      <label className="block text-xs font-semibold text-gray-700 mb-2">Description</label>
-                      <p className="text-xs text-gray-500 mb-1.5">Full diagnosis description</p>
-                      <input
-                        type="text"
-                        aria-label={`Diagnosis ${index + 1} description`}
-                        value={diagnosis.description || ''}
-                        onChange={(e) => updateDiagnosis(index, 'description', e.target.value)}
-                        placeholder="Diagnosis description"
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                      />
-                    </div>
-                    <div className="flex items-end gap-3">
-                      <div className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
-                        <input type="checkbox"
-                          aria-label={`Diagnosis ${index + 1} primary`}
-                          checked={diagnosis.primary || false}
-                          onChange={(e) => updateDiagnosis(index, 'primary', e.target.checked)}
-                          className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                        />
-                        <span className="text-xs font-semibold text-blue-700">Primary</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeDiagnosis(index)}
-                        className="px-3 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors text-sm font-semibold border border-red-200"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
+          {/* Vital signs */}
+          <Section
+            id={`${ids}-vitals`}
+            title="Vital signs"
+            hint={vitalsSource ?? 'Leave blank what wasn’t taken.'}
+            aside={
+              sentence && !note.soap.objective.includes(sentence) ? (
+                <button type="button" onClick={() => set('soap', { ...note.soap, objective: note.soap.objective ? `${sentence}\n${note.soap.objective}` : sentence })} className={ADD_BUTTON}>
+                  <Svg d={ICON.arrow} />
+                  Copy into the objective note
+                </button>
+              ) : null
+            }
+          >
+            <VitalsFields value={note.vitals} onChange={(v) => set('vitals', v)} problems={attempted ? vProblems : {}} />
+          </Section>
+
+          {/* SOAP */}
+          <Section id={`${ids}-soap`} title="SOAP notes">
+            <div className="flex flex-col gap-4 px-5 py-4">
+              {(
+                [
+                  { key: 'subjective', label: 'Subjective', hint: 'What the patient reports: symptoms, history, concerns', rows: 4 },
+                  { key: 'objective', label: 'Objective', hint: 'What you measured and found on examination', rows: 4 },
+                  { key: 'assessment', label: 'Assessment', hint: 'Your impression or differential', rows: 3 },
+                  { key: 'plan', label: 'Plan', hint: 'Treatment, tests, advice and follow-up', rows: 3 },
+                ] as const
+              ).map((f) => (
+                <div key={f.key}>
+                  <Label htmlFor={`${ids}-${f.key}`}>{f.label}</Label>
+                  <NoteArea
+                    id={`${ids}-${f.key}`}
+                    rows={f.rows}
+                    value={note.soap[f.key]}
+                    onChange={(v) => set('soap', { ...note.soap, [f.key]: v })}
+                    describedBy={`${ids}-${f.key}-hint`}
+                  />
+                  <p id={`${ids}-${f.key}-hint`} className="mt-1 text-xs text-gray-500">
+                    {f.hint}
+                  </p>
                 </div>
               ))}
             </div>
-          )}
-        </div>
+          </Section>
 
-        {/* Digital Signature */}
-        <div className="bg-gradient-to-br from-green-50 to-green-100/50 border border-green-200 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-green-500 rounded-lg">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-bold text-gray-900">Digital Signature</h3>
-          </div>
-          {formData.digitalSignature ? (
-            <div className="bg-white border border-green-300 rounded-lg p-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-sm font-bold text-green-700">Digital Signature Added</p>
-                  <p className="text-xs text-green-600 font-medium mt-1">Signed by: {formData.digitalSignature.providerName}</p>
-                </div>
-                <button
-                  type="button"
-                  className="px-4 py-2 text-green-700 hover:bg-green-50 rounded-lg transition-colors text-sm font-semibold border border-green-200"
-                  onClick={() => {
-                    setFormData({ ...formData, digitalSignature: undefined });
-                    setShowSignaturePad(true);
-                  }}
-                >
-                  Change
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold shadow-md flex items-center justify-center gap-2"
-              onClick={() => setShowSignaturePad(true)}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Digital Signature
-            </button>
-          )}
-        </div>
-
-        {/* Signature Pad Modal */}
-        {showSignaturePad && (
-          <div
-            className="fixed"
-            style={{
-              inset: 0,
-              zIndex: 50,
-              overflowY: 'auto',
-            }}
-          >
-            <div className="flex items-center justify-center" style={{ minHeight: '100vh', padding: '16px' }}>
-              <div
-                className="fixed"
-                style={{
-                  inset: 0,
-                  backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                  backdropFilter: 'blur(4px)',
-                }}
-                aria-hidden="true"
-                onClick={() => setShowSignaturePad(false)}
+          {/* History and examination */}
+          <Section id={`${ids}-exam`} title="History and examination" hint="Fill in only the systems you examined.">
+            <div className="px-5 py-4">
+              <Label htmlFor={`${ids}-hpi`} optional>
+                History of present illness
+              </Label>
+              <NoteArea
+                id={`${ids}-hpi`}
+                rows={3}
+                value={note.historyOfPresentIllness}
+                onChange={(v) => set('historyOfPresentIllness', v)}
+                placeholder="Onset, course and character of the problem"
               />
-              <div
-                ref={signatureDialogRef}
-                role="dialog"
-                aria-modal="true"
-                aria-label="Digital signature"
-                className="relative"
-                style={{
-                  zIndex: 10,
-                  maxWidth: '672px',
-                  width: '100%',
-                }}
-              >
-                <div>
-                  <div className="p-3">
-                    <SignaturePad
-                      onSave={handleSignatureSave}
-                      onCancel={() => setShowSignaturePad(false)}
-                      providerName={providerName}
+            </div>
+            <dl className="divide-y divide-gray-100 border-t border-gray-100">
+              {EXAM.map((x) => (
+                <div key={x.key} className="grid gap-1.5 px-5 py-2.5 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-start sm:gap-4">
+                  <dt className="pt-2 text-sm">
+                    <label htmlFor={`${ids}-pe-${x.key}`} className="font-medium text-gray-700">
+                      {x.label}
+                    </label>
+                  </dt>
+                  <dd>
+                    <NoteArea
+                      id={`${ids}-pe-${x.key}`}
+                      rows={1}
+                      value={note.exam[x.key]}
+                      onChange={(v) => set('exam', { ...note.exam, [x.key]: v })}
+                      placeholder={x.hint || undefined}
                     />
-                  </div>
+                  </dd>
                 </div>
-              </div>
+              ))}
+            </dl>
+            <div className="border-t border-gray-100 px-5 py-4">
+              <Label htmlFor={`${ids}-impression`} optional>
+                Admitting impression
+              </Label>
+              <NoteArea id={`${ids}-impression`} rows={2} value={note.admittingImpression} onChange={(v) => set('admittingImpression', v)} />
             </div>
-          </div>
-        )}
+          </Section>
 
-        {/* Quick History Drawer */}
-        {showHistoryPreview && (
-          <div className="fixed inset-0 z-50">
-            <div
-              className="absolute inset-0 bg-black/40"
-              aria-hidden="true"
-              onClick={closeHistoryDrawer}
-            />
-            <div ref={historyDialogRef} role="dialog" aria-modal="true" aria-labelledby="visit-history-title" className={`absolute left-0 top-0 h-full w-full ${selectedHistoryItem ? 'max-w-[92rem]' : 'max-w-[430px]'} bg-white shadow-2xl border-r border-gray-200 overflow-hidden transition-all duration-300`}>
-              <div className="h-full flex flex-col lg:flex-row">
-                <div className="w-full lg:w-[390px] border-r border-gray-200 overflow-y-auto bg-white">
-                  <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
-                    <div>
-                      <h3 id="visit-history-title" className="text-base font-bold text-gray-900">Quick History Preview</h3>
-                      <p className="text-xs text-gray-600 mt-1">
-                        {selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : 'No patient selected'}
-                      </p>
-                      <div className="mt-2 inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1">
-                        <span className="text-[11px] font-semibold text-gray-700">{historyTotalCount} recent records</span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={closeHistoryDrawer}
-                      aria-label="Close history preview"
-                      className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
-                    >
-                      <svg className="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-
-                  <div className="p-4 flex flex-col gap-3 pb-6">
-                    {historyLoading && (
-                      <div className="text-sm text-gray-600">Loading history...</div>
-                    )}
-                    {historyError && (
-                      <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{historyError}</div>
-                    )}
-
-                    {!historyLoading && !historyError && (
-                      <>
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Recent Visits</p>
-                            <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full">{quickHistory.visits.length}</span>
-                          </div>
-                          {quickHistory.visits.length === 0 ? (
-                            <p className="text-xs text-gray-600">No recent visits.</p>
-                          ) : (
-                            <div className="flex flex-col gap-2">
-                              {quickHistory.visits.map((item) => {
-                                const isActive = selectedHistoryItem?.type === 'visit' && selectedHistoryItem?.id === item._id;
-                                return (
-                                  <button
-                                    key={item._id}
-                                    type="button"
-                                    onClick={() => handleHistoryItemClick({ type: 'visit', id: item._id, title: item.visitCode || 'Visit' })}
-                                    className={`text-left bg-white border rounded-md px-3 py-2 transition-all ${isActive ? 'border-blue-500 bg-blue-100 ring-2 ring-blue-200' : 'border-blue-200 hover:bg-blue-100 hover:shadow-sm'}`}
-                                  >
-                                    <p className="text-sm font-semibold text-gray-900">{item.visitCode || 'Visit'}</p>
-                                    <p className="text-xs text-gray-600 mt-0.5">{formatDate(item.date)}{item.status ? ` • ${item.status}` : ''}</p>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Recent Appointments</p>
-                            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">{quickHistory.appointments.length}</span>
-                          </div>
-                          {quickHistory.appointments.length === 0 ? (
-                            <p className="text-xs text-gray-600">No recent appointments.</p>
-                          ) : (
-                            <div className="flex flex-col gap-2">
-                              {quickHistory.appointments.map((item) => {
-                                const isActive = selectedHistoryItem?.type === 'appointment' && selectedHistoryItem?.id === item._id;
-                                return (
-                                  <button
-                                    key={item._id}
-                                    type="button"
-                                    onClick={() => handleHistoryItemClick({ type: 'appointment', id: item._id, title: item.appointmentCode || 'Appointment' })}
-                                    className={`text-left bg-white border rounded-md px-3 py-2 transition-all ${isActive ? 'border-emerald-500 bg-emerald-100 ring-2 ring-emerald-200' : 'border-emerald-200 hover:bg-emerald-100 hover:shadow-sm'}`}
-                                  >
-                                    <p className="text-sm font-semibold text-gray-900">{item.appointmentCode || 'Appointment'}</p>
-                                    <p className="text-xs text-gray-600 mt-0.5">{formatDate(item.appointmentDate)}{item.status ? ` • ${item.status}` : ''}</p>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">Recent Prescriptions</p>
-                            <span className="text-[10px] font-semibold text-purple-700 bg-purple-100 border border-purple-200 px-2 py-0.5 rounded-full">{quickHistory.prescriptions.length}</span>
-                          </div>
-                          {quickHistory.prescriptions.length === 0 ? (
-                            <p className="text-xs text-gray-600">No recent prescriptions.</p>
-                          ) : (
-                            <div className="flex flex-col gap-2">
-                              {quickHistory.prescriptions.map((item) => {
-                                const isActive = selectedHistoryItem?.type === 'prescription' && selectedHistoryItem?.id === item._id;
-                                return (
-                                  <button
-                                    key={item._id}
-                                    type="button"
-                                    onClick={() => handleHistoryItemClick({ type: 'prescription', id: item._id, title: item.prescriptionCode || 'Prescription' })}
-                                    className={`text-left bg-white border rounded-md px-3 py-2 transition-all ${isActive ? 'border-purple-500 bg-purple-100 ring-2 ring-purple-200' : 'border-purple-200 hover:bg-purple-100 hover:shadow-sm'}`}
-                                  >
-                                    <p className="text-sm font-semibold text-gray-900">{item.prescriptionCode || 'Prescription'}</p>
-                                    <p className="text-xs text-gray-600 mt-0.5">{formatDate(item.issuedAt)}{item.status ? ` • ${item.status}` : ''}</p>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Recent Invoices</p>
-                            <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">{quickHistory.invoices.length}</span>
-                          </div>
-                          {quickHistory.invoices.length === 0 ? (
-                            <p className="text-xs text-gray-600">No recent invoices.</p>
-                          ) : (
-                            <div className="flex flex-col gap-2">
-                              {quickHistory.invoices.map((item) => {
-                                const isActive = selectedHistoryItem?.type === 'invoice' && selectedHistoryItem?.id === item._id;
-                                return (
-                                  <button
-                                    key={item._id}
-                                    type="button"
-                                    onClick={() => handleHistoryItemClick({ type: 'invoice', id: item._id, title: item.invoiceNumber || 'Invoice' })}
-                                    className={`text-left bg-white border rounded-md px-3 py-2 transition-all ${isActive ? 'border-amber-500 bg-amber-100 ring-2 ring-amber-200' : 'border-amber-200 hover:bg-amber-100 hover:shadow-sm'}`}
-                                  >
-                                    <p className="text-sm font-semibold text-gray-900">{item.invoiceNumber || 'Invoice'}</p>
-                                    <p className="text-xs text-gray-600 mt-0.5">
-                                      {formatDate(item.createdAt)}{item.status ? ` • ${item.status}` : ''}
-                                      {typeof item.outstandingBalance === 'number' && item.outstandingBalance > 0 ? ` • Outstanding ${item.outstandingBalance.toFixed(2)}` : ''}
-                                    </p>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-xs font-semibold text-teal-700 uppercase tracking-wide">Recent Lab Results</p>
-                            <span className="text-[10px] font-semibold text-teal-700 bg-teal-100 border border-teal-200 px-2 py-0.5 rounded-full">{quickHistory.labResults.length}</span>
-                          </div>
-                          {quickHistory.labResults.length === 0 ? (
-                            <p className="text-xs text-gray-600">No recent lab results.</p>
-                          ) : (
-                            <div className="flex flex-col gap-2">
-                              {quickHistory.labResults.map((item) => {
-                                const isActive = selectedHistoryItem?.type === 'lab-result' && selectedHistoryItem?.id === item._id;
-                                return (
-                                  <button
-                                    key={item._id}
-                                    type="button"
-                                    onClick={() => handleHistoryItemClick({ type: 'lab-result', id: item._id, title: item.requestCode || 'Lab Result' })}
-                                    className={`text-left bg-white border rounded-md px-3 py-2 transition-all ${isActive ? 'border-teal-500 bg-teal-100 ring-2 ring-teal-200' : 'border-teal-200 hover:bg-teal-100 hover:shadow-sm'}`}
-                                  >
-                                    <p className="text-sm font-semibold text-gray-900">{item.requestCode || 'Lab Result'}</p>
-                                    <p className="text-xs text-gray-600 mt-0.5">{formatDate(item.orderDate)}{item.status ? ` • ${item.status}` : ''}</p>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {selectedHistoryItem && (
-                  <div className="flex-1 min-w-0 overflow-y-auto bg-gradient-to-br from-gray-50 to-gray-100/70">
-                    <div className="sticky top-0 bg-white border-b border-gray-200 px-5 py-4 flex items-center justify-between">
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedHistoryItem(null);
-                            setHistoryDetail(null);
-                            setHistoryDetailError(null);
-                          }}
-                          className="mb-2 inline-flex items-center gap-1 text-xs font-semibold text-gray-600 hover:text-gray-900"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                          </svg>
-                          Back to list
-                        </button>
-                        <h4 className="text-sm font-bold text-gray-900">Details</h4>
-                        <p className="text-xs text-gray-600 mt-1">{selectedHistoryItem.title}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const pathMap: Record<HistoryEntityType, string> = {
-                            visit: '/visits',
-                            appointment: '/appointments',
-                            prescription: '/prescriptions',
-                            invoice: '/invoices',
-                            'lab-result': '/lab-results',
-                          };
-                          router.push(`${pathMap[selectedHistoryItem.type]}/${selectedHistoryItem.id}`);
-                        }}
-                        className="px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
-                      >
-                        Open Full Record
+          {/* Diagnoses */}
+          <Section
+            id={`${ids}-dx`}
+            title="Diagnoses"
+            hint={
+              <>
+                Search by ICD-10 code or words. Mark one as primary.{' '}
+                <a href="https://icd.who.int/browse10/2019/en" target="_blank" rel="noopener noreferrer" className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                  WHO ICD-10 browser
+                </a>
+              </>
+            }
+          >
+            {note.diagnoses.length > 0 && (
+              <ul className="divide-y divide-gray-100">
+                {note.diagnoses.map((d, i) => {
+                  const label = `Diagnosis ${i + 1}`;
+                  return (
+                    <li key={d._key} className="motion-row-in grid gap-3 px-5 py-3 sm:grid-cols-[11rem_minmax(0,1fr)_auto_auto] sm:items-center">
+                      <Icd10Field
+                        id={`${ids}-dx-${d._key}`}
+                        rowLabel={label}
+                        code={d.code}
+                        onCode={(v) => setDx(d._key, { code: v })}
+                        onPick={(r) => setDx(d._key, { code: r.code, description: r.description })}
+                      />
+                      <input
+                        type="text"
+                        aria-label={`${label}: description`}
+                        value={d.description}
+                        onChange={(e) => setDx(d._key, { description: e.target.value })}
+                        placeholder="Description"
+                        className={FIELD}
+                      />
+                      <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="radio"
+                          name={`${ids}-primary`}
+                          checked={d.primary}
+                          onChange={() => setDx(d._key, { primary: true })}
+                          className="h-4 w-4 border-gray-300 text-brand-teal-dark focus:ring-brand-teal"
+                        />
+                        Primary
+                      </label>
+                      <button type="button" onClick={() => removeDx(d._key)} aria-label={`Remove ${label.toLowerCase()}`} title="Remove" className={REMOVE_BUTTON}>
+                        <Svg d={ICON.x} />
                       </button>
-                    </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <div className={`px-5 py-3 ${note.diagnoses.length ? 'border-t border-gray-100' : ''}`}>
+              <button type="button" onClick={() => set('diagnoses', [...note.diagnoses, emptyDx(note.diagnoses.length === 0)])} className={ADD_BUTTON}>
+                <Svg d="M12 4v16m8-8H4" />
+                Add diagnosis
+              </button>
+            </div>
+          </Section>
 
-                    <div className="p-5">
-                      {historyDetailLoading && <p className="text-sm text-gray-600">Loading details...</p>}
-                      {historyDetailError && (
-                        <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{historyDetailError}</div>
-                      )}
-
-                      {!historyDetailLoading && !historyDetailError && historyDetail && (
-                        <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3 shadow-sm">
-                          {selectedHistoryItem.type === 'visit' && (
-                            <>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Code:</span> {historyDetail.visitCode || 'N/A'}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Date:</span> {formatDateTime(historyDetail.date)}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Status:</span> {historyDetail.status || 'N/A'}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Chief Complaint:</span> {historyDetail.chiefComplaint || 'N/A'}</p>
-                            </>
-                          )}
-
-                          {selectedHistoryItem.type === 'appointment' && (
-                            <>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Code:</span> {historyDetail.appointmentCode || 'N/A'}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Date:</span> {formatDateTime(historyDetail.appointmentDate)}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Time:</span> {historyDetail.appointmentTime || 'N/A'}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Status:</span> {historyDetail.status || 'N/A'}</p>
-                            </>
-                          )}
-
-                          {selectedHistoryItem.type === 'prescription' && (
-                            <>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Code:</span> {historyDetail.prescriptionCode || 'N/A'}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Issued:</span> {formatDateTime(historyDetail.issuedAt)}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Status:</span> {historyDetail.status || 'N/A'}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Medications:</span> {Array.isArray(historyDetail.medications) ? historyDetail.medications.length : 0}</p>
-                            </>
-                          )}
-
-                          {selectedHistoryItem.type === 'invoice' && (
-                            <>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Number:</span> {historyDetail.invoiceNumber || 'N/A'}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Created:</span> {formatDateTime(historyDetail.createdAt)}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Status:</span> {historyDetail.status || 'N/A'}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Outstanding:</span> {typeof historyDetail.outstandingBalance === 'number' ? historyDetail.outstandingBalance.toFixed(2) : '0.00'}</p>
-                            </>
-                          )}
-
-                          {selectedHistoryItem.type === 'lab-result' && (
-                            <>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Request:</span> {historyDetail.requestCode || 'N/A'}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Ordered:</span> {formatDateTime(historyDetail.orderDate)}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Status:</span> {historyDetail.status || 'N/A'}</p>
-                              <p className="text-sm"><span className="font-semibold text-gray-800">Test:</span> {historyDetail.testName || 'N/A'}</p>
-                            </>
-                          )}
+          {/* Medicines */}
+          <Section
+            id={`${ids}-meds`}
+            title="Medicines"
+            hint={editingExisting && initialData?.status !== 'draft' ? 'Changes update this visit’s prescription while nothing has been dispensed.' : 'Saving the visit makes a prescription from these.'}
+          >
+            {allergies.length > 0 && (
+              <p className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-sm text-amber-800">
+                <Svg d={ICON.alert} className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  <span className="font-semibold">Allergic to {allergies.map((a) => a.substance).join(', ')}.</span> Check before prescribing.
+                </span>
+              </p>
+            )}
+            {note.medications.length > 0 && (
+              <ul className="divide-y divide-gray-100">
+                {note.medications.map((m, i) => {
+                  const problem = attempted ? medProblems[m._key] : undefined;
+                  const label = `Medicine ${i + 1}`;
+                  return (
+                    <li key={m._key} className="motion-row-in px-5 py-4">
+                      <div className="grid gap-3 sm:grid-cols-6">
+                        <div className="sm:col-span-6 lg:col-span-3">
+                          <Label htmlFor={`${ids}-med-${m._key}`}>{label}</Label>
+                          <MedicineNameField
+                            id={`${ids}-med-${m._key}`}
+                            value={m.name}
+                            invalid={Boolean(problem)}
+                            describedBy={problem ? `${ids}-med-${m._key}-err` : undefined}
+                            onChange={(v) => setMed(m._key, { name: v })}
+                            onPick={(s) =>
+                              setMed(m._key, {
+                                name: s.name,
+                                ...(s.dosage && !m.dosage ? { dosage: s.dosage } : {}),
+                                ...(s.frequency && !m.frequency ? { frequency: s.frequency } : {}),
+                                ...(s.duration && !m.duration ? { duration: s.duration } : {}),
+                              })
+                            }
+                          />
+                          {problem && <FieldError id={`${ids}-med-${m._key}-err`}>{problem}</FieldError>}
                         </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+                        <div className="sm:col-span-2 lg:col-span-1">
+                          <Label htmlFor={`${ids}-dose-${m._key}`}>Dose</Label>
+                          <input id={`${ids}-dose-${m._key}`} list={`${ids}-doses`} value={m.dosage} onChange={(e) => setMed(m._key, { dosage: e.target.value })} placeholder="500 mg" className={FIELD} />
+                        </div>
+                        <div className="sm:col-span-2 lg:col-span-1">
+                          <Label htmlFor={`${ids}-freq-${m._key}`}>How often</Label>
+                          <input id={`${ids}-freq-${m._key}`} list={`${ids}-freqs`} value={m.frequency} onChange={(e) => setMed(m._key, { frequency: e.target.value })} placeholder="TID" className={FIELD} />
+                        </div>
+                        <div className="sm:col-span-2 lg:col-span-1">
+                          <Label htmlFor={`${ids}-dur-${m._key}`}>For how long</Label>
+                          <input id={`${ids}-dur-${m._key}`} list={`${ids}-durs`} value={m.duration} onChange={(e) => setMed(m._key, { duration: e.target.value })} placeholder="7 days" className={FIELD} />
+                        </div>
+                        <div className="sm:col-span-2 lg:col-span-1">
+                          <Label htmlFor={`${ids}-qty-${m._key}`}>Quantity</Label>
+                          <input
+                            id={`${ids}-qty-${m._key}`}
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            value={m.quantity}
+                            onChange={(e) => setMed(m._key, { quantity: e.target.value })}
+                            placeholder="21"
+                            className={`${FIELD} font-mono tabular-nums`}
+                          />
+                        </div>
+                        <div className="sm:col-span-4 lg:col-span-4">
+                          <Label htmlFor={`${ids}-ins-${m._key}`} optional>
+                            Instructions
+                          </Label>
+                          <input
+                            id={`${ids}-ins-${m._key}`}
+                            value={m.instructions}
+                            onChange={(e) => setMed(m._key, { instructions: e.target.value })}
+                            placeholder="After meals"
+                            className={FIELD}
+                          />
+                        </div>
+                        <div className="flex items-end justify-end sm:col-span-6 lg:col-span-1">
+                          <button
+                            type="button"
+                            onClick={() => set('medications', note.medications.filter((x) => x._key !== m._key))}
+                            aria-label={`Remove ${m.name.trim() || label.toLowerCase()}`}
+                            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-red-50 hover:text-red-700 ${FOCUS_RING}`}
+                          >
+                            <Svg d={ICON.x} />
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <div className={`px-5 py-3 ${note.medications.length ? 'border-t border-gray-100' : ''}`}>
+              <button type="button" onClick={() => set('medications', [...note.medications, emptyMed()])} className={ADD_BUTTON}>
+                <Svg d="M12 4v16m8-8H4" />
+                Add medicine
+              </button>
+            </div>
+            <datalist id={`${ids}-doses`}>
+              {DOSAGE_OPTIONS.map((o) => (
+                <option key={o} value={o} />
+              ))}
+            </datalist>
+            <datalist id={`${ids}-freqs`}>
+              {FREQUENCY_OPTIONS.map((o) => (
+                <option key={o} value={o} />
+              ))}
+            </datalist>
+            <datalist id={`${ids}-durs`}>
+              {DURATION_OPTIONS.map((o) => (
+                <option key={o} value={o} />
+              ))}
+            </datalist>
+          </Section>
+
+          {/* Follow-up and notes */}
+          <Section id={`${ids}-next`} title="Follow-up and other notes">
+            <div className="grid gap-4 px-5 py-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
+              <div>
+                <Label htmlFor={`${ids}-fu`} optional>
+                  Follow-up date
+                </Label>
+                <input
+                  id={`${ids}-fu`}
+                  type="date"
+                  min={editingExisting ? undefined : todayKey}
+                  value={note.followUpDate}
+                  onChange={(e) => set('followUpDate', e.target.value)}
+                  aria-describedby={`${ids}-fu-hint`}
+                  className={`${FIELD} font-mono`}
+                />
+                <p id={`${ids}-fu-hint`} className="mt-1 text-xs text-gray-500">
+                  Booked as an appointment when the visit is closed.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor={`${ids}-fu-ins`} optional>
+                  Follow-up instructions
+                </Label>
+                <NoteArea id={`${ids}-fu-ins`} rows={2} value={note.followUpInstructions} onChange={(v) => set('followUpInstructions', v)} placeholder="Return if the fever goes above 38.5 °C" />
+              </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor={`${ids}-notes`} optional>
+                  Other notes
+                </Label>
+                <NoteArea id={`${ids}-notes`} rows={2} value={note.notes} onChange={(v) => set('notes', v)} />
               </div>
             </div>
-          </div>
-        )}
+          </Section>
 
-        {/* Clinical Images Upload */}
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-purple-500 rounded-lg">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+          {/* Signature */}
+          <Section id={`${ids}-sign`} title="Signature" hint={signature ? undefined : 'A signed note can be printed as a medical certificate with your signature.'}>
+            <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+              {signature ? (
+                <div className="flex items-center gap-4">
+                  <span className="rounded-md border border-gray-200 bg-white p-1.5">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- drawn signature, a data URL */}
+                    <img src={signature.signatureData} alt={`Signature of ${signature.providerName}`} className="block h-12 max-w-[12rem] object-contain" />
+                  </span>
+                  <span className="text-sm">
+                    <span className="block font-semibold text-gray-900">{signature.providerName}</span>
+                    <span className="block text-gray-500">{signedNow ? 'Signed now, saved with the note' : 'Signed'}</span>
+                  </span>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">Not signed.</p>
+              )}
+              <button type="button" onClick={() => setShowPad(true)} className={ADD_BUTTON}>
+                <Svg d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                {signature ? 'Sign again' : `Sign as ${providerName}`}
+              </button>
             </div>
-            <div>
-              <label htmlFor="visit-attachments" className="block text-sm font-bold text-gray-900">Clinical Images & Attachments</label>
-              <p className="text-xs text-gray-600 mt-1">
-                Upload clinical images, X-rays, or other documents related to this visit
-              </p>
-            </div>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <input
-              type="file"
-              id="visit-attachments"
-              accept="image/*,.pdf,.doc,.docx"
-              multiple
-              onChange={(e) => {
-                // Note: File uploads should be handled separately via API
-                // This is just a placeholder - actual upload should be done after visit creation
-              }}
-              className="w-full text-sm px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white"
-            />
-            <p className="text-xs text-gray-600 mt-3 font-medium">
-              Note: Files can be uploaded after saving the visit from the visit detail page.
-            </p>
-          </div>
+          </Section>
         </div>
 
-        {/* Additional Notes */}
-        <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-gray-500 rounded-lg">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </div>
-            <div>
-              <label htmlFor="visit-notes" className="block text-sm font-bold text-gray-900">Additional Notes</label>
-              <p className="text-xs text-gray-600 mt-1">Any additional information, observations, or comments about this visit</p>
-            </div>
-          </div>
-          <textarea
-            id="visit-notes"
-            value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            rows={3}
-            placeholder="Additional notes..."
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm resize-y bg-white"
-          />
-        </div>
+        <aside className="flex min-w-0 flex-col gap-6 xl:sticky xl:top-20 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto">
+          {note.patient ? (
+            <PatientSummary summary={summary} />
+          ) : (
+            <div className="rounded-lg border border-dashed border-gray-300 px-5 py-6 text-center text-sm text-gray-500">Choose the patient to see their allergies, medicines and last visits here.</div>
+          )}
+        </aside>
+      </div>
 
-        {/* Form Actions */}
-        <div className="flex flex-wrap justify-between items-center gap-3 pt-6 border-t border-gray-200 mt-6">
-          <div className="flex items-center gap-3">
+      {/* Save bar: floats over the bottom of the page while the note is long */}
+      <div className="motion-tray-in sticky bottom-4 z-20 flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-[0_8px_30px_rgb(15,23,42,0.1)] sm:flex-row sm:items-center sm:justify-between">
+        <p className={`text-sm ${draftState?.kind === 'error' || (attempted && problemCount > 0) ? 'font-medium text-red-700' : 'text-gray-600'}`} aria-live="polite">
+          {draftState?.kind === 'saving'
+            ? 'Saving the draft…'
+            : draftState?.kind === 'saved'
+              ? 'Draft saved. Only you can see it until the visit is saved.'
+              : draftState?.kind === 'error'
+                ? draftState.message
+                : attempted && problemCount > 0
+                  ? `${problemCount === 1 ? 'One thing needs' : `${problemCount} things need`} fixing before this can be saved.`
+                  : medsToPrescribe > 0 && !(editingExisting && initialData?.status !== 'draft')
+                    ? `Saving makes a prescription for ${medsToPrescribe} ${medsToPrescribe === 1 ? 'medicine' : 'medicines'}.`
+                    : dirty
+                      ? editingExisting
+                        ? 'Unsaved changes.'
+                        : 'Kept on this device as you type until you save.'
+                      : draftId
+                        ? 'Draft. Not part of the record until the visit is saved.'
+                        : editingExisting
+                          ? 'No changes yet.'
+                          : ''}
+        </p>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {onCancel && (
             <button
               type="button"
-              onClick={handleSaveDraft}
-              disabled={draftSaveStatus === 'saving'}
-              className="px-5 py-2.5 bg-amber-50 border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors text-sm font-semibold disabled:opacity-60 flex items-center gap-2"
+              onClick={() => {
+                if (dirty && !window.confirm('Discard the changes to this note?')) return;
+                onCancel();
+              }}
+              className={`rounded-md px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:text-gray-900 ${FOCUS_RING}`}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-              </svg>
-              Save Draft
+              Cancel
             </button>
-            {draftBadge && (
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                draftSaveStatus === 'saved' ? 'bg-green-100 text-green-700'
-                : draftSaveStatus === 'error' ? 'bg-red-100 text-red-700'
-                : draftSaveStatus === 'saving' ? 'bg-gray-100 text-gray-500'
-                : 'bg-amber-100 text-amber-700'
-              }`}>{draftBadge}</span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            {onCancel && (
-              <button type="button" className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold" onClick={() => { setIsDirty(false); onCancel?.(); }}>
-                Cancel
-              </button>
-            )}
-            <button type="submit" disabled={submitting} aria-busy={submitting} className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed">
-              {submitting ? 'Saving…' : 'Save Visit'}
+          )}
+          {canSaveDraft && (
+            <button
+              type="button"
+              onClick={saveDraft}
+              disabled={draftState?.kind === 'saving' || submitting}
+              className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
+            >
+              Save draft
             </button>
-          </div>
+          )}
+          <button
+            type="submit"
+            disabled={submitting}
+            aria-busy={submitting}
+            className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
+          >
+            <Svg d={ICON.check} />
+            {submitting ? 'Saving…' : primaryLabel}
+          </button>
         </div>
       </div>
+
+      {showPad && (
+        <Modal open onOpenChange={(open) => !open && setShowPad(false)} className="max-w-2xl" ariaLabel="Sign the note">
+          <div className="p-5">
+            <SignaturePad
+              providerName={providerName}
+              onCancel={() => setShowPad(false)}
+              onSave={(data) => {
+                setSignature({ providerName, signatureData: data });
+                setSignedNow(true);
+                setShowPad(false);
+              }}
+            />
+          </div>
+        </Modal>
+      )}
     </form>
   );
 }
-

@@ -140,14 +140,14 @@ export default function MedicalRepresentativeProfileEditClient() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-brand-teal-light/60 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-teal-dark"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-8 px-4">
+    <div className="min-h-screen bg-brand-teal-light/60 py-8 px-4">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
@@ -175,7 +175,7 @@ export default function MedicalRepresentativeProfileEditClient() {
 
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Profile Image Section */}
-          <div className="bg-white rounded-xl shadow-sm p-8">
+          <div className="bg-white rounded-lg shadow-sm p-8">
             <h2 className="text-xl font-bold text-gray-900 mb-6">Profile Photo</h2>
             <div className="flex items-center gap-6">
               <div className="flex-shrink-0">
@@ -183,7 +183,7 @@ export default function MedicalRepresentativeProfileEditClient() {
                   <img
                     src={profileImage}
                     alt="Profile"
-                    className="w-24 h-24 rounded-full object-cover border-4 border-blue-200"
+                    className="w-24 h-24 rounded-full object-cover border-4 border-brand-teal/30"
                   />
                 ) : (
                   <div className="w-24 h-24 rounded-full bg-gray-200 border-4 border-gray-300 flex items-center justify-center">
@@ -193,7 +193,7 @@ export default function MedicalRepresentativeProfileEditClient() {
               </div>
               <div className="flex-1">
                 <label htmlFor="profileImage" className="block">
-                  <span className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg cursor-pointer transition-colors">
+                  <span className="inline-flex items-center gap-2 px-4 py-2 bg-brand-teal-dark hover:bg-brand-teal-deep text-white font-medium rounded-lg cursor-pointer transition-colors">
                     <Upload className="w-4 h-4" />
                     Choose Photo
                   </span>
@@ -212,7 +212,7 @@ export default function MedicalRepresentativeProfileEditClient() {
           </div>
 
           {/* Personal Information */}
-          <div className="bg-white rounded-xl shadow-sm p-8">
+          <div className="bg-white rounded-lg shadow-sm p-8">
             <h2 className="text-xl font-bold text-gray-900 mb-6">Personal Information</h2>
             <div className="space-y-6">
               {/* Name Fields */}
@@ -228,7 +228,7 @@ export default function MedicalRepresentativeProfileEditClient() {
                     value={formData.firstName}
                     onChange={handleInputChange}
                     required
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                   />
                 </div>
                 <div>
@@ -242,7 +242,7 @@ export default function MedicalRepresentativeProfileEditClient() {
                     value={formData.lastName}
                     onChange={handleInputChange}
                     required
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                   />
                 </div>
               </div>
@@ -274,7 +274,7 @@ export default function MedicalRepresentativeProfileEditClient() {
                     name="phone"
                     value={formData.phone}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                   />
                 </div>
                 <div>
@@ -287,7 +287,7 @@ export default function MedicalRepresentativeProfileEditClient() {
                     name="company"
                     value={formData.company}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                   />
                 </div>
               </div>
@@ -304,14 +304,14 @@ export default function MedicalRepresentativeProfileEditClient() {
                   onChange={handleInputChange}
                   placeholder="Tell us about yourself..."
                   rows={4}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal resize-none"
                 />
               </div>
             </div>
           </div>
 
           {/* Professional Information */}
-          <div className="bg-white rounded-xl shadow-sm p-8">
+          <div className="bg-white rounded-lg shadow-sm p-8">
             <h2 className="text-xl font-bold text-gray-900 mb-6">Professional Information</h2>
             <div className="space-y-6">
               {/* Professional Fields */}
@@ -327,7 +327,7 @@ export default function MedicalRepresentativeProfileEditClient() {
                     value={formData.specialization}
                     onChange={handleInputChange}
                     placeholder="e.g., Cardiology"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                   />
                 </div>
                 <div>
@@ -350,7 +350,7 @@ export default function MedicalRepresentativeProfileEditClient() {
           </div>
 
           {/* Address Information */}
-          <div className="bg-white rounded-xl shadow-sm p-8">
+          <div className="bg-white rounded-lg shadow-sm p-8">
             <h2 className="text-xl font-bold text-gray-900 mb-6">Address Information</h2>
             <div className="space-y-6">
               {/* Address */}
@@ -365,7 +365,7 @@ export default function MedicalRepresentativeProfileEditClient() {
                   value={formData.address}
                   onChange={handleInputChange}
                   placeholder="123 Main Street"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                 />
               </div>
 
@@ -382,7 +382,7 @@ export default function MedicalRepresentativeProfileEditClient() {
                     value={formData.city}
                     onChange={handleInputChange}
                     placeholder="New York"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                   />
                 </div>
                 <div>
@@ -396,7 +396,7 @@ export default function MedicalRepresentativeProfileEditClient() {
                     value={formData.state}
                     onChange={handleInputChange}
                     placeholder="NY"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                   />
                 </div>
                 <div>
@@ -410,7 +410,7 @@ export default function MedicalRepresentativeProfileEditClient() {
                     value={formData.postalCode}
                     onChange={handleInputChange}
                     placeholder="10001"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                   />
                 </div>
               </div>
@@ -429,7 +429,7 @@ export default function MedicalRepresentativeProfileEditClient() {
             <button
               type="submit"
               disabled={isSaving}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-brand-teal-dark hover:bg-brand-teal-deep disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
             >
               <Save className="w-4 h-4" />
               {isSaving ? 'Saving...' : 'Save Changes'}

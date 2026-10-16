@@ -1,13 +1,9 @@
-import { requireAdmin } from '@/app/lib/auth-helpers';
-import InventoryRestockClient from '@/components/InventoryRestockClient';
+import InventoryDetailClient from '@/components/InventoryDetailClient';
+import { requireInventoryWriter } from '@/lib/inventory-page';
 
-export default async function InventoryRestockPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  await requireAdmin();
-
+/** Restocking is a dialog on the item's page; this address (used by stock alerts) opens it there. */
+export default async function InventoryRestockPage({ params }: { params: Promise<{ id: string }> }) {
+  const permissions = await requireInventoryWriter();
   const { id } = await params;
-  return <InventoryRestockClient itemId={id} />;
+  return <InventoryDetailClient itemId={id} permissions={permissions} openDialog="restock" />;
 }

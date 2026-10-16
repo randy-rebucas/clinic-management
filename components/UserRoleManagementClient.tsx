@@ -148,11 +148,11 @@ export default function UserRoleManagementClient() {
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-indigo-50/30 min-h-screen">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-100 border-t-indigo-600"></div>
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-brand-teal/20 border-t-brand-teal-dark"></div>
             </div>
             <p className="text-gray-600 font-medium">Loading users...</p>
           </div>
@@ -162,12 +162,12 @@ export default function UserRoleManagementClient() {
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-indigo-50/30 min-h-screen">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6">
           {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -179,7 +179,7 @@ export default function UserRoleManagementClient() {
             </div>
           )}
           {success && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-green-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -192,22 +192,22 @@ export default function UserRoleManagementClient() {
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg shadow-md">
+              <div className="p-2 bg-brand-teal-dark rounded-lg shadow-md">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
               </div>
               <div>
-                <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">User Role Management</h1>
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">User Role Management</h1>
                 <p className="text-sm sm:text-base text-gray-600 mt-1">Assign and manage roles for system users</p>
               </div>
             </div>
           </div>
 
           {/* Users Table */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             {users.length === 0 ? (
               <div className="p-12 text-center">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
@@ -238,7 +238,7 @@ export default function UserRoleManagementClient() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{user.email}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                          <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-brand-teal-light text-brand-teal-deep border border-brand-teal/30">
                             {getRoleName(user)}
                           </span>
                         </td>
@@ -254,7 +254,7 @@ export default function UserRoleManagementClient() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <button
                             onClick={() => handleEditRole(user)}
-                            className="px-4 py-2 text-xs bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all flex items-center gap-2 font-semibold shadow-sm"
+                            className="px-4 py-2 text-xs bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all flex items-center gap-2 font-semibold shadow-sm"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -274,7 +274,7 @@ export default function UserRoleManagementClient() {
         <Modal open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
           <div className="p-6 max-w-[400px]">
             <div className="flex items-center gap-3 mb-5">
-              <div className="p-2 bg-indigo-500 rounded-lg">
+              <div className="p-2 bg-brand-teal-dark rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
@@ -296,7 +296,7 @@ export default function UserRoleManagementClient() {
                   <select id="user-role-select-role"
                     value={selectedRoleId}
                     onChange={(e) => setSelectedRoleId(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm"
                   >
                     <option value="">Select role</option>
                     {roles.map((role) => (
@@ -319,7 +319,7 @@ export default function UserRoleManagementClient() {
               <button
                 onClick={handleSaveRole}
                 disabled={!selectedRoleId || saving}
-                className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 disabled:from-indigo-400 disabled:to-indigo-500 disabled:cursor-not-allowed transition-all text-sm font-semibold shadow-md"
+                className="px-4 py-2 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep disabled:bg-brand-teal/60 disabled:cursor-not-allowed transition-all text-sm font-semibold shadow-md"
               >
                 {saving ? 'Saving…' : 'Save'}
               </button>

@@ -60,6 +60,15 @@ export async function GET(
       );
     }
 
+    // An official receipt acknowledges money received; none can be issued before a payment.
+    const paid = (invoice.payments || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+    if (paid <= 0) {
+      return NextResponse.json(
+        { success: false, error: 'Nothing has been paid on this invoice yet, so there is no receipt to print' },
+        { status: 409 }
+      );
+    }
+
     // Seal is computed from the stored record, before any display-only population below
     const seal = await issueSeal({
       request,

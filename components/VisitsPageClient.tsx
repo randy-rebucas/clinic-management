@@ -1,586 +1,782 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
+import { SERIES, STATE, TableTwin, TipRow, useTooltip } from './dashboards/charts';
+import { FIELD, FOCUS_RING, ICON, Svg } from './appointments/shared';
+import { vitalsSummary, type Vitals } from './queue/VitalsModal';
+import { STATUS_BADGE, VISIT_TYPES, visitTypeLabel, type VisitStatus } from './visits/shared';
+import type { VisitsPageContext } from '@/lib/visits-page';
 
 interface Visit {
   _id: string;
   visitCode: string;
-  patient: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    patientCode?: string;
-  } | null;
-  provider?: {
-    _id: string;
-    name: string;
-  };
+  patient: { _id: string; firstName: string; lastName: string; patientCode?: string } | null;
+  provider?: { _id: string; name: string } | null;
   date: string;
   visitType: string;
   chiefComplaint?: string;
-  diagnoses: Array<{
-    code?: string;
-    description?: string;
-    primary?: boolean;
-  }>;
-  status: string;
+  diagnoses: { code?: string; description?: string; primary?: boolean }[];
+  status: VisitStatus;
   followUpDate?: string;
-  digitalSignature?: {
-    providerName: string;
-    signedAt: string;
-  };
+  digitalSignature?: { providerName: string; signedAt: string } | null;
 }
 
-interface QueueItem {
+interface Insights {
+  today: string;
+  status: Partial<Record<VisitStatus, number>>;
+  days: { date: string; visits: number }[];
+  diagnoses: { code: string; description: string; count: number }[];
+}
+
+interface ReadyEntry {
   _id: string;
   queueNumber: string;
-  patient: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    patientCode?: string;
-  };
-  doctor?: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-  };
-  status: string;
+  patient: { _id: string; firstName: string; lastName: string; patientCode?: string } | null;
+  patientName: string;
+  doctor?: { firstName: string; lastName: string } | null;
+  startedAt?: string;
   queuedAt: string;
-  checkedIn: boolean;
-  vitals?: {
-    bp?: string;
-    hr?: number;
-    tempC?: number;
-    spo2?: number;
-  };
+  vitals?: Vitals;
 }
 
-const VISITS_PER_PAGE = 10;
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
 
-export default function VisitsPageClient() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [error, setError] = useState<string | null>(null);
+const PAGE_SIZE = 20;
+
+/** Visit states borrow the validated appointment-state hues: unfinished amber, in progress blue, done teal. */
+const VISIT_STATE: Record<VisitStatus, { label: string; fill: string | null; hint: string }> = {
+  draft: { label: 'Draft', fill: STATE.pending.fill, hint: 'Started, not saved as a note yet' },
+  open: { label: 'Open', fill: STATE.upcoming.fill, hint: 'Saved, still being written' },
+  closed: { label: 'Closed', fill: STATE.completed.fill, hint: 'Finished notes' },
+  cancelled: { label: 'Cancelled', fill: null, hint: 'Voided visits' },
+};
+const STATUS_ORDER: VisitStatus[] = ['draft', 'open', 'closed', 'cancelled'];
+
+const TYPES = VISIT_TYPES;
+const typeLabel = visitTypeLabel;
+
+const ROW_GRID =
+  'lg:grid lg:grid-cols-[7rem_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1.6fr)_6.5rem_1.5rem] lg:items-center lg:gap-4';
+
+const ICONS = {
+  ...ICON,
+  plus: 'M12 4v16m8-8H4',
+  pen: 'M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z',
+  doc: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+};
+
+const dayFmt = (iso: string, opts: Intl.DateTimeFormatOptions) => new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('en-US', opts);
+const timeFmt = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+function pageWindow(page: number, pages: number): (number | 'gap')[] {
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+  const nums = [...new Set([1, pages, page - 1, page, page + 1])].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b);
+  const out: (number | 'gap')[] = [];
+  nums.forEach((n, i) => {
+    if (i > 0 && n - nums[i - 1] > 1) out.push('gap');
+    out.push(n);
+  });
+  return out;
+}
+
+export default function VisitsPageClient({ canWrite, canSeeQueue, isDoctor, doctorProfileId }: VisitsPageContext) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  // Set when redirected here from the new-visit page.
-  const [success, setSuccess] = useState<string | null>(() =>
-    searchParams.get('success') === 'true' ? 'Visit created successfully!' : null
-  );
-  const [requestedPage, setCurrentPage] = useState(1);
-
-  // State for visits and queue
-  const [visits, setVisits] = useState<Visit[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
-  const [loadingQueue, setLoadingQueue] = useState(true);
+  // Set when the new-visit form sends the user back here.
+  const [notice, setNotice] = useState<string | null>(() => (searchParams.get('success') === 'true' ? 'The visit was saved.' : null));
+  const [mine, setMine] = useState(isDoctor);
+  const [search, setSearch] = useState('');
+  const [debounced, setDebounced] = useState('');
+  const [status, setStatus] = useState<VisitStatus | ''>('');
+  const [visitType, setVisitType] = useState('');
+  const [diagnosis, setDiagnosis] = useState<{ code: string; description: string } | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
-    if (!success) return;
+    if (!notice) return;
     window.history.replaceState({}, '', '/visits');
-    const timer = setTimeout(() => setSuccess(null), 3000);
-    return () => clearTimeout(timer);
-  }, [success]);
-
-  const fetchVisits = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response = await fetch('/api/visits');
-      
-      if (response.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to fetch visits');
-      }
-      
-      const data = await response.json();
-      setVisits(data.data || data.visits || []);
-    } catch (error) {
-      console.error('Failed to fetch visits:', error);
-      setError(error instanceof Error ? error.message : 'Failed to fetch visits');
-    } finally {
-      setLoading(false);
-    }
-  }, [router]);
-
-  const fetchQueue = useCallback(async () => {
-    try {
-      setLoadingQueue(true);
-      
-      const response = await fetch('/api/queue?status=in-progress');
-      
-      if (response.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      if (response.ok) {
-        const data = await response.json();
-        setQueueItems(data.data || data.queue || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch queue:', error);
-    } finally {
-      setLoadingQueue(false);
-    }
-  }, [router]);
+    const t = setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   useEffect(() => {
-    const load = async () => {
-      await Promise.all([fetchVisits(), fetchQueue()]);
-    };
-    load();
-  }, [fetchVisits, fetchQueue]);
+    if (search === debounced) return;
+    const t = setTimeout(() => {
+      setDebounced(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search, debounced]);
 
-  const filteredVisits = visits.filter(visit => {
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const patientName = visit.patient 
-        ? `${visit.patient.firstName} ${visit.patient.lastName}`.toLowerCase()
-        : '';
-      const visitCode = visit.visitCode.toLowerCase();
-      // If patient is null and query doesn't match visit code, exclude from results
-      if (!visit.patient && !visitCode.includes(query)) return false;
-      // If patient exists, check both patient name and visit code
-      if (visit.patient && !patientName.includes(query) && !visitCode.includes(query)) return false;
-    }
-    if (filterStatus !== 'all' && visit.status !== filterStatus) return false;
-    return true;
-  });
+  // --- Data -----------------------------------------------------------------
 
-  const totalPages = Math.max(1, Math.ceil(filteredVisits.length / VISITS_PER_PAGE));
-  const currentPage = Math.min(requestedPage, totalPages);
-  const paginatedVisits = filteredVisits.slice(
-    (currentPage - 1) * VISITS_PER_PAGE,
-    currentPage * VISITS_PER_PAGE
-  );
+  const listParams = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+  if (mine) listParams.set('mine', 'true');
+  if (debounced.trim()) listParams.set('search', debounced.trim());
+  if (status) listParams.set('status', status);
+  if (visitType) listParams.set('visitType', visitType);
+  if (diagnosis) listParams.set('diagnosis', diagnosis.code);
+  const listUrl = `/api/visits?${listParams}`;
 
-  const getStatusColor = (status: string): 'green' | 'blue' | 'red' | 'gray' => {
-    switch (status) {
-      case 'closed':
-        return 'green';
-      case 'open':
-        return 'blue';
-      case 'cancelled':
-        return 'red';
-      default:
-        return 'gray';
-    }
+  const list = useKeyedFetch<Visit[]>(listUrl);
+  const insights = useKeyedFetch<Insights>(`/api/visits/insights${mine ? '?mine=true' : ''}`);
+  const readyUrl = canSeeQueue ? `/api/queue?${new URLSearchParams({ status: 'in-progress', ...(doctorProfileId ? { doctorId: doctorProfileId } : {}) })}` : null;
+  const ready = useKeyedFetch<ReadyEntry[]>(readyUrl);
+
+  const pagination = (list.raw?.pagination as Pagination | undefined) ?? null;
+
+  const visits = list.value ?? [];
+  const loaded = list.value !== null;
+  const refreshing = list.loading && loaded;
+
+  // --- Filters --------------------------------------------------------------
+
+  const reset = useCallback(() => setPage(1), []);
+  const chips: { key: string; label: string; clear: () => void }[] = [];
+  if (status) chips.push({ key: 'status', label: VISIT_STATE[status].label, clear: () => (setStatus(''), reset()) });
+  if (visitType) chips.push({ key: 'type', label: typeLabel(visitType), clear: () => (setVisitType(''), reset()) });
+  if (diagnosis) chips.push({ key: 'dx', label: `${diagnosis.code}${diagnosis.description ? ` · ${diagnosis.description}` : ''}`, clear: () => (setDiagnosis(null), reset()) });
+  const narrowed = chips.length > 0 || debounced.trim() !== '';
+  const clearAll = () => {
+    setStatus('');
+    setVisitType('');
+    setDiagnosis(null);
+    setSearch('');
+    setDebounced('');
+    setPage(1);
   };
 
-  if (loading) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100 border-t-blue-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading visits...</p>
-          </div>
-        </div>
-      </section>
-    );
-  }
+  const total = pagination?.total ?? visits.length;
+  const pages = pagination?.pages ?? 1;
+  const firstRow = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const lastRow = Math.min(page * PAGE_SIZE, total);
+  const readyList = useMemo(() => ready.value ?? [], [ready.value]);
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
-          {/* Error/Success Messages */}
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-red-800 mb-1">Error</h3>
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
-              </div>
-            </div>
-          )}
-          {success && (
-            <div className="bg-green-50 border-l-4 border-green-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-green-800 mb-1">Success</h3>
-                  <p className="text-sm text-green-700">{success}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg shadow-md">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Clinical Visits</h1>
-                  </div>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage consultations and clinical notes</p>
-                </div>
-              </div>
-              <div className="flex gap-3 flex-wrap">
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-7xl mx-auto flex flex-col gap-6">
+        <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Visits</h1>
+            <p className="text-sm sm:text-base text-gray-600 mt-1">Consultation notes, newest first.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div role="group" aria-label="Whose visits" className="inline-flex gap-1 rounded-md border border-gray-200 bg-white p-1">
+              {[
+                { on: !mine, label: 'Whole clinic', set: false },
+                { on: mine, label: 'Mine', set: true },
+              ].map((o) => (
                 <button
+                  key={o.label}
+                  type="button"
+                  aria-pressed={o.on}
                   onClick={() => {
-                    fetchVisits();
-                    fetchQueue();
+                    setMine(o.set);
+                    setPage(1);
                   }}
-                  disabled={loading || loadingQueue}
-                  className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all flex items-center gap-2 text-sm font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Refresh visits and queue"
+                  className={`rounded px-3.5 py-1.5 text-sm font-semibold transition-colors duration-150 ${FOCUS_RING} ${o.on ? 'bg-brand-teal-dark text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
                 >
-                  <svg className={`w-5 h-5 ${loading || loadingQueue ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Refresh
+                  {o.label}
                 </button>
-                <Link
-                  href="/visits/new"
-                  className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all flex items-center gap-2 text-sm font-semibold shadow-md"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  New Visit
-                </Link>
-              </div>
+              ))}
             </div>
-          </div>
-
-          {/* In-Progress Queue */}
-          {!loadingQueue && queueItems.length > 0 && (
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="p-5 border-b border-blue-200 bg-white/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">Patients Ready for Visit</h3>
-                    <p className="text-sm text-gray-600">In-progress queue - {queueItems.length} {queueItems.length === 1 ? 'patient' : 'patients'} waiting</p>
-                  </div>
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {queueItems.map((item) => (
-                    <div key={item._id} className="bg-white border-2 border-blue-200 rounded-xl p-4 hover:shadow-md transition-all">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <div className="text-sm font-bold text-blue-600 mb-1">Queue #{item.queueNumber}</div>
-                          <div className="text-lg font-bold text-gray-900">
-                            {item.patient.firstName} {item.patient.lastName}
-                          </div>
-                          {item.patient.patientCode && (
-                            <div className="text-xs text-gray-600 mt-1">{item.patient.patientCode}</div>
-                          )}
-                        </div>
-                        {item.vitals && (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold border border-green-200">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                            </svg>
-                            Vitals
-                          </span>
-                        )}
-                      </div>
-                      {item.vitals && (
-                        <div className="flex flex-wrap gap-2 mb-3">
-                          {item.vitals.bp && (
-                            <div className="text-xs bg-gray-100 px-2 py-1 rounded">
-                              <span className="font-semibold">BP:</span> {item.vitals.bp}
-                            </div>
-                          )}
-                          {item.vitals.hr && (
-                            <div className="text-xs bg-gray-100 px-2 py-1 rounded">
-                              <span className="font-semibold">HR:</span> {item.vitals.hr}
-                            </div>
-                          )}
-                          {item.vitals.tempC && (
-                            <div className="text-xs bg-gray-100 px-2 py-1 rounded">
-                              <span className="font-semibold">Temp:</span> {item.vitals.tempC}°C
-                            </div>
-                          )}
-                          {item.vitals.spo2 && (
-                            <div className="text-xs bg-gray-100 px-2 py-1 rounded">
-                              <span className="font-semibold">SpO2:</span> {item.vitals.spo2}%
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 text-xs text-gray-600 mb-3">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Queued {new Date(item.queuedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                      <Link
-                        href={`/visits/new?patientId=${item.patient._id}&queueId=${item._id}`}
-                        className="w-full px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center justify-center gap-2 text-sm font-semibold shadow-md"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Start Visit
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Search and Filters */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-            <div className="p-5">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <div className="absolute left-4 top-1/2 transform -translate-y-1/2 p-1.5">
-                      <svg className="w-5 h-5 text-gray-400" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M11.3333 11.3333L14 14M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.2"/>
-                      </svg>
-                    </div>
-                    <input
-                      type="text"
-                      aria-label="Search visits by patient name or visit code"
-                      placeholder="Search by patient name or visit code..."
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setCurrentPage(1);
-                      }}
-                      className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm"
-                    />
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSearchQuery('');
-                          setCurrentPage(1);
-                        }}
-                        aria-label="Clear search"
-                        className="absolute right-4 top-1/2 transform -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                      >
-                        <svg width="14" height="14" aria-hidden="true" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="min-w-[200px]">
-                  <select
-                    aria-label="Filter by status"
-                    value={filterStatus}
-                    onChange={(e) => {
-                      setFilterStatus(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                  >
-                    <option value="all">All Statuses</option>
-                    <option value="open">Open</option>
-                    <option value="closed">Closed</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
-                </div>
-                {(searchQuery || filterStatus !== 'all') && (
-                  <button
-                    onClick={() => {
-                      setSearchQuery('');
-                      setFilterStatus('all');
-                      setCurrentPage(1);
-                    }}
-                    className="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold whitespace-nowrap"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-      {/* Visits List */}
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-teal-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Visits</h3>
-            </div>
-            <p className="text-sm font-semibold text-gray-600">
-              {filteredVisits.length} {filteredVisits.length === 1 ? 'visit' : 'visits'}
-            </p>
-          </div>
-        </div>
-        <div className="p-5">
-          {filteredVisits.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">
-                {searchQuery || filterStatus !== 'all' ? 'No visits match your filters' : 'No visits found'}
-              </h3>
-              <p className="text-sm text-gray-600 mb-4">
-                {searchQuery || filterStatus !== 'all' ? 'Try adjusting your search or filters' : 'Create your first clinical visit to get started'}
-              </p>
-              {!searchQuery && filterStatus === 'all' && (
-                <Link href="/visits/new" className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all flex items-center gap-2 mx-auto text-sm font-semibold shadow-md">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  New Visit
-                </Link>
-              )}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Visit Code</th>
-                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Patient</th>
-                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Date</th>
-                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Type</th>
-                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Diagnoses</th>
-                    <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                    <th className="px-5 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {paginatedVisits.map((visit) => (
-                    <tr key={visit._id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-5 py-4">
-                        <div className="text-sm font-bold text-gray-900">{visit.visitCode}</div>
-                      </td>
-                      <td className="px-5 py-4">
-                        {visit.patient ? (
-                          <>
-                            <Link href={`/patients/${visit.patient._id}`}>
-                              <div className="text-sm font-bold text-teal-600 hover:text-teal-700 hover:underline transition-colors">
-                                {visit.patient.firstName} {visit.patient.lastName}
-                              </div>
-                            </Link>
-                            {visit.patient.patientCode && (
-                              <div className="text-xs text-gray-600 mt-1">{visit.patient.patientCode}</div>
-                            )}
-                          </>
-                        ) : (
-                          <div className="text-sm text-gray-400 italic">No patient assigned</div>
-                        )}
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="text-sm text-gray-900">
-                          {new Date(visit.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="text-sm capitalize text-gray-900 font-medium">{visit.visitType}</div>
-                      </td>
-                      <td className="px-5 py-4">
-                        {visit.diagnoses.length > 0 ? (
-                          <div className="flex flex-col gap-1">
-                            {visit.diagnoses.slice(0, 2).map((diag: any, idx: number) => (
-                              <div key={idx} className="text-xs">
-                                {diag.code && <span className="font-mono text-teal-600 font-semibold">{diag.code}</span>}
-                                {diag.description && <span className="text-gray-600"> - {diag.description}</span>}
-                              </div>
-                            ))}
-                            {visit.diagnoses.length > 2 && (
-                              <div className="text-xs text-gray-500 font-medium">+{visit.diagnoses.length - 2} more</div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="text-sm text-gray-500">—</div>
-                        )}
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className={`px-2.5 py-1 text-xs rounded-full font-semibold border ${
-                          getStatusColor(visit.status) === 'green' ? 'bg-green-100 text-green-700 border-green-200' :
-                          getStatusColor(visit.status) === 'blue' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                          getStatusColor(visit.status) === 'red' ? 'bg-red-100 text-red-700 border-red-200' :
-                          'bg-gray-100 text-gray-700 border-gray-200'
-                        }`}>
-                          {visit.status}
-                        </span>
-                        {visit.digitalSignature && (
-                          <div className="text-xs text-green-600 font-semibold mt-1.5">✓ Signed</div>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <Link href={`/visits/${visit._id}`}>
-                          <button className="px-3 py-1.5 bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 transition-colors text-xs font-semibold border border-teal-200">
-                            View
-                          </button>
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-        {filteredVisits.length > 0 && totalPages > 1 && (
-          <div className="px-5 py-4 border-t border-gray-200 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-sm text-gray-600">
-              Showing {(currentPage - 1) * VISITS_PER_PAGE + 1}–{Math.min(currentPage * VISITS_PER_PAGE, filteredVisits.length)} of {filteredVisits.length}
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            {canWrite && (
+              <Link
+                href="/visits/new"
+                className={`inline-flex items-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep ${FOCUS_RING}`}
               >
-                Previous
-              </button>
-              <span className="text-sm text-gray-700 font-medium px-2">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage === totalPages}
-                className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
-              </button>
-            </div>
+                <Svg d={ICONS.plus} />
+                New visit
+              </Link>
+            )}
+          </div>
+        </header>
+
+        {notice && (
+          <div role="status" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+            <p>{notice}</p>
+            <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 text-green-700 hover:text-green-900 ${FOCUS_RING}`}>
+              <Svg d={ICONS.x} />
+            </button>
           </div>
         )}
-      </div>
+
+        {/* Patients called in and waiting for their note */}
+        {canWrite && readyList.length > 0 && <ReadyPanel entries={readyList} forDoctor={Boolean(doctorProfileId)} />}
+
+        {/* At a glance: status rows and diagnoses filter the list */}
+        {insights.value ? (
+          <VisitInsights
+            data={insights.value}
+            mine={mine}
+            status={status}
+            diagnosis={diagnosis?.code ?? null}
+            onStatus={(s) => {
+              setStatus((cur) => (cur === s ? '' : s));
+              setPage(1);
+            }}
+            onDiagnosis={(d) => {
+              setDiagnosis((cur) => (cur?.code === d.code ? null : d));
+              setPage(1);
+            }}
+          />
+        ) : insights.error ? null : (
+          <div className="h-[220px] animate-pulse rounded-lg border border-gray-200 bg-white" aria-hidden="true" />
+        )}
+
+        {/* Toolbar */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <form
+              role="search"
+              className="relative flex-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setDebounced(search);
+                setPage(1);
+              }}
+            >
+              <label htmlFor="visit-search" className="sr-only">
+                Search visits
+              </label>
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <Svg d={ICONS.search} />
+              </span>
+              <input
+                id="visit-search"
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by patient name, patient code, phone or visit code"
+                autoComplete="off"
+                className={`${FIELD} pl-9`}
+              />
+            </form>
+            <label htmlFor="visit-status" className="sr-only">
+              Status
+            </label>
+            <select
+              id="visit-status"
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value as VisitStatus | '');
+                setPage(1);
+              }}
+              className={`${FIELD} sm:w-40`}
+            >
+              <option value="">Any status</option>
+              {STATUS_ORDER.map((s) => (
+                <option key={s} value={s}>
+                  {VISIT_STATE[s].label}
+                </option>
+              ))}
+            </select>
+            <label htmlFor="visit-type" className="sr-only">
+              Visit type
+            </label>
+            <select
+              id="visit-type"
+              value={visitType}
+              onChange={(e) => {
+                setVisitType(e.target.value);
+                setPage(1);
+              }}
+              className={`${FIELD} sm:w-44`}
+            >
+              <option value="">Any type</option>
+              {TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {chips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2" aria-label="Active filters">
+              {chips.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={c.clear}
+                  aria-label={`Remove filter ${c.label}`}
+                  className={`motion-chip-in inline-flex max-w-full items-center gap-1.5 rounded-md bg-brand-teal-light py-1 pl-2.5 pr-1.5 text-sm font-medium text-brand-teal-deep transition-colors hover:bg-brand-teal-light/60 ${FOCUS_RING}`}
+                >
+                  <span className="truncate">{c.label}</span>
+                  <Svg d={ICONS.x} className="h-3.5 w-3.5 shrink-0" />
+                </button>
+              ))}
+              <button type="button" onClick={clearAll} className={`rounded px-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+                Clear all
+              </button>
+            </div>
+          )}
+        </div>
+
+        {list.error && (
+          <div role="alert" className="flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 p-4">
+            <p className="text-sm font-medium text-red-800">The visits didn&apos;t load ({list.error}).</p>
+            <button type="button" onClick={list.reload} className={`inline-flex shrink-0 items-center gap-1.5 rounded text-sm font-semibold text-red-800 hover:text-red-900 ${FOCUS_RING}`}>
+              <Svg d={ICONS.refresh} />
+              Try again
+            </button>
+          </div>
+        )}
+        <p className="sr-only" aria-live="polite">
+          {loaded && !list.loading ? `${total} visits${narrowed ? ' match' : ''}.` : ''}
+        </p>
+
+        {/* List */}
+        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden" aria-busy={list.loading}>
+          <div className={`hidden ${ROW_GRID} border-b border-gray-200 bg-gray-50/60 px-4 py-2.5 text-sm font-medium text-gray-500`}>
+            <span>Date</span>
+            <span>Patient</span>
+            <span>Doctor</span>
+            <span>Diagnosis</span>
+            <span>Status</span>
+            <span className="sr-only">Open</span>
+          </div>
+
+          {!loaded ? (
+            <ul aria-hidden="true" className="divide-y divide-gray-100 animate-pulse">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <li key={i} className="flex items-center gap-4 px-4 py-3.5">
+                  <span className="h-8 w-20 rounded bg-gray-100" />
+                  <span className="flex-1 space-y-1.5">
+                    <span className="block h-3.5 w-40 rounded bg-gray-100" />
+                    <span className="block h-3 w-24 rounded bg-gray-50" />
+                  </span>
+                  <span className="hidden h-3.5 w-48 rounded bg-gray-50 lg:block" />
+                  <span className="h-5 w-16 rounded bg-gray-100" />
+                </li>
+              ))}
+            </ul>
+          ) : visits.length === 0 ? (
+            <Empty narrowed={narrowed} mine={mine} canWrite={canWrite} onClear={clearAll} onWholeClinic={() => (setMine(false), setPage(1))} />
+          ) : (
+            <ul key={listUrl} className={`divide-y divide-gray-100 transition-opacity duration-200 ${refreshing ? 'opacity-60' : ''}`}>
+              {visits.map((v, i) => (
+                <VisitRow key={v._id} visit={v} index={i} query={debounced} onOpen={() => router.push(`/visits/${v._id}`)} />
+              ))}
+            </ul>
+          )}
+
+          {loaded && total > 0 && (
+            <nav aria-label="Pagination" className="flex flex-col gap-3 border-t border-gray-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-600">
+                <span className="font-mono text-gray-900">
+                  {firstRow.toLocaleString('en-US')}–{lastRow.toLocaleString('en-US')}
+                </span>{' '}
+                of <span className="font-mono text-gray-900">{total.toLocaleString('en-US')}</span>
+                {narrowed ? ' matching visits' : mine ? ' of your visits' : ' visits'}
+              </p>
+              {pages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1 || list.loading}
+                    aria-label="Previous page"
+                    className={`rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent ${FOCUS_RING}`}
+                  >
+                    <Svg d={ICONS.chevL} />
+                  </button>
+                  {pageWindow(page, pages).map((n, i) =>
+                    n === 'gap' ? (
+                      <span key={`g${i}`} className="px-1.5 text-gray-400" aria-hidden="true">
+                        …
+                      </span>
+                    ) : (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setPage(n)}
+                        disabled={list.loading}
+                        aria-current={page === n ? 'page' : undefined}
+                        aria-label={`Page ${n}`}
+                        className={`min-w-9 rounded-md px-2 py-1.5 font-mono text-sm transition-colors ${FOCUS_RING} ${page === n ? 'bg-brand-teal-dark font-semibold text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                      >
+                        {n}
+                      </button>
+                    )
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(pages, p + 1))}
+                    disabled={page === pages || list.loading}
+                    aria-label="Next page"
+                    className={`rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent ${FOCUS_RING}`}
+                  >
+                    <Svg d={ICONS.chevR} />
+                  </button>
+                </div>
+              )}
+            </nav>
+          )}
         </div>
       </div>
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pieces
+// ---------------------------------------------------------------------------
+
+function Highlight({ text, query }: { text: string; query: string }) {
+  const q = query.trim();
+  const i = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;
+  if (i === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, i)}
+      <mark className="rounded-sm bg-brand-teal-light px-0.5 text-brand-teal-deep">{text.slice(i, i + q.length)}</mark>
+      {text.slice(i + q.length)}
+    </>
+  );
+}
+
+function VisitRow({ visit: v, index, query, onOpen }: { visit: Visit; index: number; query: string; onOpen: () => void }) {
+  const name = v.patient ? `${v.patient.firstName} ${v.patient.lastName}` : 'Patient record unavailable';
+  const primary = v.diagnoses.find((d) => d.primary) ?? v.diagnoses[0];
+  const more = Math.max(0, v.diagnoses.length - 1);
+  const cancelled = v.status === 'cancelled';
+
+  const onRowClick = (e: React.MouseEvent<HTMLLIElement>) => {
+    if ((e.target as HTMLElement).closest('a,button')) return;
+    onOpen();
+  };
+
+  return (
+    <li
+      onClick={onRowClick}
+      className={`motion-row-in group flex cursor-pointer flex-col gap-1.5 px-4 py-3 transition-colors hover:bg-gray-50 ${ROW_GRID}`}
+      style={{ animationDelay: `${Math.min(index * 18, 220)}ms` }}
+    >
+      <span className="flex items-baseline gap-2 lg:block">
+        <span className="block font-mono text-sm font-medium tabular-nums text-gray-900">{dayFmt(v.date, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+        <span className="block font-mono text-xs tabular-nums text-gray-500">{timeFmt(v.date)}</span>
+      </span>
+
+      <span className="min-w-0">
+        <Link href={`/visits/${v._id}`} className={`block truncate rounded font-semibold hover:text-brand-teal-deep ${cancelled ? 'text-gray-500 line-through decoration-gray-400' : 'text-gray-900'} ${FOCUS_RING}`}>
+          <Highlight text={name} query={query} />
+        </Link>
+        <span className="mt-0.5 block truncate text-sm text-gray-500">
+          <span className="font-mono text-xs">
+            <Highlight text={v.visitCode} query={query} />
+          </span>
+          {' · '}
+          {typeLabel(v.visitType)}
+          {v.patient?.patientCode && (
+            <>
+              {' · '}
+              <span className="font-mono text-xs">
+                <Highlight text={v.patient.patientCode} query={query} />
+              </span>
+            </>
+          )}
+        </span>
+      </span>
+
+      <span className="truncate text-sm text-gray-700">{v.provider?.name ?? <span className="text-gray-400">Not recorded</span>}</span>
+
+      <span className="min-w-0 text-sm">
+        {primary ? (
+          <span className="block truncate">
+            {primary.code && <span className="mr-1.5 font-mono text-xs font-semibold text-gray-900">{primary.code}</span>}
+            <span className="text-gray-700">{primary.description}</span>
+            {more > 0 && <span className="text-gray-500"> +{more} more</span>}
+          </span>
+        ) : v.chiefComplaint ? (
+          <span className="block truncate text-gray-500">{v.chiefComplaint}</span>
+        ) : (
+          <span className="text-gray-400">No diagnosis yet</span>
+        )}
+      </span>
+
+      <span className="flex flex-wrap items-center gap-1.5">
+        <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${STATUS_BADGE[v.status] ?? STATUS_BADGE.open}`}>{VISIT_STATE[v.status]?.label ?? v.status}</span>
+        {v.digitalSignature && (
+          <span className="inline-flex items-center gap-0.5 text-xs font-medium text-gray-600" title={`Signed by ${v.digitalSignature.providerName}`}>
+            <Svg d={ICONS.pen} className="h-3 w-3" />
+            Signed
+          </span>
+        )}
+      </span>
+
+      <span className="hidden justify-end text-gray-400 transition-colors group-hover:text-gray-700 lg:flex" aria-hidden="true">
+        <Svg d={ICONS.chevR} />
+      </span>
+    </li>
+  );
+}
+
+function ReadyPanel({ entries, forDoctor }: { entries: ReadyEntry[]; forDoctor: boolean }) {
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white overflow-hidden" aria-labelledby="ready-title">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-5 py-4">
+        <div className="min-w-0">
+          <h2 id="ready-title" className="text-base font-bold tracking-tight text-gray-900">
+            {forDoctor ? 'With you now' : 'With a doctor now'} <span className="font-mono font-normal text-gray-500">{entries.length}</span>
+          </h2>
+          <p className="mt-0.5 text-sm text-gray-500">Called in from the queue. Starting the visit brings in their vital signs.</p>
+        </div>
+        <Link href="/queue" className={`shrink-0 inline-flex items-center gap-1.5 rounded text-sm font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+          Queue
+          <Svg d={ICONS.arrow} />
+        </Link>
+      </div>
+      <ul className="divide-y divide-gray-100">
+        {entries.map((e, i) => {
+          const name = e.patient ? `${e.patient.firstName} ${e.patient.lastName}` : e.patientName;
+          const vitals = vitalsSummary(e.vitals);
+          return (
+            <li key={e._id} className="motion-row-in flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3" style={{ animationDelay: `${Math.min(i * 18, 220)}ms` }}>
+              <span className="rounded-md bg-brand-teal-dark px-2 py-1 font-mono text-sm font-semibold text-white" title={e.queueNumber}>
+                {e.queueNumber.replace(/^([A-Z]+)\d{8}-(\d+)$/, '$1-$2')}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold text-gray-900">{name}</span>
+                <span className="block truncate text-sm text-gray-500">
+                  {!forDoctor && e.doctor ? `Dr. ${e.doctor.firstName} ${e.doctor.lastName} · ` : ''}
+                  {vitals ? <span className="font-mono text-xs">{vitals}</span> : 'No vital signs recorded'}
+                </span>
+              </span>
+              {e.patient && (
+                <Link
+                  href={`/visits/new?patientId=${e.patient._id}&queueId=${e._id}`}
+                  className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep ${FOCUS_RING}`}
+                >
+                  <Svg d={ICONS.doc} />
+                  Start visit
+                </Link>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function VisitInsights({
+  data,
+  mine,
+  status,
+  diagnosis,
+  onStatus,
+  onDiagnosis,
+}: {
+  data: Insights;
+  mine: boolean;
+  status: VisitStatus | '';
+  diagnosis: string | null;
+  onStatus: (s: VisitStatus) => void;
+  onDiagnosis: (d: { code: string; description: string }) => void;
+}) {
+  const tip = useTooltip();
+  const totalVisits = data.days.reduce((s, d) => s + d.visits, 0);
+  const dayMax = Math.max(1, ...data.days.map((d) => d.visits));
+  const statusTotal = STATUS_ORDER.reduce((s, k) => s + (data.status[k] || 0), 0);
+  const unfinished = (data.status.draft || 0) + (data.status.open || 0);
+  const dxMax = Math.max(1, ...data.diagnoses.map((d) => d.count));
+  const busiest = data.days.reduce((b, d) => (d.visits > b.visits ? d : b), data.days[0]);
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="grid -mr-px -mb-px grid-cols-1 lg:grid-cols-[1fr_1.25fr_1.25fr]">
+        {/* Notes by status */}
+        <section className="border-r border-b border-gray-200 p-5" aria-labelledby="vi-status">
+          <h2 id="vi-status" className="text-sm text-gray-600">
+            {mine ? 'Your notes' : 'Notes'} still to finish
+          </h2>
+          <p className={`mt-2 font-mono text-3xl font-semibold tabular-nums ${unfinished > 0 ? 'text-gray-900' : 'text-gray-500'}`}>{unfinished.toLocaleString('en-US')}</p>
+          <p className="mt-1 text-sm text-gray-500">draft or open, of {statusTotal.toLocaleString('en-US')} visits</p>
+          {statusTotal > 0 && (
+            <>
+              <div className="mt-4 flex h-3 w-full gap-0.5 overflow-hidden rounded" aria-hidden="true">
+                {STATUS_ORDER.filter((k) => (data.status[k] || 0) > 0).map((k, i) => (
+                  <span
+                    key={k}
+                    className={`motion-seg-grow h-full transition-opacity duration-200 ${VISIT_STATE[k].fill ? '' : 'ring-1 ring-inset ring-gray-300'}`}
+                    style={{ flexGrow: data.status[k], flexBasis: 0, background: VISIT_STATE[k].fill ?? '#F3F4F6', opacity: status && status !== k ? 0.3 : 1, animationDelay: `${i * 60}ms` }}
+                  />
+                ))}
+              </div>
+              <ul className="mt-3 divide-y divide-gray-100" role="group" aria-label="Filter by status">
+                {STATUS_ORDER.filter((k) => (data.status[k] || 0) > 0).map((k) => {
+                  const on = status === k;
+                  return (
+                    <li key={k}>
+                      <button
+                        type="button"
+                        aria-pressed={on}
+                        title={VISIT_STATE[k].hint}
+                        onClick={() => onStatus(k)}
+                        className={`-mx-2 flex w-[calc(100%+1rem)] items-center justify-between rounded px-2 py-1.5 text-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal ${on ? 'bg-brand-teal-light/60' : ''}`}
+                      >
+                        <span className="flex items-center gap-2 text-gray-700">
+                          <span
+                            aria-hidden="true"
+                            className={`h-2.5 w-2.5 rounded-sm ${VISIT_STATE[k].fill ? '' : 'ring-1 ring-inset ring-gray-400'}`}
+                            style={VISIT_STATE[k].fill ? { background: VISIT_STATE[k].fill } : undefined}
+                          />
+                          <span className={on ? 'font-semibold text-gray-900' : ''}>{VISIT_STATE[k].label}</span>
+                        </span>
+                        <span className="font-mono tabular-nums text-gray-900">{(data.status[k] || 0).toLocaleString('en-US')}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+        </section>
+
+        {/* Visits per day */}
+        <section className="border-r border-b border-gray-200 p-5" aria-labelledby="vi-days">
+          <h2 id="vi-days" className="text-sm text-gray-600">
+            Visits, last 30 days
+          </h2>
+          <p className="mt-2 font-mono text-3xl font-semibold tabular-nums text-gray-900">{totalVisits.toLocaleString('en-US')}</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {busiest && busiest.visits > 0 ? (
+              <>
+                busiest {dayFmt(busiest.date, { weekday: 'short', month: 'short', day: 'numeric' })} (<span className="font-mono">{busiest.visits}</span>)
+              </>
+            ) : (
+              'none recorded yet'
+            )}
+          </p>
+          <div
+            className="mt-4 flex h-20 items-end gap-[2px]"
+            role="img"
+            aria-label={`Visits per day over the last 30 days, ${totalVisits} in all. Use View as table for each day.`}
+          >
+            {data.days.map((d, i) => {
+              const today = d.date === data.today;
+              return (
+                <span
+                  key={d.date}
+                  className="motion-col-grow flex-1 rounded-t-[2px]"
+                  style={{
+                    height: `${d.visits > 0 ? Math.max(6, (d.visits / dayMax) * 100) : 3}%`,
+                    background: d.visits > 0 ? (today ? '#0A7F7E' : SERIES.teal) : '#E5E7EB',
+                    animationDelay: `${Math.min(240, i * 8)}ms`,
+                  }}
+                  onPointerEnter={(e) => tip.showFor(e.currentTarget, <TipRow color={SERIES.teal} kind="bar" label={dayFmt(d.date, { weekday: 'short', month: 'short', day: 'numeric' }) + (today ? ' · today' : '')} value={d.visits} />)}
+                  onPointerLeave={tip.hide}
+                />
+              );
+            })}
+          </div>
+          <div className="mt-1.5 flex justify-between font-mono text-xs text-gray-500">
+            <span>{dayFmt(data.days[0].date, { month: 'short', day: 'numeric' })}</span>
+            <span className="font-semibold text-gray-900">Today</span>
+          </div>
+        </section>
+
+        {/* Common diagnoses */}
+        <section className="border-r border-b border-gray-200 p-5" aria-labelledby="vi-dx">
+          <h2 id="vi-dx" className="text-sm text-gray-600">
+            Common diagnoses, last 90 days
+          </h2>
+          {data.diagnoses.length === 0 ? (
+            <p className="mt-4 text-sm text-gray-500">No coded diagnoses yet. ICD-10 codes added to notes show up here.</p>
+          ) : (
+            <ul className="mt-3 space-y-1" role="group" aria-label="Filter by diagnosis">
+              {data.diagnoses.map((d, i) => {
+                const on = diagnosis === d.code;
+                return (
+                  <li key={d.code}>
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => onDiagnosis({ code: d.code, description: d.description })}
+                      aria-label={`${d.code} ${d.description}: ${d.count} visits${on ? ', filtering' : ''}`}
+                      className={`-mx-2 block w-[calc(100%+1rem)] rounded px-2 py-1.5 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal ${on ? 'bg-brand-teal-light/60' : ''}`}
+                    >
+                      <span className="flex items-baseline justify-between gap-3 text-sm">
+                        <span className="min-w-0 truncate">
+                          <span className="mr-1.5 font-mono text-xs font-semibold text-gray-900">{d.code}</span>
+                          <span className={on ? 'font-semibold text-gray-900' : 'text-gray-700'}>{d.description}</span>
+                        </span>
+                        <span className="shrink-0 font-mono tabular-nums text-gray-900">{d.count}</span>
+                      </span>
+                      <span className="mt-1 block h-1.5 rounded-r bg-gray-100" aria-hidden="true">
+                        <span
+                          className="motion-bar-grow block h-full rounded-r"
+                          style={{ width: `${(d.count / dxMax) * 100}%`, background: on ? '#0A7F7E' : SERIES.teal, opacity: diagnosis && !on ? 0.3 : 1, animationDelay: `${i * 50}ms` }}
+                        />
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
+      <TableTwin
+        caption="Visits per day, last 30 days"
+        head={['Day', 'Visits']}
+        rows={data.days.map((d) => [dayFmt(d.date, { weekday: 'short', month: 'short', day: 'numeric' }), d.visits])}
+      />
+      {tip.node}
+    </div>
+  );
+}
+
+function Empty({ narrowed, mine, canWrite, onClear, onWholeClinic }: { narrowed: boolean; mine: boolean; canWrite: boolean; onClear: () => void; onWholeClinic: () => void }) {
+  let body: ReactNode;
+  if (narrowed) {
+    body = (
+      <>
+        <p className="font-semibold text-gray-900">No visits match</p>
+        <p className="mt-1 text-sm text-gray-500">Check the spelling, search by patient code or visit code, or loosen a filter.</p>
+        <button type="button" onClick={onClear} className={`mt-5 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+          Clear search and filters
+        </button>
+      </>
+    );
+  } else if (mine) {
+    body = (
+      <>
+        <p className="font-semibold text-gray-900">You haven&apos;t recorded any visits yet</p>
+        <p className="mt-1 text-sm text-gray-500">Visits you write appear here. Other doctors&apos; visits are under Whole clinic.</p>
+        <button type="button" onClick={onWholeClinic} className={`mt-5 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+          Show the whole clinic
+        </button>
+      </>
+    );
+  } else {
+    body = (
+      <>
+        <p className="font-semibold text-gray-900">No visits yet</p>
+        <p className="mt-1 text-sm text-gray-500">Start one from the queue when a patient is called in, or write one directly.</p>
+        {canWrite && (
+          <Link href="/visits/new" className={`mt-5 inline-flex items-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+            <Svg d={ICONS.plus} />
+            New visit
+          </Link>
+        )}
+      </>
+    );
+  }
+  return (
+    <div className="px-6 py-14 text-center">
+      <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md bg-gray-100 text-gray-500">
+        <Svg d={narrowed ? ICONS.search : ICONS.doc} className="h-5 w-5" />
+      </div>
+      {body}
+    </div>
   );
 }

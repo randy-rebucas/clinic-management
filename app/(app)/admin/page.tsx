@@ -105,7 +105,7 @@ export default function AdminDashboard() {
               <a
                 key={link.href}
                 href={link.href}
-                className="block px-4 py-3 bg-white border border-gray-200 rounded-lg font-semibold text-gray-900 hover:bg-gray-50 hover:border-gray-300 hover:text-blue-600 transition-all"
+                className="block px-4 py-3 bg-white border border-gray-200 rounded-lg font-semibold text-gray-900 hover:bg-gray-50 hover:border-gray-300 hover:text-brand-teal-dark transition-all"
               >
                 {link.label} →
               </a>

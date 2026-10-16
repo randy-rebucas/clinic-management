@@ -78,7 +78,18 @@ export const patientFieldsSchema = z.object({
     drugs: z.enum(['none', 'occasional', 'regular', 'unknown']).optional(),
     notes: str(2000).optional(),
   }).partial().optional(),
-  familyHistory: z.record(z.string().max(100), z.string().max(500)).optional(),
+  // Stored as a Mongo Map: keys may not contain "." or start with "$", or the save throws.
+  familyHistory: z
+    .record(z.string().max(100), z.string().max(500))
+    .transform((rec) => {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(rec)) {
+        const key = k.replace(/\./g, '').replace(/^\$+/, '').trim();
+        if (key) out[key] = out[key] ? `${out[key]}, ${v}` : v;
+      }
+      return out;
+    })
+    .optional(),
   discountEligibility: z.object({
     pwd: z.object({ eligible: z.boolean(), idNumber: str(100).optional(), expiryDate: optDate }).optional(),
     senior: z.object({ eligible: z.boolean(), idNumber: str(100).optional() }).optional(),
@@ -112,12 +123,14 @@ export function cleanPatientInput<T extends Record<string, any>>(input: T): Part
     if (value === undefined) continue;
     if (value === '' || value === null) continue;
     if (Array.isArray(value) && value.length === 0 && key !== 'tags' && key !== 'allergies') continue;
-    if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date) && Object.keys(value).length === 0) continue;
+    if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+      // Blank sub-fields (an untouched PhilHealth box, an empty emergency contact) are not stored.
+      const kept = Object.fromEntries(Object.entries(value).filter(([, v]) => v !== '' && v !== null && v !== undefined));
+      if (Object.keys(kept).length === 0) continue;
+      out[key] = kept;
+      continue;
+    }
     out[key] = value;
-  }
-  if (out.emergencyContact) {
-    const ec = out.emergencyContact;
-    if (!ec.name && !ec.phone && !ec.relationship && !ec.relation) delete out.emergencyContact;
   }
   return out as Partial<T>;
 }

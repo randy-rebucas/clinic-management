@@ -23,7 +23,7 @@ interface RoomsManagementClientProps {
 }
 
 const ROOM_TYPES = [
-  { value: 'consultation', label: 'Consultation', color: 'bg-blue-100 text-blue-800' },
+  { value: 'consultation', label: 'Consultation', color: 'bg-brand-teal-light text-brand-teal-deep' },
   { value: 'examination', label: 'Examination', color: 'bg-green-100 text-green-800' },
   { value: 'procedure', label: 'Procedure', color: 'bg-purple-100 text-purple-800' },
   { value: 'surgery', label: 'Surgery', color: 'bg-red-100 text-red-800' },
@@ -226,7 +226,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-cyan-50/30 min-h-screen">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
@@ -240,12 +240,12 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-cyan-50/30 min-h-screen">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6">
           {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -257,7 +257,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
             </div>
           )}
           {success && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-green-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -270,22 +270,22 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-lg shadow-md">
+                <div className="p-2 bg-brand-teal-dark rounded-md">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Rooms Management</h1>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Rooms Management</h1>
                   <p className="text-sm sm:text-base text-gray-600 mt-1">Manage clinic rooms and their availability</p>
                 </div>
               </div>
               <button
                 onClick={() => { resetForm(); setShowModal(true); }}
-                className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-lg hover:from-cyan-600 hover:to-cyan-700 transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
+                className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -297,7 +297,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
           {/* Quick Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-cyan-500 rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -308,7 +308,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
               </div>
               <div className="text-2xl font-bold text-gray-900">{rooms.length}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-green-500 rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -319,7 +319,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
               </div>
               <div className="text-2xl font-bold text-green-600">{statusCounts.available || 0}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-yellow-500 rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,7 +330,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
               </div>
               <div className="text-2xl font-bold text-yellow-600">{statusCounts.occupied || 0}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-orange-500 rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -342,7 +342,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
               </div>
               <div className="text-2xl font-bold text-orange-600">{statusCounts.maintenance || 0}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-red-500 rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -356,7 +356,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
           </div>
 
           {/* Filter Bar */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-cyan-500 rounded-lg">
@@ -373,7 +373,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                     aria-label="Filter by room type"
                     value={typeFilter}
                     onChange={(e) => setTypeFilter(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                   >
                     <option value="">All Types</option>
                     {ROOM_TYPES.map(type => (
@@ -388,7 +388,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                     aria-label="Filter by status"
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                   >
                     <option value="">All Status</option>
                     {STATUS_OPTIONS.map(status => (
@@ -402,7 +402,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
 
           {/* Rooms Grid */}
           {rooms.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
               <div className="p-12 text-center">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
                   <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -413,7 +413,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                 <p className="text-sm text-gray-600 font-medium mb-4">Get started by adding your first room.</p>
                 <button
                   onClick={() => { resetForm(); setShowModal(true); }}
-                  className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-lg hover:from-cyan-600 hover:to-cyan-700 transition-all font-semibold shadow-md"
+                  className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all font-semibold shadow-md"
                 >
                   Add First Room
                 </button>
@@ -422,8 +422,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {rooms.map((room) => (
-                <div key={room._id} className="bg-white border border-gray-200 rounded-xl hover:shadow-md transition-all overflow-hidden">
-                  <div className="p-5 border-b border-gray-100 bg-gradient-to-r from-cyan-50 to-cyan-100/30">
+                <div key={room._id} className="bg-white border border-gray-200 rounded-lg hover:shadow-md transition-all overflow-hidden">
+                  <div className="p-5 border-b border-gray-100 bg-cyan-50">
                     <div className="flex justify-between items-start">
                       <div>
                         <h3 className="text-lg font-bold text-gray-900">{room.name}</h3>
@@ -496,8 +496,8 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
         {/* Add/Edit Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="room-modal-title" className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
-              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-cyan-50 to-cyan-100/50">
+            <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="room-modal-title" className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
+              <div className="p-6 border-b border-gray-200 bg-cyan-50">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-cyan-500 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -520,7 +520,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       required
                       placeholder="e.g., Consultation Room A"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -532,7 +532,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                       value={formData.roomNumber}
                       onChange={(e) => setFormData({ ...formData, roomNumber: e.target.value })}
                       placeholder="e.g., 101"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -543,7 +543,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                       value={formData.roomType}
                       onChange={(e) => setFormData({ ...formData, roomType: e.target.value as Room['roomType'] })}
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     >
                       {ROOM_TYPES.map(type => (
                         <option key={type.value} value={type.value}>{type.label}</option>
@@ -558,7 +558,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                       type="text"
                       value={formData.building}
                       onChange={(e) => setFormData({ ...formData, building: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -570,7 +570,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                       value={formData.floor}
                       onChange={(e) => setFormData({ ...formData, floor: parseInt(e.target.value) || 1 })}
                       min="0"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -582,7 +582,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                       value={formData.capacity}
                       onChange={(e) => setFormData({ ...formData, capacity: parseInt(e.target.value) || 1 })}
                       min="1"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -592,7 +592,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                     <select id="room-status"
                       value={formData.status}
                       onChange={(e) => setFormData({ ...formData, status: e.target.value as Room['status'] })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     >
                       {STATUS_OPTIONS.map(status => (
                         <option key={status.value} value={status.value}>{status.label}</option>
@@ -608,7 +608,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                       value={formData.equipment}
                       onChange={(e) => setFormData({ ...formData, equipment: e.target.value })}
                       placeholder="Comma separated (e.g., Exam table, Monitor, Stethoscope)"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -620,7 +620,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                       value={formData.amenities}
                       onChange={(e) => setFormData({ ...formData, amenities: e.target.value })}
                       placeholder="Comma separated (e.g., Air conditioning, WiFi)"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -631,7 +631,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                       value={formData.notes}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                       rows={2}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
                 </div>
@@ -648,7 +648,7 @@ export default function RoomsManagementClient({ user }: RoomsManagementClientPro
                   <button
                     type="submit"
                     disabled={saving}
-                    className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-lg hover:from-cyan-600 hover:to-cyan-700 disabled:from-cyan-400 disabled:to-cyan-500 transition-all font-semibold shadow-md"
+                    className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep disabled:bg-brand-teal-dark transition-all font-semibold shadow-md"
                   >
                     {saving ? 'Saving...' : editingRoom ? 'Update Room' : 'Create Room'}
                   </button>

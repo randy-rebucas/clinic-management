@@ -1,721 +1,695 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
+import { FOCUS_RING, ICON, Svg, localKey, timeLabel } from './appointments/shared';
+import { ageFrom } from './visits/form/PatientSummary';
+import { DIRECTION_LABEL, LATE_AFTER_DAYS, OPEN_STATUSES } from '@/lib/referrals';
+import type { ReferralDetailPermissions } from '@/lib/referrals-page';
+import { REF_STATE, URGENCY_BADGE, daysSince, direction, doctorName, fromLabel, personName, shortDate, specialtyOf, toLabel, waitedLabel, type Referral } from './referrals/shared';
+import { CancelReferralDialog, DeclineDialog, SeenDialog, useReferralStatus } from './referrals/StatusDialogs';
 
-interface Referral {
-  _id: string;
-  referralCode: string;
-  type: 'doctor_to_doctor' | 'patient_to_patient' | 'external';
-  patient: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    patientCode?: string;
-  } | null;
-  referringDoctor?: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    specialization?: string;
-  } | null;
-  receivingDoctor?: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    specialization?: string;
-  } | null;
-  referringClinic?: string;
-  referringContact?: {
-    name: string;
-    phone?: string;
-    email?: string;
-  };
-  receivingClinic?: string;
-  reason: string;
-  urgency: 'routine' | 'urgent' | 'stat';
-  specialty?: string;
-  notes?: string;
-  chiefComplaint?: string;
-  diagnosis?: string;
-  relevantHistory?: string;
-  medications?: string[];
-  attachments?: Array<{
-    filename: string;
-    url: string;
-    uploadDate: string;
-  }>;
-  status: 'pending' | 'accepted' | 'completed' | 'declined' | 'cancelled';
-  referredDate: string;
-  acceptedDate?: string;
-  completedDate?: string;
-  declinedDate?: string;
-  declinedReason?: string;
-  visit?: {
-    _id: string;
-    visitCode: string;
-    date: string;
-  } | null;
-  appointment?: {
-    _id: string;
-    appointmentCode: string;
-    appointmentDate: string;
-  } | null;
-  followUpRequired: boolean;
-  followUpDate?: string;
-  followUpNotes?: string;
-  feedback?: {
-    rating?: number;
-    comments?: string;
-    submittedBy: string;
-    submittedAt: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
+type Scheduled = { _id: string; appointmentCode?: string; appointmentDate: string; appointmentTime?: string; status?: string } | null;
 
-export default function ReferralDetailClient({ referralId }: { referralId: string }) {
-  const [referral, setReferral] = useState<Referral | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
+const ICONS = {
+  ...ICON,
+  print: 'M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z',
+  doc: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  pen: 'M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z',
+  thumbDown: 'M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5',
+  link: 'M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14',
+};
+
+const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+/** Birth dates are stored at UTC midnight; read them in UTC so they never slip a day. */
+const birthDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const safeUrl = (u: string) => /^https?:\/\//i.test(u);
+const URGENCY_WORDS = { routine: 'Routine', urgent: 'Urgent, to be seen soon', stat: 'STAT, as soon as possible' } as const;
+
+type Dialog = 'decline' | 'seen' | 'cancel' | null;
+
+export default function ReferralDetailClient({
+  referralId,
+  permissions,
+  saved,
+}: {
+  referralId: string;
+  permissions: ReferralDetailPermissions;
+  saved?: 'new' | 'edit';
+}) {
+  const ref = useKeyedFetch<Referral>(`/api/referrals/${referralId}`);
+  const send = useReferralStatus(referralId);
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(saved === 'edit' ? 'Changes saved.' : null);
+  // "Saved, print the letter" stays until dismissed: it says what to do next.
+  const [created, setCreated] = useState(saved === 'new');
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchReferral = async () => {
-      try {
-        const res = await fetch(`/api/referrals/${referralId}`);
-        if (res.status === 401) {
-          router.push('/login');
-          return;
-        }
-        const data = await res.json();
-        if (data.success) {
-          setReferral(data.data);
-        } else {
-          setError(data.error || 'Failed to fetch referral');
-        }
-      } catch (error) {
-        console.error('Failed to fetch referral:', error);
-        setError('Failed to fetch referral');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchReferral();
-  }, [referralId, router]);
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
-  const getStatusColor = (status: string): string => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'accepted':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'declined':
-      case 'cancelled':
-        return 'bg-red-100 text-red-800 border-red-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+  const r = ref.value;
+  const scheduled = (ref.raw?.scheduled as Scheduled | undefined) ?? null;
+
+  const step = async (status: 'accepted' | 'cancelled', message: string, fallback: string) => {
+    setBusy(true);
+    setActionError(null);
+    const err = await send({ status }, fallback);
+    setBusy(false);
+    setDialog(null);
+    if (err) {
+      setActionError(err);
+      return;
     }
+    done(message);
   };
 
-  const getUrgencyColor = (urgency: string): string => {
-    switch (urgency) {
-      case 'stat':
-        return 'bg-red-100 text-red-800 border-red-200';
-      case 'urgent':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'routine':
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
+  const done = (message: string) => {
+    setDialog(null);
+    setCreated(false);
+    ref.reload();
+    setNotice(message);
   };
 
-  const formatDate = (dateString?: string): string => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  // --- Not loaded ----------------------------------------------------------------
 
-  const formatShortDate = (dateString?: string): string => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
-  if (loading) {
+  if (!r && ref.error) {
+    const missing = /not found/i.test(ref.error);
+    const denied = /permission|forbidden|not allowed/i.test(ref.error);
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-orange-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-orange-100 border-t-orange-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading referral...</p>
+      <Shell>
+        <BackLink />
+        <div role="alert" className="rounded-lg border border-gray-200 bg-white px-6 py-14 text-center">
+          <div className={`mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md ${missing || denied ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-600'}`}>
+            <Svg d={missing || denied ? ICONS.doc : ICONS.alert} className="h-5 w-5" />
           </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (error || !referral) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-orange-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900">Referral not found</h2>
-            <p className="text-sm text-gray-600 mb-4">{error || 'The referral you are looking for does not exist.'}</p>
-            <Link 
-              href="/referrals"
-              className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all text-sm font-semibold shadow-md"
-            >
-              Back to Referrals
+          <p className="font-semibold text-gray-900">{missing ? 'Referral not found' : denied ? 'You can’t open this referral' : 'This referral didn’t load'}</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">
+            {missing ? 'It may have been deleted, or it belongs to another clinic.' : denied ? 'Ask a clinic admin if you need access to referrals.' : `${ref.error}. Check your connection and try again.`}
+          </p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link href="/referrals" className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              All referrals
             </Link>
+            {!missing && !denied && (
+              <button type="button" onClick={ref.reload} className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+                Try again
+              </button>
+            )}
           </div>
         </div>
-      </section>
+      </Shell>
     );
   }
+
+  if (!r) {
+    return (
+      <Shell>
+        <BackLink />
+        <div className="animate-pulse space-y-6" aria-hidden="true">
+          <div className="space-y-2">
+            <div className="h-8 w-64 rounded bg-gray-200" />
+            <div className="h-4 w-96 max-w-full rounded bg-gray-100" />
+          </div>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <div className="h-72 rounded-lg border border-gray-200 bg-white" />
+            <div className="h-56 rounded-lg border border-gray-200 bg-white" />
+          </div>
+        </div>
+        <span className="sr-only" role="status">
+          Loading referral…
+        </span>
+      </Shell>
+    );
+  }
+
+  // --- Loaded --------------------------------------------------------------------
+
+  const st = REF_STATE[r.status] ?? REF_STATE.pending;
+  const cancelled = r.status === 'cancelled';
+  const open = OPEN_STATUSES.includes(r.status);
+  const d = direction(r);
+  const sending = d === 'internal' || d === 'out';
+  const who = personName(r.patient) ?? 'Patient record unavailable';
+  const urgency = r.urgency && r.urgency !== 'routine' ? URGENCY_BADGE[r.urgency] : undefined;
+  const canAct = permissions.canUpdate && open;
+  const canPrint = sending && !cancelled && r.status !== 'declined';
+  const canBook = permissions.canBook && open && Boolean(r.receivingDoctor && r.patient) && !r.appointment && !scheduled;
+  const specialty = r.specialty || specialtyOf(r.receivingDoctor);
+  const waited = r.status === 'pending' ? daysSince(r.referredDate) : 0;
+
+  const hasClinical = Boolean(r.chiefComplaint || r.diagnosis || r.relevantHistory || (r.medications?.length ?? 0) > 0);
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-orange-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex items-center gap-4 mb-6">
-              <Link 
-                href="/referrals"
-                aria-label="Back to referrals"
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <svg className="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
+    <Shell>
+      <BackLink />
+
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${cancelled ? 'text-gray-500 line-through decoration-gray-400 decoration-2' : 'text-gray-900'}`}>{who}</h1>
+            <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${st.badge}`}>{st.label}</span>
+            {urgency && !cancelled && <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${urgency.badge}`}>{urgency.label}</span>}
+            {r.referralCode && <span className="font-mono text-sm text-gray-500">{r.referralCode}</span>}
+          </div>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm sm:text-base text-gray-600">
+            <span>{fromLabel(r)}</span>
+            <Svg d={ICONS.arrow} className="h-3.5 w-3.5 text-gray-400" />
+            <span className="font-semibold text-gray-900">{toLabel(r)}</span>
+            {specialty && <span>· {specialty}</span>}
+            <span>· referred {longDate(r.referredDate)}</span>
+          </p>
+          {r.status === 'pending' && (
+            <p className={`mt-1 text-sm ${waited > LATE_AFTER_DAYS ? 'font-semibold text-amber-800' : 'text-gray-500'}`}>
+              Waiting for a reply <span className="font-mono">{waitedLabel(waited)}</span>
+              {waited > LATE_AFTER_DAYS && r.urgency !== 'routine' && (r.escalationSentAt ? ' · the referring doctor was emailed about it' : ' · urgent referrals this old are emailed to the referring doctor')}
+            </p>
+          )}
+        </div>
+
+        <div className={`flex flex-wrap items-center gap-2 transition-opacity ${busy ? 'opacity-60' : ''}`}>
+          {canPrint && (
+            <a
+              href={`/api/referrals/${r._id}/letter`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.print} />
+              Referral letter
+            </a>
+          )}
+          {canBook && (
+            <Link
+              href={`/appointments/new?patientId=${r.patient!._id}&doctorId=${r.receivingDoctor!._id}`}
+              className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.calendar} />
+              Book with {doctorName(r.receivingDoctor)}
+            </Link>
+          )}
+          {canAct && r.status === 'pending' && (
+            <SecondaryButton onClick={() => setDialog('decline')} disabled={busy} icon={ICONS.thumbDown}>
+              {d === 'out' ? 'They declined' : 'Decline'}
+            </SecondaryButton>
+          )}
+          {canAct && r.status === 'pending' && (
+            <PrimaryButton
+              onClick={() => step('accepted', d === 'out' ? 'Marked as accepted by the receiving doctor.' : 'Referral accepted.', 'The referral could not be accepted')}
+              disabled={busy}
+              icon={ICONS.check}
+            >
+              {d === 'out' ? 'They accepted' : 'Accept'}
+            </PrimaryButton>
+          )}
+          {canAct && r.status === 'accepted' && (
+            <PrimaryButton onClick={() => setDialog('seen')} disabled={busy} icon={ICONS.check}>
+              Mark seen
+            </PrimaryButton>
+          )}
+          {canAct && (
+            <Link
+              href={`/referrals/${r._id}/edit`}
+              aria-label={`Edit the referral for ${who}`}
+              title="Edit details"
+              className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.pen} />
+            </Link>
+          )}
+          {canAct && (
+            <button
+              type="button"
+              onClick={() => setDialog('cancel')}
+              disabled={busy}
+              aria-label={`Cancel the referral for ${who}`}
+              title="Cancel this referral"
+              className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-40 ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.x} />
+            </button>
+          )}
+        </div>
+      </header>
+
+      <p className="sr-only" aria-live="polite">
+        {notice ?? ''}
+      </p>
+      {created && !notice && (
+        <div role="status" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+          <p>
+            Referral saved{r.referralCode ? ` as ${r.referralCode}` : ''}. {canPrint ? 'Print the referral letter for the patient to take.' : 'It is waiting for a reply.'}
+          </p>
+          <button type="button" onClick={() => setCreated(false)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 text-green-700 hover:text-green-900 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
+        </div>
+      )}
+      {notice && (
+        <div role="status" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+          <p>{notice}</p>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 text-green-700 hover:text-green-900 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
+        </div>
+      )}
+      {actionError && (
+        <div role="alert" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          <p>{actionError}</p>
+          <button type="button" onClick={() => setActionError(null)} aria-label="Dismiss error" className={`shrink-0 rounded p-0.5 text-red-700 hover:text-red-900 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
+        </div>
+      )}
+
+      {r.status === 'declined' && (
+        <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <Svg d={ICONS.alert} className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-semibold">
+              Declined{r.declinedDate ? ` on ${shortDate(r.declinedDate)}` : ''}. {who} still needs a place.
+            </p>
+            {r.declinedReason && <p className="mt-0.5">“{r.declinedReason}”</p>}
+            {permissions.canWrite && r.patient && (
+              <Link href={`/referrals/new?patientId=${r.patient._id}`} className={`mt-1 inline-block rounded font-semibold underline underline-offset-2 hover:text-red-900 ${FOCUS_RING}`}>
+                Refer {r.patient.firstName} somewhere else
               </Link>
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-md">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
-                    Referral {referral.referralCode}
-                  </h1>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {referral.patient && (
-                      <>
-                        <Link
-                          href={`/patients/${referral.patient._id}`}
-                          className="text-sm font-semibold text-orange-600 hover:text-orange-700 hover:underline"
-                        >
-                          {referral.patient.firstName} {referral.patient.lastName}
-                        </Link>
-                        <p className="text-sm text-gray-400">•</p>
-                      </>
-                    )}
-                    <p className="text-sm font-medium text-gray-600 capitalize">{referral.type.replace(/_/g, ' ')}</p>
-                    <p className="text-sm text-gray-400">•</p>
-                    <p className="text-sm font-medium text-gray-600">{formatShortDate(referral.referredDate)}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className={`px-3 py-1.5 rounded-full text-sm font-semibold border ${getStatusColor(referral.status)}`}>
-                  {referral.status.charAt(0).toUpperCase() + referral.status.slice(1)}
-                </span>
-                <span className={`px-3 py-1.5 rounded-full text-sm font-semibold border ${getUrgencyColor(referral.urgency)}`}>
-                  {referral.urgency.charAt(0).toUpperCase() + referral.urgency.slice(1)}
-                </span>
-              </div>
-            </div>
-
-            {/* Quick Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 bg-purple-500 rounded-lg">
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Status</p>
-                </div>
-                <p className="text-lg font-bold text-gray-900 capitalize">{referral.status}</p>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 bg-red-500 rounded-lg">
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Urgency</p>
-                </div>
-                <p className="text-lg font-bold text-gray-900 capitalize">{referral.urgency}</p>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 bg-orange-500 rounded-lg">
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Type</p>
-                </div>
-                <p className="text-lg font-bold text-gray-900 capitalize">{referral.type.replace(/_/g, ' ')}</p>
-              </div>
-              {referral.visit && (
-                <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="p-1.5 bg-teal-500 rounded-lg">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                    </div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase">Visit</p>
-                  </div>
-                  <Link
-                    href={`/visits/${referral.visit._id}`}
-                    className="text-lg font-bold text-teal-600 hover:text-teal-700 hover:underline"
-                  >
-                    {referral.visit.visitCode}
-                  </Link>
-                </div>
-              )}
-              {referral.appointment && (
-                <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="p-1.5 bg-blue-500 rounded-lg">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase">Appointment</p>
-                  </div>
-                  <Link
-                    href={`/appointments/${referral.appointment._id}`}
-                    className="text-lg font-bold text-blue-600 hover:text-blue-700 hover:underline"
-                  >
-                    {referral.appointment.appointmentCode}
-                  </Link>
-                </div>
-              )}
-              {referral.attachments && referral.attachments.length > 0 && (
-                <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="p-1.5 bg-amber-500 rounded-lg">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                      </svg>
-                    </div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase">Attachments</p>
-                  </div>
-                  <p className="text-lg font-bold text-gray-900">{referral.attachments.length}</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Patient Information */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-cyan-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Patient Information</h2>
-                </div>
-              </div>
-              <div className="p-6">
-                {referral.patient ? (
-                  <div>
-                    <Link
-                      href={`/patients/${referral.patient._id}`}
-                      className="text-lg font-bold text-orange-600 hover:text-orange-700 hover:underline"
-                    >
-                      {referral.patient.firstName} {referral.patient.lastName}
-                    </Link>
-                    {referral.patient.patientCode && (
-                      <p className="text-sm font-medium text-gray-600 mt-2">Code: {referral.patient.patientCode}</p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-gray-500 font-medium">Patient not found</p>
-                )}
-              </div>
-            </div>
-
-            {/* Referral Details */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-emerald-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Referral Details</h2>
-                </div>
-              </div>
-              <div className="p-6 space-y-5">
-                <div>
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</span>
-                  <p className="mt-1.5 text-sm font-bold text-gray-900 capitalize">{referral.type.replace(/_/g, ' ')}</p>
-                </div>
-                <div>
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Reason for Referral</span>
-                  <p className="mt-1.5 text-sm font-medium text-gray-900">{referral.reason}</p>
-                </div>
-                {referral.specialty && (
-                  <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Required Specialty</span>
-                    <p className="mt-1.5 text-sm font-medium text-gray-900">{referral.specialty}</p>
-                  </div>
-                )}
-                {referral.chiefComplaint && (
-                  <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Chief Complaint</span>
-                    <p className="mt-1.5 text-sm font-medium text-gray-900">{referral.chiefComplaint}</p>
-                  </div>
-                )}
-                {referral.diagnosis && (
-                  <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Diagnosis</span>
-                    <p className="mt-1.5 text-sm font-medium text-gray-900">{referral.diagnosis}</p>
-                  </div>
-                )}
-                {referral.relevantHistory && (
-                  <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Relevant History</span>
-                    <p className="mt-1.5 text-sm font-medium text-gray-900 whitespace-pre-wrap">{referral.relevantHistory}</p>
-                  </div>
-                )}
-                {referral.medications && referral.medications.length > 0 && (
-                  <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Current Medications</span>
-                    <div className="flex gap-2 flex-wrap mt-2">
-                      {referral.medications.map((med, idx) => (
-                        <span key={idx} className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-sm font-semibold border border-purple-200">
-                          {med}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {referral.notes && (
-                  <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Additional Notes</span>
-                    <p className="mt-1.5 text-sm font-medium text-gray-900 whitespace-pre-wrap">{referral.notes}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Attachments */}
-            {referral.attachments && referral.attachments.length > 0 && (
-              <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-                <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-amber-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                      </svg>
-                    </div>
-                    <h2 className="text-lg font-bold text-gray-900">Attachments</h2>
-                  </div>
-                </div>
-                <div className="p-6">
-                  <div className="space-y-3">
-                    {referral.attachments.map((attachment, idx) => (
-                      <a
-                        key={idx}
-                        href={attachment.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-amber-50 hover:border-amber-200 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-amber-100 rounded-lg">
-                            <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                          </div>
-                          <span className="text-sm font-semibold text-gray-900">{attachment.filename}</span>
-                        </div>
-                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              </div>
             )}
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Referring Party */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Referring Party</h2>
-                </div>
-              </div>
-              <div className="p-6 space-y-3">
-                {referral.referringDoctor ? (
-                  <div>
-                    <p className="font-bold text-gray-900">
-                      Dr. {referral.referringDoctor.firstName} {referral.referringDoctor.lastName}
-                    </p>
-                    {referral.referringDoctor.specialization && (
-                      <p className="text-sm font-medium text-gray-600 mt-1">{referral.referringDoctor.specialization}</p>
-                    )}
-                  </div>
-                ) : referral.referringClinic ? (
-                  <div>
-                    <p className="font-bold text-gray-900">{referral.referringClinic}</p>
-                    {referral.referringContact && (
-                      <div className="mt-3 space-y-2 text-sm">
-                        {referral.referringContact.name && <p className="font-semibold text-gray-900">{referral.referringContact.name}</p>}
-                        {referral.referringContact.phone && <p className="font-medium text-gray-600">Phone: {referral.referringContact.phone}</p>}
-                        {referral.referringContact.email && <p className="font-medium text-gray-600">Email: {referral.referringContact.email}</p>}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-gray-500 font-medium">Not specified</p>
-                )}
-              </div>
-            </div>
-
-            {/* Receiving Party */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-green-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Receiving Party</h2>
-                </div>
-              </div>
-              <div className="p-6 space-y-3">
-                {referral.receivingDoctor ? (
-                  <div>
-                    <p className="font-bold text-gray-900">
-                      Dr. {referral.receivingDoctor.firstName} {referral.receivingDoctor.lastName}
-                    </p>
-                    {referral.receivingDoctor.specialization && (
-                      <p className="text-sm font-medium text-gray-600 mt-1">{referral.receivingDoctor.specialization}</p>
-                    )}
-                  </div>
-                ) : referral.receivingClinic ? (
-                  <div>
-                    <p className="font-bold text-gray-900">{referral.receivingClinic}</p>
-                  </div>
-                ) : (
-                  <p className="text-gray-500 font-medium">Not specified</p>
-                )}
-              </div>
-            </div>
-
-            {/* Status Timeline */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Timeline</h2>
-                </div>
-              </div>
-              <div className="p-6 space-y-5">
-                <div>
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Referred Date</span>
-                  <p className="mt-1.5 text-sm font-bold text-gray-900">{formatDate(referral.referredDate)}</p>
-                </div>
-                {referral.acceptedDate && (
-                  <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Accepted Date</span>
-                    <p className="mt-1.5 text-sm font-bold text-gray-900">{formatDate(referral.acceptedDate)}</p>
-                  </div>
-                )}
-                {referral.completedDate && (
-                  <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Completed Date</span>
-                    <p className="mt-1.5 text-sm font-bold text-gray-900">{formatDate(referral.completedDate)}</p>
-                  </div>
-                )}
-                {referral.declinedDate && (
-                  <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Declined Date</span>
-                    <p className="mt-1.5 text-sm font-bold text-gray-900">{formatDate(referral.declinedDate)}</p>
-                    {referral.declinedReason && (
-                      <p className="mt-2 text-sm font-semibold text-red-600 bg-red-50 p-2 rounded-lg border border-red-200">{referral.declinedReason}</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Related Records */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-indigo-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Related Records</h2>
-                </div>
-              </div>
-              <div className="p-6 space-y-3">
-                {referral.visit ? (
-                  <Link
-                    href={`/visits/${referral.visit._id}`}
-                    className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-teal-50 hover:border-teal-200 transition-colors"
-                  >
-                    <div>
-                      <p className="font-bold text-gray-900">Visit</p>
-                      <p className="text-sm font-medium text-gray-600 mt-1">{referral.visit.visitCode}</p>
-                    </div>
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </Link>
-                ) : (
-                  <p className="text-sm font-medium text-gray-500">No visit created</p>
-                )}
-                {referral.appointment ? (
-                  <Link
-                    href={`/appointments/${referral.appointment._id}`}
-                    className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-200 transition-colors"
-                  >
-                    <div>
-                      <p className="font-bold text-gray-900">Appointment</p>
-                      <p className="text-sm font-medium text-gray-600 mt-1">{referral.appointment.appointmentCode}</p>
-                    </div>
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </Link>
-                ) : (
-                  <p className="text-sm font-medium text-gray-500">No appointment created</p>
-                )}
-              </div>
-            </div>
-
-            {/* Follow-up */}
-            {referral.followUpRequired && (
-              <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-                <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-teal-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                    </div>
-                    <h2 className="text-lg font-bold text-gray-900">Follow-up</h2>
-                  </div>
-                </div>
-                <div className="p-6 space-y-4">
-                  {referral.followUpDate && (
-                    <div>
-                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Follow-up Date</span>
-                      <p className="mt-1.5 text-sm font-bold text-gray-900">{formatDate(referral.followUpDate)}</p>
-                    </div>
-                  )}
-                  {referral.followUpNotes && (
-                    <div>
-                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Follow-up Notes</span>
-                      <p className="mt-1.5 text-sm font-medium text-gray-900 whitespace-pre-wrap">{referral.followUpNotes}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Feedback */}
-            {referral.feedback && (
-              <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-                <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-yellow-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                      </svg>
-                    </div>
-                    <h2 className="text-lg font-bold text-gray-900">Feedback</h2>
-                  </div>
-                </div>
-                <div className="p-6 space-y-4">
-                  {referral.feedback.rating && (
-                    <div>
-                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Rating</span>
-                      <div className="flex items-center gap-1">
-                        <span className="sr-only">{referral.feedback.rating} out of 5</span>
-                        {[...Array(5)].map((_, i) => (
-                          <svg
-                            key={i}
-                            aria-hidden="true"
-                            className={`w-6 h-6 ${i < referral.feedback!.rating! ? 'text-yellow-400' : 'text-gray-300'}`}
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                          </svg>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {referral.feedback.comments && (
-                    <div>
-                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Comments</span>
-                      <p className="mt-1.5 text-sm font-medium text-gray-900 whitespace-pre-wrap">{referral.feedback.comments}</p>
-                    </div>
-                  )}
-                  <p className="text-xs font-semibold text-gray-500">Submitted: {formatDate(referral.feedback.submittedAt)}</p>
-                </div>
-              </div>
-            )}
-          </div>
           </div>
         </div>
+      )}
+
+      <div className={`grid items-start gap-6 transition-opacity duration-200 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] ${ref.loading ? 'opacity-60' : ''}`}>
+        <div className="flex min-w-0 flex-col gap-6">
+          <Panel id="ref-why" title="Why">
+            <div className="px-5 py-4">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-900">{r.reason}</p>
+            </div>
+            <dl className="divide-y divide-gray-100 border-t border-gray-100">
+              <Field label="Urgency">{URGENCY_WORDS[r.urgency] ?? 'Routine'}</Field>
+              {specialty && <Field label="Specialty">{specialty}</Field>}
+              {r.notes && (
+                <Field label="Notes">
+                  <span className="whitespace-pre-wrap">{r.notes}</span>
+                </Field>
+              )}
+            </dl>
+          </Panel>
+
+          {d !== 'patient' && (
+            <Panel id="ref-clinical" title={sending ? 'For the receiving doctor' : 'From the referring doctor'}>
+              {hasClinical ? (
+                <dl className="divide-y divide-gray-100">
+                  {r.chiefComplaint && <Field label="Complaint">{r.chiefComplaint}</Field>}
+                  {r.diagnosis && <Field label="Diagnosis">{r.diagnosis}</Field>}
+                  {r.relevantHistory && (
+                    <Field label="History">
+                      <span className="whitespace-pre-wrap">{r.relevantHistory}</span>
+                    </Field>
+                  )}
+                  {(r.medications?.length ?? 0) > 0 && (
+                    <Field label="Medicines">
+                      <ul className="space-y-0.5">
+                        {r.medications!.map((m, i) => (
+                          <li key={i}>{m}</li>
+                        ))}
+                      </ul>
+                    </Field>
+                  )}
+                </dl>
+              ) : (
+                <p className="px-5 py-4 text-sm text-gray-500">
+                  No clinical summary was written{sending ? '; the letter carries only the reason' : ''}.
+                  {canAct && sending && (
+                    <>
+                      {' '}
+                      <Link href={`/referrals/${r._id}/edit`} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                        Add one
+                      </Link>
+                    </>
+                  )}
+                </p>
+              )}
+            </Panel>
+          )}
+
+          {(r.attachments?.length ?? 0) > 0 && (
+            <Panel id="ref-files" title="Attachments">
+              <ul className="divide-y divide-gray-100">
+                {r.attachments!.map((a, i) => (
+                  <li key={i} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+                    <span className="min-w-0 truncate text-gray-900">{a.filename}</span>
+                    {safeUrl(a.url) ? (
+                      <a href={a.url} target="_blank" rel="noopener noreferrer" className={`inline-flex shrink-0 items-center gap-1 rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                        Open
+                        <Svg d={ICONS.link} className="h-3.5 w-3.5" />
+                      </a>
+                    ) : (
+                      <span className="shrink-0 text-gray-500">Link not available</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          )}
+        </div>
+
+        <aside className="flex min-w-0 flex-col gap-6">
+          <Panel id="ref-progress" title="Progress">
+            <ol className="divide-y divide-gray-100">
+              <Step done label="Referred" when={r.referredDate} />
+              {r.status === 'declined' ? (
+                <Step done tone="red" label="Declined" when={r.declinedDate} note={r.declinedReason} />
+              ) : (
+                <>
+                  <Step done={Boolean(r.acceptedDate) || r.status === 'completed'} label="Accepted" when={r.acceptedDate} pending={cancelled ? 'Cancelled before a reply' : r.status === 'pending' ? 'Waiting for a reply' : undefined} />
+                  <Step done={r.status === 'completed'} label="Seen" when={r.completedDate} pending={cancelled ? undefined : r.status === 'accepted' ? 'Not yet' : undefined} />
+                </>
+              )}
+              {cancelled && <Step done tone="gray" label="Cancelled" when={r.updatedAt} />}
+            </ol>
+            {(r.appointment || scheduled || r.visit) && (
+              <dl className="divide-y divide-gray-100 border-t border-gray-200">
+                {(r.appointment || scheduled) && (
+                  <Field label="Booked">
+                    <BookingLine a={(r.appointment ?? scheduled)!} canOpen={permissions.canSeeAppointment} />
+                    {!r.appointment && scheduled && <span className="block text-xs text-gray-500">Found in the schedule with {doctorName(r.receivingDoctor)}</span>}
+                  </Field>
+                )}
+                {r.visit && (
+                  <Field label="Seen at">
+                    {permissions.canSeeVisit ? (
+                      <Link href={`/visits/${r.visit._id}`} className={`rounded font-mono font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                        {r.visit.visitCode}
+                      </Link>
+                    ) : (
+                      <span className="font-mono">{r.visit.visitCode}</span>
+                    )}
+                    <span className="text-gray-500"> · {shortDate(r.visit.date)}</span>
+                  </Field>
+                )}
+              </dl>
+            )}
+          </Panel>
+
+          <Panel id="ref-patient" title="Patient">
+            {r.patient ? (
+              <dl className="divide-y divide-gray-100">
+                <Field label="Name">
+                  {permissions.canSeePatient ? (
+                    <Link href={`/patients/${r.patient._id}`} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                      {who}
+                    </Link>
+                  ) : (
+                    who
+                  )}
+                  {r.patient.patientCode && <span className="ml-2 font-mono text-xs text-gray-500">{r.patient.patientCode}</span>}
+                </Field>
+                {r.patient.dateOfBirth && (
+                  <Field label="Born">
+                    <span className="font-mono">{birthDate(r.patient.dateOfBirth)}</span>
+                    {ageFrom(r.patient.dateOfBirth) && <span className="text-gray-500"> · {ageFrom(r.patient.dateOfBirth)}</span>}
+                  </Field>
+                )}
+                {r.patient.phone && (
+                  <Field label="Phone">
+                    <span className="font-mono">{r.patient.phone}</span>
+                  </Field>
+                )}
+              </dl>
+            ) : (
+              <p className="px-5 py-4 text-sm text-gray-500">The patient record isn’t available at this clinic.</p>
+            )}
+          </Panel>
+
+          <Panel id="ref-parties" title={DIRECTION_LABEL[d].label}>
+            <dl className="divide-y divide-gray-100">
+              <Field label="From">
+                <Party r={r} side="from" canSeePatient={permissions.canSeePatient} />
+              </Field>
+              <Field label="To">
+                <Party r={r} side="to" canSeePatient={permissions.canSeePatient} />
+              </Field>
+            </dl>
+          </Panel>
+
+          {r.followUpRequired && (
+            <Panel id="ref-followup" title="Follow-up">
+              <dl className="divide-y divide-gray-100">
+                <Field label="Date">{r.followUpDate ? <span className="font-mono">{shortDate(r.followUpDate)}</span> : <span className="text-gray-500">Not set</span>}</Field>
+                {r.followUpNotes && (
+                  <Field label="Notes">
+                    <span className="whitespace-pre-wrap">{r.followUpNotes}</span>
+                  </Field>
+                )}
+                {r.followUpDate && (
+                  <Field label="Reminder">
+                    {r.followUpReminderSentAt ? (
+                      <>
+                        Sent to the patient <span className="font-mono">{shortDate(r.followUpReminderSentAt)}</span>
+                      </>
+                    ) : open ? (
+                      <span className="text-gray-500">Goes to the patient 3 days before, if follow-up reminders are on</span>
+                    ) : (
+                      <span className="text-gray-500">Not sent</span>
+                    )}
+                  </Field>
+                )}
+              </dl>
+            </Panel>
+          )}
+
+          {r.feedback && (r.feedback.rating || r.feedback.comments) && (
+            <Panel id="ref-feedback" title="Feedback">
+              <dl className="divide-y divide-gray-100">
+                {r.feedback.rating && (
+                  <Field label="Rating">
+                    <span className="font-mono">{r.feedback.rating}</span> of 5
+                  </Field>
+                )}
+                {r.feedback.comments && (
+                  <Field label="Comments">
+                    <span className="whitespace-pre-wrap">{r.feedback.comments}</span>
+                  </Field>
+                )}
+                {r.feedback.submittedAt && (
+                  <Field label="Given">
+                    <span className="font-mono">{shortDate(r.feedback.submittedAt)}</span>
+                  </Field>
+                )}
+              </dl>
+            </Panel>
+          )}
+        </aside>
       </div>
+
+      {dialog === 'decline' &&
+        createPortal(
+          <DeclineDialog
+            referralId={r._id}
+            who={who}
+            outgoing={d === 'out'}
+            onClose={() => setDialog(null)}
+            onDone={() => done('Marked as declined. The reason stays on the referral.')}
+          />,
+          document.body
+        )}
+      {dialog === 'seen' &&
+        createPortal(
+          <SeenDialog
+            referralId={r._id}
+            patientId={r.patient?._id ?? null}
+            who={who}
+            referredDay={localKey(new Date(r.referredDate))}
+            canPickVisit={permissions.canSeeVisit && d !== 'out'}
+            onClose={() => setDialog(null)}
+            onDone={() => done('Marked as seen. The referral is closed.')}
+          />,
+          document.body
+        )}
+      {dialog === 'cancel' &&
+        createPortal(
+          <CancelReferralDialog
+            who={who}
+            code={r.referralCode}
+            busy={busy}
+            onClose={() => setDialog(null)}
+            onConfirm={() => step('cancelled', 'Referral cancelled. It stays on file.', 'The referral could not be cancelled')}
+          />,
+          document.body
+        )}
+    </Shell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pieces
+// ---------------------------------------------------------------------------
+
+function Step({ done, label, when, note, pending, tone }: { done: boolean; label: string; when?: string; note?: string; pending?: string; tone?: 'red' | 'gray' }) {
+  if (!done && !pending) {
+    return (
+      <li className="flex items-start gap-3 px-5 py-3 text-sm">
+        <span aria-hidden="true" className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-inset ring-gray-300" />
+        <span className="text-gray-500">{label}</span>
+      </li>
+    );
+  }
+  const dot = !done ? 'ring-1 ring-inset ring-gray-300' : tone === 'red' ? 'bg-red-600' : tone === 'gray' ? 'bg-gray-400' : 'bg-brand-teal-dark';
+  return (
+    <li className="flex items-start gap-3 px-5 py-3 text-sm">
+      <span aria-hidden="true" className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} />
+      <span className="min-w-0 flex-1">
+        <span className={done ? 'font-semibold text-gray-900' : 'text-gray-500'}>{label}</span>
+        {done && when && (
+          <span className="block font-mono text-xs text-gray-500">
+            {shortDate(when)}, {clock(when)}
+          </span>
+        )}
+        {!done && pending && <span className="block text-xs text-gray-500">{pending}</span>}
+        {note && <span className="mt-0.5 block text-gray-700">“{note}”</span>}
+      </span>
+    </li>
+  );
+}
+
+function BookingLine({ a, canOpen }: { a: NonNullable<Scheduled>; canOpen: boolean }) {
+  const label = (
+    <>
+      <span className="font-mono">{shortDate(a.appointmentDate)}</span>
+      {a.appointmentTime && <span className="font-mono">, {timeLabel(a.appointmentTime)}</span>}
+    </>
+  );
+  return (
+    <span>
+      {canOpen ? (
+        <Link href={`/appointments/${a._id}`} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+          {label}
+        </Link>
+      ) : (
+        label
+      )}
+      {a.appointmentCode && <span className="ml-2 font-mono text-xs text-gray-500">{a.appointmentCode}</span>}
+    </span>
+  );
+}
+
+function Party({ r, side, canSeePatient }: { r: Referral; side: 'from' | 'to'; canSeePatient: boolean }) {
+  const d = direction(r);
+  if (side === 'from') {
+    if (d === 'patient') {
+      if (!r.referringPatient) return <span className="text-gray-500">A patient no longer on file</span>;
+      return canSeePatient ? (
+        <Link href={`/patients/${r.referringPatient._id}`} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+          {personName(r.referringPatient)}
+        </Link>
+      ) : (
+        <>{personName(r.referringPatient)}</>
+      );
+    }
+    if (d === 'in') {
+      return (
+        <>
+          {r.referringClinic && <span className="block font-semibold">{r.referringClinic}</span>}
+          {r.referringContact?.name && <span className="block">{r.referringContact.name}</span>}
+          {r.referringContact?.phone && <span className="block font-mono text-gray-600">{r.referringContact.phone}</span>}
+          {r.referringContact?.email && <span className="block break-all text-gray-600">{r.referringContact.email}</span>}
+          {!r.referringClinic && !r.referringContact?.name && <span className="text-gray-500">Not recorded</span>}
+        </>
+      );
+    }
+    return r.referringDoctor ? (
+      <>
+        <span className="block font-semibold">{doctorName(r.referringDoctor)}</span>
+        {specialtyOf(r.referringDoctor) && <span className="block text-gray-600">{specialtyOf(r.referringDoctor)}</span>}
+      </>
+    ) : (
+      <span className="text-gray-500">This clinic (no doctor named)</span>
+    );
+  }
+  if (r.receivingDoctor) {
+    return (
+      <>
+        <span className="block font-semibold">{doctorName(r.receivingDoctor)}</span>
+        {specialtyOf(r.receivingDoctor) && <span className="block text-gray-600">{specialtyOf(r.receivingDoctor)}</span>}
+      </>
+    );
+  }
+  if (r.receivingClinic) return <span className="font-semibold">{r.receivingClinic}</span>;
+  return <span className="text-gray-500">{d === 'in' || d === 'patient' ? 'This clinic, no doctor named yet' : 'Not named'}</span>;
+}
+
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-6xl mx-auto flex flex-col gap-6">{children}</div>
     </section>
   );
 }
 
+function BackLink() {
+  return (
+    <Link href="/referrals" className={`inline-flex w-fit items-center gap-1.5 rounded text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+      <Svg d={ICONS.chevL} />
+      All referrals
+    </Link>
+  );
+}
+
+function Panel({ id, title, aside, children }: { id: string; title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="motion-panel-in overflow-hidden rounded-lg border border-gray-200 bg-white" aria-labelledby={id}>
+      <div className="flex items-baseline justify-between gap-3 border-b border-gray-200 px-5 py-4">
+        <h2 id={id} className="text-base font-bold tracking-tight text-gray-900">
+          {title}
+        </h2>
+        {aside}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-4 px-5 py-3 text-sm">
+      <dt className="text-gray-500">{label}</dt>
+      <dd className="min-w-0 break-words text-gray-900">{children}</dd>
+    </div>
+  );
+}
+
+function SecondaryButton({ onClick, disabled, icon, children }: { onClick: () => void; disabled?: boolean; icon: string; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 disabled:cursor-wait ${FOCUS_RING}`}
+    >
+      <Svg d={icon} />
+      {children}
+    </button>
+  );
+}
+
+function PrimaryButton({ onClick, disabled, icon, children }: { onClick: () => void; disabled?: boolean; icon: string; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
+    >
+      <Svg d={icon} />
+      {children}
+    </button>
+  );
+}

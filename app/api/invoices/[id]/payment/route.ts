@@ -11,7 +11,8 @@ import { parseBody, isValidationError, zShortText, roundMoney } from '@/lib/api/
 const paymentSchema = z.object({
   method: z.enum(['cash', 'gcash', 'bank_transfer', 'card', 'check', 'insurance', 'hmo', 'other']).default('cash'),
   amount: z.number().finite().positive().max(100_000_000),
-  date: z.coerce.date().optional(),
+  // A day of slack for clock and timezone differences; never a payment weeks ahead.
+  date: z.coerce.date().refine((d) => d.getTime() <= Date.now() + 86_400_000, 'A payment can’t be dated in the future').optional(),
   receiptNo: zShortText.optional(),
   referenceNo: zShortText.optional(),
   notes: z.string().max(2000).optional(),

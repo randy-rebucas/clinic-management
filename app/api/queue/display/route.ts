@@ -9,6 +9,7 @@ import { getSettings } from '@/lib/settings';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { formatInTz } from '@/lib/tz';
 import { escapeHtml as e } from '@/lib/document-protection';
+import { QUEUE_SORT } from '@/lib/queue-order';
 
 /** "Juan Dela Cruz" -> "J. D. C." so the public screen never shows full names. */
 function initials(name: unknown): string {
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
       .select('queueNumber patientName doctor room status queuedAt priority')
       .populate({ path: 'doctor', select: 'firstName lastName', match: { tenantId: tenantObjectId } })
       .populate({ path: 'room', select: 'name roomNumber', match: { tenantId: tenantObjectId } })
-      .sort({ priority: 1, queuedAt: 1 })
+      .sort(QUEUE_SORT)
       .limit(limit)
       .lean();
 

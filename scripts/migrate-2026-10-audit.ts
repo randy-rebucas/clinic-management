@@ -10,7 +10,7 @@
  *     in the schemas (via syncIndexes)
  *  b) reports duplicates that would block the new unique indexes; a collection with duplicates is NOT
  *     synced (only non-conflicting indexes are created) until the data is fixed
- *  c) syncIndexes() for the changed models
+ *  c) syncIndexes() for the changed models (incl. Notification: compound TTL index -> single-field expiresAt_1)
  *  d) sets settings.prescriptionPaperSize = 'A4' where it was never stored
  *
  * Note: the double-booking index uses $in in partialFilterExpression, which requires MongoDB 6.0+.
@@ -71,6 +71,7 @@ async function loadTargets(): Promise<Array<{ model: Model<any>; checks: DupChec
     Queue,
     DocumentModel,
     AuditLog,
+    Notification,
   ] = await Promise.all([
     import('../models/Appointment'),
     import('../models/Patient'),
@@ -84,6 +85,7 @@ async function loadTargets(): Promise<Array<{ model: Model<any>; checks: DupChec
     import('../models/Queue'),
     import('../models/Document'),
     import('../models/AuditLog'),
+    import('../models/Notification'),
   ]).then((mods) => mods.map((m) => m.default as Model<any>));
 
   return [
@@ -132,6 +134,8 @@ async function loadTargets(): Promise<Array<{ model: Model<any>; checks: DupChec
     { model: Queue, checks: [perTenant('queueNumber')] },
     { model: DocumentModel, checks: [perTenant('documentCode')] },
     { model: AuditLog, checks: [] },
+    // The compound TTL index (tenantId_1_expiresAt_1) never expired anything; replaced by expiresAt_1.
+    { model: Notification, checks: [] },
   ];
 }
 

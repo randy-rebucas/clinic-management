@@ -12,13 +12,16 @@ import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api
 import { getSettings } from '@/lib/settings';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { nextQueueNumber } from '@/lib/queue-number';
+import { QUEUE_SORT } from '@/lib/queue-order';
+import { dayRangeInTz } from '@/lib/tz';
 
 const QUEUE_STATUSES = ['waiting', 'in-progress', 'completed', 'cancelled', 'no-show'];
+const ACTIVE = ['waiting', 'in-progress'];
 
 export async function GET(request: NextRequest) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
-  const { session, tenantObjectId } = ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
   const permissionCheck = await requirePermission(session, 'queue', 'read');
   if (permissionCheck) {
@@ -35,14 +38,17 @@ export async function GET(request: NextRequest) {
     const roomId = searchParams.get('roomId');
     const status = searchParams.get('status') || 'waiting';
     const display = searchParams.get('display') === 'true'; // For TV display
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '', 10) || (display ? 20 : 100), 1), 500);
 
+    const tz = await getTenantTimezone(tenantId);
+    const { start: todayStart } = dayRangeInTz(new Date(), tz);
     const query: any = { tenantId: tenantObjectId };
 
-    // Handle status filter - support comma-separated values
-    if (status && status !== 'all') {
-      query.status = { $in: status.split(',').filter((s) => QUEUE_STATUSES.includes(s)) };
+    if (status === 'all') {
+      // The day so far: everyone still active (even if queued before today) plus today's finished entries.
+      query.$or = [{ status: { $in: ACTIVE } }, { queuedAt: { $gte: todayStart } }];
     } else {
-      query.status = { $in: ['waiting', 'in-progress'] };
+      query.status = { $in: status.split(',').filter((s) => QUEUE_STATUSES.includes(s)) };
     }
 
     if (doctorId) {
@@ -58,20 +64,39 @@ export async function GET(request: NextRequest) {
       .populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } })
       .populate({ path: 'doctor', select: 'firstName lastName', match: { tenantId: tenantObjectId } })
       .populate({ path: 'room', select: 'name roomNumber', match: { tenantId: tenantObjectId } })
-      .sort({ priority: 1, queuedAt: 1 }) // Priority first, then by time
-      .limit(display ? 20 : 100)
+      .sort(QUEUE_SORT)
+      .limit(limit)
       .lean();
 
-    const queuesWithWaitTime = queues.map((queue: any, index: number) => ({
-      ...queue,
-      estimatedWaitTime: index * 15, // 15 minutes per patient (adjustable)
-      position: index + 1,
-    }));
+    // Each doctor runs their own line (unassigned patients share one). Position counts the
+    // waiting patients ahead in that line; the estimate uses the doctor's average consultation
+    // today, else the clinic's default appointment length.
+    const [consults, settings] = await Promise.all([
+      Queue.aggregate([
+        { $match: { tenantId: tenantObjectId, status: 'completed', startedAt: { $gte: todayStart }, completedAt: { $ne: null } } },
+        { $group: { _id: '$doctor', avg: { $avg: { $divide: [{ $subtract: ['$completedAt', '$startedAt'] }, 60_000] } }, n: { $sum: 1 } } },
+      ]),
+      getSettings(tenantId).catch(() => null),
+    ]);
+    const fallback = (settings as { appointmentSettings?: { defaultDuration?: number } } | null)?.appointmentSettings?.defaultDuration || 15;
+    const avgByDoctor = new Map<string, number>(
+      consults.filter((c: { n: number }) => c.n >= 2).map((c: { _id: unknown; avg: number }) => [String(c._id ?? 'none'), Math.max(5, c.avg)])
+    );
+    const lineKey = (q: any) => String(q.doctor?._id ?? 'none');
+    const busy = new Set(queues.filter((q: any) => q.status === 'in-progress').map(lineKey));
+    const seen = new Map<string, number>();
 
-    return NextResponse.json({
-      success: true,
-      data: queuesWithWaitTime,
+    const data = queues.map((queue: any) => {
+      if (queue.status !== 'waiting') return queue;
+      const key = lineKey(queue);
+      const ahead = seen.get(key) ?? 0;
+      seen.set(key, ahead + 1);
+      const avg = avgByDoctor.get(key) ?? fallback;
+      const minutes = ahead * avg + (busy.has(key) ? avg / 2 : 0);
+      return { ...queue, position: ahead + 1, estimatedWaitTime: Math.round(minutes / 5) * 5, consultMinutes: Math.round(avg) };
     });
+
+    return NextResponse.json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching queue:', error);
     return NextResponse.json(
@@ -94,7 +119,7 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json().catch(() => ({}));
-    const { patientId, appointmentId, visitId, doctorId, roomId, queueType, priority } = body ?? {};
+    const { patientId, appointmentId, visitId, doctorId, roomId, queueType, priority, notes } = body ?? {};
 
     if (!isValidId(patientId)) {
       return NextResponse.json(
@@ -128,6 +153,16 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+    // One live queue entry per patient: a second click (or a second desk) must not seat them twice.
+    const live = await Queue.findOne({ tenantId: tenantObjectId, patient: patientId, status: { $in: ACTIVE } })
+      .select('queueNumber')
+      .lean() as { queueNumber?: string } | null;
+    if (live) {
+      return NextResponse.json(
+        { success: false, error: `${patientName} is already in the queue as ${live.queueNumber ?? 'an active entry'}` },
+        { status: 409 }
+      );
+    }
     if (doctorId && !(await Doctor.exists({ _id: doctorId, tenantId: tenantObjectId }))) {
       return NextResponse.json({ success: false, error: 'Doctor not found' }, { status: 404 });
     }
@@ -149,7 +184,8 @@ export async function POST(request: NextRequest) {
       doctor: doctorId || undefined,
       room: roomId || undefined,
       queueType: finalQueueType,
-      priority: Number.isFinite(Number(priority)) ? Number(priority) : 0,
+      priority: Number.isFinite(Number(priority)) ? Math.min(2, Math.max(0, Math.round(Number(priority)))) : 0,
+      notes: typeof notes === 'string' && notes.trim() ? notes.trim().slice(0, 500) : undefined,
       checkedIn: false,
       status: 'waiting',
     });

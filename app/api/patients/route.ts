@@ -8,6 +8,7 @@ import { sanitizeSearch } from '@/lib/utils';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { createPatientSchema, cleanPatientInput, nextPatientCode } from '@/lib/patient-schema';
+import { SEGMENT_FLAG_KEYS } from '@/lib/patient-age-bands';
 
 export async function GET(request: NextRequest) {
   const ctx = await requireTenantSession();
@@ -84,6 +85,22 @@ export async function GET(request: NextRequest) {
         const maxDate = new Date(now.getFullYear() - (parseInt(minAge) || 0), now.getMonth(), now.getDate());
         filter.dateOfBirth = { ...filter.dateOfBirth, $lte: maxDate };
       }
+    }
+
+    // Segmentation: any of the given tags, and every given segment flag.
+    const tags = (searchParams.get('tags') || '')
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, 20);
+    if (tags.length) {
+      filter.tags = { $in: tags };
+    }
+    const flags = (searchParams.get('flags') || '')
+      .split(',')
+      .filter((f): f is (typeof SEGMENT_FLAG_KEYS)[number] => (SEGMENT_FLAG_KEYS as readonly string[]).includes(f));
+    for (const flag of flags) {
+      filter[`segmentFlags.${flag}`] = true;
     }
 
     if (city) {
@@ -195,22 +212,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // only send email if email field is present
-    if (data.email) {
-      import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
-        sendWelcomeMessage({
-          patientId: patient._id,
-          tenantIds: [tenantId],
-          sendSMS: true,
-          sendEmail: true,
-          sendNotification: false,
-        }).catch((error) => {
-          console.error('Error sending welcome message:', error);
-        });
+    // The welcome text goes to the phone (always present) and the email only when there is one;
+    // sendWelcomeMessage checks each channel and the clinic's autoWelcomeMessages setting.
+    import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
+      sendWelcomeMessage({
+        patientId: patient._id,
+        tenantIds: [tenantId],
+        sendSMS: true,
+        sendEmail: true,
+        sendNotification: false,
       }).catch((error) => {
-        console.error('Error loading welcome messages module:', error);
+        console.error('Error sending welcome message:', error);
       });
-    }
+    }).catch((error) => {
+      console.error('Error loading welcome messages module:', error);
+    });
 
     return NextResponse.json({ success: true, data: patient }, { status: 201 });
   } catch (error: any) {

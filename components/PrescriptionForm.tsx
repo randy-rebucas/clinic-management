@@ -364,9 +364,9 @@ export default function PrescriptionForm({
       <div className="max-h-[80vh] overflow-y-auto">
         <div className="flex flex-col gap-6 p-4">
           {/* Patient Selection */}
-          <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 rounded-xl p-5">
+          <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-indigo-500 rounded-lg">
+              <div className="p-2 bg-brand-teal-dark rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
@@ -391,7 +391,7 @@ export default function PrescriptionForm({
                 }}
                 onFocus={() => setShowPatientSearch(true)}
                 placeholder="Type to search patients..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none transition-all text-sm"
               />
               {showPatientSearch && filteredPatients.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
@@ -409,7 +409,7 @@ export default function PrescriptionForm({
                               selectPatient(patient);
                               setShowPatientSearch(false);
                             }}
-                            className="w-full text-left px-3 py-2 hover:bg-indigo-50 rounded transition-colors flex flex-col items-start"
+                            className="w-full text-left px-3 py-2 hover:bg-brand-teal-light/60 rounded transition-colors flex flex-col items-start"
                           >
                             <span className="font-semibold text-sm text-gray-900">{patient.firstName} {patient.lastName}</span>
                             <span className="text-xs text-gray-600">
@@ -440,10 +440,10 @@ export default function PrescriptionForm({
               role="alert"
               className={
                 drugInteractions.some(i => i.severity === 'contraindicated' || i.severity === 'severe')
-                  ? 'bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm'
+                  ? 'bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm'
                   : drugInteractions.some(i => i.severity === 'moderate')
-                  ? 'bg-yellow-50 border-l-4 border-yellow-500 rounded-lg p-4 shadow-sm'
-                  : 'bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm'
+                  ? 'bg-yellow-50 border border-yellow-200 rounded-lg p-4 shadow-sm'
+                  : 'bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-4 shadow-sm'
               }
             >
               <div className="flex items-start gap-3">
@@ -465,7 +465,7 @@ export default function PrescriptionForm({
                                 ? 'px-2.5 py-1 bg-red-600 text-white text-xs rounded-full font-semibold border border-red-700'
                                 : interaction.severity === 'moderate'
                                 ? 'px-2.5 py-1 bg-yellow-600 text-white text-xs rounded-full font-semibold border border-yellow-700'
-                                : 'px-2.5 py-1 bg-blue-600 text-white text-xs rounded-full font-semibold border border-blue-700'
+                                : 'px-2.5 py-1 bg-brand-teal-dark text-white text-xs rounded-full font-semibold border border-brand-teal-dark'
                             }
                           >
                             {interaction.severity.toUpperCase()}
@@ -484,7 +484,7 @@ export default function PrescriptionForm({
           )}
 
           {/* Medications */}
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-5">
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-emerald-500 rounded-lg">
@@ -509,7 +509,7 @@ export default function PrescriptionForm({
                 <button
                   type="button"
                   onClick={addMedication}
-                  className="px-3 py-1.5 text-xs bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-sm"
+                  className="px-3 py-1.5 text-xs bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all font-semibold shadow-sm"
                 >
                   + Add Medication
                 </button>
@@ -523,7 +523,7 @@ export default function PrescriptionForm({
             ) : (
               <div className="flex flex-col gap-4">
                 {formData.medications.map((medication, index) => (
-                  <div key={index} className="bg-gradient-to-r from-white to-emerald-50/50 border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all">
+                  <div key={index} className="bg-white border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all">
                     <div className="flex justify-between items-start mb-4">
                       <h3 className="text-lg font-bold text-gray-900">Medication {index + 1}</h3>
                       <button
@@ -549,7 +549,7 @@ export default function PrescriptionForm({
                             }}
                             onFocus={() => setShowMedicineSearch(true)}
                             placeholder="Type to search medicines..."
-                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                           />
                           {showMedicineSearch && (
                             <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-[200px] overflow-y-auto">
@@ -597,7 +597,7 @@ export default function PrescriptionForm({
                               required
                               value={medication.name}
                               onChange={(e) => updateMedication(index, 'name', e.target.value)}
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                             />
                           </div>
                           {medication.genericName && (
@@ -619,7 +619,7 @@ export default function PrescriptionForm({
                               value={medication.form || ''}
                               onChange={(e) => updateMedication(index, 'form', e.target.value)}
                               placeholder="tablet, capsule, etc."
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                             />
                           </div>
                           <div>
@@ -629,7 +629,7 @@ export default function PrescriptionForm({
                               value={medication.strength || ''}
                               onChange={(e) => updateMedication(index, 'strength', e.target.value)}
                               placeholder="500 mg"
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                             />
                           </div>
                           <div>
@@ -644,7 +644,7 @@ export default function PrescriptionForm({
                                   value={medication.dose || ''}
                                   onChange={(e) => updateMedication(index, 'dose', e.target.value)}
                                   placeholder="500 mg"
-                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                                 />
                               </div>
                               {medication.medicineId && selectedPatient && (
@@ -670,7 +670,7 @@ export default function PrescriptionForm({
                               value={medication.frequency || ''}
                               onChange={(e) => updateMedication(index, 'frequency', e.target.value)}
                               placeholder="BID, TID, QID, etc."
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                             />
                           </div>
                           <div>
@@ -680,7 +680,7 @@ export default function PrescriptionForm({
                               min="1"
                               value={medication.durationDays || 7}
                               onChange={(e) => updateMedication(index, 'durationDays', parseInt(e.target.value) || 7)}
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                             />
                           </div>
                           <div>
@@ -690,7 +690,7 @@ export default function PrescriptionForm({
                               min="1"
                               value={medication.quantity || 0}
                               onChange={(e) => updateMedication(index, 'quantity', parseInt(e.target.value) || 0)}
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                             />
                           </div>
                         </div>
@@ -701,7 +701,7 @@ export default function PrescriptionForm({
                             onChange={(e) => updateMedication(index, 'instructions', e.target.value)}
                             rows={2}
                             placeholder="Take with food, etc."
-                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm resize-y transition-all"
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm resize-y transition-all"
                           />
                         </div>
                       </div>
@@ -712,7 +712,7 @@ export default function PrescriptionForm({
           </div>
 
           {/* Additional Notes */}
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-gray-500 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -730,7 +730,7 @@ export default function PrescriptionForm({
           </div>
 
           {/* Digital Signature */}
-          <div className="bg-gradient-to-br from-green-50 to-green-100/50 border border-green-200 rounded-xl p-5">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-green-500 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -762,7 +762,7 @@ export default function PrescriptionForm({
               <button
                 type="button"
                 onClick={() => setShowSignaturePad(true)}
-                className="w-full px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold shadow-md"
+                className="w-full px-4 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all text-sm font-semibold shadow-md"
               >
                 + Add Digital Signature
               </button>
@@ -785,7 +785,7 @@ export default function PrescriptionForm({
               type="submit"
               disabled={submitting}
               aria-busy={submitting}
-              className="px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all text-sm font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+              className="px-4 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all text-sm font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {submitting ? 'Creating…' : 'Create Prescription'}
             </button>

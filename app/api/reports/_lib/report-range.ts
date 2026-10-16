@@ -1,5 +1,11 @@
 import { startOfWeek, endOfWeek } from 'date-fns';
-import { combineDateAndTimeInTz, dayRangeInTz, formatInTz, inTz, monthRangeInTz } from '@/lib/tz';
+import { NextResponse } from 'next/server';
+import { Types } from 'mongoose';
+import { combineDateAndTimeInTz, dayRangeInTz, dayRangeOffsetInTz, formatInTz, inTz, monthRangeInTz, previousMonthRangeInTz } from '@/lib/tz';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
+import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { canOpenReport, type ReportKey } from '@/lib/reports';
 
 /** Upper bound on custom report windows, so a single request can't scan years of data. */
 export const MAX_REPORT_RANGE_DAYS = 366;
@@ -32,10 +38,43 @@ export function periodRange(period: string, tz: string, now: Date = new Date()):
         end: new Date(endOfWeek(local, { weekStartsOn: 0 }).getTime()),
       };
     }
+    case 'last-month':
+      return previousMonthRangeInTz(now, tz);
     case 'monthly':
     default:
       return monthRangeInTz(now, tz);
   }
+}
+
+/** Every clinic-local day key from start to end, for charts that need the empty days too. */
+export function dayKeys(start: Date, end: Date, tz: string): string[] {
+  const keys: string[] = [];
+  const last = formatInTz(end, 'yyyy-MM-dd', tz);
+  let cursor = start;
+  for (let i = 0; i < 400; i++) {
+    const key = formatInTz(cursor, 'yyyy-MM-dd', tz);
+    keys.push(key);
+    if (key >= last) break;
+    cursor = dayRangeOffsetInTz(1, cursor, tz).start;
+  }
+  return keys;
+}
+
+/** Session, permission and range checks shared by the report routes. */
+export async function openReport(
+  searchParams: URLSearchParams,
+  key: ReportKey
+): Promise<NextResponse | { tenantId: string; tenantObjectId: Types.ObjectId; tz: string; start: Date; end: Date }> {
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const can = await getPermissionChecker(ctx.session);
+  if (!canOpenReport(can, key)) {
+    return NextResponse.json({ success: false, error: 'You don’t have access to this report' }, { status: 403 });
+  }
+  const tz = await getTenantTimezone(ctx.tenantId);
+  const range = resolveReportRange(searchParams, tz);
+  if (isRangeError(range)) return NextResponse.json({ success: false, error: range.error }, { status: 400 });
+  return { tenantId: ctx.tenantId, tenantObjectId: ctx.tenantObjectId, tz, ...range };
 }
 
 /**

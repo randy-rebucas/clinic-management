@@ -6,6 +6,8 @@ import { requireTenantSession, isTenantSessionError, isValidId, notFound, patien
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { updatePatientSchema } from '@/lib/patient-schema';
 
+const NESTED_FIELDS = new Set(['address', 'emergencyContact', 'identifiers', 'socialHistory']);
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -22,7 +24,9 @@ export async function GET(
     await connectDB();
     const { id } = await params;
     if (!isValidId(id)) return notFound('Patient');
-    const patient = await Patient.findOne(patientTenantFilter(ctx.tenantId, { _id: id }));
+    // File contents are inline data URLs and can run to megabytes; no caller uses them here
+    // (files open through ./files/[fileId]), so only their names and sizes are sent.
+    const patient = await Patient.findOne(patientTenantFilter(ctx.tenantId, { _id: id }), { 'attachments.url': 0, readNotificationIds: 0 });
     if (!patient) return notFound('Patient');
     return NextResponse.json({ success: true, data: patient });
   } catch (error) {
@@ -53,20 +57,44 @@ export async function PUT(
 
     const parsed = await parseBody(request, updatePatientSchema);
     if (isValidationError(parsed)) return parsed;
-    const update: Record<string, unknown> = {};
+    // Grouped fields are written key by key so parts the form doesn't edit (identifiers.other,
+    // the legacy emergencyContact.relation) survive, and a field sent blank is removed rather
+    // than ignored: otherwise a middle name, PhilHealth number or condition could never be cleared.
+    const set: Record<string, unknown> = {};
+    const unset: Record<string, ''> = {};
+    const assign = (path: string, value: unknown) => {
+      if (value === undefined) return;
+      if (value === '' || value === null) unset[path] = '';
+      else set[path] = value;
+    };
     for (const [key, value] of Object.entries(parsed.data)) {
-      if (value !== undefined) update[key] = value;
+      if (NESTED_FIELDS.has(key) && value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const [sub, v] of Object.entries(value)) assign(`${key}.${sub}`, v);
+      } else {
+        assign(key, value);
+      }
     }
 
-    const patient = await Patient.findOneAndUpdate(
-      patientTenantFilter(ctx.tenantId, { _id: id }),
-      { $set: update },
-      { new: true, runValidators: true }
-    );
+    const filter = patientTenantFilter(ctx.tenantId, { _id: id });
+    const patient =
+      Object.keys(set).length || Object.keys(unset).length
+        ? await Patient.findOneAndUpdate(
+            filter,
+            { ...(Object.keys(set).length ? { $set: set } : {}), ...(Object.keys(unset).length ? { $unset: unset } : {}) },
+            { new: true, runValidators: true, projection: { 'attachments.url': 0, readNotificationIds: 0 } }
+          )
+        : await Patient.findOne(filter, { 'attachments.url': 0, readNotificationIds: 0 });
     if (!patient) return notFound('Patient');
     return NextResponse.json({ success: true, data: patient });
   } catch (error: any) {
-    if (error.name === 'ValidationError' || error.name === 'CastError') {
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors || {}).map((err: any) => err.message).join(', ');
+      return NextResponse.json(
+        { success: false, error: messages || 'Invalid patient data' },
+        { status: 400 }
+      );
+    }
+    if (error.name === 'CastError') {
       return NextResponse.json(
         { success: false, error: 'Invalid patient data' },
         { status: 400 }
