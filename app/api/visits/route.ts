@@ -15,6 +15,8 @@ import { dayRangeInTz, combineDateAndTimeInTz } from '@/lib/tz';
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 const VISIT_TYPES = ['consultation', 'follow-up', 'checkup', 'emergency', 'teleconsult', 'vaccination'];
+// The visits list leads with notes still being written; finished and voided ones sink.
+const STATUS_RANK = ['open', 'draft', 'closed', 'cancelled'];
 
 export async function GET(request: NextRequest) {
   const ctx = await requireTenantSession();
@@ -83,15 +85,26 @@ export async function GET(request: NextRequest) {
       query.date = { $gte: start, $lte: end };
     }
 
-    const find = () =>
-      Visit.find(query)
-        .populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } })
-        .populate('provider', 'name email')
-        .sort({ date: -1, _id: -1 });
+    const populate = [
+      { path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } },
+      { path: 'provider', select: 'name email' },
+    ];
+    const find = () => Visit.find(query).populate(populate).sort({ date: -1, _id: -1 });
 
-    // Paged when `page` is passed (the visits list); otherwise the newest `limit` (other screens).
+    // Paged when `page` is passed (the visits list, ordered by status then newest); otherwise the newest `limit` (other screens).
     if (pageParam) {
-      const [visits, total] = await Promise.all([find().skip((page - 1) * limit).limit(limit).lean(), Visit.countDocuments(query)]);
+      const [ranked, total] = await Promise.all([
+        Visit.aggregate([
+          { $match: query },
+          { $addFields: { _statusRank: { $indexOfArray: [STATUS_RANK, '$status'] } } },
+          { $sort: { _statusRank: 1, date: -1, _id: -1 } },
+          { $skip: (page - 1) * limit },
+          { $limit: limit },
+          { $project: { _statusRank: 0 } },
+        ]),
+        Visit.countDocuments(query),
+      ]);
+      const visits = await Visit.populate(ranked, populate);
       return NextResponse.json({ success: true, data: visits, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) } });
     }
 
