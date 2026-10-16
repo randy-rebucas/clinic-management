@@ -6,6 +6,7 @@ import { logout } from '@/app/actions/auth';
 import Link from 'next/link';
 import { useSidebar } from './SidebarContext';
 import { UNREAD_EVENT } from '@/lib/notification-kinds';
+import { useMessaging } from './messaging/MessagingProvider';
 
 interface ContentHeaderProps {
   user: {
@@ -48,6 +49,8 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
   const isAdmin = (user?.role || '').toLowerCase() === 'admin';
 
   const isNotificationsActive = pathname === '/notifications';
+  const isMessagesActive = pathname === '/messages';
+  const { enabled: messagingEnabled, totalUnread: unreadMessages } = useMessaging();
 
   useEffect(() => {
     if (!user) return;
@@ -170,9 +173,40 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
           </nav>
         </div>
 
-        {/* Right side - notifications, user menu */}
+        {/* Right side - messages, notifications, user menu */}
         {user && (
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {messagingEnabled && (
+              <Link
+                href="/messages"
+                className={`relative p-2 rounded-md transition-colors ${FOCUS_RING} ${
+                  isMessagesActive
+                    ? 'text-brand-teal-dark bg-brand-teal-light'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+                title="Messages"
+                aria-label={unreadMessages > 0 ? `Messages, ${unreadMessages} unread` : 'Messages'}
+                aria-current={isMessagesActive ? 'page' : undefined}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.75}
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  />
+                </svg>
+                {unreadMessages > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-0.5 right-0.5 flex items-center justify-center min-w-[1.25rem] h-5 px-1 font-mono text-xs font-semibold text-white bg-red-600 rounded-full ring-2 ring-white tabular-nums"
+                  >
+                    {unreadMessages > 99 ? '99+' : unreadMessages}
+                  </span>
+                )}
+              </Link>
+            )}
+
             <Link
               href="/notifications"
               className={`relative p-2 rounded-md transition-colors ${FOCUS_RING} ${
