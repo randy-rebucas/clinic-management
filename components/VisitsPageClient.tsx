@@ -9,6 +9,8 @@ import { FIELD, FOCUS_RING, ICON, Svg } from './appointments/shared';
 import { vitalsSummary, type Vitals } from './queue/VitalsModal';
 import { STATUS_BADGE, VISIT_TYPES, visitTypeLabel, type VisitStatus } from './visits/shared';
 import type { VisitsPageContext } from '@/lib/visits-page';
+import { DEFAULT_PAGE_SIZE } from '@/lib/page-size';
+import PageSizeSelect from './ui/PageSizeSelect';
 
 interface Visit {
   _id: string;
@@ -48,8 +50,6 @@ interface Pagination {
   total: number;
   pages: number;
 }
-
-const PAGE_SIZE = 20;
 
 /** Visit states borrow the validated appointment-state hues: unfinished amber, in progress blue, done teal. */
 const VISIT_STATE: Record<VisitStatus, { label: string; fill: string | null; hint: string }> = {
@@ -99,6 +99,7 @@ export default function VisitsPageClient({ canWrite, canSeeQueue, isDoctor, doct
   const [visitType, setVisitType] = useState('');
   const [diagnosis, setDiagnosis] = useState<{ code: string; description: string } | null>(null);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   useEffect(() => {
     if (!notice) return;
@@ -118,7 +119,7 @@ export default function VisitsPageClient({ canWrite, canSeeQueue, isDoctor, doct
 
   // --- Data -----------------------------------------------------------------
 
-  const listParams = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+  const listParams = new URLSearchParams({ page: String(page), limit: String(pageSize) });
   if (mine) listParams.set('mine', 'true');
   if (debounced.trim()) listParams.set('search', debounced.trim());
   if (status) listParams.set('status', status);
@@ -156,8 +157,8 @@ export default function VisitsPageClient({ canWrite, canSeeQueue, isDoctor, doct
 
   const total = pagination?.total ?? visits.length;
   const pages = pagination?.pages ?? 1;
-  const firstRow = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const lastRow = Math.min(page * PAGE_SIZE, total);
+  const firstRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastRow = Math.min(page * pageSize, total);
   const readyList = useMemo(() => ready.value ?? [], [ready.value]);
 
   return (
@@ -346,7 +347,7 @@ export default function VisitsPageClient({ canWrite, canSeeQueue, isDoctor, doct
 
           {!loaded ? (
             <ul aria-hidden="true" className="divide-y divide-gray-100 animate-pulse">
-              {Array.from({ length: 6 }).map((_, i) => (
+              {Array.from({ length: pageSize }).map((_, i) => (
                 <li key={i} className="flex items-center gap-4 px-4 py-3.5">
                   <span className="h-8 w-20 rounded bg-gray-100" />
                   <span className="flex-1 space-y-1.5">
@@ -377,6 +378,16 @@ export default function VisitsPageClient({ canWrite, canSeeQueue, isDoctor, doct
                 of <span className="font-mono text-gray-900">{total.toLocaleString('en-US')}</span>
                 {narrowed ? ' matching visits' : mine ? ' of your visits' : ' visits'}
               </p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <PageSizeSelect
+                id="visit-page-size"
+                value={pageSize}
+                onChange={(n) => {
+                  setPageSize(n);
+                  setPage(1);
+                }}
+                disabled={list.loading}
+              />
               {pages > 1 && (
                 <div className="flex items-center gap-1">
                   <button
@@ -418,6 +429,7 @@ export default function VisitsPageClient({ canWrite, canSeeQueue, isDoctor, doct
                   </button>
                 </div>
               )}
+              </div>
             </nav>
           )}
         </div>

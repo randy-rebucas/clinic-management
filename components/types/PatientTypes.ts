@@ -1,3 +1,5 @@
+import { DEFAULT_PAGE_SIZE } from '@/lib/page-size';
+
 // Patient domain types
 export interface Patient {
   _id: string;
@@ -95,7 +97,7 @@ export const DEFAULT_FILTERS: FilterState = {
 // Default pagination
 export const DEFAULT_PAGINATION: PaginationState = {
   page: 1,
-  limit: 20,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   pages: 0,
 };

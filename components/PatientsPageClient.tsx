@@ -17,6 +17,7 @@ import {
   DEFAULT_FILTERS,
   DEFAULT_PAGINATION,
 } from './types/PatientTypes';
+import PageSizeSelect from './ui/PageSizeSelect';
 import { AGE_BANDS, type AgeBand } from '@/lib/patient-age-bands';
 import { ApiError, parseApiResponse, formatErrorMessage } from '@/lib/errors';
 
@@ -311,6 +312,11 @@ export default function PatientsPageClient() {
     setPagination((p) => ({ ...p, page: Math.min(Math.max(1, n), Math.max(1, p.pages)) }));
   };
 
+  const changePageSize = (limit: number) => {
+    setSelected([]);
+    setPagination((p) => ({ ...p, limit, page: 1 }));
+  };
+
   const exportIds = selected.length > 0 ? selected : patients.map((p) => p._id);
   const firstRow = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1;
   const lastRow = Math.min(pagination.page * pagination.limit, pagination.total);
@@ -585,7 +591,7 @@ export default function PatientsPageClient() {
 
           {!loaded ? (
             <ul aria-hidden="true" className="divide-y divide-gray-100 animate-pulse">
-              {Array.from({ length: 6 }).map((_, i) => (
+              {Array.from({ length: pagination.limit }).map((_, i) => (
                 <li key={i} className={`px-4 py-3.5 ${ROW_GRID} flex items-center gap-3`}>
                   <span className="hidden lg:block h-4 w-4 rounded bg-gray-100" />
                   <span className="flex items-center gap-3">
@@ -635,6 +641,8 @@ export default function PatientsPageClient() {
                 of <span className="font-mono text-gray-900">{pagination.total.toLocaleString('en-US')}</span>
                 {narrowed ? ' matching patients' : ' patients'}
               </p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <PageSizeSelect id="patient-page-size" value={pagination.limit} onChange={changePageSize} disabled={loading} />
               {pagination.pages > 1 && (
                 <div className="flex items-center gap-1">
                   <button
@@ -676,6 +684,7 @@ export default function PatientsPageClient() {
                   </button>
                 </div>
               )}
+              </div>
             </nav>
           )}
         </div>

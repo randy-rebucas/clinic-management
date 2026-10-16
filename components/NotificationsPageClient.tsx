@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useKeyedFetch } from './hooks/useKeyedFetch';
 import { FOCUS_RING, ICON, Svg } from './appointments/shared';
+import { DEFAULT_PAGE_SIZE } from '@/lib/page-size';
+import PageSizeSelect from './ui/PageSizeSelect';
 import {
   GROUP_KEYS,
   NOTIFICATION_GROUPS,
@@ -36,7 +38,6 @@ interface Page {
 
 type View = 'all' | 'unread';
 
-const PAGE_SIZE = 30;
 
 const ICONS = {
   ...ICON,
@@ -66,6 +67,8 @@ export default function NotificationsPageClient() {
   const router = useRouter();
   const [view, setView] = useState<View>('all');
   const [group, setGroup] = useState<NotificationGroup | ''>('');
+  // Rows per batch: the first load and each "Show older".
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   // Rows from "Show older", kept for the list they were loaded under.
   const [older, setOlder] = useState<{ base: string; rows: Note[]; hasMore: boolean } | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -76,7 +79,7 @@ export default function NotificationsPageClient() {
   const [error, setError] = useState<string | null>(null);
   const [busyAll, setBusyAll] = useState(false);
 
-  const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+  const params = new URLSearchParams({ limit: String(pageSize) });
   if (view === 'unread') params.set('read', 'false');
   if (group) params.set('group', group);
   const base = `/api/notifications?${params}`;
@@ -303,7 +306,7 @@ export default function NotificationsPageClient() {
             res.error ? null : (
               <div className="overflow-hidden rounded-lg border border-gray-200 bg-white" aria-hidden="true">
                 <ul className="divide-y divide-gray-100 animate-pulse">
-                  {Array.from({ length: 6 }).map((_, i) => (
+                  {Array.from({ length: pageSize }).map((_, i) => (
                     <li key={i} className="space-y-2 px-5 py-4">
                       <span className="block h-3.5 w-56 rounded bg-gray-100" />
                       <span className="block h-3 w-80 max-w-full rounded bg-gray-50" />
@@ -326,17 +329,20 @@ export default function NotificationsPageClient() {
                   </ul>
                 </section>
               ))}
-              {hasMore && (
-                <button
-                  type="button"
-                  onClick={showOlder}
-                  disabled={loadingOlder}
-                  aria-busy={loadingOlder}
-                  className={`mx-auto rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
-                >
-                  {loadingOlder ? 'Loading…' : 'Show older'}
-                </button>
-              )}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <PageSizeSelect id="notification-page-size" value={pageSize} onChange={setPageSize} disabled={res.loading || loadingOlder} />
+                {hasMore && (
+                  <button
+                    type="button"
+                    onClick={showOlder}
+                    disabled={loadingOlder}
+                    aria-busy={loadingOlder}
+                    className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
+                  >
+                    {loadingOlder ? 'Loading…' : 'Show older'}
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>

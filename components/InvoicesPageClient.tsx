@@ -9,6 +9,8 @@ import { FIELD, FOCUS_RING, ICON, Svg } from './appointments/shared';
 import { INVOICE_STATE, shortDate, useMoney } from './invoices/shared';
 import { AGING, INVOICE_STATUSES, daysSince, type AgingKey, type InvoiceStatus } from '@/lib/invoices';
 import type { InvoicesPagePermissions } from '@/lib/invoices-page';
+import { DEFAULT_PAGE_SIZE } from '@/lib/page-size';
+import PageSizeSelect from './ui/PageSizeSelect';
 
 interface InvoiceRow {
   _id: string;
@@ -39,7 +41,6 @@ interface Pagination {
 
 type StatusFilter = InvoiceStatus | 'open' | '';
 
-const PAGE_SIZE = 20;
 
 const ROW_GRID =
   'lg:grid lg:grid-cols-[6.5rem_minmax(0,1.6fr)_8rem_minmax(0,1.1fr)_6.5rem_3.5rem] lg:items-center lg:gap-4';
@@ -82,6 +83,7 @@ export default function InvoicesPageClient({
   const [status, setStatus] = useState<StatusFilter>(initialStatus as StatusFilter);
   const [aging, setAging] = useState<AgingKey | null>(initialAging);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   useEffect(() => {
     if (search === debounced) return;
@@ -94,7 +96,7 @@ export default function InvoicesPageClient({
 
   // --- Data -----------------------------------------------------------------
 
-  const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+  const params = new URLSearchParams({ page: String(page), limit: String(pageSize) });
   if (debounced.trim()) params.set('search', debounced.trim());
   if (status) params.set('status', status);
   if (aging) params.set('aging', aging);
@@ -108,8 +110,8 @@ export default function InvoicesPageClient({
   const pagination = (list.raw?.pagination as Pagination | undefined) ?? null;
   const total = pagination?.total ?? rows.length;
   const pages = pagination?.pages ?? 1;
-  const firstRow = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const lastRow = Math.min(page * PAGE_SIZE, total);
+  const firstRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastRow = Math.min(page * pageSize, total);
 
   // --- Filters --------------------------------------------------------------
 
@@ -268,7 +270,7 @@ export default function InvoicesPageClient({
           {!loaded ? (
             list.error ? null : (
               <ul aria-hidden="true" className="divide-y divide-gray-100 animate-pulse">
-                {Array.from({ length: 6 }).map((_, i) => (
+                {Array.from({ length: pageSize }).map((_, i) => (
                   <li key={i} className="flex items-center gap-4 px-4 py-3.5">
                     <span className="h-4 w-20 rounded bg-gray-100" />
                     <span className="flex-1 space-y-1.5">
@@ -300,6 +302,16 @@ export default function InvoicesPageClient({
                 of <span className="font-mono text-gray-900">{total.toLocaleString('en-US')}</span>
                 {narrowed ? ' matching invoices' : ' invoices'}
               </p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <PageSizeSelect
+                id="invoice-page-size"
+                value={pageSize}
+                onChange={(n) => {
+                  setPageSize(n);
+                  setPage(1);
+                }}
+                disabled={list.loading}
+              />
               {pages > 1 && (
                 <div className="flex items-center gap-1">
                   <button
@@ -341,6 +353,7 @@ export default function InvoicesPageClient({
                   </button>
                 </div>
               )}
+              </div>
             </nav>
           )}
         </div>

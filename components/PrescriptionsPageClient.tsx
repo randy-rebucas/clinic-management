@@ -12,6 +12,8 @@ import { FIELD, FOCUS_RING, ICON, Svg } from './appointments/shared';
 import { medicinesDispensed, type DispenseItem } from '@/lib/prescription-dispense';
 import type { PrescriptionsPageContext } from '@/lib/prescriptions-page';
 import { RX_STATE, STATUS_ORDER, type RxStatus } from './prescriptions/shared';
+import { DEFAULT_PAGE_SIZE } from '@/lib/page-size';
+import PageSizeSelect from './ui/PageSizeSelect';
 
 interface Prescription {
   _id: string;
@@ -47,7 +49,6 @@ interface Pagination {
   pages: number;
 }
 
-const PAGE_SIZE = 20;
 
 
 const ROW_GRID =
@@ -81,6 +82,7 @@ export default function PrescriptionsPageClient({ canWrite, isDoctor, providerNa
   const [status, setStatus] = useState<RxStatus | 'waiting' | ''>('');
   const [medicine, setMedicine] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [notice, setNotice] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
@@ -124,7 +126,7 @@ export default function PrescriptionsPageClient({ canWrite, isDoctor, providerNa
 
   // --- Data -----------------------------------------------------------------
 
-  const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+  const params = new URLSearchParams({ page: String(page), limit: String(pageSize) });
   if (mine) params.set('mine', 'true');
   if (debounced.trim()) params.set('search', debounced.trim());
   if (status) params.set('status', status);
@@ -139,8 +141,8 @@ export default function PrescriptionsPageClient({ canWrite, isDoctor, providerNa
   const pagination = (list.raw?.pagination as Pagination | undefined) ?? null;
   const total = pagination?.total ?? rows.length;
   const pages = pagination?.pages ?? 1;
-  const firstRow = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const lastRow = Math.min(page * PAGE_SIZE, total);
+  const firstRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastRow = Math.min(page * pageSize, total);
 
   const reloadList = list.reload;
   const reloadInsights = insights.reload;
@@ -359,7 +361,7 @@ export default function PrescriptionsPageClient({ canWrite, isDoctor, providerNa
           {!loaded ? (
             list.error ? null : (
               <ul aria-hidden="true" className="divide-y divide-gray-100 animate-pulse">
-                {Array.from({ length: 6 }).map((_, i) => (
+                {Array.from({ length: pageSize }).map((_, i) => (
                   <li key={i} className="flex items-center gap-4 px-4 py-3.5">
                     <span className="h-8 w-20 rounded bg-gray-100" />
                     <span className="flex-1 space-y-1.5">
@@ -391,6 +393,16 @@ export default function PrescriptionsPageClient({ canWrite, isDoctor, providerNa
                 of <span className="font-mono text-gray-900">{total.toLocaleString('en-US')}</span>
                 {narrowed ? ' matching prescriptions' : mine ? ' of your prescriptions' : ' prescriptions'}
               </p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <PageSizeSelect
+                id="rx-page-size"
+                value={pageSize}
+                onChange={(n) => {
+                  setPageSize(n);
+                  setPage(1);
+                }}
+                disabled={list.loading}
+              />
               {pages > 1 && (
                 <div className="flex items-center gap-1">
                   <button
@@ -432,6 +444,7 @@ export default function PrescriptionsPageClient({ canWrite, isDoctor, providerNa
                   </button>
                 </div>
               )}
+              </div>
             </nav>
           )}
         </div>

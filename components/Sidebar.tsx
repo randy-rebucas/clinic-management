@@ -51,6 +51,8 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
   const { isCollapsed, setIsCollapsed, isMobileOpen, setIsMobileOpen } = useSidebar();
   // False during SSR and hydration, true afterwards.
   const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
+  // Sidebar hydrates inside a Suspense boundary, after SidebarProvider may have
+  // already applied the saved preference — gate on mount to match the server HTML.
   const collapsed = mounted && isCollapsed;
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [subscription, setSubscription] = useState<{

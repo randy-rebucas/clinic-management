@@ -246,7 +246,7 @@ const SettingsSchema = new Schema<ISettings>(
 
     displaySettings: {
       theme: { type: String, enum: ['light', 'dark', 'auto'], default: 'light' },
-      sidebarCollapsed: { type: Boolean, default: true },
+      sidebarCollapsed: { type: Boolean, default: false },
       showNotifications: { type: Boolean, default: true },
     },
     // Prescription Settings
