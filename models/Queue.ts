@@ -25,7 +25,7 @@ export interface IQueue extends Document {
   
   // Queue management
   status: QueueStatus;
-  priority: number; // Lower number = higher priority
+  priority: number; // Higher = called sooner: 0 normal, 1 high, 2 urgent (see lib/queue-order.ts)
   estimatedWaitTime?: number; // Minutes
   
   // Timestamps
@@ -91,7 +91,7 @@ const QueueSchema: Schema = new Schema(
       enum: ['waiting', 'in-progress', 'completed', 'cancelled', 'no-show'],
       default: 'waiting',
     },
-    priority: { type: Number, default: 0, index: true }, // Lower = higher priority
+    priority: { type: Number, default: 0, index: true }, // Higher = called sooner (lib/queue-order.ts)
     estimatedWaitTime: { type: Number }, // Minutes
     queuedAt: { type: Date, default: Date.now, required: true, index: true },
     calledAt: { type: Date },

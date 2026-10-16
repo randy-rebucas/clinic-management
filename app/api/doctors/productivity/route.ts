@@ -33,8 +33,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid date range' }, { status: 400 });
     }
 
-    const doctors = await Doctor.find(tenantFilter(tenantId, { status: 'active' }))
-      .select('firstName lastName specializationId')
+    // Every doctor, not only today's active ones: someone now on leave or gone still worked in
+    // the period asked about.
+    const doctors = await Doctor.find(tenantFilter(tenantId))
+      .select('firstName lastName title status specializationId')
       .populate('specializationId', 'name description category')
       .lean() as any[];
 
@@ -47,14 +49,21 @@ export async function GET(request: NextRequest) {
         doctor: {
           _id: doctor._id,
           name: `${doctor.firstName} ${doctor.lastName}`,
+          firstName: doctor.firstName,
+          lastName: doctor.lastName,
+          title: doctor.title,
+          status: doctor.status,
           specialization: doctor.specializationId?.name || 'Unknown',
         },
         summary: {
           totalAppointments: s.totalAppointments,
           completedAppointments,
+          noShowAppointments: s.appointmentsByStatus['no-show'] || 0,
+          cancelledAppointments: s.appointmentsByStatus.cancelled || 0,
           totalVisits: s.totalVisits,
           totalPrescriptions: s.totalPrescriptions,
           totalRevenue: s.totalRevenue,
+          totalBilled: s.totalBilled,
         },
         metrics: {
           completionRate: s.totalAppointments > 0

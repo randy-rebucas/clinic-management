@@ -92,10 +92,10 @@ export default function PatientExportModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby={`${uid}-title`}
-          className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+          className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
         >
           {/* Header */}
-          <div className="sticky top-0 bg-gradient-to-r from-blue-50 to-blue-100 border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+          <div className="sticky top-0 bg-brand-teal-light/60 border-b border-gray-200 px-6 py-4 flex items-center justify-between">
             <div>
               <h2 id={`${uid}-title`} className="text-lg font-bold text-gray-900">Export Patients</h2>
               <p className="text-sm text-gray-600 mt-1">
@@ -129,7 +129,7 @@ export default function PatientExportModal({
                     aria-pressed={format === option.value}
                     className={`p-4 rounded-lg border-2 transition-all text-left ${
                       format === option.value
-                        ? 'border-blue-500 bg-blue-50'
+                        ? 'border-brand-teal bg-brand-teal-light/60'
                         : 'border-gray-200 hover:border-gray-300 bg-white'
                     }`}
                   >
@@ -167,7 +167,7 @@ export default function PatientExportModal({
                         type="checkbox"
                         checked={selectedColumns.includes(col.value)}
                         onChange={() => toggleColumn(col.value)}
-                        className="w-4 h-4 text-blue-600 rounded border-gray-300 cursor-pointer"
+                        className="w-4 h-4 text-brand-teal-dark rounded border-gray-300 cursor-pointer"
                       />
                       <span className="text-sm text-gray-700 group-hover:text-gray-900">{col.label}</span>
                     </label>
@@ -201,7 +201,7 @@ export default function PatientExportModal({
             <button
               onClick={handleExport}
               disabled={loading || selectedColumns.length === 0}
-              className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-6 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all text-sm font-semibold shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {loading ? <svg className="animate-spin h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.172l-3.536 3.536" /></svg> : null}
               {loading ? 'Exporting...' : `Export as ${format.toUpperCase()}`}

@@ -366,11 +366,11 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-indigo-50/30 min-h-screen">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-100 border-t-indigo-600"></div>
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-brand-teal/20 border-t-brand-teal-dark"></div>
             </div>
             <p className="text-gray-600 font-medium">Loading medicines...</p>
           </div>
@@ -380,12 +380,12 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-indigo-50/30 min-h-screen">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6">
           {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -397,7 +397,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
             </div>
           )}
           {success && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-green-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -410,22 +410,22 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg shadow-md">
+                <div className="p-2 bg-brand-teal-dark rounded-lg shadow-md">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Medicines Catalog</h1>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Medicines Catalog</h1>
                   <p className="text-sm sm:text-base text-gray-600 mt-1">Manage medicine database for prescriptions</p>
                 </div>
               </div>
               <button
                 onClick={() => { resetForm(); setShowModal(true); }}
-                className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
+                className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -437,9 +437,9 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
           {/* Quick Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-indigo-500 rounded-lg">
+                <div className="p-2 bg-brand-teal-dark rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                   </svg>
@@ -448,7 +448,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
               </div>
               <div className="text-3xl font-bold text-gray-900">{medicines.length}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-3 mb-2">
                 <div className="p-2 bg-red-500 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -459,7 +459,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
               </div>
               <div className="text-3xl font-bold text-red-600">{medicines.filter(m => m.requiresPrescription).length}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-3 mb-2">
                 <div className="p-2 bg-purple-500 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -468,9 +468,9 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                 </div>
                 <div className="text-xs font-semibold text-gray-500 uppercase">Controlled</div>
               </div>
-              <div className="text-3xl font-bold text-purple-600">{medicines.filter(m => m.controlledSubstance).length}</div>
+              <div className="font-mono tabular-nums text-3xl font-semibold text-gray-900">{medicines.filter(m => m.controlledSubstance).length}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-3 mb-2">
                 <div className="p-2 bg-green-500 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -484,10 +484,10 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
           </div>
 
           {/* Search and Filter Bar */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-indigo-500 rounded-lg">
+                <div className="p-2 bg-brand-teal-dark rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
@@ -509,7 +509,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                       placeholder="Search medicines..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="w-full pl-12 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      className="w-full pl-12 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                     {search && (
                       <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
@@ -529,7 +529,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                     aria-label="Filter by category"
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                   >
                     <option value="">All Categories</option>
                     {CATEGORIES.map(cat => (
@@ -544,7 +544,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                     aria-label="Filter by form"
                     value={formFilter}
                     onChange={(e) => setFormFilter(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                   >
                     <option value="">All Forms</option>
                     {FORMS.map(form => (
@@ -558,7 +558,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
 
           {/* Medicines List */}
           {medicines.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
               <div className="p-12 text-center">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
                   <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -569,7 +569,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                 <p className="text-sm text-gray-600 font-medium mb-4">Get started by adding your first medicine.</p>
                 <button
                   onClick={() => { resetForm(); setShowModal(true); }}
-                  className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all font-semibold shadow-md"
+                  className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all font-semibold shadow-md"
                 >
                   Add First Medicine
                 </button>
@@ -578,12 +578,12 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
           ) : (
             <div className="flex flex-col gap-3">
               {medicines.map((medicine) => (
-                <div key={medicine._id} className="bg-white border border-gray-200 rounded-xl hover:shadow-md transition-all">
+                <div key={medicine._id} className="bg-white border border-gray-200 rounded-lg hover:shadow-md transition-all">
                   <div className="p-4">
                     <div className="flex items-center gap-3 justify-between flex-wrap sm:flex-nowrap">
                       {/* Medicine Info */}
                       <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white text-lg font-bold flex-shrink-0 shadow-md">
+                        <div className="w-14 h-14 rounded-lg bg-brand-teal-dark flex items-center justify-center text-white text-lg font-bold flex-shrink-0 shadow-md">
                           {medicine.name.charAt(0)}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -591,7 +591,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                             <span className="text-base font-bold text-gray-900 overflow-hidden text-ellipsis whitespace-nowrap">
                               {medicine.name}
                             </span>
-                            <span className="px-2.5 py-1 bg-indigo-100 text-indigo-800 text-xs font-semibold rounded-full border border-indigo-200">
+                            <span className="px-2.5 py-1 bg-brand-teal-light text-brand-teal-deep text-xs font-semibold rounded-full border border-brand-teal/30">
                               {medicine.category}
                             </span>
                             {medicine.requiresPrescription && (
@@ -624,7 +624,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                         <button
                           onClick={() => handleEdit(medicine)}
                           aria-label={`Edit ${medicine.name}`}
-                          className="p-2.5 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors"
+                          className="p-2.5 bg-brand-teal-light/60 text-brand-teal-deep rounded-lg hover:bg-brand-teal-light transition-colors"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -651,10 +651,10 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
         {/* Add/Edit Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="medicine-modal-title" className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto mx-4">
-              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-indigo-100/50">
+            <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="medicine-modal-title" className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto mx-4">
+              <div className="p-6 border-b border-gray-200 bg-brand-teal-light/60">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-indigo-500 rounded-lg">
+                  <div className="p-2 bg-brand-teal-dark rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                     </svg>
@@ -685,7 +685,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                       onKeyDown={handleMedicineNameKeyDown}
                       required
                       placeholder="Start typing to see suggestions..."
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                     {showMedicineSuggestions && medicineSuggestions.length > 0 && !editingMedicine && (
                       <div className="absolute z-20 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-60 overflow-y-auto">
@@ -695,8 +695,8 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                             type="button"
                             onClick={() => selectMedicineSuggestion(medicine)}
                             onMouseEnter={() => setHighlightedIndex(index)}
-                            className={`w-full text-left px-4 py-3 hover:bg-indigo-50 rounded transition-colors ${
-                              highlightedIndex === index ? 'bg-indigo-50' : ''
+                            className={`w-full text-left px-4 py-3 hover:bg-brand-teal-light/60 rounded transition-colors ${
+                              highlightedIndex === index ? 'bg-brand-teal-light/60' : ''
                             }`}
                           >
                             <div className="flex flex-col items-start gap-1">
@@ -727,7 +727,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                       value={formData.category}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     >
                       {CATEGORIES.map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
@@ -742,7 +742,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                       type="text"
                       value={formData.genericName}
                       onChange={(e) => setFormData({ ...formData, genericName: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -754,7 +754,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                       value={formData.brandNames}
                       onChange={(e) => setFormData({ ...formData, brandNames: e.target.value })}
                       placeholder="Comma separated"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -765,7 +765,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                       value={formData.form}
                       onChange={(e) => setFormData({ ...formData, form: e.target.value as Medicine['form'] })}
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     >
                       {FORMS.map(f => (
                         <option key={f.value} value={f.value}>{f.label}</option>
@@ -780,7 +780,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                       value={formData.route}
                       onChange={(e) => setFormData({ ...formData, route: e.target.value as Medicine['route'] })}
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     >
                       {ROUTES.map(r => (
                         <option key={r.value} value={r.value}>{r.label}</option>
@@ -797,7 +797,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                       onChange={(e) => setFormData({ ...formData, strength: e.target.value })}
                       required
                       placeholder="e.g., 500 mg"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -809,7 +809,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                       value={formData.indications}
                       onChange={(e) => setFormData({ ...formData, indications: e.target.value })}
                       placeholder="Comma separated (e.g., Pain, Fever)"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -820,7 +820,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                         type="checkbox"
                         checked={formData.requiresPrescription}
                         onChange={(e) => setFormData({ ...formData, requiresPrescription: e.target.checked })}
-                        className="w-4 h-4 text-blue-600 rounded"
+                        className="w-4 h-4 text-brand-teal-dark rounded"
                       />
                       <span className="text-sm text-gray-700">Requires Prescription</span>
                     </label>
@@ -829,7 +829,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                         type="checkbox"
                         checked={formData.controlledSubstance}
                         onChange={(e) => setFormData({ ...formData, controlledSubstance: e.target.checked })}
-                        className="w-4 h-4 text-blue-600 rounded"
+                        className="w-4 h-4 text-brand-teal-dark rounded"
                       />
                       <span className="text-sm text-gray-700">Controlled Substance</span>
                     </label>
@@ -838,7 +838,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                         type="checkbox"
                         checked={formData.active}
                         onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
-                        className="w-4 h-4 text-blue-600 rounded"
+                        className="w-4 h-4 text-brand-teal-dark rounded"
                       />
                       <span className="text-sm text-gray-700">Active</span>
                     </label>
@@ -857,7 +857,7 @@ export default function MedicinesManagementClient({ user }: MedicinesManagementC
                   <button
                     type="submit"
                     disabled={saving}
-                    className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 disabled:from-indigo-400 disabled:to-indigo-500 transition-all font-semibold shadow-md"
+                    className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep disabled:bg-brand-teal/60 transition-all font-semibold shadow-md"
                   >
                     {saving ? 'Saving...' : editingMedicine ? 'Update Medicine' : 'Create Medicine'}
                   </button>

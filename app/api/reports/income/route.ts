@@ -1,132 +1,98 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
-import { isAdmin } from '@/app/lib/auth-helpers';
-import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
-import { getTenantTimezone } from '@/lib/clinic-timezone';
-import { resolveReportRange, isRangeError, dateKeyInTz } from '../_lib/report-range';
+import { formatInTz } from '@/lib/tz';
+import { openReport, dayKeys } from '../_lib/report-range';
 
+/**
+ * GET /api/reports/income?period=|startDate=&endDate=
+ * Money in the window, on two clocks: collected = payments received in the window (whatever
+ * invoice they paid), billed = invoices raised in the window. Refunded invoices count in neither;
+ * they are reported apart. Aggregations only.
+ */
 export async function GET(request: NextRequest) {
-  const ctx = await requireTenantSession();
-  if (isTenantSessionError(ctx)) return ctx;
-  const { session, tenantId } = ctx;
-
-  // Only admin and accountant can view income reports
-  if (!isAdmin(session) && session.role !== 'accountant') {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    );
-  }
+  const open = await openReport(request.nextUrl.searchParams, 'income');
+  if (open instanceof NextResponse) return open;
+  const { tenantObjectId, tz, start, end } = open;
 
   try {
     await connectDB();
-    const searchParams = request.nextUrl.searchParams;
-    const period = searchParams.get('period') || 'monthly'; // daily, weekly, monthly
-    const tz = await getTenantTimezone(tenantId);
+    const scope = { tenantId: tenantObjectId };
+    const billedMatch = { ...scope, createdAt: { $gte: start, $lte: end } };
+    const day = (field: string) => ({ $dateToString: { format: '%Y-%m-%d', date: field, timezone: tz } });
 
-    const dateRange = resolveReportRange(searchParams, tz);
-    if (isRangeError(dateRange)) {
-      return NextResponse.json({ success: false, error: dateRange.error }, { status: 400 });
-    }
+    const [billedFacet, collectedFacet] = await Promise.all([
+      Invoice.aggregate([
+        { $match: billedMatch },
+        {
+          $facet: {
+            totals: [
+              { $match: { status: { $ne: 'refunded' } } },
+              {
+                $group: {
+                  _id: null,
+                  billed: { $sum: { $ifNull: ['$total', 0] } },
+                  count: { $sum: 1 },
+                  stillOwed: { $sum: { $cond: [{ $in: ['$status', ['unpaid', 'partial']] }, { $ifNull: ['$outstandingBalance', 0] }, 0] } },
+                  discounts: { $sum: { $sum: { $ifNull: ['$discounts.amount', []] } } },
+                  tax: { $sum: { $ifNull: ['$tax', 0] } },
+                  professionalFees: { $sum: { $ifNull: ['$professionalFee', 0] } },
+                },
+              },
+            ],
+            refunded: [{ $match: { status: 'refunded' } }, { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: { $ifNull: ['$totalPaid', 0] } } } }],
+            byDay: [{ $match: { status: { $ne: 'refunded' } } }, { $group: { _id: day('$createdAt'), v: { $sum: { $ifNull: ['$total', 0] } } } }],
+            byCategory: [
+              { $match: { status: { $ne: 'refunded' } } },
+              { $unwind: '$items' },
+              { $group: { _id: { $ifNull: ['$items.category', 'other'] }, v: { $sum: { $ifNull: ['$items.total', 0] } } } },
+            ],
+          },
+        },
+      ]),
+      Invoice.aggregate([
+        { $match: { ...scope, status: { $ne: 'refunded' }, 'payments.date': { $gte: start, $lte: end } } },
+        { $unwind: '$payments' },
+        { $match: { 'payments.date': { $gte: start, $lte: end } } },
+        {
+          $facet: {
+            total: [{ $group: { _id: null, v: { $sum: '$payments.amount' }, n: { $sum: 1 } } }],
+            byDay: [{ $group: { _id: day('$payments.date'), v: { $sum: '$payments.amount' } } }],
+            byMethod: [{ $group: { _id: { $ifNull: ['$payments.method', 'unknown'] }, v: { $sum: '$payments.amount' } } }],
+          },
+        },
+      ]),
+    ]);
 
-    const invoices = await Invoice.find(tenantFilter(tenantId, {
-      createdAt: { $gte: dateRange.start, $lte: dateRange.end },
-    }))
-      .select('total totalPaid outstandingBalance discounts tax payments status items createdAt')
-      .sort({ createdAt: -1 })
-      .lean();
-
-    // Calculate totals
-    const totalBilled = invoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
-    const totalPaid = invoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0);
-    const totalOutstanding = invoices.reduce((sum: number, inv: any) => sum + (inv.outstandingBalance || 0), 0);
-    const totalDiscounts = invoices.reduce((sum: number, inv: any) => {
-      const discountTotal = inv.discounts?.reduce((dSum: number, d: any) => dSum + (d.amount || 0), 0) || 0;
-      return sum + discountTotal;
-    }, 0);
-    const totalTax = invoices.reduce((sum: number, inv: any) => sum + (inv.tax || 0), 0);
-
-    // Group by payment method
-    const byPaymentMethod: Record<string, number> = {};
-    invoices.forEach((inv: any) => {
-      inv.payments?.forEach((payment: any) => {
-        const method = payment.method || 'unknown';
-        byPaymentMethod[method] = (byPaymentMethod[method] || 0) + (payment.amount || 0);
-      });
-    });
-
-    // Group by status
-    const byStatus = invoices.reduce((acc: any, inv: any) => {
-      const status = inv.status || 'unpaid';
-      acc[status] = (acc[status] || 0) + 1;
-      return acc;
-    }, {});
-
-    // Group by service category
-    const byCategory: Record<string, number> = {};
-    invoices.forEach((inv: any) => {
-      inv.items?.forEach((item: any) => {
-        const category = item.category || 'other';
-        byCategory[category] = (byCategory[category] || 0) + (item.total || 0);
-      });
-    });
-
-    // Daily breakdown
-    const byDate: Record<string, any[]> = {};
-    invoices.forEach((inv: any) => {
-      const dateKey = dateKeyInTz(inv.createdAt, tz);
-      if (!byDate[dateKey]) {
-        byDate[dateKey] = [];
-      }
-      byDate[dateKey].push(inv);
-    });
-
-    const dailyBreakdown = Object.entries(byDate).map(([date, dateInvoices]) => ({
-      date,
-      billed: dateInvoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0),
-      paid: dateInvoices.reduce((sum: number, inv: any) => sum + (inv.totalPaid || 0), 0),
-      outstanding: dateInvoices.reduce((sum: number, inv: any) => sum + (inv.outstandingBalance || 0), 0),
-      count: dateInvoices.length,
-    })).sort((a, b) => a.date.localeCompare(b.date));
-
-    // Calculate averages
-    const daysDiff = Math.max(1, Math.round((dateRange.end.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24)));
-    const avgDailyRevenue = daysDiff > 0 ? totalPaid / daysDiff : 0;
+    const b = billedFacet[0];
+    const c = collectedFacet[0];
+    const round = (v: number) => Math.round((v || 0) * 100) / 100;
+    const map = (rows: { _id: string; v: number }[]) => Object.fromEntries(rows.map((r) => [r._id, round(r.v)]));
+    const billedByDay = new Map((b.byDay as { _id: string; v: number }[]).map((r) => [r._id, r.v]));
+    const collectedByDay = new Map((c.byDay as { _id: string; v: number }[]).map((r) => [r._id, r.v]));
+    const t = b.totals[0] ?? {};
 
     return NextResponse.json({
       success: true,
       data: {
-        period,
-        dateRange: {
-          start: dateRange.start.toISOString(),
-          end: dateRange.end.toISOString(),
-        },
-        summary: {
-          totalBilled,
-          totalPaid,
-          totalOutstanding,
-          totalDiscounts,
-          totalTax,
-          invoiceCount: invoices.length,
-          paidInvoiceCount: invoices.filter((inv: any) => inv.status === 'paid').length,
-          avgDailyRevenue: parseFloat(avgDailyRevenue.toFixed(2)),
-        },
-        breakdowns: {
-          byPaymentMethod,
-          byStatus,
-          byCategory,
-        },
-        dailyBreakdown,
-        generatedAt: new Date().toISOString(),
+        range: { start: start.toISOString(), end: end.toISOString() },
+        today: formatInTz(new Date(), 'yyyy-MM-dd', tz),
+        collected: round(c.total[0]?.v ?? 0),
+        payments: c.total[0]?.n ?? 0,
+        billed: round(t.billed ?? 0),
+        invoices: t.count ?? 0,
+        stillOwed: round(t.stillOwed ?? 0),
+        discounts: round(t.discounts ?? 0),
+        tax: round(t.tax ?? 0),
+        professionalFees: round(t.professionalFees ?? 0),
+        refunded: { count: b.refunded[0]?.count ?? 0, amount: round(b.refunded[0]?.amount ?? 0) },
+        days: dayKeys(start, end, tz).map((date) => ({ date, collected: round(collectedByDay.get(date) ?? 0), billed: round(billedByDay.get(date) ?? 0) })),
+        byMethod: map(c.byMethod),
+        byCategory: map(b.byCategory),
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error generating income report:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to generate income report' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to generate the income report' }, { status: 500 });
   }
 }
-

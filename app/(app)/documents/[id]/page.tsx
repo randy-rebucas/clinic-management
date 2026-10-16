@@ -1,13 +1,15 @@
-import { requirePagePermission } from '@/app/lib/auth-helpers';
+import { loadDocumentPermissions } from '@/lib/documents-page';
 import DocumentDetailClient from '@/components/DocumentDetailClient';
 
 export default async function DocumentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ saved?: string }>;
 }) {
-  await requirePagePermission('patients', 'read');
-
+  const permissions = await loadDocumentPermissions('read');
   const { id } = await params;
-  return <DocumentDetailClient documentId={id} />;
+  const { saved } = await searchParams;
+  return <DocumentDetailClient documentId={id} permissions={permissions} uploaded={saved === 'uploaded'} />;
 }

@@ -11,10 +11,13 @@ export type NotificationScope = {
   tenantObjectId?: Types.ObjectId;
 };
 
+/** Not yet expired: no expiresAt, or one in the future. The TTL index deletes expired ones lazily. */
+const notExpired = () => ({ expiresAt: { $not: { $lte: new Date() } } });
+
 /**
  * Resolve the caller and the filter for their own notifications. Clinic users are scoped to
  * their tenant; medical representatives have no tenant, so they only see their own
- * tenant-less notifications.
+ * tenant-less notifications. Expired notifications are excluded everywhere.
  */
 export async function requireNotificationScope(): Promise<NotificationScope | NextResponse> {
   const session = await verifySession();
@@ -27,6 +30,7 @@ export async function requireNotificationScope(): Promise<NotificationScope | Ne
       ownFilter: {
         user: new Types.ObjectId(session.userId),
         $or: [{ tenantId: { $exists: false } }, { tenantId: null }],
+        ...notExpired(),
       },
     };
   }
@@ -39,7 +43,7 @@ export async function requireNotificationScope(): Promise<NotificationScope | Ne
   return {
     session: ctx.session,
     tenantObjectId: ctx.tenantObjectId,
-    ownFilter: { user: new Types.ObjectId(ctx.session.userId), tenantId: ctx.tenantObjectId },
+    ownFilter: { user: new Types.ObjectId(ctx.session.userId), tenantId: ctx.tenantObjectId, ...notExpired() },
   };
 }
 

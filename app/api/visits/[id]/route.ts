@@ -154,16 +154,17 @@ export async function PUT(
       }
     }
 
-    // Auto-create or update prescription if medications are present in treatment plan
+    // Auto-create or update prescription if medications are present in treatment plan. Drafts
+    // wait; finishing a draft is when the prescription is first made, so the patient hears then.
     let prescriptionId: string | undefined;
-    if (body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {
+    if (visit.status !== 'draft' && body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {
       try {
         const { updatePrescriptionFromVisit } = await import('@/lib/automations/prescription-from-visit');
         const prescription = await updatePrescriptionFromVisit({
           visitId: visit._id,
           tenantId: tenantObjectId,
           createdBy: session.userId,
-          shouldSendNotification: false,
+          shouldSendNotification: oldVisit.status === 'draft',
         });
         if (prescription && (prescription as any)._id) {
           prescriptionId = (prescription as any)._id.toString();

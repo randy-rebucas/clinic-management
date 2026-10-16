@@ -10,6 +10,7 @@ import Patient from '@/models/Patient';
 import { sendSMS } from '@/lib/sms';
 import { sendPushToPatientDevices } from '@/lib/push-notifications';
 import { getSettings } from '@/lib/settings';
+import { aheadOf } from '@/lib/queue-order';
 import { Types } from 'mongoose';
 
 export interface QueueNotificationOptions {
@@ -61,8 +62,7 @@ export async function notifyQueuePatient(options: QueueNotificationOptions): Pro
 
       const waitingAhead = await Queue.countDocuments({
         ...tenantQuery,
-        priority: { $lte: queueEntry.priority },
-        queuedAt: { $lt: queueEntry.queuedAt },
+        ...aheadOf(queueEntry),
       });
 
       const position = waitingAhead + 1;

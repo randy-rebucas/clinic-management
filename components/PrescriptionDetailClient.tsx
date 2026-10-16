@@ -1,836 +1,625 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { Modal } from './ui/Modal';
+import { useRouter } from 'next/navigation';
+import { AlertDialog } from './ui/Modal';
 import { formatApiError } from './utils/apiError';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
+import { FOCUS_RING, ICON, Svg } from './appointments/shared';
+import { ageFrom, allergyList } from './visits/form/PatientSummary';
+import { RX_STATE, medicineDirections, medicineForm, type RxStatus } from './prescriptions/shared';
+import DispenseDialog from './prescriptions/DispenseDialog';
+import { SERIES } from './dashboards/charts';
+import { dispensedPerMedication, type DispenseItem } from '@/lib/prescription-dispense';
+import type { PrescriptionDetailPermissions } from '@/lib/prescriptions-page';
+
+type Allergy = string | { substance?: string; reaction?: string; severity?: string };
+
+interface Medication {
+  name: string;
+  genericName?: string;
+  form?: string;
+  strength?: string;
+  dose?: string;
+  route?: string;
+  frequency?: string;
+  durationDays?: number;
+  quantity?: number;
+  instructions?: string;
+}
+
+interface DispenseRecord {
+  pharmacyName?: string;
+  dispensedAt?: string;
+  dispensedBy?: string;
+  quantityDispensed?: number;
+  items?: DispenseItem[];
+  notes?: string;
+  trackingNumber?: string;
+}
 
 interface Prescription {
   _id: string;
   prescriptionCode: string;
-  patient: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    patientCode?: string;
-    email?: string;
-    phone?: string;
-    dateOfBirth?: string;
-  };
-  prescribedBy?: {
-    _id: string;
-    name: string;
-    email: string;
-  };
-  visit?: {
-    _id: string;
-    visitCode: string;
-    date: string;
-    followUpDate?: string;
-  };
-  medications: Array<{
-    name: string;
-    genericName?: string;
-    form?: string;
-    strength?: string;
-    dose?: string;
-    route?: string;
-    frequency?: string;
-    durationDays?: number;
-    quantity?: number;
-    instructions?: string;
-  }>;
-  status: string;
+  patient: { _id: string; firstName: string; lastName: string; patientCode?: string; phone?: string; dateOfBirth?: string; allergies?: Allergy[] } | null;
+  prescribedBy?: { _id: string; name: string } | null;
+  visit?: { _id: string; visitCode: string; date: string; followUpDate?: string } | null;
+  medications: Medication[];
+  status: RxStatus;
   issuedAt: string;
   notes?: string;
-  pharmacyDispenses?: Array<{
-    pharmacyName?: string;
-    pharmacyId?: string;
-    dispensedAt?: string;
-    dispensedBy?: string;
-    quantityDispensed?: number;
-    notes?: string;
-    trackingNumber?: string;
-  }>;
-  digitalSignature?: {
-    providerName: string;
-    signatureData: string;
-    signedAt: string;
-  };
-  drugInteractions?: Array<{
-    medication1: string;
-    medication2: string;
-    severity: 'mild' | 'moderate' | 'severe' | 'contraindicated';
-    description: string;
-    recommendation?: string;
-    checkedAt: string;
-  }>;
-  copies?: {
-    patientCopy?: {
-      printedAt?: string;
-      printedBy?: string;
-      digitalCopySent?: boolean;
-      sentAt?: string;
-    };
-    clinicCopy?: {
-      archivedAt?: string;
-      archivedBy?: string;
-      location?: string;
-    };
-  };
+  pharmacyDispenses?: DispenseRecord[];
+  digitalSignature?: { providerName?: string; signatureData?: string; signedAt?: string };
+  drugInteractions?: { medication1: string; medication2: string; severity: 'mild' | 'moderate' | 'severe' | 'contraindicated'; description: string; recommendation?: string }[];
+  copies?: { patientCopy?: { printedAt?: string }; clinicCopy?: { archivedAt?: string } };
 }
 
-export default function PrescriptionDetailClient({ prescriptionId }: { prescriptionId: string }) {
-  const [prescription, setPrescription] = useState<Prescription | null>(null);
-  const [clinicSettings, setClinicSettings] = useState<{ licenseNumber?: string; ptr?: string } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [showDispenseForm, setShowDispenseForm] = useState(false);
-  const [dispenseForm, setDispenseForm] = useState({
-    pharmacyId: '',
-    pharmacyName: '',
-    quantityDispensed: 0,
-    notes: '',
-    trackingNumber: '',
-  });
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [dispensing, setDispensing] = useState(false);
+const ICONS = {
+  ...ICON,
+  print: 'M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z',
+  pill: 'M10.5 20.5l10-10a4.95 4.95 0 10-7-7l-10 10a4.95 4.95 0 107 7zM8.5 8.5l7 7',
+  doc: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  stop: 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636',
+};
+
+const INTERACTION: Record<string, { label: string; badge: string }> = {
+  contraindicated: { label: 'Do not combine', badge: 'bg-red-50 text-red-800 ring-red-200' },
+  severe: { label: 'Severe', badge: 'bg-red-50 text-red-800 ring-red-200' },
+  moderate: { label: 'Moderate', badge: 'bg-amber-50 text-amber-800 ring-amber-200' },
+  mild: { label: 'Mild', badge: 'bg-gray-100 text-gray-700 ring-gray-200' },
+};
+
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+/** Birth dates are stored at UTC midnight; read them in UTC so they never slip a day. */
+const birthDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const isSevere = (s: string) => ['severe', 'high', 'life-threatening', 'anaphylaxis'].includes(s.toLowerCase());
+const AUTO_NOTE = /^Generated automatically from visit /;
+
+type Confirm = 'cancel' | 'complete' | null;
+
+export default function PrescriptionDetailClient({ prescriptionId, permissions }: { prescriptionId: string; permissions: PrescriptionDetailPermissions }) {
   const router = useRouter();
+  const rx = useKeyedFetch<Prescription>(`/api/prescriptions/${prescriptionId}`);
+  const [dispensing, setDispensing] = useState(false);
+  const [confirm, setConfirm] = useState<Confirm>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<{ text: string; warnings: string[] } | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const fetchClinicSettings = useCallback(async () => {
-    try {
-      const res = await fetch('/api/settings');
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      if (!res.ok) {
-        return;
-      }
-      const data = await res.json();
-      setClinicSettings({
-        licenseNumber: data.licenseNumber,
-        ptr: data.ptr,
-      });
-    } catch (error) {
-      console.error('Failed to fetch clinic settings:', error);
-    }
-  }, [router]);
-
-  const fetchPrescription = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await fetch(`/api/prescriptions/${prescriptionId}`);
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      const data = await res.json();
-      if (data.success && data.data) {
-        setPrescription(data.data);
-      } else {
-        setError(data.error || 'Failed to load prescription');
-      }
-    } catch (error) {
-      console.error('Failed to fetch prescription:', error);
-      setError('Failed to load prescription. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [prescriptionId, router]);
+  // After any change the record is fetched again (the PUT and dispense answers carry less than this page shows).
+  const p = rx.value;
 
   useEffect(() => {
-    const load = async () => {
-      await Promise.all([fetchPrescription(), fetchClinicSettings()]);
-    };
-    load();
-  }, [fetchPrescription, fetchClinicSettings]);
+    if (!notice || notice.warnings.length) return;
+    const t = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
-  const showNotification = (message: string, type: 'error' | 'success') => {
-    if (type === 'error') {
-      setError(message);
-      setTimeout(() => setError(null), 5000);
-    } else {
-      setSuccess(message);
-      setTimeout(() => setSuccess(null), 3000);
-    }
-  };
-
-  const handleDispense = async () => {
-    if (dispensing) return;
-    setDispensing(true);
+  const setStatus = async (status: 'cancelled' | 'completed') => {
+    setConfirm(null);
+    setBusy(true);
+    setActionError(null);
     try {
-      const res = await fetch(`/api/prescriptions/${prescriptionId}/dispense`, {
-        method: 'POST',
+      const res = await fetch(`/api/prescriptions/${prescriptionId}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dispenseForm),
+        body: JSON.stringify({ status }),
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setPrescription(data.data);
-          setShowDispenseForm(false);
-          setDispenseForm({
-            pharmacyId: '',
-            pharmacyName: '',
-            quantityDispensed: 0,
-            notes: '',
-            trackingNumber: '',
-          });
-          showNotification('Dispense recorded successfully!', 'success');
-        } else {
-          showNotification(formatApiError(data, 'Failed to record dispense'), 'error');
-        }
-      } else {
-        const data = await res.json().catch(() => null);
-        showNotification(formatApiError(data, 'Failed to record dispense'), 'error');
+      if (res.status === 401) {
+        router.push('/login');
+        return;
       }
-    } catch (error) {
-      console.error('Failed to record dispense:', error);
-      showNotification('Failed to record dispense', 'error');
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        setActionError(formatApiError(json, status === 'cancelled' ? 'The prescription could not be cancelled' : 'The prescription could not be closed'));
+        return;
+      }
+      rx.reload();
+      setNotice({ text: status === 'cancelled' ? 'Prescription cancelled. It stays on file and can no longer be dispensed or printed.' : 'Prescription closed. Nothing more will be dispensed on it.', warnings: [] });
+    } catch {
+      setActionError('The server couldn’t be reached. Nothing changed; try again.');
     } finally {
-      setDispensing(false);
+      setBusy(false);
     }
   };
 
-  const handlePrint = (copyType: 'patient' | 'clinic' = 'patient') => {
-    window.open(`/api/prescriptions/${prescriptionId}/print?copy=${copyType}`, '_blank');
-  };
+  // --- Not loaded ----------------------------------------------------------------
 
-  const getInteractionColor = (severity: string): 'red' | 'yellow' | 'blue' => {
-    switch (severity) {
-      case 'contraindicated':
-      case 'severe':
-        return 'red';
-      case 'moderate':
-        return 'yellow';
-      default:
-        return 'blue';
-    }
-  };
-
-  if (loading) {
+  if (!p && rx.error) {
+    const missing = /not found|invalid prescription id/i.test(rx.error);
+    const denied = /permission|forbidden|not allowed/i.test(rx.error);
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100 border-t-blue-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading prescription...</p>
+      <Shell>
+        <BackLink />
+        <div role="alert" className="rounded-lg border border-gray-200 bg-white px-6 py-14 text-center">
+          <div className={`mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md ${missing || denied ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-600'}`}>
+            <Svg d={missing || denied ? ICONS.doc : ICONS.alert} className="h-5 w-5" />
           </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (!prescription) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900">{error || 'Prescription not found'}</h2>
-            <p className="text-sm text-gray-600 mb-4">The prescription you&apos;re looking for doesn&apos;t exist or has been removed.</p>
-            <Link 
-              href="/prescriptions"
-              className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all text-sm font-semibold shadow-md"
-            >
-              Back to Prescriptions
+          <p className="font-semibold text-gray-900">{missing ? 'Prescription not found' : denied ? 'You can’t open this prescription' : 'This prescription didn’t load'}</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">
+            {missing ? 'It may have been deleted, or it belongs to another clinic.' : denied ? 'Ask a clinic admin if you need access to prescriptions.' : `${rx.error}. Check your connection and try again.`}
+          </p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link href="/prescriptions" className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              All prescriptions
             </Link>
+            {!missing && !denied && (
+              <button type="button" onClick={rx.reload} className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+                Try again
+              </button>
+            )}
           </div>
         </div>
-      </section>
+      </Shell>
     );
   }
 
-  const totalPrescribed = (prescription.medications || []).reduce(
-    (sum, m) => sum + (m.quantity || 0),
-    0
-  );
-  const totalDispensed = (prescription.pharmacyDispenses || []).reduce(
-    (sum, d) => sum + (d.quantityDispensed || 0),
-    0
+  if (!p) {
+    return (
+      <Shell>
+        <BackLink />
+        <div className="animate-pulse space-y-6" aria-hidden="true">
+          <div className="space-y-2">
+            <div className="h-8 w-64 rounded bg-gray-200" />
+            <div className="h-4 w-96 max-w-full rounded bg-gray-100" />
+          </div>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <div className="h-72 rounded-lg border border-gray-200 bg-white" />
+            <div className="h-56 rounded-lg border border-gray-200 bg-white" />
+          </div>
+        </div>
+        <span className="sr-only" role="status">
+          Loading prescription…
+        </span>
+      </Shell>
+    );
+  }
+
+  // --- Loaded --------------------------------------------------------------------
+
+  const st = RX_STATE[p.status] ?? RX_STATE.active;
+  const cancelled = p.status === 'cancelled';
+  const open = p.status === 'active' || p.status === 'partially-dispensed';
+  const who = p.patient ? `${p.patient.firstName} ${p.patient.lastName}`.trim() : 'Patient record unavailable';
+  const meds = p.medications ?? [];
+  const prescribed = meds.map((m) => Math.max(0, Number(m.quantity) || 0));
+  const given = dispensedPerMedication(prescribed, p.pharmacyDispenses);
+  const done = meds.filter((_, i) => (prescribed[i] > 0 ? given[i] >= prescribed[i] : given[i] > 0)).length;
+  const allergies = allergyList(p.patient?.allergies);
+  const refreshing = rx.loading;
+
+  const printLink = (copy: 'patient' | 'clinic', label: string) => (
+    <a
+      href={`/api/prescriptions/${p._id}/print?copy=${copy}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      // Printing stamps the copy on the record; look again once it has.
+      onClick={() => setTimeout(rx.reload, 3000)}
+      className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
+    >
+      <Svg d={ICONS.print} />
+      {label}
+    </a>
   );
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
-          {/* Notifications */}
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-red-800 mb-1">Error</h3>
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
-              </div>
-            </div>
-          )}
-          {success && (
-            <div className="bg-green-50 border-l-4 border-green-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-green-800 mb-1">Success</h3>
-                  <p className="text-sm text-green-700">{success}</p>
-                </div>
-              </div>
-            </div>
-          )}
+    <Shell>
+      <BackLink />
 
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={() => router.push('/prescriptions')}
-                  aria-label="Back to prescriptions"
-                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg shadow-md">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Prescription {prescription.prescriptionCode}</h1>
-                    <div className="flex items-center gap-2 mt-1">
-                      {prescription.patient && (
-                        <>
-                          <Link href={`/patients/${prescription.patient._id}`}>
-                            <p className="text-sm sm:text-base font-bold text-indigo-600 hover:text-indigo-700 hover:underline transition-colors">
-                              {prescription.patient.firstName} {prescription.patient.lastName}
-                            </p>
-                          </Link>
-                          <p className="text-sm text-gray-500">•</p>
-                        </>
-                      )}
-                      {prescription.issuedAt && (
-                        <p className="text-sm sm:text-base text-gray-600">
-                          {new Date(prescription.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-3 flex-wrap">
-                <button 
-                  onClick={() => handlePrint('patient')}
-                  className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold flex items-center gap-2 shadow-md"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                  </svg>
-                  Patient Copy
-                </button>
-                <button 
-                  onClick={() => handlePrint('clinic')}
-                  className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold flex items-center gap-2 border border-gray-200"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                  </svg>
-                  Clinic Copy
-                </button>
-                {prescription.status !== 'dispensed' && (
-                  <button 
-                    onClick={() => setShowDispenseForm(true)}
-                    className="px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold shadow-md"
-                  >
-                    Record Dispense
-                  </button>
-                )}
-              </div>
-            </div>
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${cancelled ? 'text-gray-500 line-through decoration-gray-400 decoration-2' : 'text-gray-900'}`}>{who}</h1>
+            <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${st.badge}`}>{st.label}</span>
+            <span className="font-mono text-sm text-gray-500">{p.prescriptionCode}</span>
           </div>
-
-          <div className="flex flex-col gap-4">
-            {/* Patient Info */}
-            <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 rounded-xl p-5 shadow-sm">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-indigo-500 rounded-lg">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Patient Information</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {prescription.patient && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Name</p>
-                    <Link href={`/patients/${prescription.patient._id}`}>
-                      <p className="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline transition-colors">
-                        {prescription.patient.firstName} {prescription.patient.lastName}
-                      </p>
-                    </Link>
-                  </div>
+          <p className="mt-1 text-sm sm:text-base text-gray-600">
+            Issued {longDate(p.issuedAt)} at <span className="font-mono">{clock(p.issuedAt)}</span> · {p.prescribedBy?.name ?? 'No prescriber recorded'}
+            {p.visit && (
+              <>
+                {' · from visit '}
+                {permissions.canSeeVisit ? (
+                  <Link href={`/visits/${p.visit._id}`} className={`rounded font-mono font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                    {p.visit.visitCode}
+                  </Link>
+                ) : (
+                  <span className="font-mono">{p.visit.visitCode}</span>
                 )}
-                {prescription.patient?.patientCode && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Patient ID</p>
-                    <p className="text-sm font-medium text-gray-900">{prescription.patient.patientCode}</p>
-                  </div>
-                )}
-                {prescription.patient?.dateOfBirth && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Date of Birth</p>
-                    <p className="text-sm font-medium text-gray-900">{new Date(prescription.patient.dateOfBirth).toLocaleDateString()}</p>
-                  </div>
-                )}
-                {prescription.patient?.phone && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Phone</p>
-                    <p className="text-sm font-medium text-gray-900">{prescription.patient.phone}</p>
-                  </div>
-                )}
-                {prescription.issuedAt && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Date Issued</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {new Date(prescription.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </p>
-                  </div>
-                )}
-                {/* Follow-up Date */}
-                {prescription.visit?.followUpDate && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Follow-up Date</p>
-                    <p className="text-sm font-medium text-gray-900">{new Date(prescription.visit.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
-                  </div>
-                )}
-                {prescription.prescribedBy && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Prescribed By</p>
-                    <p className="text-sm font-medium text-gray-900">{prescription.prescribedBy.name}</p>
-                  </div>
-                )}
-                {(clinicSettings?.licenseNumber || clinicSettings?.ptr) && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">License / PTR</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {clinicSettings?.licenseNumber ? `License No: ${clinicSettings.licenseNumber}` : 'License No: -'}
-                    </p>
-                    {clinicSettings?.ptr && (
-                      <p className="text-sm font-medium text-gray-900">PTR No: {clinicSettings.ptr}</p>
-                    )}
-                  </div>
-                )}
-                {prescription.visit && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Visit</p>
-                    <Link 
-                      href={`/visits/${prescription.visit._id}`}
-                      className="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline transition-colors"
-                    >
-                      {prescription.visit.visitCode}
-                    </Link>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Medications */}
-            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-emerald-500 rounded-lg">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Medications</h3>
-              </div>
-              <div className="flex flex-col gap-3">
-                {(prescription.medications || []).map((medication, index) => (
-                  <div key={index} className="bg-gradient-to-r from-white to-emerald-50/50 border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all">
-                    <div className="flex items-start justify-between mb-3">
-                      <p className="text-sm font-bold text-gray-900">
-                        {index + 1}. {medication.name}
-                        {medication.genericName && (
-                          <span className="text-xs text-gray-600 ml-2 font-normal">
-                            ({medication.genericName})
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                      {medication.strength && (
-                        <div className="bg-white/50 p-2 rounded border border-gray-200">
-                          <span className="text-xs font-semibold text-gray-600">Strength:</span>
-                          <p className="text-xs font-medium text-gray-900 mt-0.5">{medication.strength}</p>
-                        </div>
-                      )}
-                      {medication.dose && (
-                        <div className="bg-white/50 p-2 rounded border border-gray-200">
-                          <span className="text-xs font-semibold text-gray-600">Dose:</span>
-                          <p className="text-xs font-medium text-gray-900 mt-0.5">{medication.dose}</p>
-                        </div>
-                      )}
-                      {medication.frequency && (
-                        <div className="bg-white/50 p-2 rounded border border-gray-200">
-                          <span className="text-xs font-semibold text-gray-600">Frequency:</span>
-                          <p className="text-xs font-medium text-gray-900 mt-0.5">{medication.frequency}</p>
-                        </div>
-                      )}
-                      {medication.durationDays && (
-                        <div className="bg-white/50 p-2 rounded border border-gray-200">
-                          <span className="text-xs font-semibold text-gray-600">Duration:</span>
-                          <p className="text-xs font-medium text-gray-900 mt-0.5">{medication.durationDays} day(s)</p>
-                        </div>
-                      )}
-                      {medication.quantity && (
-                        <div className="bg-white/50 p-2 rounded border border-gray-200">
-                          <span className="text-xs font-semibold text-gray-600">Quantity:</span>
-                          <p className="text-xs font-medium text-gray-900 mt-0.5">{medication.quantity}</p>
-                        </div>
-                      )}
-                      {medication.form && (
-                        <div className="bg-white/50 p-2 rounded border border-gray-200">
-                          <span className="text-xs font-semibold text-gray-600">Form:</span>
-                          <p className="text-xs font-medium text-gray-900 mt-0.5">{medication.form}</p>
-                        </div>
-                      )}
-                      {medication.route && (
-                        <div className="bg-white/50 p-2 rounded border border-gray-200">
-                          <span className="text-xs font-semibold text-gray-600">Route:</span>
-                          <p className="text-xs font-medium text-gray-900 mt-0.5">{medication.route}</p>
-                        </div>
-                      )}
-                    </div>
-                    {medication.instructions && (
-                      <div className="mt-3 pt-3 border-t border-emerald-200 bg-white/50 p-3 rounded border border-gray-200">
-                        <p className="text-xs font-semibold text-gray-700 mb-1.5">Instructions:</p>
-                        <p className="text-xs text-gray-700">{medication.instructions}</p>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Drug Interactions */}
-            {prescription.drugInteractions && prescription.drugInteractions.length > 0 && (
-              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-red-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900">Drug Interactions</h3>
-                </div>
-                <div className="flex flex-col gap-3">
-                  {prescription.drugInteractions.map((interaction, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`rounded-lg p-4 border-2 ${
-                        getInteractionColor(interaction.severity) === 'red' ? 'bg-red-50 border-red-300' :
-                        getInteractionColor(interaction.severity) === 'yellow' ? 'bg-yellow-50 border-yellow-300' :
-                        'bg-blue-50 border-blue-300'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start gap-3 mb-2">
-                        <p className="text-sm font-bold text-gray-900">
-                          {interaction.medication1} + {interaction.medication2}
-                        </p>
-                        <span className={`inline-block px-2.5 py-1 text-xs font-semibold rounded-full border ${
-                          getInteractionColor(interaction.severity) === 'red' ? 'bg-red-600 text-white border-red-700' :
-                          getInteractionColor(interaction.severity) === 'yellow' ? 'bg-yellow-600 text-white border-yellow-700' :
-                          'bg-blue-600 text-white border-blue-700'
-                        }`}>
-                          {interaction.severity.toUpperCase()}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-700 mb-2">{interaction.description}</p>
-                      {interaction.recommendation && (
-                        <p className="text-xs italic text-gray-600 bg-white/50 p-2 rounded border border-gray-200">{interaction.recommendation}</p>
-                      )}
-                      {interaction.checkedAt && (
-                        <p className="text-xs text-gray-600 font-medium mt-2">
-                          Checked: {new Date(interaction.checkedAt).toLocaleString()}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              </>
             )}
-
-            {/* Archive Status */}
-            {prescription.copies && (
-              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-amber-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900">Archive Status</h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {prescription.copies.patientCopy && (
-                    <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-lg p-4">
-                      <h4 className="text-sm font-bold text-gray-900 mb-3">Patient Copy</h4>
-                      {prescription.copies.patientCopy.printedAt && (
-                        <p className="text-xs text-gray-700 mb-2">
-                          <span className="font-semibold">Printed:</span> {new Date(prescription.copies.patientCopy.printedAt).toLocaleString()}
-                        </p>
-                      )}
-                      {prescription.copies.patientCopy.digitalCopySent && (
-                        <p className="text-xs text-gray-700">
-                          <span className="font-semibold">Digital copy sent:</span> {prescription.copies.patientCopy.sentAt
-                            ? new Date(prescription.copies.patientCopy.sentAt).toLocaleString()
-                            : 'Yes'}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {prescription.copies.clinicCopy && (
-                    <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-lg p-4">
-                      <h4 className="text-sm font-bold text-gray-900 mb-3">Clinic Copy</h4>
-                      {prescription.copies.clinicCopy.archivedAt && (
-                        <p className="text-xs text-gray-700 mb-2">
-                          <span className="font-semibold">Archived:</span> {new Date(prescription.copies.clinicCopy.archivedAt).toLocaleString()}
-                        </p>
-                      )}
-                      {prescription.copies.clinicCopy.location && (
-                        <p className="text-xs text-gray-700">
-                          <span className="font-semibold">Location:</span> {prescription.copies.clinicCopy.location}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Dispensing Status */}
-            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-purple-500 rounded-lg">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Dispensing Status</h3>
-              </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-lg p-4 mb-4">
-                <div className="flex justify-between items-center mb-3">
-                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Prescribed</p>
-                  <p className="text-sm font-bold text-gray-900">{totalPrescribed}</p>
-                </div>
-                <div className="flex justify-between items-center mb-3">
-                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Dispensed</p>
-                  <p className="text-sm font-bold text-gray-900">{totalDispensed}</p>
-                </div>
-                <div
-                  role="progressbar"
-                  aria-label="Quantity dispensed"
-                  aria-valuemin={0}
-                  aria-valuemax={totalPrescribed}
-                  aria-valuenow={Math.min(totalDispensed, totalPrescribed)}
-                  className="w-full h-3 bg-gray-200 rounded-full overflow-hidden border border-gray-300"
-                >
-                  <div
-                    className="h-full bg-gradient-to-r from-purple-500 to-purple-600 transition-all duration-300 shadow-sm"
-                    style={{ width: `${totalPrescribed > 0 ? (totalDispensed / totalPrescribed) * 100 : 0}%` }}
-                  />
-                </div>
-              </div>
-              {(prescription.pharmacyDispenses || []).length > 0 && (
-                <div className="flex flex-col gap-3">
-                  <h4 className="text-sm font-bold text-gray-900 mb-1">Dispense History</h4>
-                  {(prescription.pharmacyDispenses || []).map((dispense, index) => (
-                    <div key={index} className="bg-gradient-to-r from-white to-purple-50/50 border border-purple-200 rounded-lg p-4 hover:shadow-md transition-all">
-                      <div className="flex justify-between items-start gap-3">
-                        <div className="flex-1">
-                          <p className="text-sm font-bold text-gray-900 mb-1">
-                            {dispense.pharmacyName || 'Pharmacy'}
-                          </p>
-                          {dispense.dispensedAt && (
-                            <p className="text-xs text-gray-600 font-medium">
-                              {new Date(dispense.dispensedAt).toLocaleDateString()}
-                            </p>
-                          )}
-                          {dispense.quantityDispensed && (
-                            <p className="text-xs text-gray-600 font-medium mt-1">
-                              Quantity: {dispense.quantityDispensed}
-                            </p>
-                          )}
-                        </div>
-                        {dispense.trackingNumber && (
-                          <p className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-1 rounded border border-purple-200">#{dispense.trackingNumber}</p>
-                        )}
-                      </div>
-                      {dispense.notes && (
-                        <p className="text-xs text-gray-700 mt-3 bg-white/50 p-2 rounded border border-gray-200">{dispense.notes}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+          </p>
+          {/* Allergies first: whoever hands the medicines over should see them before anything else. */}
+          {p.patient && (
+            <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5 text-sm">
+              <span className="font-semibold text-gray-900">Allergies:</span>
+              {allergies.length === 0 ? (
+                <span className="text-gray-500">none on file</span>
+              ) : (
+                allergies.map((a, i) => (
+                  <span key={i} className={isSevere(a.severity) ? 'font-semibold text-red-700' : 'text-gray-900'}>
+                    {a.substance}
+                    {(a.reaction || a.severity) && <span className={isSevere(a.severity) ? '' : 'text-gray-500'}> ({[a.reaction, a.severity?.toLowerCase()].filter(Boolean).join(', ')})</span>}
+                    {i < allergies.length - 1 ? ',' : ''}
+                  </span>
+                ))
               )}
-            </div>
+            </p>
+          )}
+        </div>
 
-            {/* Notes */}
-            {prescription.notes && (
-              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-gray-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900">Notes</h3>
-                </div>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 p-4 rounded-lg border border-gray-200">{prescription.notes}</p>
-              </div>
-            )}
+        <div className={`flex flex-wrap items-center gap-2 transition-opacity ${busy ? 'opacity-60' : ''}`}>
+          {!cancelled && (
+            <>
+              {printLink('patient', 'Patient copy')}
+              {printLink('clinic', 'Clinic copy')}
+            </>
+          )}
+          {permissions.canUpdate && p.status === 'partially-dispensed' && (
+            <button
+              type="button"
+              onClick={() => setConfirm('complete')}
+              disabled={busy}
+              className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 disabled:cursor-wait ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.check} />
+              Close without the rest
+            </button>
+          )}
+          {permissions.canUpdate && open && (
+            <button
+              type="button"
+              onClick={() => {
+                setNotice(null);
+                setDispensing(true);
+              }}
+              disabled={busy}
+              className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-wait ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.pill} />
+              Dispense
+            </button>
+          )}
+          {permissions.canUpdate && p.status === 'active' && (
+            <button
+              type="button"
+              onClick={() => setConfirm('cancel')}
+              disabled={busy}
+              aria-label={`Cancel prescription ${p.prescriptionCode}`}
+              title="Cancel prescription"
+              className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-40 ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.x} />
+            </button>
+          )}
+        </div>
+      </header>
 
-            {/* Digital Signature */}
-            {prescription.digitalSignature && (
-              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-green-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900">Digital Signature</h3>
-                </div>
-                <div className="flex items-center gap-4 bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="border-2 border-green-300 rounded-lg p-2 bg-white shadow-sm">
-                    <img
-                      src={prescription.digitalSignature.signatureData}
-                      alt="Signature"
-                      className="h-20 block"
-                    />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-900 mb-1">
-                      {prescription.digitalSignature.providerName}
-                    </p>
-                    <p className="text-xs text-gray-600 font-medium">
-                      {new Date(prescription.digitalSignature.signedAt).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              </div>
+      <p className="sr-only" aria-live="polite">
+        {notice?.text ?? ''}
+      </p>
+      {notice && (
+        <div role="status" className={`motion-chip-in flex items-start justify-between gap-4 rounded-lg border px-4 py-3 text-sm ${notice.warnings.length ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-green-200 bg-green-50 text-green-800'}`}>
+          <div>
+            <p className="font-medium">{notice.text}</p>
+            {notice.warnings.length > 0 && (
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                {notice.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
             )}
           </div>
-
-          {/* Dispense Form Modal */}
-          <Modal 
-            open={showDispenseForm} 
-            onOpenChange={(open) => {
-              if (!open) {
-                setShowDispenseForm(false);
-              }
-            }}
-            className="max-w-md"
-          >
-            <div className="p-6 sm:p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-md">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900">Record Dispense</h2>
-              </div>
-              <div className="py-4">
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <label htmlFor="dispense-pharmacy-name" className="block text-sm font-semibold text-gray-700 mb-2">
-                      Pharmacy Name <span className="text-red-600">*</span>
-                    </label>
-                    <input id="dispense-pharmacy-name"
-                      type="text"
-                      required
-                      value={dispenseForm.pharmacyName}
-                      onChange={(e) => setDispenseForm({ ...dispenseForm, pharmacyName: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="dispense-quantity" className="block text-sm font-semibold text-gray-700 mb-2">
-                      Quantity Dispensed <span className="text-red-600">*</span>
-                    </label>
-                    <input id="dispense-quantity"
-                      type="number"
-                      required
-                      min="1"
-                      max={totalPrescribed - totalDispensed}
-                      value={dispenseForm.quantityDispensed}
-                      onChange={(e) => setDispenseForm({ ...dispenseForm, quantityDispensed: parseInt(e.target.value) || 0 })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm transition-all"
-                    />
-                    <p className="text-xs text-gray-600 font-medium mt-1.5">
-                      Remaining: {totalPrescribed - totalDispensed}
-                    </p>
-                  </div>
-                  <div>
-                    <label htmlFor="dispense-tracking-number" className="block text-sm font-semibold text-gray-700 mb-2">Tracking Number</label>
-                    <input id="dispense-tracking-number"
-                      type="text"
-                      value={dispenseForm.trackingNumber}
-                      onChange={(e) => setDispenseForm({ ...dispenseForm, trackingNumber: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="dispense-notes" className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
-                    <textarea id="dispense-notes"
-                      value={dispenseForm.notes}
-                      onChange={(e) => setDispenseForm({ ...dispenseForm, notes: e.target.value })}
-                      rows={3}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm resize-y transition-all"
-                    />
-                  </div>
-                  <div className="flex justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowDispenseForm(false)}
-                      className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold border border-gray-200"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDispense}
-                      disabled={dispensing}
-                      aria-busy={dispensing}
-                      className="px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {dispensing ? 'Recording…' : 'Record Dispense'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Modal>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 opacity-80 hover:opacity-100 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
         </div>
+      )}
+      {actionError && (
+        <div role="alert" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          <p>{actionError}</p>
+          <button type="button" onClick={() => setActionError(null)} aria-label="Dismiss error" className={`shrink-0 rounded p-0.5 text-red-700 hover:text-red-900 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
+        </div>
+      )}
+
+      <div className={`grid items-start gap-6 transition-opacity duration-200 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] ${refreshing ? 'opacity-60' : ''}`}>
+        <div className="flex min-w-0 flex-col gap-6">
+          <Panel
+            id="rx-meds"
+            title="Medicines"
+            aside={
+              meds.length > 0 && !cancelled ? (
+                <span className="text-sm text-gray-500">
+                  <span className="font-mono tabular-nums text-gray-900">{done}</span> of <span className="font-mono tabular-nums">{meds.length}</span> given
+                </span>
+              ) : null
+            }
+          >
+            {meds.length === 0 ? (
+              <p className="px-5 py-4 text-sm text-gray-500">No medicines on this prescription.</p>
+            ) : (
+              <ol className="divide-y divide-gray-100">
+                {meds.map((m, i) => (
+                  <MedicineRow key={i} index={i} medicine={m} prescribed={prescribed[i]} given={given[i]} cancelled={cancelled} />
+                ))}
+              </ol>
+            )}
+          </Panel>
+
+          {p.drugInteractions && p.drugInteractions.length > 0 && (
+            <Panel id="rx-interactions" title="Interactions found when prescribed">
+              <ul className="divide-y divide-gray-100">
+                {p.drugInteractions.map((x, i) => {
+                  const sev = INTERACTION[x.severity] ?? INTERACTION.mild;
+                  return (
+                    <li key={i} className="px-5 py-3">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <p className="font-semibold text-gray-900">
+                          {x.medication1} <span className="font-normal text-gray-500">with</span> {x.medication2}
+                        </p>
+                        <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${sev.badge}`}>{sev.label}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-gray-700">{x.description}</p>
+                      {x.recommendation && <p className="mt-1 text-sm text-gray-500">{x.recommendation}</p>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </Panel>
+          )}
+
+          {p.notes && !AUTO_NOTE.test(p.notes) && (
+            <Panel id="rx-notes" title="Notes">
+              <p className="max-w-prose whitespace-pre-wrap px-5 py-4 text-sm leading-relaxed text-gray-700">{p.notes}</p>
+            </Panel>
+          )}
+        </div>
+
+        <aside className="flex min-w-0 flex-col gap-6">
+          <Panel id="rx-patient" title="Patient">
+            {p.patient ? (
+              <dl className="divide-y divide-gray-100">
+                <Field label="Name">
+                  {permissions.canSeePatient ? (
+                    <Link href={`/patients/${p.patient._id}`} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                      {who}
+                    </Link>
+                  ) : (
+                    who
+                  )}
+                  {p.patient.patientCode && <span className="ml-2 font-mono text-xs text-gray-500">{p.patient.patientCode}</span>}
+                </Field>
+                {p.patient.dateOfBirth && (
+                  <Field label="Born">
+                    <span className="font-mono">{birthDate(p.patient.dateOfBirth)}</span>
+                    {ageFrom(p.patient.dateOfBirth) && <span className="text-gray-500"> · {ageFrom(p.patient.dateOfBirth)}</span>}
+                  </Field>
+                )}
+                {p.patient.phone && (
+                  <Field label="Phone">
+                    <span className="font-mono">{p.patient.phone}</span>
+                  </Field>
+                )}
+              </dl>
+            ) : (
+              <p className="px-5 py-4 text-sm text-gray-500">The patient record isn’t available at this clinic.</p>
+            )}
+          </Panel>
+
+          <Panel id="rx-dispensed" title="Dispensed">
+            {(p.pharmacyDispenses ?? []).length === 0 ? (
+              <p className="px-5 py-4 text-sm text-gray-500">{cancelled ? 'Nothing was given before it was cancelled.' : 'Nothing given yet.'}</p>
+            ) : (
+              <ol className="divide-y divide-gray-100">
+                {[...(p.pharmacyDispenses ?? [])].reverse().map((d, i) => (
+                  <li key={i} className="px-5 py-3 text-sm">
+                    <p className="flex flex-wrap items-baseline justify-between gap-x-3">
+                      <span className="font-semibold text-gray-900">{d.pharmacyName || 'At the clinic'}</span>
+                      {d.dispensedAt && (
+                        <span className="font-mono text-xs text-gray-500">
+                          {shortDate(d.dispensedAt)}, {clock(d.dispensedAt)}
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-gray-700">{dispenseSummary(d, meds)}</p>
+                    {(d.dispensedBy || d.trackingNumber) && (
+                      <p className="mt-0.5 text-gray-500">
+                        {d.dispensedBy && `By ${d.dispensedBy}`}
+                        {d.dispensedBy && d.trackingNumber && ' · '}
+                        {d.trackingNumber && <span className="font-mono text-xs">Ref {d.trackingNumber}</span>}
+                      </p>
+                    )}
+                    {d.notes && <p className="mt-1 whitespace-pre-wrap text-gray-600">{d.notes}</p>}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Panel>
+
+          <Panel id="rx-signature" title="Signature">
+            {p.digitalSignature?.signatureData ? (
+              <div className="px-5 py-4">
+                <div className="rounded-md border border-gray-200 bg-white p-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- signature stored inline as a data URL */}
+                  <img src={p.digitalSignature.signatureData} alt={`Signature of ${p.digitalSignature.providerName ?? 'the prescriber'}`} className="mx-auto block h-16 max-w-full object-contain" />
+                </div>
+                {p.digitalSignature.providerName && <p className="mt-3 text-sm font-semibold text-gray-900">{p.digitalSignature.providerName}</p>}
+                {p.digitalSignature.signedAt && (
+                  <p className="text-sm text-gray-500">
+                    Signed <span className="font-mono">{shortDate(p.digitalSignature.signedAt)}, {clock(p.digitalSignature.signedAt)}</span>
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="px-5 py-4 text-sm text-gray-500">Not signed. The printout has a blank signature line.</p>
+            )}
+          </Panel>
+
+          {(p.copies?.patientCopy?.printedAt || p.copies?.clinicCopy?.archivedAt) && (
+            <Panel id="rx-copies" title="Printed">
+              <dl className="divide-y divide-gray-100">
+                {p.copies?.patientCopy?.printedAt && (
+                  <Field label="Patient copy">
+                    <span className="font-mono">
+                      {shortDate(p.copies.patientCopy.printedAt)}, {clock(p.copies.patientCopy.printedAt)}
+                    </span>
+                  </Field>
+                )}
+                {p.copies?.clinicCopy?.archivedAt && (
+                  <Field label="Clinic copy">
+                    <span className="font-mono">
+                      {shortDate(p.copies.clinicCopy.archivedAt)}, {clock(p.copies.clinicCopy.archivedAt)}
+                    </span>
+                  </Field>
+                )}
+              </dl>
+            </Panel>
+          )}
+        </aside>
       </div>
+
+      {dispensing && (
+        <DispenseDialog
+          prescriptionId={p._id}
+          medications={meds}
+          given={given}
+          onClose={() => setDispensing(false)}
+          onDone={(warnings) => {
+            setDispensing(false);
+            rx.reload();
+            setNotice({ text: warnings.length ? 'Dispense recorded, with a stock note:' : 'Dispense recorded.', warnings });
+          }}
+        />
+      )}
+
+      {confirm &&
+        createPortal(
+          <AlertDialog
+            open
+            onOpenChange={(o) => !o && setConfirm(null)}
+            title={confirm === 'cancel' ? 'Cancel this prescription?' : 'Close it without the rest?'}
+            description={
+              confirm === 'cancel'
+                ? `${who}, ${p.prescriptionCode}. It stays on file marked cancelled, and it can no longer be dispensed or printed. Write a new prescription if the patient still needs medicines.`
+                : `${who}, ${p.prescriptionCode}. What was given stays recorded; the medicines still to give won't be dispensed on this prescription.`
+            }
+          >
+            <button type="button" onClick={() => setConfirm(null)} className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              {confirm === 'cancel' ? 'Keep prescription' : 'Not yet'}
+            </button>
+            {confirm === 'cancel' ? (
+              <button type="button" onClick={() => setStatus('cancelled')} className={`rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 ${FOCUS_RING}`}>
+                Cancel prescription
+              </button>
+            ) : (
+              <button type="button" onClick={() => setStatus('completed')} className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+                Close prescription
+              </button>
+            )}
+          </AlertDialog>,
+          document.body
+        )}
+    </Shell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pieces
+// ---------------------------------------------------------------------------
+
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-6xl mx-auto flex flex-col gap-6">{children}</div>
     </section>
   );
+}
+
+function BackLink() {
+  return (
+    <Link href="/prescriptions" className={`inline-flex w-fit items-center gap-1.5 rounded text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+      <Svg d={ICONS.chevL} />
+      All prescriptions
+    </Link>
+  );
+}
+
+function Panel({ id, title, aside, children }: { id: string; title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="motion-panel-in overflow-hidden rounded-lg border border-gray-200 bg-white" aria-labelledby={id}>
+      <div className="flex items-baseline justify-between gap-3 border-b border-gray-200 px-5 py-4">
+        <h2 id={id} className="text-base font-bold tracking-tight text-gray-900">
+          {title}
+        </h2>
+        {aside}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-4 px-5 py-3 text-sm">
+      <dt className="text-gray-500">{label}</dt>
+      <dd className="min-w-0 break-words text-gray-900">{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * One medicine: what it is, how to take it, and how much of it has been handed over. The meter
+ * is the only figure the dispenser needs from the row, so it sits at the right in Chart Teal.
+ */
+function MedicineRow({ index, medicine: m, prescribed, given, cancelled }: { index: number; medicine: Medication; prescribed: number; given: number; cancelled: boolean }) {
+  const form = medicineForm(m);
+  const directions = medicineDirections(m);
+  const share = prescribed > 0 ? Math.min(1, given / prescribed) : given > 0 ? 1 : 0;
+  const state =
+    prescribed > 0 ? (given >= prescribed ? `All ${prescribed} given` : given > 0 ? `${given} of ${prescribed} given` : `${prescribed} to give`) : given > 0 ? `${given} given` : 'No quantity set';
+  return (
+    <li className="motion-row-in grid gap-3 px-5 py-4 sm:grid-cols-[1.5rem_minmax(0,1fr)_9rem]" style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}>
+      <span className="hidden pt-0.5 font-mono text-sm text-gray-400 sm:block">{index + 1}</span>
+      <div className="min-w-0">
+        <p className="font-semibold text-gray-900">
+          {m.name}
+          {m.genericName && m.genericName !== m.name && <span className="font-normal text-gray-500"> ({m.genericName})</span>}
+        </p>
+        {form && <p className="text-sm text-gray-500">{form}</p>}
+        {directions && <p className="mt-1 text-sm text-gray-900">{directions}</p>}
+        {m.instructions && m.instructions !== directions && <p className="mt-0.5 max-w-prose text-sm text-gray-600">{m.instructions}</p>}
+      </div>
+      {!cancelled && (
+        <div className="sm:pt-1 sm:text-right">
+          <p className="text-sm text-gray-700">
+            <span className="font-mono tabular-nums">{state}</span>
+          </p>
+          {(prescribed > 0 || given > 0) && (
+            <div
+              role="meter"
+              aria-label={`${m.name}: ${state}`}
+              aria-valuemin={0}
+              aria-valuemax={prescribed || 1}
+              aria-valuenow={prescribed ? Math.min(given, prescribed) : given > 0 ? 1 : 0}
+              className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100"
+            >
+              <div className="motion-bar-grow h-full rounded-full" style={{ width: `${share * 100}%`, background: SERIES.teal }} />
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function dispenseSummary(d: DispenseRecord, meds: Medication[]) {
+  if (Array.isArray(d.items) && d.items.length) {
+    return d.items.map((it) => `${meds[it.medicationIndex]?.name ?? 'Medicine'} × ${it.quantity}`).join(', ');
+  }
+  return d.quantityDispensed ? `${d.quantityDispensed} in total` : 'Quantity not recorded';
 }

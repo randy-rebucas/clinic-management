@@ -1,10 +1,7 @@
-import { requirePagePermission } from '@/app/lib/auth-helpers';
 import PrescriptionsPageClient from '@/components/PrescriptionsPageClient';
+import { loadPrescriptionsPageContext } from '@/lib/prescriptions-page';
 
 export default async function PrescriptionsPage() {
-  // Require permission to read prescriptions
-  await requirePagePermission('prescriptions', 'read');
-
-  return <PrescriptionsPageClient />;
+  const context = await loadPrescriptionsPageContext();
+  return <PrescriptionsPageClient {...context} />;
 }
-

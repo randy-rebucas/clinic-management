@@ -149,6 +149,20 @@ export async function POST(
     // Bump sessionVersion so sessions issued under the old password stop working.
     await Patient.updateOne({ _id: patient._id }, { $set: updates, $inc: { sessionVersion: 1 } });
 
+    const { createAuditLog } = await import('@/lib/audit');
+    void createAuditLog({
+      userId: session.userId,
+      userEmail: session.email,
+      userRole: session.role,
+      tenantId: ctx.tenantId,
+      action: 'password_change',
+      resource: 'patient',
+      resourceId: id,
+      dataSubject: id,
+      isSensitive: true,
+      description: `Staff set the patient app password${updates.email ? ' and login email' : ''}`,
+    });
+
     logger.info('Staff set patient app credentials', {
       patientId: id,
       staffId: (session as any).userId,

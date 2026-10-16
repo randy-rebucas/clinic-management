@@ -54,7 +54,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 aria-current={isActive ? 'page' : undefined}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg font-semibold transition-all ${
                   isActive
-                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    ? 'bg-brand-teal-light/60 text-brand-teal-deep border border-brand-teal/30'
                     : 'text-gray-700 hover:bg-gray-100 border border-transparent'
                 }`}
               >

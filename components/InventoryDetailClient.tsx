@@ -1,689 +1,561 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { useSetting } from './SettingsContext';
+import { useRouter } from 'next/navigation';
+import { AlertDialog } from './ui/Modal';
+import { formatApiError } from './utils/apiError';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
+import { FOCUS_RING, ICON, Svg } from './appointments/shared';
+import { useMoney } from './invoices/shared';
+import StockBar from './inventory/StockBar';
+import StockChart from './inventory/StockChart';
+import { AdjustDialog, RestockDialog, type StockItem } from './inventory/StockDialogs';
+import { MOVEMENT_LABEL, STOCK_STATE, categoryLabel, clock, daysLeft, qty, reasonLabel, shortDate } from './inventory/shared';
+import { daysUntil, type AdjustReason, type MovementType, type StockStatus } from '@/lib/inventory';
+import type { InventoryPermissions } from '@/lib/inventory-page';
 
-interface InventoryItem {
-  _id: string;
-  name: string;
-  category: 'medicine' | 'supply' | 'equipment' | 'other';
+interface Item extends StockItem {
   sku?: string;
-  quantity: number;
-  unit: string;
-  reorderLevel: number;
-  reorderQuantity: number;
-  unitCost: number;
-  supplier?: string;
-  expiryDate?: string;
   location?: string;
   notes?: string;
+  status: StockStatus;
   lastRestocked?: string;
-  lastRestockedBy?: {
-    _id: string;
-    name: string;
-  };
-  medicineId?: {
-    _id: string;
-    name: string;
-    genericName?: string;
-  };
-  status: 'in-stock' | 'low-stock' | 'out-of-stock' | 'expired';
+  lastRestockedBy?: { _id: string; name: string } | null;
+  medicineId?: { _id: string; name: string; genericName?: string } | null;
   createdAt: string;
   updatedAt: string;
 }
 
-interface InventoryTransaction {
+interface Movement {
   _id: string;
-  type: 'restock' | 'adjustment' | 'usage' | 'transfer';
-  quantity: number;
-  date: string;
-  notes?: string;
-  performedBy?: {
-    _id: string;
-    name: string;
-  };
+  type: MovementType;
+  change: number;
+  quantityAfter: number;
+  reasonCode?: AdjustReason;
+  reason?: string;
+  unitCost?: number;
+  supplier?: string;
+  reference?: string;
+  batchExpiry?: string;
+  prescription?: string;
+  prescriptionCode?: string;
+  performedBy?: { _id: string; name: string } | null;
+  createdAt: string;
 }
 
-export default function InventoryDetailClient({ itemId }: { itemId: string }) {
-  const [item, setItem] = useState<InventoryItem | null>(null);
-  // Transaction history has no API yet.
-  const transactions: InventoryTransaction[] = [];
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview');
-  const router = useRouter();
-  const currency = useSetting('billingSettings.currency', 'PHP');
+interface History {
+  today: string;
+  movements: Movement[];
+  total: number;
+  days: { date: string; quantity: number | null }[];
+  used30: number;
+}
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
+type Dialog = { kind: 'restock' } | { kind: 'adjust'; mode?: 'out' | 'in' | 'count'; reason?: AdjustReason; amount?: number } | null;
+
+const ICONS = {
+  ...ICON,
+  box: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
+  restock: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12',
+  edit: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
+  adjust: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4',
+  trash: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+};
+
+export default function InventoryDetailClient({
+  itemId,
+  permissions,
+  openDialog,
+  saved,
+}: {
+  itemId: string;
+  permissions: InventoryPermissions;
+  openDialog?: 'restock' | 'adjust';
+  saved?: 'created' | 'edited' | null;
+}) {
+  const router = useRouter();
+  const { money } = useMoney();
+  const res = useKeyedFetch<Item>(`/api/inventory/${itemId}`);
+  const hist = useKeyedFetch<History>(`/api/inventory/${itemId}/movements`);
+  const [dialog, setDialog] = useState<Dialog>(openDialog && permissions.canWrite ? { kind: openDialog } : null);
+  const [notice, setNotice] = useState<string | null>(saved === 'created' ? 'Item added.' : saved === 'edited' ? 'Changes saved.' : null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const p = res.value;
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 7000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  const closeDialog = () => {
+    setDialog(null);
+    // The restock/adjust addresses open a dialog; closing it settles on the item's own address.
+    if (openDialog) router.replace(`/inventory/${itemId}`);
   };
 
-  const fetchItem = useCallback(async () => {
+  const remove = async () => {
+    setConfirmDelete(false);
+    setBusy(true);
+    setActionError(null);
     try {
-      setLoading(true);
-      setError(null);
-      const res = await fetch(`/api/inventory/${itemId}`);
-      
-      if (res.status === 401) {
+      const r = await fetch(`/api/inventory/${itemId}`, { method: 'DELETE' });
+      if (r.status === 401) {
         router.push('/login');
         return;
       }
-      
-      if (!res.ok) {
-        const contentType = res.headers.get('content-type');
-        let errorData;
-        if (contentType && contentType.includes('application/json')) {
-          errorData = await res.json();
-        }
-        const errorMsg = errorData?.error || `Failed to load inventory item: ${res.status} ${res.statusText}`;
-        setError(errorMsg);
+      const json = await r.json().catch(() => null);
+      if (!r.ok || !json?.success) {
+        setActionError(formatApiError(json, 'The item could not be removed'));
+        setBusy(false);
         return;
       }
-      
-      const data = await res.json();
-      if (data.success && data.data) {
-        setItem(data.data);
-      } else {
-        setError(data.error || 'Failed to load inventory item');
-      }
-    } catch (error) {
-      console.error('Failed to fetch inventory item:', error);
-      setError('Failed to load inventory item. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [itemId, router]);
-
-  useEffect(() => {
-    const load = async () => {
-      await fetchItem();
-    };
-    load();
-  }, [fetchItem]);
-
-  const getStatusColor = (status: string): 'green' | 'yellow' | 'red' | 'gray' => {
-    switch (status) {
-      case 'in-stock':
-        return 'green';
-      case 'low-stock':
-        return 'yellow';
-      case 'out-of-stock':
-        return 'red';
-      case 'expired':
-        return 'red';
-      default:
-        return 'gray';
+      router.push('/inventory');
+    } catch {
+      setActionError('The server couldn’t be reached. Nothing changed; try again.');
+      setBusy(false);
     }
   };
 
-  const getBadgeColorClasses = (color: string) => {
-    const colorMap: Record<string, string> = {
-      green: 'bg-green-100 text-green-800 border-green-200',
-      yellow: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      red: 'bg-red-100 text-red-800 border-red-200',
-      gray: 'bg-gray-100 text-gray-800 border-gray-200',
-    };
-    return colorMap[color] || colorMap.gray;
-  };
+  // --- Not loaded ----------------------------------------------------------------
 
-  if (loading) {
+  if (!p && res.error) {
+    const missing = /not found/i.test(res.error);
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-teal-100 border-t-teal-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading inventory item...</p>
+      <Shell>
+        <BackLink />
+        <div role="alert" className="rounded-lg border border-gray-200 bg-white px-6 py-14 text-center">
+          <div className={`mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md ${missing ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-600'}`}>
+            <Svg d={missing ? ICONS.box : ICONS.alert} className="h-5 w-5" />
           </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (error) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-red-50 border border-red-200 rounded-xl p-6 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
-                <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-bold text-red-900">Error</h3>
-                <p className="text-sm text-red-700 mt-1.5 font-medium">{error}</p>
-                <button
-                  onClick={() => router.push('/inventory')}
-                  className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold"
-                >
-                  ← Back to Inventory
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (!item) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900">Inventory item not found</h2>
-            <Link 
-              href="/inventory"
-              className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all text-sm font-semibold shadow-md"
-            >
-              Back to Inventory
+          <p className="font-semibold text-gray-900">{missing ? 'Item not found' : 'This item didn’t load'}</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">{missing ? 'It may have been removed, or it belongs to another clinic.' : `${res.error}. Check your connection and try again.`}</p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link href="/inventory" className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              All inventory
             </Link>
+            {!missing && (
+              <button type="button" onClick={res.reload} className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+                Try again
+              </button>
+            )}
           </div>
         </div>
-      </section>
+      </Shell>
     );
   }
 
-  const totalValue = item.quantity * item.unitCost;
-  const needsReorder = item.quantity <= item.reorderLevel;
+  if (!p) {
+    return (
+      <Shell>
+        <BackLink />
+        <div className="animate-pulse space-y-6" aria-hidden="true">
+          <div className="space-y-2">
+            <div className="h-8 w-64 rounded bg-gray-200" />
+            <div className="h-4 w-80 max-w-full rounded bg-gray-100" />
+          </div>
+          <div className="h-24 rounded-lg border border-gray-200 bg-white" />
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <div className="h-72 rounded-lg border border-gray-200 bg-white" />
+            <div className="h-56 rounded-lg border border-gray-200 bg-white" />
+          </div>
+        </div>
+        <span className="sr-only" role="status">
+          Loading item…
+        </span>
+      </Shell>
+    );
+  }
+
+  // --- Loaded --------------------------------------------------------------------
+
+  const st = STOCK_STATE[p.status] ?? STOCK_STATE['in-stock'];
+  const until = p.expiryDate ? daysUntil(p.expiryDate) : null;
+  const expiredWithStock = until !== null && until < 0 && p.quantity > 0;
+  const used30 = hist.value?.used30 ?? 0;
+  const left = daysLeft(p.quantity, used30);
+  const reorderNeeded = p.status === 'low-stock' || p.status === 'out-of-stock';
+  const subtitle = [categoryLabel(p.category), p.location && `kept in ${p.location}`, p.supplier && `from ${p.supplier}`].filter(Boolean).join(' · ');
+
+  const done = (message: string) => {
+    closeDialog();
+    setNotice(message);
+    res.reload();
+    hist.reload();
+  };
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex items-center gap-4 mb-6">
-              <Link 
-                href="/inventory"
-                aria-label="Back to inventory"
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </Link>
-              <div className="flex items-center gap-3 flex-1">
-                <div className="p-2 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg shadow-md">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
-                    {item.name}
-                  </h1>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-semibold text-gray-600 capitalize">{item.category}</p>
-                    {item.sku && (
-                      <>
-                        <p className="text-sm text-gray-400">•</p>
-                        <p className="text-sm font-medium text-gray-600">SKU: {item.sku}</p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Link 
-                  href={`/inventory/${itemId}/edit`}
-                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold flex items-center gap-2 shadow-md"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  Edit
-                </Link>
-              </div>
-            </div>
+    <Shell>
+      <BackLink />
 
-            {/* Quick Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 bg-blue-500 rounded-lg">
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Current Stock</p>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">{item.quantity} {item.unit}</p>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 bg-emerald-500 rounded-lg">
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Unit Cost</p>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">{formatCurrency(item.unitCost)}</p>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 bg-teal-500 rounded-lg">
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Total Value</p>
-                </div>
-                <p className="text-2xl font-bold text-teal-600">{formatCurrency(totalValue)}</p>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 bg-purple-500 rounded-lg">
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Reorder Level</p>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">{item.reorderLevel} {item.unit}</p>
-              </div>
-            </div>
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">{p.name}</h1>
+            <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${st.badge}`}>{st.label}</span>
+            {p.sku && <span className="font-mono text-sm text-gray-500">{p.sku}</span>}
           </div>
-
-          {/* Quick Actions */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm mb-3">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-teal-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900">Quick Actions</h3>
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="flex gap-3 flex-wrap">
-                  <Link 
-                    href={`/inventory/${itemId}/restock`}
-                    className="px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold flex items-center gap-2 flex-1 min-w-[150px] shadow-md"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    Restock
-                  </Link>
-                  <Link 
-                    href={`/inventory/${itemId}/adjust`}
-                    className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold flex items-center gap-2 flex-1 min-w-[150px] shadow-md"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    Adjust
-                  </Link>
-                  <Link 
-                    href={`/inventory/${itemId}/edit`}
-                    className="px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all text-sm font-semibold flex items-center gap-2 flex-1 min-w-[150px] shadow-md"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    Edit Item
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            {/* Status Alert */}
-            {needsReorder && (
-              <div className={`border rounded-xl p-4 mb-3 shadow-sm ${
-                item.status === 'out-of-stock' 
-                  ? 'bg-red-50 border-red-200' 
-                  : 'bg-yellow-50 border-yellow-200'
-              }`}>
-                <div className="flex items-start gap-3">
-                  <div className={`p-2 rounded-lg flex-shrink-0 ${
-                    item.status === 'out-of-stock' ? 'bg-red-500' : 'bg-yellow-500'
-                  }`}>
-                    <svg className={`w-5 h-5 text-white`} fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className={`text-sm font-bold ${
-                      item.status === 'out-of-stock' ? 'text-red-900' : 'text-yellow-900'
-                    }`}>
-                      {item.status === 'out-of-stock' 
-                        ? 'Out of Stock' 
-                        : 'Low Stock - Reorder Required'}
-                    </p>
-                    <p className={`text-sm mt-1.5 font-medium ${
-                      item.status === 'out-of-stock' ? 'text-red-700' : 'text-yellow-700'
-                    }`}>
-                      Current quantity ({item.quantity} {item.unit}) is below reorder level ({item.reorderLevel} {item.unit})
-                    </p>
-                  </div>
-                </div>
-              </div>
-          )}
-
-          {/* Tabs */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm mb-3">
-              <div className="border-b border-gray-200 overflow-x-auto">
-                <nav className="flex -mb-px min-w-max">
-                  <button
-                    type="button"
-                    aria-pressed={activeTab === 'overview'}
-                    onClick={() => setActiveTab('overview')}
-                    className={`py-3 px-4 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
-                      activeTab === 'overview'
-                        ? 'border-teal-500 text-teal-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    Overview
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={activeTab === 'history'}
-                    onClick={() => setActiveTab('history')}
-                    className={`py-3 px-4 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
-                      activeTab === 'history'
-                        ? 'border-teal-500 text-teal-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    History ({transactions.length})
-                  </button>
-                </nav>
-              </div>
-
-              <div className="p-6">
-                {/* Overview Tab */}
-                {activeTab === 'overview' && (
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Basic Information */}
-                      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="p-2 bg-teal-500 rounded-lg">
-                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </div>
-                          <h3 className="text-lg font-bold text-gray-900">Basic Information</h3>
-                        </div>
-                        <dl className="space-y-3">
-                          <div>
-                            <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Status</dt>
-                            <dd>
-                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-semibold border ${getBadgeColorClasses(getStatusColor(item.status))}`}>
-                                {item.status.replace('-', ' ')}
-                              </span>
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Category</dt>
-                            <dd className="text-sm font-bold text-gray-900 capitalize">{item.category}</dd>
-                          </div>
-                          {item.sku && (
-                            <div>
-                              <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">SKU</dt>
-                              <dd className="text-sm font-bold text-gray-900">{item.sku}</dd>
-                            </div>
-                          )}
-                          <div>
-                            <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Unit</dt>
-                            <dd className="text-sm font-bold text-gray-900">{item.unit}</dd>
-                          </div>
-                        </dl>
-                      </div>
-
-                      {/* Stock Information */}
-                      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="p-2 bg-blue-500 rounded-lg">
-                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                            </svg>
-                          </div>
-                          <h3 className="text-lg font-bold text-gray-900">Stock Information</h3>
-                        </div>
-                        <dl className="space-y-3">
-                          <div>
-                            <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Current Quantity</dt>
-                            <dd className="text-sm font-bold text-gray-900">{item.quantity} {item.unit}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Reorder Level</dt>
-                            <dd className="text-sm font-bold text-gray-900">{item.reorderLevel} {item.unit}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Reorder Quantity</dt>
-                            <dd className="text-sm font-bold text-gray-900">{item.reorderQuantity} {item.unit}</dd>
-                          </div>
-                          {item.location && (
-                            <div>
-                              <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Storage Location</dt>
-                              <dd className="text-sm font-bold text-gray-900">{item.location}</dd>
-                            </div>
-                          )}
-                        </dl>
-                      </div>
-                    </div>
-
-                    {/* Financial Information */}
-                    <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-emerald-500 rounded-lg">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-900">Financial Information</h3>
-                      </div>
-                      <dl className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Unit Cost</dt>
-                          <dd className="text-sm font-bold text-gray-900">{formatCurrency(item.unitCost)}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Total Value</dt>
-                          <dd className="text-sm font-bold text-teal-600">{formatCurrency(totalValue)}</dd>
-                        </div>
-                        {item.supplier && (
-                          <div>
-                            <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Supplier</dt>
-                            <dd className="text-sm font-bold text-gray-900">{item.supplier}</dd>
-                          </div>
-                        )}
-                      </dl>
-                    </div>
-
-                    {/* Dates & References */}
-                    <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-purple-500 rounded-lg">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-900">Dates & References</h3>
-                      </div>
-                      <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {item.expiryDate && (
-                          <div>
-                            <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Expiry Date</dt>
-                            <dd className="text-sm font-bold text-gray-900">
-                              {new Date(item.expiryDate).toLocaleDateString('en-US', { 
-                                month: 'long', 
-                                day: 'numeric', 
-                                year: 'numeric' 
-                              })}
-                            </dd>
-                          </div>
-                        )}
-                        {item.lastRestocked && (
-                          <div>
-                            <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Last Restocked</dt>
-                            <dd className="text-sm font-bold text-gray-900">
-                              {new Date(item.lastRestocked).toLocaleDateString('en-US', { 
-                                month: 'short', 
-                                day: 'numeric', 
-                                year: 'numeric' 
-                              })}
-                              {item.lastRestockedBy && (
-                                <span className="text-gray-600 ml-1 font-medium">by {item.lastRestockedBy.name}</span>
-                              )}
-                            </dd>
-                          </div>
-                        )}
-                        <div>
-                          <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Created</dt>
-                          <dd className="text-sm font-bold text-gray-900">
-                            {new Date(item.createdAt).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                              hour: 'numeric',
-                              minute: '2-digit'
-                            })}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Last Updated</dt>
-                          <dd className="text-sm font-bold text-gray-900">
-                            {new Date(item.updatedAt).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                              hour: 'numeric',
-                              minute: '2-digit'
-                            })}
-                          </dd>
-                        </div>
-                      </dl>
-                    </div>
-
-                    {/* Medicine Reference */}
-                    {item.medicineId && (
-                      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="p-2 bg-indigo-500 rounded-lg">
-                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                            </svg>
-                          </div>
-                          <h3 className="text-lg font-bold text-gray-900">Related Medicine</h3>
-                        </div>
-                        <dl className="space-y-3">
-                          <div>
-                            <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Name</dt>
-                            <dd className="text-sm font-bold text-gray-900">{item.medicineId.name}</dd>
-                          </div>
-                          {item.medicineId.genericName && (
-                            <div>
-                              <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Generic Name</dt>
-                              <dd className="text-sm font-bold text-gray-900">{item.medicineId.genericName}</dd>
-                            </div>
-                          )}
-                        </dl>
-                      </div>
-                    )}
-
-                    {/* Notes */}
-                    {item.notes && (
-                      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="p-2 bg-gray-500 rounded-lg">
-                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </div>
-                          <h3 className="text-lg font-bold text-gray-900">Notes</h3>
-                        </div>
-                        <p className="text-sm font-medium text-gray-700 whitespace-pre-wrap">{item.notes}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* History Tab */}
-                {activeTab === 'history' && (
-                  <div>
-                    {transactions.length === 0 ? (
-                      <div className="text-center py-12">
-                        <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-900 mb-2">No transaction history</h3>
-                        <p className="text-sm text-gray-600 font-medium">Transaction history will appear here once items are restocked or adjusted.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {transactions.map((transaction) => (
-                          <div
-                            key={transaction._id}
-                            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center space-x-2 mb-2">
-                                  <span className={`text-xs px-2.5 py-1 rounded-full capitalize font-semibold border ${
-                                    transaction.type === 'restock' ? 'bg-green-100 text-green-800 border-green-200' :
-                                    transaction.type === 'adjustment' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                                    transaction.type === 'usage' ? 'bg-orange-100 text-orange-800 border-orange-200' :
-                                    'bg-gray-100 text-gray-800 border-gray-200'
-                                  }`}>
-                                    {transaction.type}
-                                  </span>
-                                </div>
-                                <p className="text-sm font-bold text-gray-900">
-                                  Quantity: {transaction.quantity > 0 ? '+' : ''}{transaction.quantity} {item.unit}
-                                </p>
-                                <p className="text-xs font-medium text-gray-600 mt-1.5">
-                                  {new Date(transaction.date).toLocaleDateString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    year: 'numeric',
-                                    hour: 'numeric',
-                                    minute: '2-digit'
-                                  })}
-                                  {transaction.performedBy && (
-                                    <span className="ml-1">by {transaction.performedBy.name}</span>
-                                  )}
-                                </p>
-                                {transaction.notes && (
-                                  <p className="text-sm font-medium text-gray-700 mt-2">{transaction.notes}</p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+          <p className="mt-1 text-sm sm:text-base text-gray-600">{subtitle}</p>
         </div>
+        {permissions.canWrite && (
+          <div className={`flex flex-wrap items-center gap-2 transition-opacity ${busy ? 'opacity-60' : ''}`}>
+            <Link href={`/inventory/${p._id}/edit`} className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}>
+              <Svg d={ICONS.edit} />
+              Edit details
+            </Link>
+            <button type="button" onClick={() => setDialog({ kind: 'adjust' })} className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}>
+              <Svg d={ICONS.adjust} />
+              Adjust or count
+            </button>
+            <button type="button" onClick={() => setDialog({ kind: 'restock' })} className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+              <Svg d={ICONS.restock} />
+              Restock
+            </button>
+            {permissions.canDelete && (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                disabled={busy}
+                aria-label={`Remove ${p.name} from inventory`}
+                title="Remove item"
+                className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-40 ${FOCUS_RING}`}
+              >
+                <Svg d={ICONS.trash} />
+              </button>
+            )}
+          </div>
+        )}
+      </header>
+
+      <p className="sr-only" aria-live="polite">
+        {notice ?? ''}
+      </p>
+      {notice && (
+        <div role="status" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+          <p>{notice}</p>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 opacity-80 hover:opacity-100 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
+        </div>
+      )}
+      {actionError && (
+        <div role="alert" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          <p>{actionError}</p>
+          <button type="button" onClick={() => setActionError(null)} aria-label="Dismiss error" className={`shrink-0 rounded p-0.5 text-red-700 hover:text-red-900 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
+        </div>
+      )}
+      {expiredWithStock && (
+        <div role="alert" className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-start gap-2">
+            <Svg d={ICONS.alert} className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              <span className="font-mono font-semibold">{qty(p.quantity)}</span> {p.unit} expired on {shortDate(p.expiryDate!)}. Don’t dispense them; take them off stock.
+            </span>
+          </p>
+          {permissions.canWrite && (
+            <button
+              type="button"
+              onClick={() => setDialog({ kind: 'adjust', mode: 'out', reason: 'expired', amount: p.quantity })}
+              className={`shrink-0 rounded-md border border-red-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-red-800 hover:border-red-700 ${FOCUS_RING}`}
+            >
+              Take them off
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Summary strip */}
+      <section aria-label="Stock summary" className={`overflow-hidden rounded-lg border border-gray-200 bg-white transition-opacity ${res.loading ? 'opacity-60' : ''}`}>
+        <dl className="grid -mr-px -mb-px grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+          <Cell label="On hand">
+            <p className="font-mono text-2xl font-semibold tabular-nums text-gray-900">
+              {qty(p.quantity)} <span className="font-sans text-base font-normal text-gray-500">{p.unit}</span>
+            </p>
+            <StockBar quantity={p.quantity} reorderLevel={p.reorderLevel} status={p.status} className="mt-2" />
+            <p className={`mt-1 text-sm ${reorderNeeded ? 'font-medium text-amber-800' : 'text-gray-500'}`}>
+              Reorder at <span className="font-mono">{qty(p.reorderLevel)}</span>
+              {reorderNeeded && p.reorderQuantity > 0 && (
+                <>
+                  {' · order '}
+                  <span className="font-mono">{qty(p.reorderQuantity)}</span>
+                </>
+              )}
+            </p>
+          </Cell>
+          <Cell label="Lasts">
+            {left !== null ? (
+              <>
+                <p className={`font-mono text-2xl font-semibold tabular-nums ${left < 7 ? 'text-red-700' : 'text-gray-900'}`}>
+                  {left} <span className="font-sans text-base font-normal text-gray-500">{left === 1 ? 'day' : 'days'}</span>
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  at <span className="font-mono">{qty(Math.round((used30 / 30) * 10) / 10)}</span> {p.unit} a day, the last 30 days’ use
+                </p>
+              </>
+            ) : (
+              <p className="pt-1 text-sm text-gray-500">{hist.value ? 'No use recorded in the last 30 days.' : '…'}</p>
+            )}
+          </Cell>
+          <Cell label="Expires">
+            {p.expiryDate ? (
+              <>
+                <p className={`font-mono text-2xl font-semibold tabular-nums ${until !== null && until < 0 ? 'text-red-700' : 'text-gray-900'}`}>{shortDate(p.expiryDate)}</p>
+                <p className={`mt-1 text-sm ${until !== null && until < 0 ? 'font-medium text-red-700' : until !== null && until <= 30 ? 'font-medium text-amber-800' : 'text-gray-500'}`}>
+                  {until === null ? '' : until < 0 ? `Expired ${-until} ${-until === 1 ? 'day' : 'days'} ago` : until === 0 ? 'Expires today' : `In ${until} ${until === 1 ? 'day' : 'days'}`}
+                  {left !== null && until !== null && until > 0 && left > until && p.quantity > 0 && ' · stock outlasts it'}
+                </p>
+              </>
+            ) : (
+              <p className="pt-1 text-sm text-gray-500">No expiry date</p>
+            )}
+          </Cell>
+          <Cell label="Value at cost">
+            <p className="font-mono text-2xl font-semibold tabular-nums text-gray-900">{money(p.quantity * p.unitCost)}</p>
+            <p className="mt-1 text-sm text-gray-500">
+              <span className="font-mono">{money(p.unitCost)}</span> per {p.unit.replace(/s$/, '') || 'unit'}
+            </p>
+          </Cell>
+        </dl>
+      </section>
+
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <Panel id="stk-chart" title="Stock, last 60 days">
+            {hist.value ? (
+              hist.value.days.length > 0 ? (
+                <StockChart days={hist.value.days} today={hist.value.today} reorderLevel={p.reorderLevel} unit={p.unit} />
+              ) : (
+                <p className="px-5 py-4 text-sm text-gray-500">No stock changes recorded yet. The chart starts with the next restock, adjustment or dispense.</p>
+              )
+            ) : hist.error ? (
+              <p className="px-5 py-4 text-sm text-gray-500">
+                The history didn&apos;t load ({hist.error}).{' '}
+                <button type="button" onClick={hist.reload} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                  Try again
+                </button>
+              </p>
+            ) : (
+              <div className="m-5 h-40 animate-pulse rounded bg-gray-50" aria-hidden="true" />
+            )}
+          </Panel>
+
+          <Panel
+            id="stk-history"
+            title="History"
+            aside={
+              hist.value && hist.value.total > 0 ? (
+                <span className="text-sm text-gray-500">
+                  {hist.value.total > hist.value.movements.length ? (
+                    <>
+                      Newest <span className="font-mono text-gray-900">{hist.value.movements.length}</span> of <span className="font-mono">{hist.value.total}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-mono text-gray-900">{hist.value.total}</span> {hist.value.total === 1 ? 'change' : 'changes'}
+                    </>
+                  )}
+                </span>
+              ) : null
+            }
+          >
+            {!hist.value ? (
+              <div className="m-5 h-24 animate-pulse rounded bg-gray-50" aria-hidden="true" />
+            ) : hist.value.movements.length === 0 ? (
+              <p className="px-5 py-4 text-sm text-gray-500">Nothing recorded yet. Restocks, adjustments, counts and dispensing will appear here.</p>
+            ) : (
+              <ol className="divide-y divide-gray-100">
+                {hist.value.movements.map((m, i) => (
+                  <MovementRow key={m._id} m={m} unit={p.unit} money={money} index={i} />
+                ))}
+              </ol>
+            )}
+          </Panel>
+        </div>
+
+        <aside className="flex min-w-0 flex-col gap-6">
+          <Panel id="stk-details" title="Details">
+            <dl className="divide-y divide-gray-100">
+              <Field label="Category">{categoryLabel(p.category)}</Field>
+              {p.sku && (
+                <Field label="SKU">
+                  <span className="font-mono">{p.sku}</span>
+                </Field>
+              )}
+              <Field label="Counted in">{p.unit}</Field>
+              <Field label="Reorder">
+                at <span className="font-mono">{qty(p.reorderLevel)}</span>, order <span className="font-mono">{qty(p.reorderQuantity)}</span>
+              </Field>
+              {p.location && <Field label="Kept in">{p.location}</Field>}
+              {p.supplier && <Field label="Supplier">{p.supplier}</Field>}
+              {p.medicineId && (
+                <Field label="Medicine">
+                  {p.medicineId.name}
+                  {p.medicineId.genericName && p.medicineId.genericName !== p.medicineId.name && <span className="text-gray-500"> ({p.medicineId.genericName})</span>}
+                </Field>
+              )}
+              {p.lastRestocked && (
+                <Field label="Restocked">
+                  <span className="font-mono">{shortDate(p.lastRestocked)}</span>
+                  {p.lastRestockedBy?.name && <span className="text-gray-500"> by {p.lastRestockedBy.name}</span>}
+                </Field>
+              )}
+            </dl>
+            {p.category === 'medicine' && (
+              <p className="border-t border-gray-100 px-5 py-3 text-xs text-gray-500">
+                {p.medicineId
+                  ? 'Dispensing a prescription for this medicine takes it off this stock.'
+                  : `Dispensing takes stock off this item when the prescribed medicine is named exactly “${p.name}”.`}
+              </p>
+            )}
+          </Panel>
+
+          {p.notes && (
+            <Panel id="stk-notes" title="Notes">
+              <p className="max-w-prose whitespace-pre-wrap px-5 py-4 text-sm leading-relaxed text-gray-700">{p.notes}</p>
+            </Panel>
+          )}
+        </aside>
       </div>
+
+      {dialog?.kind === 'restock' && <RestockDialog item={p} onClose={closeDialog} onDone={done} />}
+      {dialog?.kind === 'adjust' && (
+        <AdjustDialog item={p} initial={dialog.mode ? { mode: dialog.mode, reason: dialog.reason, amount: dialog.amount } : undefined} onClose={closeDialog} onDone={done} />
+      )}
+
+      {confirmDelete &&
+        createPortal(
+          <AlertDialog
+            open
+            onOpenChange={(o) => !o && setConfirmDelete(false)}
+            title={`Remove ${p.name}?`}
+            description={`It leaves the inventory list and stock alerts, and dispensing will no longer take stock off it. Its history is kept for the audit trail. This can’t be undone; to stop stocking it for now, count it to 0 instead.`}
+          >
+            <button type="button" onClick={() => setConfirmDelete(false)} className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              Keep item
+            </button>
+            <button type="button" onClick={remove} className={`rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 ${FOCUS_RING}`}>
+              Remove item
+            </button>
+          </AlertDialog>,
+          document.body
+        )}
+    </Shell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pieces
+// ---------------------------------------------------------------------------
+
+function MovementRow({ m, unit, money, index }: { m: Movement; unit: string; money: (v: number) => string; index: number }) {
+  const out = m.change < 0;
+  const detail: ReactNode[] = [];
+  const why = reasonLabel(m.reasonCode);
+  if (why) detail.push(why);
+  if (m.type === 'dispense' && m.prescriptionCode) {
+    detail.push(
+      m.prescription ? (
+        <Link key="rx" href={`/prescriptions/${m.prescription}`} className={`rounded font-mono text-xs font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+          {m.prescriptionCode}
+        </Link>
+      ) : (
+        <span key="rx" className="font-mono text-xs">
+          {m.prescriptionCode}
+        </span>
+      )
+    );
+  }
+  if (m.supplier) detail.push(`from ${m.supplier}`);
+  if (m.unitCost !== undefined && m.unitCost > 0 && m.type === 'restock') detail.push(<span key="c">at <span className="font-mono">{money(m.unitCost)}</span> each</span>);
+  if (m.reference) detail.push(<span key="r" className="font-mono text-xs">Ref {m.reference}</span>);
+  if (m.batchExpiry) detail.push(<span key="e">expires <span className="font-mono">{shortDate(m.batchExpiry)}</span></span>);
+
+  return (
+    <li className="motion-row-in grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 px-5 py-3 text-sm" style={{ animationDelay: `${Math.min(index * 25, 240)}ms` }}>
+      <div className="min-w-0">
+        <p className="font-semibold text-gray-900">{MOVEMENT_LABEL[m.type] ?? m.type}</p>
+        {detail.length > 0 && (
+          <p className="mt-0.5 text-gray-600">
+            {detail.map((d, i) => (
+              <span key={i}>
+                {i > 0 && ' · '}
+                {d}
+              </span>
+            ))}
+          </p>
+        )}
+        {m.reason && <p className="mt-0.5 text-gray-600">{m.reason}</p>}
+        <p className="mt-0.5 text-gray-500">
+          <span className="font-mono text-xs">
+            {shortDate(m.createdAt)}, {clock(m.createdAt)}
+          </span>
+          {m.performedBy?.name && ` · ${m.performedBy.name}`}
+        </p>
+      </div>
+      <div className="text-right">
+        <p className={`font-mono font-semibold tabular-nums ${out ? 'text-gray-900' : 'text-emerald-800'}`}>
+          {out ? '−' : '+'}
+          {qty(Math.abs(m.change))}
+        </p>
+        <p className="font-mono text-xs tabular-nums text-gray-500">
+          {qty(m.quantityAfter)} {unit} after
+        </p>
+      </div>
+    </li>
+  );
+}
+
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-6xl mx-auto flex flex-col gap-6">{children}</div>
     </section>
   );
 }
 
+function BackLink() {
+  return (
+    <Link href="/inventory" className={`inline-flex w-fit items-center gap-1.5 rounded text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+      <Svg d={ICONS.chevL} />
+      All inventory
+    </Link>
+  );
+}
 
+function Panel({ id, title, aside, children }: { id: string; title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="motion-panel-in overflow-hidden rounded-lg border border-gray-200 bg-white" aria-labelledby={id}>
+      <div className="flex items-baseline justify-between gap-3 border-b border-gray-200 px-5 py-4">
+        <h2 id={id} className="text-base font-bold tracking-tight text-gray-900">
+          {title}
+        </h2>
+        {aside}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Cell({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="border-r border-b border-gray-200 p-5">
+      <dt className="text-sm text-gray-600">{label}</dt>
+      <dd className="mt-2">{children}</dd>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-4 px-5 py-3 text-sm">
+      <dt className="text-gray-500">{label}</dt>
+      <dd className="min-w-0 break-words text-gray-900">{children}</dd>
+    </div>
+  );
+}

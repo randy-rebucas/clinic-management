@@ -198,9 +198,9 @@ export function BulkCommunicationModal({
         <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white">
           <div className="flex items-center gap-3">
             {communicationType === 'sms' ? (
-              <MessageSquare className="text-blue-600" size={24} />
+              <MessageSquare className="text-brand-teal-dark" size={24} />
             ) : (
-              <Mail className="text-blue-600" size={24} />
+              <Mail className="text-brand-teal-dark" size={24} />
             )}
             <h2 id={`${uid}-title`} className="text-xl font-semibold">
               Bulk {communicationType === 'sms' ? 'SMS' : 'Email'} Campaign
@@ -267,7 +267,7 @@ export function BulkCommunicationModal({
                   }}
                   className={`flex-1 p-3 border-2 rounded-lg transition-all ${
                     communicationType === type
-                      ? 'border-blue-600 bg-blue-50'
+                      ? 'border-brand-teal-dark bg-brand-teal-light/60'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                   aria-pressed={communicationType === type}
@@ -298,7 +298,7 @@ export function BulkCommunicationModal({
                   onClick={() => handleTemplateSelect(name)}
                   className={`text-xs p-2 rounded border transition-all ${
                     selectedTemplate === name
-                      ? 'bg-blue-100 border-blue-600'
+                      ? 'bg-brand-teal-light border-brand-teal-dark'
                       : 'bg-gray-50 border-gray-200 hover:border-gray-300'
                   }`}
                   aria-pressed={selectedTemplate === name}
@@ -329,7 +329,7 @@ export function BulkCommunicationModal({
                 setError('');
               }}
               placeholder={`Enter your message. Use {{variableName}} for variables.\nExample: Hi {{firstName}}, your appointment is {{appointmentDate}}`}
-              className="w-full h-32 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+              className="w-full h-32 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal font-mono text-sm"
             />
             <p className="text-xs text-gray-500 mt-1">
               Use double curly braces for variables: {`{{variableName}}`}
@@ -365,7 +365,7 @@ export function BulkCommunicationModal({
                       value={variables[key] || ''}
                       onChange={(e) => handleVariableChange(key, e.target.value)}
                       placeholder={`Enter ${key}`}
-                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full text-sm px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-teal"
                       aria-label={description}
                     />
                   </div>
@@ -389,8 +389,8 @@ export function BulkCommunicationModal({
               </span>
             </label>
 
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded">
-              <p className="text-sm text-blue-800">
+            <div className="p-3 bg-brand-teal-light/60 border border-brand-teal/30 rounded">
+              <p className="text-sm text-brand-teal-deep">
                 <strong>Recipients:</strong> {selectedPatients.length} patient
                 {selectedPatients.length !== 1 ? 's' : ''}
               </p>
@@ -409,7 +409,7 @@ export function BulkCommunicationModal({
             <button
               onClick={handleSend}
               disabled={isLoading || selectedPatients.length === 0}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isLoading && <Loader size={18} className="animate-spin" />}
               {isLoading

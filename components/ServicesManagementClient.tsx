@@ -24,7 +24,7 @@ interface ServicesManagementClientProps {
 }
 
 const CATEGORIES = [
-  { value: 'consultation', label: 'Consultation', color: 'bg-blue-100 text-blue-800' },
+  { value: 'consultation', label: 'Consultation', color: 'bg-brand-teal-light text-brand-teal-deep' },
   { value: 'procedure', label: 'Procedure', color: 'bg-purple-100 text-purple-800' },
   { value: 'laboratory', label: 'Laboratory', color: 'bg-green-100 text-green-800' },
   { value: 'imaging', label: 'Imaging', color: 'bg-yellow-100 text-yellow-800' },
@@ -214,7 +214,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-purple-50/30 min-h-screen">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
@@ -228,12 +228,12 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-purple-50/30 min-h-screen">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6">
           {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -245,7 +245,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
             </div>
           )}
           {success && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-green-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -258,22 +258,22 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-md">
+                <div className="p-2 bg-brand-teal-dark rounded-md">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Services Catalog</h1>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Services Catalog</h1>
                   <p className="text-sm sm:text-base text-gray-600 mt-1">Manage clinic services and pricing</p>
                 </div>
               </div>
               <button
                 onClick={() => { resetForm(); setShowModal(true); }}
-                className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
+                className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -285,7 +285,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
 
           {/* Quick Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-purple-500 rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -296,7 +296,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
               </div>
               <div className="text-2xl font-bold text-gray-900">{services.length}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-green-500 rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -307,18 +307,18 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
               </div>
               <div className="text-2xl font-bold text-green-600">{services.filter(s => s.active).length}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-blue-500 rounded-lg">
+                <div className="p-1.5 bg-brand-teal-dark rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                 </div>
                 <div className="text-xs font-semibold text-gray-500 uppercase">Consultations</div>
               </div>
-              <div className="text-2xl font-bold text-blue-600">{services.filter(s => s.category === 'consultation').length}</div>
+              <div className="font-mono tabular-nums text-2xl font-semibold text-gray-900">{services.filter(s => s.category === 'consultation').length}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-purple-500 rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -327,12 +327,12 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                 </div>
                 <div className="text-xs font-semibold text-gray-500 uppercase">Procedures</div>
               </div>
-              <div className="text-2xl font-bold text-purple-600">{services.filter(s => s.category === 'procedure').length}</div>
+              <div className="font-mono tabular-nums text-2xl font-semibold text-gray-900">{services.filter(s => s.category === 'procedure').length}</div>
             </div>
           </div>
 
           {/* Search and Filter Bar */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-purple-500 rounded-lg">
@@ -357,7 +357,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                       placeholder="Search services..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="w-full pl-12 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                      className="w-full pl-12 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                     {search && (
                       <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
@@ -377,7 +377,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                     aria-label="Filter by category"
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                   >
                     <option value="">All Categories</option>
                     {CATEGORIES.map(cat => (
@@ -392,7 +392,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                     aria-label="Filter by status"
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                   >
                     <option value="">All Status</option>
                     <option value="true">Active</option>
@@ -405,7 +405,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
 
           {/* Services List */}
           {services.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
               <div className="p-12 text-center">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
                   <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -416,7 +416,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                 <p className="text-sm text-gray-600 font-medium mb-4">Get started by adding your first service.</p>
                 <button
                   onClick={() => { resetForm(); setShowModal(true); }}
-                  className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all font-semibold shadow-md"
+                  className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all font-semibold shadow-md"
                 >
                   Add First Service
                 </button>
@@ -425,18 +425,18 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
           ) : (
             <div className="flex flex-col gap-3">
               {services.map((service) => (
-                <div key={service._id} className="bg-white border border-gray-200 rounded-xl hover:shadow-md transition-all">
+                <div key={service._id} className="bg-white border border-gray-200 rounded-lg hover:shadow-md transition-all">
                   <div className="p-4">
                     <div className="flex items-center gap-3 justify-between flex-wrap sm:flex-nowrap">
                       {/* Service Info */}
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className={`w-14 h-14 rounded-lg flex items-center justify-center text-white text-lg font-bold flex-shrink-0 shadow-md ${
-                          service.category === 'consultation' ? 'bg-gradient-to-br from-blue-500 to-blue-600' :
-                          service.category === 'procedure' ? 'bg-gradient-to-br from-purple-500 to-purple-600' :
-                          service.category === 'laboratory' ? 'bg-gradient-to-br from-green-500 to-green-600' :
-                          service.category === 'imaging' ? 'bg-gradient-to-br from-yellow-500 to-yellow-600' :
-                          service.category === 'medication' ? 'bg-gradient-to-br from-orange-500 to-orange-600' :
-                          'bg-gradient-to-br from-gray-500 to-gray-600'
+                          service.category === 'consultation' ? 'bg-brand-teal-dark' :
+                          service.category === 'procedure' ? 'bg-purple-500' :
+                          service.category === 'laboratory' ? 'bg-green-500' :
+                          service.category === 'imaging' ? 'bg-yellow-500' :
+                          service.category === 'medication' ? 'bg-orange-500' :
+                          'bg-gray-500'
                         }`}>
                           {service.name.charAt(0)}
                         </div>
@@ -506,8 +506,8 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
         {/* Add/Edit Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="service-modal-title" className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
-              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100/50">
+            <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="service-modal-title" className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
+              <div className="p-6 border-b border-gray-200 bg-purple-50">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-purple-500 rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -532,7 +532,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                       value={formData.code}
                       onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                       placeholder="e.g., CONSULT-001 (auto-generated if empty)"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -543,7 +543,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                       value={formData.category}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value as Service['category'] })}
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     >
                       {CATEGORIES.map(cat => (
                         <option key={cat.value} value={cat.value}>{cat.label}</option>
@@ -559,7 +559,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -570,7 +570,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                       rows={2}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -584,7 +584,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                       required
                       min="0"
                       step="0.01"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -596,7 +596,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                       value={formData.unit}
                       onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                       placeholder="e.g., per visit, per test"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -608,7 +608,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                       value={formData.duration}
                       onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 0 })}
                       min="0"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -620,7 +620,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                       value={formData.type}
                       onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                       placeholder="e.g., Follow-up, X-Ray"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -631,7 +631,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                         type="checkbox"
                         checked={formData.requiresDoctor}
                         onChange={(e) => setFormData({ ...formData, requiresDoctor: e.target.checked })}
-                        className="w-4 h-4 text-blue-600 rounded"
+                        className="w-4 h-4 text-brand-teal-dark rounded"
                       />
                       <span className="text-sm text-gray-700">Requires Doctor</span>
                     </label>
@@ -640,7 +640,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                         type="checkbox"
                         checked={formData.active}
                         onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
-                        className="w-4 h-4 text-blue-600 rounded"
+                        className="w-4 h-4 text-brand-teal-dark rounded"
                       />
                       <span className="text-sm text-gray-700">Active</span>
                     </label>
@@ -653,7 +653,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                       value={formData.notes}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                       rows={2}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
                 </div>
@@ -670,7 +670,7 @@ export default function ServicesManagementClient({ user }: ServicesManagementCli
                   <button
                     type="submit"
                     disabled={saving}
-                    className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 disabled:from-purple-400 disabled:to-purple-500 transition-all font-semibold shadow-md"
+                    className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep disabled:bg-brand-teal-dark transition-all font-semibold shadow-md"
                   >
                     {saving ? 'Saving...' : editingService ? 'Update Service' : 'Create Service'}
                   </button>

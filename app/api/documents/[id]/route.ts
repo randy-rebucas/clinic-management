@@ -12,6 +12,7 @@ import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenant
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { updateDocumentSchema } from '@/lib/document-schema';
 import { cloudinaryRefForDocument, withStreamUrls } from '@/lib/document-file';
+import { createAuditLog } from '@/lib/audit';
 import { Types } from 'mongoose';
 
 function populateFor(tenantObjectId: Types.ObjectId) {
@@ -41,8 +42,10 @@ export async function GET(
     const { id } = await params;
     if (!isValidId(id)) return notFound('Document');
 
-    const document = await Document.findOne(tenantFilter(ctx.tenantId, { _id: id }))
-      .select('-ocrText')
+    // The file itself is never sent here (inline files are whole data URLs); it streams from
+    // /stream, which records who opened it.
+    const document = await Document.findOne(tenantFilter(ctx.tenantId, { _id: id, status: { $ne: 'deleted' } }))
+      .select('-ocrText -url -metadata')
       .populate(populateFor(ctx.tenantObjectId))
       .lean();
 
@@ -99,6 +102,16 @@ export async function PUT(
       if (value === null) unset[key] = 1;
       else set[key] = value;
     }
+    // A certificate's "valid until" is the document's expiry, so expiry alerts follow an edit.
+    if (body.medicalCertificate && body.expiryDate === undefined) {
+      if (body.medicalCertificate.validUntil) set.expiryDate = new Date(body.medicalCertificate.validUntil);
+      else if (body.medicalCertificate.validUntil === null) unset.expiryDate = 1;
+    }
+    // Moving a document to another patient drops a visit that belonged to the old one.
+    if (body.patient !== undefined && body.visit === undefined) {
+      const current = await Document.findOne(tenantFilter(tenantId, { _id: id })).select('patient').lean<{ patient?: unknown } | null>();
+      if (current && String(current.patient ?? '') !== String(body.patient ?? '')) unset.visit = 1;
+    }
     set.lastModifiedBy = session.userId;
     set.lastModifiedDate = new Date();
 
@@ -112,6 +125,19 @@ export async function PUT(
       .lean();
 
     if (!document) return notFound('Document');
+
+    void createAuditLog({
+      userId: session.userId,
+      userEmail: session.email,
+      userRole: session.role,
+      tenantId,
+      action: 'update',
+      resource: 'document',
+      resourceId: id,
+      dataSubject: (document as any).patient?._id,
+      changes: Object.keys(body).map((field) => ({ field, newValue: field === 'notes' || field === 'description' ? '(changed)' : (body as Record<string, unknown>)[field] })),
+      description: `Updated document ${(document as any).documentCode}`,
+    });
 
     return NextResponse.json({ success: true, data: withStreamUrls(document as any) });
   } catch (error: any) {
@@ -155,12 +181,29 @@ export async function DELETE(
       await deleteFromCloudinary(ref.publicId, { resourceType: ref.resourceType, deliveryType: ref.deliveryType });
     }
 
-    // Soft delete by setting status to 'deleted'
+    // The record stays for the audit trail, but the file goes: a Cloudinary file is deleted above,
+    // and an inline file (stored in this record as a data URL) is wiped here, with any OCR text.
     const deletedDocument = await Document.findOneAndUpdate(
       query,
-      { $set: { status: 'deleted', lastModifiedBy: session.userId, lastModifiedDate: new Date() } },
+      {
+        $set: { status: 'deleted', url: 'removed:', lastModifiedBy: session.userId, lastModifiedDate: new Date() },
+        $unset: { ocrText: 1, thumbnailUrl: 1 },
+      },
       { new: true }
     ).select('_id documentCode status').lean();
+
+    void createAuditLog({
+      userId: session.userId,
+      userEmail: session.email,
+      userRole: session.role,
+      tenantId,
+      action: 'delete',
+      resource: 'document',
+      resourceId: id,
+      dataSubject: document.patient,
+      isSensitive: Boolean(document.patient),
+      description: `Deleted document ${document.documentCode} and its file`,
+    });
 
     return NextResponse.json({ success: true, data: deletedDocument });
   } catch (error: any) {

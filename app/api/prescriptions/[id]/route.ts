@@ -35,7 +35,8 @@ export async function GET(
     }
 
     const prescription = await Prescription.findOne(tenantFilter(tenantId, { _id: id }))
-      .populate({ path: 'patient', select: 'firstName lastName patientCode email phone dateOfBirth', match: { tenantIds: tenantObjectId } })
+      // Allergies travel with the prescription: whoever dispenses it should see them first.
+      .populate({ path: 'patient', select: 'firstName lastName patientCode phone dateOfBirth allergies', match: { tenantIds: tenantObjectId } })
       .populate('prescribedBy', 'name email')
       .populate({ path: 'visit', select: 'visitCode date followUpDate', match: { tenantId: tenantObjectId } });
 

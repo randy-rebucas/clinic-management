@@ -40,7 +40,7 @@ const ACTIONS = [
 const RESOURCES = [
   'patient', 'visit', 'appointment', 'prescription', 'lab_result',
   'invoice', 'document', 'user', 'doctor', 'room', 'service',
-  'notification', 'system'
+  'notification', 'referral', 'membership', 'system'
 ];
 
 export default function AuditLogsClient({ user }: AuditLogsClientProps) {
@@ -126,7 +126,7 @@ export default function AuditLogsClient({ user }: AuditLogsClientProps) {
   const getActionBadge = (action: string, success: boolean) => {
     const baseColors = success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
     const actionColors: Record<string, string> = {
-      create: 'bg-blue-100 text-blue-800',
+      create: 'bg-brand-teal-light text-brand-teal-deep',
       read: 'bg-gray-100 text-gray-800',
       update: 'bg-yellow-100 text-yellow-800',
       delete: 'bg-red-100 text-red-800',
@@ -161,26 +161,26 @@ export default function AuditLogsClient({ user }: AuditLogsClientProps) {
   };
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-slate-50/30 min-h-screen">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6">
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-slate-500 to-slate-600 rounded-lg shadow-md">
+              <div className="p-2 bg-brand-teal-dark rounded-md">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
               <div>
-                <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Audit Logs</h1>
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Audit Logs</h1>
                 <p className="text-sm sm:text-base text-gray-600 mt-1">View system activity and security logs</p>
               </div>
             </div>
           </div>
 
           {/* Filters */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-slate-500 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -264,7 +264,7 @@ export default function AuditLogsClient({ user }: AuditLogsClientProps) {
           </div>
 
           {/* Logs Table */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
             {loading ? (
               <div className="p-12 text-center">
                 <div className="animate-spin rounded-full h-16 w-16 border-4 border-slate-100 border-t-slate-600 mx-auto"></div>
@@ -349,7 +349,7 @@ export default function AuditLogsClient({ user }: AuditLogsClientProps) {
                               </button>
                               <button
                                 onClick={() => setPreviewLog(log)}
-                                className="px-3 py-1.5 text-xs font-semibold bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors flex items-center gap-1.5 shadow-sm"
+                                className="px-3 py-1.5 text-xs font-semibold bg-brand-teal-light text-brand-teal-deep rounded-lg hover:bg-brand-teal-light transition-colors flex items-center gap-1.5 shadow-sm"
                                 title="Preview full details in modal"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -447,8 +447,8 @@ export default function AuditLogsClient({ user }: AuditLogsClientProps) {
         {/* Preview Modal */}
         {previewLog && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div ref={previewRef} role="dialog" aria-modal="true" aria-labelledby="audit-preview-title" className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-slate-50 to-slate-100/50 sticky top-0 bg-white">
+            <div ref={previewRef} role="dialog" aria-modal="true" aria-labelledby="audit-preview-title" className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200 bg-slate-50 sticky top-0 bg-white">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-slate-500 rounded-lg">

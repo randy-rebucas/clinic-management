@@ -1,13 +1,29 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import { AlertDialog, Modal } from './ui/Modal';
+import { useSetting } from './SettingsContext';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
+import { StatusBadge } from './dashboards/shared';
+import { FIELD, FOCUS_RING, ICON, Svg, dayLabel, localKey, timeLabel } from './appointments/shared';
+import { STATUS_BADGE as VISIT_BADGE, STATUS_LABEL as VISIT_LABEL, visitTypeLabel, type VisitStatus } from './visits/shared';
+import VitalsPanel, { type VitalsReading } from './visits/VitalsPanel';
+import { ageFrom, allergyList } from './visits/form/PatientSummary';
+import AttachForm from './records/AttachForm';
+import { INVOICE_LABEL, LAB_LABEL, RX_LABEL, fileSize, money } from './records/labels';
+import { formatApiError } from './utils/apiError';
+import type { PatientRecordPermissions } from '@/lib/patient-record-page';
 
 const QRCode = dynamic(() => import('react-qr-code'), { ssr: false });
-import { Modal, AlertDialog } from './ui/Modal';
-import { useSetting } from './SettingsContext';
+
+// ---------------------------------------------------------------------------
+// Shape of /api/patients/[id]/record
+// ---------------------------------------------------------------------------
+
+type Allergy = string | { substance?: string; reaction?: string; severity?: string };
 
 interface Patient {
   _id: string;
@@ -16,1788 +32,1186 @@ interface Patient {
   middleName?: string;
   lastName: string;
   suffix?: string;
-  email: string;
-  phone: string;
-  dateOfBirth: string;
+  email?: string;
+  phone?: string;
+  dateOfBirth?: string;
   sex?: 'male' | 'female' | 'other' | 'unknown';
   civilStatus?: string;
   nationality?: string;
   occupation?: string;
-  address: {
-    street: string;
-    city: string;
-    state: string;
-    zipCode: string;
-  };
-  emergencyContact: {
-    name: string;
-    phone: string;
-    relationship?: string;
-  };
-  identifiers?: {
-    philHealth?: string;
-    govId?: string;
-  };
+  address?: { street?: string; city?: string; state?: string; zipCode?: string };
+  emergencyContact?: { name?: string; phone?: string; relationship?: string };
+  identifiers?: { philHealth?: string; govId?: string };
   medicalHistory?: string;
-  preExistingConditions?: Array<{
-    condition: string;
-    diagnosisDate?: string;
-    status: 'active' | 'resolved' | 'chronic';
-    notes?: string;
-  }>;
-  allergies?: Array<string | {
-    substance: string;
-    reaction: string;
-    severity: string;
-  }>;
+  preExistingConditions?: { condition: string; diagnosisDate?: string; status?: 'active' | 'resolved' | 'chronic'; notes?: string }[];
+  allergies?: Allergy[];
   familyHistory?: Record<string, string>;
-  attachments?: Array<{
-    _id: string;
-    filename: string;
-    contentType?: string;
-    size?: number;
-    url?: string;
-    uploadDate: string;
-    notes?: string;
-  }>;
-  createdAt: string;
-  updatedAt: string;
+  attachments: { _id: string; filename?: string; contentType?: string; size?: number; uploadDate?: string; notes?: string }[];
+  createdAt?: string;
 }
 
-interface PatientAlert {
-  type: 'allergy' | 'unpaid_balance' | 'critical_condition' | 'missing_info';
-  severity: 'high' | 'medium' | 'low';
-  message: string;
-  details?: any;
-}
-
-interface Visit {
+interface VisitItem {
   _id: string;
   visitCode: string;
   date: string;
   visitType: string;
   chiefComplaint?: string;
-  diagnoses?: Array<{
-    code?: string;
-    description?: string;
-    primary?: boolean;
-  }>;
-  status: string;
+  diagnoses?: { code?: string; description?: string; primary?: boolean }[];
+  status: VisitStatus;
+  provider?: { name?: string } | null;
 }
-
-interface Appointment {
+interface AppointmentItem {
   _id: string;
-  appointmentCode: string;
+  appointmentCode?: string;
   appointmentDate: string;
-  appointmentTime: string;
+  appointmentTime?: string;
   status: string;
-  doctor?: {
-    firstName: string;
-    lastName: string;
-  };
+  reason?: string;
+  isWalkIn?: boolean;
+  doctor?: { firstName?: string; lastName?: string } | null;
 }
-
-interface Prescription {
+interface RxItem {
   _id: string;
   prescriptionCode: string;
   issuedAt: string;
   status: string;
-  medications: Array<{ name: string }>;
+  medications?: { name: string }[];
 }
-
-interface Invoice {
+interface LabItem {
+  _id: string;
+  requestCode?: string;
+  orderDate: string;
+  resultDate?: string;
+  status: string;
+  request?: { testType?: string; urgency?: string };
+}
+interface InvoiceItem {
   _id: string;
   invoiceNumber: string;
-  total: number;
-  totalPaid: number;
-  outstandingBalance: number;
-  status: string;
   createdAt: string;
-}
-
-interface LabResult {
-  _id: string;
-  requestCode: string;
-  orderDate: string;
   status: string;
-  testName?: string;
+  total?: number;
+  totalPaid?: number;
+  outstandingBalance?: number;
 }
 
-interface PatientHistoryItem {
-  id: string;
-  type: 'registration' | 'visit' | 'appointment' | 'prescription' | 'invoice' | 'lab-result';
-  date: string;
-  title: string;
-  subtitle?: string;
-  status?: string;
-  href?: string;
+interface PatientRecord {
+  patient: Patient;
+  visits: { items: VisitItem[]; total: number; vitals: VitalsReading[] } | null;
+  appointments: { items: AppointmentItem[]; total: number; next: AppointmentItem | null } | null;
+  prescriptions: { items: RxItem[]; total: number; waiting: number } | null;
+  labs: { items: LabItem[]; total: number; atLab: number; toReview: number } | null;
+  billing: { items: InvoiceItem[]; total: number; billed: number; paid: number; outstanding: number; unpaidCount: number } | null;
+  missing: string[];
 }
 
-export default function PatientDetailClient({ patientId }: { patientId: string }) {
-  const [patient, setPatient] = useState<Patient | null>(null);
-  const [visits, setVisits] = useState<Visit[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [labResults, setLabResults] = useState<LabResult[]>([]);
-  const [alerts, setAlerts] = useState<PatientAlert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'visits' | 'appointments' | 'prescriptions' | 'invoices' | 'lab-results' | 'files' | 'app-access'>('overview');
-  const [showQR, setShowQR] = useState(false);
-  const [fileToDelete, setFileToDelete] = useState<string | null>(null);
-  const [deleteFileDialogOpen, setDeleteFileDialogOpen] = useState(false);
-  const [deletingFile, setDeletingFile] = useState(false);
+type TabKey = 'all' | 'visits' | 'appointments' | 'prescriptions' | 'labs' | 'invoices' | 'files';
 
-  // App-access credential state
-  const [credEmail, setCredEmail] = useState('');
-  const [credPassword, setCredPassword] = useState('');
-  const [credConfirm, setCredConfirm] = useState('');
-  const [credLoading, setCredLoading] = useState(false);
-  const [credError, setCredError] = useState<string | null>(null);
-  const [credSuccess, setCredSuccess] = useState<string | null>(null);
-  const [credStatus, setCredStatus] = useState<{ hasPassword: boolean; email: string | null } | null>(null);
-  const router = useRouter();
-  
-  // Call hooks before any conditional returns
-  const currency = useSetting('billingSettings.currency', 'PHP');
+const ICONS = {
+  ...ICON,
+  qr: 'M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z',
+  pen: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
+  doc: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  plus: 'M12 4v16m8-8H4',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+  download: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4',
+  external: 'M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14',
+  trash: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+  key: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z',
+};
 
-  const fetchPatient = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/patients/${patientId}`);
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      const data = await res.json();
-      if (data.success) {
-        setPatient(data.data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch patient:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [patientId, router]);
+const has = (s?: string | null) => typeof s === 'string' && s.trim() !== '';
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+/** Date-only fields (birth dates) are stored at UTC midnight; read them in UTC so they never slip a day. */
+const calendarDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const isSevere = (s?: string) => ['severe', 'high', 'life-threatening', 'anaphylaxis'].includes((s ?? '').toLowerCase());
+const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const doctorOf = (a: AppointmentItem) => (a.doctor?.lastName ? `Dr. ${a.doctor.firstName ?? ''} ${a.doctor.lastName}`.replace(/\s+/g, ' ') : null);
+const apptDay = (a: AppointmentItem) => dayLabel(localKey(new Date(a.appointmentDate)), { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+const primaryDx = (v: VisitItem) => v.diagnoses?.find((d) => d.primary) ?? v.diagnoses?.[0];
 
-  const fetchVisits = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/visits?patientId=${patientId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setVisits(data.data || []);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch visits:', error);
-    }
-  }, [patientId]);
-
-  const fetchAppointments = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/appointments?patientId=${patientId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setAppointments(data.data || []);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch appointments:', error);
-    }
-  }, [patientId]);
-
-  const fetchPrescriptions = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/prescriptions?patientId=${patientId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setPrescriptions(data.data || []);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch prescriptions:', error);
-    }
-  }, [patientId]);
-
-  const fetchInvoices = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/invoices?patientId=${patientId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setInvoices(data.data || []);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch invoices:', error);
-    }
-  }, [patientId]);
-
-  const fetchLabResults = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/lab-results?patientId=${patientId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setLabResults(data.data || []);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch lab results:', error);
-    }
-  }, [patientId]);
-
-  const fetchAlerts = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/patients/${patientId}/alerts`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setAlerts(data.data.alerts || []);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch alerts:', error);
-    }
-  }, [patientId]);
+export default function PatientDetailClient({ patientId, permissions }: { patientId: string; permissions: PatientRecordPermissions }) {
+  const currency = useSetting('billingSettings.currency', 'PHP') as string;
+  const record = useKeyedFetch<PatientRecord>(`/api/patients/${patientId}/record`);
+  const [tab, setTab] = useState<TabKey>('all');
+  const [showQr, setShowQr] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<Patient['attachments'][number] | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const load = async () => {
-      await Promise.all([fetchPatient(), fetchVisits(), fetchAppointments(), fetchPrescriptions(), fetchInvoices(), fetchLabResults(), fetchAlerts()]);
-    };
-    load();
-  }, [fetchPatient, fetchVisits, fetchAppointments, fetchPrescriptions, fetchInvoices, fetchLabResults, fetchAlerts]);
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
-  const handleFileUpload = async (file: File, notes?: string) => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      if (notes) formData.append('notes', notes);
+  const data = record.value;
 
-      const res = await fetch(`/api/patients/${patientId}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
+  // --- Not loaded -------------------------------------------------------------
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          fetchPatient(); // Refresh patient data
-          alert('File uploaded successfully');
-        }
-      } else {
-        alert('Failed to upload file');
-      }
-    } catch (error) {
-      console.error('Failed to upload file:', error);
-      alert('Failed to upload file');
-    }
-  };
-
-  const handleDeleteFileClick = (fileId: string) => {
-    setFileToDelete(fileId);
-    setDeleteFileDialogOpen(true);
-  };
-
-  const handleDeleteFile = async () => {
-    if (!fileToDelete || deletingFile) return;
-
-    setDeletingFile(true);
-    try {
-      const res = await fetch(`/api/patients/${patientId}/files/${fileToDelete}`, {
-        method: 'DELETE',
-      });
-
-      if (res.ok) {
-        fetchPatient(); // Refresh patient data
-        setDeleteFileDialogOpen(false);
-        setFileToDelete(null);
-      } else {
-        alert('Failed to delete file');
-      }
-    } catch (error) {
-      console.error('Failed to delete file:', error);
-      alert('Failed to delete file');
-    } finally {
-      setDeletingFile(false);
-    }
-  };
-
-  const fetchCredStatus = async () => {
-    if (credStatus !== null) return;
-    try {
-      const res = await fetch(`/api/patients/${patientId}/app-credentials`);
-      const data = await res.json();
-      if (data.success) {
-        setCredStatus(data.data);
-        if (data.data.email) setCredEmail(data.data.email);
-      }
-    } catch {
-      // silently fail
-    }
-  };
-
-  const handleSetCredentials = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCredError(null);
-    setCredSuccess(null);
-
-    if (credPassword.length < 8) {
-      setCredError('Password must be at least 8 characters long.');
-      return;
-    }
-    if (credPassword !== credConfirm) {
-      setCredError('Passwords do not match.');
-      return;
-    }
-
-    setCredLoading(true);
-    try {
-      const body: Record<string, string> = { password: credPassword };
-      if (credEmail.trim()) body.email = credEmail.trim();
-
-      const res = await fetch(`/api/patients/${patientId}/app-credentials`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        setCredSuccess(data.message || 'Credentials saved. Share the password with the patient.');
-        setCredStatus({ hasPassword: true, email: data.email });
-        setCredPassword('');
-        setCredConfirm('');
-      } else {
-        setCredError(data.error || 'Failed to save credentials.');
-      }
-    } catch {
-      setCredError('Network error. Please try again.');
-    } finally {
-      setCredLoading(false);
-    }
-  };
-
-  const formatAllergies = () => {
-    if (!patient?.allergies || patient.allergies.length === 0) {
-      return 'No known allergies';
-    }
-    return patient.allergies.map((allergy) => {
-      if (typeof allergy === 'string') {
-        return allergy;
-      }
-      return `${allergy.substance}${allergy.reaction ? ` (${allergy.reaction})` : ''}${allergy.severity ? ` - ${allergy.severity}` : ''}`;
-    }).join(', ');
-  };
-
-  if (loading) {
+  if (!data && record.error) {
+    const missing = /not found/i.test(record.error);
+    const denied = /permission/i.test(record.error);
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col gap-6">
-            <div className="h-20 w-[400px] bg-gray-200 rounded-xl animate-pulse"></div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="h-24 bg-gray-200 rounded-xl animate-pulse"></div>
-              ))}
-            </div>
-            <div className="h-[400px] bg-gray-200 rounded-xl animate-pulse"></div>
+      <Shell>
+        <div role="alert" className="rounded-lg border border-gray-200 bg-white px-6 py-14 text-center">
+          <div className={`mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md ${missing || denied ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-600'}`}>
+            <Svg d={ICONS.alert} className="h-5 w-5" />
           </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (!patient) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: '50vh' }}>
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-4">
-              <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900">Patient not found</h2>
-            <Link 
-              href="/patients"
-              className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
-            >
-              Back to Patients
+          <p className="font-semibold text-gray-900">{missing ? 'Patient not found' : denied ? 'You can’t open this patient' : 'This patient’s record didn’t load'}</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">
+            {missing ? 'The record may have been removed, or it belongs to another clinic.' : denied ? 'Your role doesn’t include reading patient records.' : `${record.error}. Check your connection and try again.`}
+          </p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link href="/patients" className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              All patients
             </Link>
+            {!missing && !denied && (
+              <button type="button" onClick={record.reload} className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+                Try again
+              </button>
+            )}
           </div>
         </div>
-      </section>
+      </Shell>
     );
   }
-  
-  const qrValue = patient.patientCode || patient._id;
-  const fullName = [patient.firstName, patient.middleName, patient.lastName, patient.suffix]
-    .filter(Boolean)
-    .join(' ');
-  
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
 
-  const calculateAge = (dateOfBirth: string) => {
-    const age = Math.floor((new Date().getTime() - new Date(dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-    return age;
-  };
+  if (!data) {
+    return (
+      <Shell>
+        <div className="animate-pulse space-y-6" aria-hidden="true">
+          <div className="space-y-2">
+            <div className="h-8 w-72 rounded bg-gray-200" />
+            <div className="h-4 w-96 max-w-full rounded bg-gray-100" />
+          </div>
+          <div className="h-28 rounded-lg border border-gray-200 bg-white" />
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <div className="h-96 rounded-lg border border-gray-200 bg-white" />
+            <div className="h-72 rounded-lg border border-gray-200 bg-white" />
+          </div>
+        </div>
+        <span className="sr-only" role="status">
+          Loading the patient’s record…
+        </span>
+      </Shell>
+    );
+  }
 
-  // Only count outstanding balance from unpaid and partial invoices
-  const totalOutstanding = invoices.reduce((sum, inv) => {
-    if (inv.status === 'paid' || inv.status === 'refunded') {
-      return sum;
+  // --- Loaded -----------------------------------------------------------------
+
+  const p = data.patient;
+  const fullName = [p.firstName, p.middleName, p.lastName, p.suffix].filter(Boolean).join(' ');
+  const age = ageFrom(p.dateOfBirth);
+  const allergies = allergyList(p.allergies);
+  const refreshing = record.loading;
+
+  const upload = async (file: File, notes: string) => {
+    setActionError(null);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      if (notes) body.append('notes', notes);
+      const res = await fetch(`/api/patients/${patientId}/upload`, { method: 'POST', body });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        setActionError(formatApiError(json, `${file.name} could not be attached`));
+        return false;
+      }
+      setNotice(`${file.name} is attached to ${p.firstName}’s record.`);
+      record.reload();
+      return true;
+    } catch {
+      setActionError(`${file.name} could not be attached. Check your connection and try again.`);
+      return false;
     }
-    return sum + (inv.outstandingBalance || 0);
-  }, 0);
-  const totalPaid = invoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
+  };
 
-  const patientHistory: PatientHistoryItem[] = [
-    {
-      id: `registration-${patient._id}`,
-      type: 'registration' as const,
-      date: patient.createdAt,
-      title: 'Patient record created',
-      subtitle: patient.patientCode ? `ID: ${patient.patientCode}` : undefined,
-      status: 'completed',
-    },
-    ...visits.map((visit) => ({
-      id: `visit-${visit._id}`,
-      type: 'visit' as const,
-      date: visit.date,
-      title: visit.visitCode || 'Visit',
-      subtitle: visit.chiefComplaint ? `Chief complaint: ${visit.chiefComplaint}` : visit.visitType,
-      status: visit.status,
-      href: `/visits/${visit._id}`,
-    })),
-    ...appointments.map((appointment) => ({
-      id: `appointment-${appointment._id}`,
-      type: 'appointment' as const,
-      date: appointment.appointmentDate,
-      title: appointment.appointmentCode || 'Appointment',
-      subtitle: appointment.doctor
-        ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`
-        : appointment.appointmentTime
-        ? `Scheduled at ${new Date(`2000-01-01T${appointment.appointmentTime}`).toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-          })}`
-        : undefined,
-      status: appointment.status,
-      href: `/appointments/${appointment._id}`,
-    })),
-    ...prescriptions.map((prescription) => ({
-      id: `prescription-${prescription._id}`,
-      type: 'prescription' as const,
-      date: prescription.issuedAt,
-      title: prescription.prescriptionCode || 'Prescription',
-      subtitle: prescription.medications?.length
-        ? `${prescription.medications.length} medication(s)`
-        : undefined,
-      status: prescription.status,
-      href: `/prescriptions/${prescription._id}`,
-    })),
-    ...invoices.map((invoice) => ({
-      id: `invoice-${invoice._id}`,
-      type: 'invoice' as const,
-      date: invoice.createdAt,
-      title: invoice.invoiceNumber || 'Invoice',
-      subtitle: `Total ${formatCurrency(invoice.total)}`,
-      status: invoice.status,
-      href: `/invoices/${invoice._id}`,
-    })),
-    ...labResults.map((labResult) => ({
-      id: `lab-result-${labResult._id}`,
-      type: 'lab-result' as const,
-      date: labResult.orderDate,
-      title: labResult.requestCode || 'Lab Result',
-      subtitle: labResult.testName,
-      status: labResult.status,
-      href: `/lab-results/${labResult._id}`,
-    })),
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const removeFile = async () => {
+    if (!removing) return;
+    const f = removing;
+    setRemoving(null);
+    setBusy(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/files/${f._id}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(formatApiError(json, 'The file could not be removed'));
+      setNotice(`${f.filename ?? 'The file'} was removed.`);
+      record.reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'The file could not be removed');
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  const historyTypeStyles: Record<PatientHistoryItem['type'], { badge: string; dot: string; icon: string; label: string }> = {
-    registration: {
-      badge: 'bg-gray-100 text-gray-700 border border-gray-200',
-      dot: 'from-gray-500 to-gray-600',
-      icon: 'M5 13l4 4L19 7',
-      label: 'Registration',
-    },
-    visit: {
-      badge: 'bg-blue-100 text-blue-700 border border-blue-200',
-      dot: 'from-blue-500 to-blue-600',
-      icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-      label: 'Visit',
-    },
-    appointment: {
-      badge: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
-      dot: 'from-emerald-500 to-emerald-600',
-      icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
-      label: 'Appointment',
-    },
-    prescription: {
-      badge: 'bg-purple-100 text-purple-700 border border-purple-200',
-      dot: 'from-purple-500 to-purple-600',
-      icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z',
-      label: 'Prescription',
-    },
-    invoice: {
-      badge: 'bg-amber-100 text-amber-700 border border-amber-200',
-      dot: 'from-amber-500 to-amber-600',
-      icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-      label: 'Invoice',
-    },
-    'lab-result': {
-      badge: 'bg-teal-100 text-teal-700 border border-teal-200',
-      dot: 'from-teal-500 to-teal-600',
-      icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-      label: 'Lab Result',
-    },
+  const more: { label: string; href?: string; onClick?: () => void }[] = [
+    ...(permissions.canOrderLab ? [{ label: 'Order a lab test', href: `/lab-results/new?patientId=${patientId}` }] : []),
+    ...(permissions.canInvoice ? [{ label: 'New invoice', href: `/invoices/new?patientId=${patientId}` }] : []),
+    { label: 'Show the patient’s QR code', onClick: () => setShowQr(true) },
+  ];
+
+  return (
+    <Shell>
+      <Link href="/patients" className={`inline-flex w-fit items-center gap-1.5 rounded text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+        <Svg d={ICONS.chevL} />
+        All patients
+      </Link>
+
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">{fullName}</h1>
+            {p.patientCode && <span className="font-mono text-sm text-gray-500">{p.patientCode}</span>}
+          </div>
+          <p className="mt-1 text-sm sm:text-base text-gray-600">
+            {[
+              age,
+              p.sex && p.sex !== 'unknown' ? titleCase(p.sex) : null,
+              p.dateOfBirth ? `born ${calendarDate(p.dateOfBirth)}` : 'birth date not on file',
+              p.createdAt ? `registered ${shortDate(p.createdAt)}` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+          {/* Allergies stay in sight wherever the page is opened. */}
+          <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5 text-sm">
+            <span className="font-semibold text-gray-900">Allergies:</span>
+            {allergies.length === 0 ? (
+              <span className="text-gray-500">none on file{permissions.canEdit ? ', ask and record them' : ''}</span>
+            ) : (
+              allergies.map((a, i) => (
+                <span key={i} className={isSevere(a.severity) ? 'font-semibold text-red-700' : 'text-gray-900'}>
+                  {a.substance}
+                  {(a.reaction || a.severity) && <span className={isSevere(a.severity) ? '' : 'text-gray-500'}> ({[a.reaction, a.severity?.toLowerCase()].filter(Boolean).join(', ')})</span>}
+                  {i < allergies.length - 1 ? ',' : ''}
+                </span>
+              ))
+            )}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {permissions.canEdit && (
+            <Link
+              href={`/patients/${patientId}/edit`}
+              className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.pen} />
+              Edit details
+            </Link>
+          )}
+          {permissions.canBook && (
+            <Link
+              href={`/appointments/new?patientId=${patientId}`}
+              className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-brand-teal-dark hover:bg-brand-teal-light/50 hover:text-brand-teal-deep ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.calendar} />
+              Book appointment
+            </Link>
+          )}
+          {permissions.canStartVisit && (
+            <Link
+              href={`/visits/new?patientId=${patientId}`}
+              className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.plus} />
+              New visit
+            </Link>
+          )}
+          <MoreMenu items={more} />
+        </div>
+      </header>
+
+      <p className="sr-only" aria-live="polite">
+        {notice ?? ''}
+      </p>
+      {notice && (
+        <div role="status" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+          <p>{notice}</p>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 text-green-700 hover:text-green-900 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
+        </div>
+      )}
+      {actionError && (
+        <div role="alert" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          <p>{actionError}</p>
+          <button type="button" onClick={() => setActionError(null)} aria-label="Dismiss error" className={`shrink-0 rounded p-0.5 text-red-700 hover:text-red-900 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
+        </div>
+      )}
+
+      <div className={`flex flex-col gap-6 transition-opacity duration-200 ${refreshing ? 'opacity-60' : ''}`} aria-busy={refreshing}>
+        <SummaryStrip data={data} currency={currency} canBook={permissions.canBook} patientId={patientId} />
+
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-6">
+            {data.visits && data.visits.vitals.length > 0 && <VitalsPanel mode="patient" history={data.visits.vitals} />}
+            <RecordTabs
+              data={data}
+              tab={tab}
+              onTab={setTab}
+              currency={currency}
+              files={
+                <FilesList
+                  patientId={patientId}
+                  files={p.attachments}
+                  canEdit={permissions.canEdit}
+                  busy={busy}
+                  onRemove={setRemoving}
+                  attach={permissions.canEdit ? <AttachForm onUpload={upload} noun="patient record" placeholder="Outside lab result, March 2026" /> : null}
+                />
+              }
+            />
+          </div>
+          <aside className="flex min-w-0 flex-col gap-6">
+            <ClinicalPanel patient={p} allergies={allergies} />
+            <DetailsPanel patient={p} missing={data.missing} canEdit={permissions.canEdit} patientId={patientId} />
+            {data.billing && <BillingPanel billing={data.billing} currency={currency} canInvoice={permissions.canInvoice} patientId={patientId} />}
+            {permissions.canSetAppAccess && <AppAccessPanel patientId={patientId} fallbackEmail={p.email} firstName={p.firstName} />}
+          </aside>
+        </div>
+      </div>
+
+      <Modal open={showQr} onOpenChange={setShowQr} className="max-w-sm" labelledBy="patient-qr-title">
+        <div className="p-6 text-center">
+          <h2 id="patient-qr-title" className="text-lg font-bold tracking-tight text-gray-900">
+            {fullName}
+          </h2>
+          <p className="mt-0.5 text-sm text-gray-500">Scan to look up this patient.</p>
+          <div className="mx-auto mt-5 w-fit rounded-lg border border-gray-200 bg-white p-4">
+            <QRCode value={p.patientCode || p._id} size={208} />
+          </div>
+          <p className="mt-3 font-mono text-sm text-gray-900">{p.patientCode || p._id}</p>
+          <button type="button" onClick={() => setShowQr(false)} className={`mt-5 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+            Close
+          </button>
+        </div>
+      </Modal>
+
+      {removing &&
+        createPortal(
+          <AlertDialog
+            open
+            onOpenChange={(open) => !open && setRemoving(null)}
+            title="Remove this file?"
+            description={`${removing.filename ?? 'This file'} is deleted from ${p.firstName}’s record for good. Download it first if you need a copy.`}
+          >
+            <button type="button" onClick={() => setRemoving(null)} className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              Keep it
+            </button>
+            <button type="button" onClick={removeFile} className={`rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 ${FOCUS_RING}`}>
+              Remove file
+            </button>
+          </AlertDialog>,
+          document.body
+        )}
+    </Shell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Frame
+// ---------------------------------------------------------------------------
+
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-7xl mx-auto flex flex-col gap-6">{children}</div>
+    </section>
+  );
+}
+
+function Panel({ id, title, aside, children }: { id: string; title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="motion-panel-in rounded-lg border border-gray-200 bg-white overflow-hidden" aria-labelledby={id}>
+      <div className="flex items-baseline justify-between gap-3 border-b border-gray-200 px-5 py-4">
+        <h2 id={id} className="text-base font-bold tracking-tight text-gray-900">
+          {title}
+        </h2>
+        {aside}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-4 px-5 py-2.5 text-sm">
+      <dt className="text-gray-500">{label}</dt>
+      <dd className="min-w-0 break-words text-gray-900">{children}</dd>
+    </div>
+  );
+}
+
+const NotOnFile = () => <span className="text-gray-400">Not on file</span>;
+
+function MoreMenu({ items }: { items: { label: string; href?: string; onClick?: () => void }[] }) {
+  const ids = useId();
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const itemClass = 'block w-full rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal';
+  return (
+    <div ref={wrap} className="relative">
+      <button
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-controls={`${ids}-menu`}
+        aria-label="More actions"
+        title="More actions"
+        onClick={() => setOpen((o) => !o)}
+        className={`rounded-md border border-gray-300 bg-white p-2 text-gray-700 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
+      >
+        <Svg d={ICONS.more} />
+      </button>
+      {open && (
+        <ul id={`${ids}-menu`} className="motion-panel-in absolute right-0 top-full z-30 mt-1 w-56 rounded-lg border border-gray-200 bg-white p-1 shadow-[0_8px_30px_rgb(15,23,42,0.1)]">
+          {items.map((it) => (
+            <li key={it.label}>
+              {it.href ? (
+                <Link href={it.href} className={itemClass} onClick={() => setOpen(false)}>
+                  {it.label}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  className={itemClass}
+                  onClick={() => {
+                    setOpen(false);
+                    it.onClick?.();
+                  }}
+                >
+                  {it.label}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Summary: the four things a front desk or doctor asks first
+// ---------------------------------------------------------------------------
+
+function SummaryStrip({ data, currency, canBook, patientId }: { data: PatientRecord; currency: string; canBook: boolean; patientId: string }) {
+  const cells: ReactNode[] = [];
+  const cell = 'border-r border-b border-gray-200 p-5';
+
+  if (data.visits) {
+    const last = data.visits.items.find((v) => v.status !== 'cancelled' && v.status !== 'draft');
+    const dx = last ? primaryDx(last) : null;
+    cells.push(
+      <div key="visit" className={cell}>
+        <p className="text-sm text-gray-600">Last visit</p>
+        {last ? (
+          <>
+            <Link href={`/visits/${last._id}`} className={`mt-1.5 block w-fit rounded font-mono text-lg font-semibold tabular-nums text-gray-900 hover:text-brand-teal-deep ${FOCUS_RING}`}>
+              {shortDate(last.date)}
+            </Link>
+            <p className="mt-0.5 truncate text-sm text-gray-500">{dx ? [dx.code, dx.description].filter(Boolean).join(' ') : last.chiefComplaint || visitTypeLabel(last.visitType)}</p>
+          </>
+        ) : (
+          <p className="mt-1.5 text-sm text-gray-500">No visits yet</p>
+        )}
+      </div>
+    );
+  }
+
+  if (data.appointments) {
+    const next = data.appointments.next;
+    cells.push(
+      <div key="next" className={cell}>
+        <p className="text-sm text-gray-600">Next appointment</p>
+        {next ? (
+          <>
+            <Link href={`/appointments/${next._id}`} className={`mt-1.5 block w-fit rounded font-mono text-lg font-semibold tabular-nums text-gray-900 hover:text-brand-teal-deep ${FOCUS_RING}`}>
+              {apptDay(next).replace(/^\w+, /, '')}
+            </Link>
+            <p className="mt-0.5 truncate text-sm text-gray-500">
+              <span className="font-mono">{timeLabel(next.appointmentTime)}</span>
+              {doctorOf(next) ? ` · ${doctorOf(next)}` : ''}
+            </p>
+          </>
+        ) : (
+          <p className="mt-1.5 text-sm text-gray-500">
+            None booked
+            {canBook && (
+              <>
+                {' · '}
+                <Link href={`/appointments/new?patientId=${patientId}`} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                  Book one
+                </Link>
+              </>
+            )}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (data.labs) {
+    const { atLab, toReview } = data.labs;
+    cells.push(
+      <div key="labs" className={cell}>
+        <p className="text-sm text-gray-600">Lab tests</p>
+        <p className={`mt-1.5 font-mono text-lg font-semibold tabular-nums ${toReview + atLab > 0 ? 'text-gray-900' : 'text-gray-500'}`}>{toReview + atLab}</p>
+        <p className="mt-0.5 text-sm text-gray-500">
+          {toReview + atLab === 0 ? 'Nothing outstanding' : [toReview && `${toReview} result${toReview === 1 ? '' : 's'} to review`, atLab && `${atLab} at the lab`].filter(Boolean).join(', ')}
+        </p>
+      </div>
+    );
+  }
+
+  if (data.billing) {
+    const owed = data.billing.outstanding > 0;
+    cells.push(
+      <div key="bill" className={cell}>
+        <p className="text-sm text-gray-600">Balance due</p>
+        <p className={`mt-1.5 font-mono text-lg font-semibold tabular-nums ${owed ? 'text-red-700' : 'text-gray-500'}`}>{money(data.billing.outstanding, currency)}</p>
+        <p className={`mt-0.5 text-sm ${owed ? 'text-red-700' : 'text-gray-500'}`}>
+          {owed ? `on ${data.billing.unpaidCount} unpaid invoice${data.billing.unpaidCount === 1 ? '' : 's'}` : 'Nothing owed'}
+        </p>
+      </div>
+    );
+  }
+
+  if (cells.length === 0) return null;
+  const cols = cells.length >= 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : cells.length === 3 ? 'sm:grid-cols-3' : cells.length === 2 ? 'sm:grid-cols-2' : '';
+  return (
+    <div className="motion-panel-in rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className={`grid -mr-px -mb-px grid-cols-1 ${cols}`}>{cells}</div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The record: everything, or one kind at a time
+// ---------------------------------------------------------------------------
+
+interface Row {
+  key: string;
+  date: string;
+  href?: string;
+  kind: string;
+  title: ReactNode;
+  sub?: ReactNode;
+  state?: ReactNode;
+  struck?: boolean;
+}
+
+function rowsFor(data: PatientRecord, currency: string) {
+  const visits: Row[] = (data.visits?.items ?? []).map((v) => {
+    const dx = primaryDx(v);
+    return {
+      key: `v${v._id}`,
+      date: v.date,
+      href: `/visits/${v._id}`,
+      kind: 'Visit',
+      title: dx ? (
+        <>
+          {dx.code && <span className="mr-1.5 font-mono text-xs font-semibold">{dx.code}</span>}
+          {dx.description}
+        </>
+      ) : (
+        v.chiefComplaint || visitTypeLabel(v.visitType)
+      ),
+      sub: [visitTypeLabel(v.visitType), v.provider?.name, v.visitCode].filter(Boolean).join(' · '),
+      state: <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${VISIT_BADGE[v.status] ?? VISIT_BADGE.open}`}>{VISIT_LABEL[v.status] ?? v.status}</span>,
+      struck: v.status === 'cancelled',
+    };
+  });
+  const appointments: Row[] = (data.appointments?.items ?? []).map((a) => ({
+    key: `a${a._id}`,
+    date: a.appointmentDate,
+    href: `/appointments/${a._id}`,
+    kind: 'Appointment',
+    title: (
+      <>
+        <span className="font-mono">{timeLabel(a.appointmentTime)}</span>
+        {doctorOf(a) ? ` with ${doctorOf(a)}` : ''}
+        {a.isWalkIn ? ' · walk-in' : ''}
+      </>
+    ),
+    sub: a.reason || a.appointmentCode,
+    state: <StatusBadge status={a.status} />,
+    struck: a.status === 'cancelled',
+  }));
+  const prescriptions: Row[] = (data.prescriptions?.items ?? []).map((rx) => ({
+    key: `p${rx._id}`,
+    date: rx.issuedAt,
+    href: `/prescriptions/${rx._id}`,
+    kind: 'Prescription',
+    title: (rx.medications ?? []).map((m) => m.name).filter(Boolean).join(', ') || 'No medicines listed',
+    sub: rx.prescriptionCode,
+    state: <span className="text-xs font-medium text-gray-600">{RX_LABEL[rx.status] ?? rx.status}</span>,
+    struck: rx.status === 'cancelled',
+  }));
+  const labs: Row[] = (data.labs?.items ?? []).map((l) => ({
+    key: `l${l._id}`,
+    date: l.orderDate,
+    href: `/lab-results/${l._id}`,
+    kind: 'Lab test',
+    title: (
+      <>
+        {l.request?.testType || 'Lab test'}
+        {l.request?.urgency && l.request.urgency !== 'routine' && <span className="ml-1.5 text-xs font-semibold text-amber-800">{l.request.urgency === 'stat' ? 'STAT' : 'Urgent'}</span>}
+      </>
+    ),
+    sub: [l.requestCode, l.resultDate ? `result ${shortDate(l.resultDate)}` : null].filter(Boolean).join(' · '),
+    state: <span className={`text-xs font-medium ${l.status === 'completed' ? 'text-gray-900' : 'text-gray-600'}`}>{LAB_LABEL[l.status] ?? l.status}</span>,
+    struck: l.status === 'cancelled',
+  }));
+  const invoices: Row[] = (data.billing?.items ?? []).map((inv) => {
+    const due = (inv.status === 'unpaid' || inv.status === 'partial') && (inv.outstandingBalance ?? 0) > 0;
+    return {
+      key: `i${inv._id}`,
+      date: inv.createdAt,
+      href: `/invoices/${inv._id}`,
+      kind: 'Invoice',
+      title: <span className="font-mono">{money(inv.total ?? 0, currency)}</span>,
+      sub: inv.invoiceNumber,
+      state: (
+        <span className={`text-xs font-medium ${due ? 'text-red-700' : 'text-gray-600'}`}>
+          {INVOICE_LABEL[inv.status] ?? inv.status}
+          {due && <span className="font-mono"> · {money(inv.outstandingBalance ?? 0, currency)} due</span>}
+        </span>
+      ),
+    };
+  });
+  return { visits, appointments, prescriptions, labs, invoices };
+}
+
+function RecordTabs({ data, tab, onTab, currency, files }: { data: PatientRecord; tab: TabKey; onTab: (t: TabKey) => void; currency: string; files: ReactNode }) {
+  const ids = useId();
+  const rows = rowsFor(data, currency);
+  const tabs: { key: TabKey; label: string; count: number | null; total?: number }[] = [
+    { key: 'all', label: 'Everything', count: null },
+    ...(data.visits ? [{ key: 'visits' as const, label: 'Visits', count: data.visits.total, total: data.visits.total }] : []),
+    ...(data.appointments ? [{ key: 'appointments' as const, label: 'Appointments', count: data.appointments.total, total: data.appointments.total }] : []),
+    ...(data.prescriptions ? [{ key: 'prescriptions' as const, label: 'Prescriptions', count: data.prescriptions.total, total: data.prescriptions.total }] : []),
+    ...(data.labs ? [{ key: 'labs' as const, label: 'Lab tests', count: data.labs.total, total: data.labs.total }] : []),
+    ...(data.billing ? [{ key: 'invoices' as const, label: 'Invoices', count: data.billing.total, total: data.billing.total }] : []),
+    { key: 'files', label: 'Files', count: data.patient.attachments.length },
+  ];
+  const active = tabs.some((t) => t.key === tab) ? tab : 'all';
+  const index = tabs.findIndex((t) => t.key === active);
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const next = e.key === 'ArrowRight' ? index + 1 : e.key === 'ArrowLeft' ? index - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : null;
+    if (next === null) return;
+    e.preventDefault();
+    const t = tabs[(next + tabs.length) % tabs.length];
+    onTab(t.key);
+    requestAnimationFrame(() => document.getElementById(`${ids}-tab-${t.key}`)?.focus());
+  };
+
+  let list: Row[] = [];
+  let shownOf: { shown: number; total: number } | null = null;
+  if (active === 'all') {
+    list = [...rows.visits, ...rows.appointments, ...rows.prescriptions, ...rows.labs, ...rows.invoices]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 30);
+  } else if (active !== 'files') {
+    list = rows[active];
+    const t = tabs[index];
+    if (t.total !== undefined && t.total > list.length) shownOf = { shown: list.length, total: t.total };
+  }
+
+  const empty: Record<Exclude<TabKey, 'files'>, string> = {
+    all: 'Nothing on record yet. Visits, appointments, prescriptions, lab tests and invoices appear here as they happen.',
+    visits: 'No visits yet.',
+    appointments: 'No appointments yet.',
+    prescriptions: 'No prescriptions yet. They are made from the medicines in a visit note.',
+    labs: 'No lab tests ordered yet.',
+    invoices: 'No invoices yet. One is made when a visit is closed.',
   };
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex items-start gap-4">
-              <Link 
-                href="/patients"
-                aria-label="Back to patients"
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </Link>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-4 flex-wrap">
-                  <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xl font-bold shadow-md flex-shrink-0">
-                    {patient.firstName.charAt(0)}{patient.lastName.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
-                      {fullName}
-                    </h1>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      {patient.patientCode && (
-                        <span className="px-3 py-1 bg-gray-100 text-gray-700 text-xs rounded-full font-semibold">
-                          ID: {patient.patientCode}
-                        </span>
-                      )}
-                      <span className="text-sm text-gray-600">{calculateAge(patient.dateOfBirth)} years old</span>
-                      {patient.sex && patient.sex !== 'unknown' && (
-                        <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs rounded-full font-semibold capitalize">
-                          {patient.sex}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => setShowQR(!showQR)}
-                      className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-semibold flex items-center gap-2"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                      </svg>
-                      QR Code
-                    </button>
-                    <Link 
-                      href={`/patients/${patient._id}/edit`}
-                      className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all text-sm font-semibold shadow-md flex items-center gap-2"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                      Edit
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Visits</p>
-                <div className="p-1.5 bg-blue-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl sm:text-4xl font-bold text-blue-700">{visits.length}</p>
-            </div>
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Appointments</p>
-                <div className="p-1.5 bg-purple-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl sm:text-4xl font-bold text-purple-700">{appointments.length}</p>
-            </div>
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Prescriptions</p>
-                <div className="p-1.5 bg-emerald-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl sm:text-4xl font-bold text-emerald-700">{prescriptions.length}</p>
-            </div>
-            <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Invoices</p>
-                <div className="p-1.5 bg-amber-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl sm:text-4xl font-bold text-amber-700">{invoices.length}</p>
-            </div>
-            <div className="bg-gradient-to-br from-teal-50 to-teal-100 rounded-xl border border-teal-200 p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-teal-600 uppercase tracking-wide">Lab Results</p>
-                <div className="p-1.5 bg-teal-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl sm:text-4xl font-bold text-teal-700">{labResults.length}</p>
-            </div>
-            <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl border border-red-200 p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-red-600 uppercase tracking-wide">Outstanding</p>
-                <div className="p-1.5 bg-red-500 rounded-lg">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl sm:text-4xl font-bold text-red-700">{formatCurrency(totalOutstanding)}</p>
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-4 sm:p-6 border-b border-gray-200 bg-gray-50/50">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-teal-100 rounded-lg">
-                  <svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Quick Actions</h3>
-              </div>
-            </div>
-            <div className="p-4 sm:p-6">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                <Link 
-                  href={`/appointments/new?patientId=${patientId}`}
-                  className="px-4 py-3 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg hover:shadow-md hover:border-blue-300 transition-all text-sm font-semibold flex items-center justify-center gap-2"
-                >
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  Schedule
-                </Link>
-                <Link 
-                  href={`/visits/new?patientId=${patientId}`}
-                  className="px-4 py-3 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg hover:shadow-md hover:border-emerald-300 transition-all text-sm font-semibold flex items-center justify-center gap-2"
-                >
-                  <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  New Visit
-                </Link>
-                <Link 
-                  href={`/prescriptions/new?patientId=${patientId}`}
-                  className="px-4 py-3 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg hover:shadow-md hover:border-purple-300 transition-all text-sm font-semibold flex items-center justify-center gap-2"
-                >
-                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                  </svg>
-                  Prescription
-                </Link>
-                <Link 
-                  href={`/invoices/new?patientId=${patientId}`}
-                  className="px-4 py-3 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg hover:shadow-md hover:border-amber-300 transition-all text-sm font-semibold flex items-center justify-center gap-2"
-                >
-                  <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Invoice
-                </Link>
-                <Link 
-                  href={`/lab-results/new?patientId=${patientId}`}
-                  className="px-4 py-3 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg hover:shadow-md hover:border-teal-300 transition-all text-sm font-semibold flex items-center justify-center gap-2"
-                >
-                  <svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Lab Result
-                </Link>
-                <button 
-                  onClick={() => setShowQR(!showQR)}
-                  className="px-4 py-3 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg hover:shadow-md hover:border-blue-300 transition-all text-sm font-semibold flex items-center justify-center gap-2"
-                >
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                  </svg>
-                  QR Code
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* QR Code Modal */}
-          <Modal open={showQR} onOpenChange={setShowQR} className="max-w-md">
-            <div className="p-6 sm:p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900">Patient QR Code</h2>
-              </div>
-              <div className="flex flex-col items-center gap-4">
-                <div className="p-6 bg-white border-2 border-gray-200 rounded-xl shadow-md">
-                  <QRCode value={qrValue} size={256} />
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-semibold text-gray-700 mb-1">
-                    Patient ID: <span className="font-bold text-gray-900">{qrValue}</span>
-                  </p>
-                  <p className="text-xs text-gray-600">
-                    Scan this code to quickly access patient information
-                  </p>
-                </div>
-              </div>
-            </div>
-          </Modal>
-
-          {/* Patient Alerts */}
-          {alerts.length > 0 && (
-            <div className="flex flex-col gap-3">
-              {alerts.map((alert, idx) => (
-                <div
-                  key={idx}
-                  className={`rounded-xl p-4 border-l-4 ${
-                    alert.severity === 'high' ? 'bg-red-50 border-red-500 text-red-800' :
-                    alert.severity === 'medium' ? 'bg-yellow-50 border-yellow-500 text-yellow-800' :
-                    'bg-blue-50 border-blue-500 text-blue-800'
-                  } shadow-sm`}
-                >
-                  <div className="flex items-start gap-2">
-                    <svg className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-                      alert.severity === 'high' ? 'text-red-600' :
-                      alert.severity === 'medium' ? 'text-yellow-600' :
-                      'text-blue-600'
-                    }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <p className="text-sm font-medium">{alert.message}</p>
-                  </div>
-                </div>
+    <section className="motion-panel-in rounded-lg border border-gray-200 bg-white overflow-hidden" aria-labelledby={`${ids}-title`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-3 px-5 pt-4">
+        <h2 id={`${ids}-title`} className="text-base font-bold tracking-tight text-gray-900">
+          Record
+        </h2>
+      </div>
+      <div role="tablist" aria-label="What to show" onKeyDown={onKeyDown} className="flex gap-1 overflow-x-auto border-b border-gray-200 px-3 pt-2">
+        {tabs.map((t) => {
+          const on = t.key === active;
+          return (
+            <button
+              key={t.key}
+              id={`${ids}-tab-${t.key}`}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              aria-controls={`${ids}-panel`}
+              tabIndex={on ? 0 : -1}
+              onClick={() => onTab(t.key)}
+              className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal ${
+                on ? 'border-brand-teal-dark text-gray-900' : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              {t.label}
+              {t.count !== null && <span className={`ml-1.5 font-mono text-xs ${on ? 'text-gray-700' : 'text-gray-500'}`}>{t.count.toLocaleString('en-US')}</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div id={`${ids}-panel`} role="tabpanel" aria-labelledby={`${ids}-tab-${active}`}>
+        {active === 'files' ? (
+          files
+        ) : list.length === 0 ? (
+          <p className="px-5 py-10 text-center text-sm text-gray-500">{empty[active]}</p>
+        ) : (
+          <>
+            <ul key={active} className="divide-y divide-gray-100">
+              {list.map((r, i) => (
+                <li key={r.key} className="motion-row-in" style={{ animationDelay: `${Math.min(i * 18, 220)}ms` }}>
+                  <RecordRow row={r} showKind={active === 'all'} />
+                </li>
               ))}
-            </div>
-          )}
-
-          {/* Tabs */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="border-b border-gray-200 bg-gray-50/50 overflow-x-auto">
-            <nav className="flex -mb-px min-w-max">
-              {[
-                { value: 'overview', label: 'Overview', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
-                { value: 'history', label: `History (${patientHistory.length})`, icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
-                { value: 'visits', label: `Visits (${visits.length})`, icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-                { value: 'appointments', label: `Appointments (${appointments.length})`, icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
-                { value: 'prescriptions', label: `Prescriptions (${prescriptions.length})`, icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z' },
-                { value: 'invoices', label: `Invoices (${invoices.length})`, icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-                { value: 'lab-results', label: `Lab Results (${labResults.length})`, icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-                { value: 'files', label: `Files (${patient.attachments?.length || 0})`, icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z' },
-                { value: 'app-access', label: 'App Access', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
-              ].map((tab) => (
-                <button
-                  key={tab.value}
-                  onClick={() => { setActiveTab(tab.value as any); if (tab.value === 'app-access') fetchCredStatus(); }}
-                  className={`py-3 px-6 text-sm font-semibold border-b-2 transition-all duration-200 whitespace-nowrap relative ${
-                    activeTab === tab.value
-                      ? 'text-blue-600 bg-white'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                  }`}
-                >
-                  {activeTab === tab.value && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-blue-600"></span>
-                  )}
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
-                    </svg>
-                    {tab.label}
-                  </span>
-                </button>
-              ))}
-            </nav>
-          </div>
-
-          <div className="p-6">
-            {/* Overview Tab */}
-            {activeTab === 'overview' && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Basic Information */}
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-blue-500 rounded-lg">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                      </div>
-                      <h3 className="text-lg font-bold text-gray-900">Basic Information</h3>
-                    </div>
-                    <dl className="space-y-3">
-                      <div>
-                      <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Full Name</dt>
-                      <dd className="text-sm font-medium text-gray-900">{fullName}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Date of Birth</dt>
-                      <dd className="text-sm font-medium text-gray-900">
-                        {new Date(patient.dateOfBirth).toLocaleDateString()}
-                      </dd>
-                    </div>
-                      {patient.sex && (
-                        <div>
-                          <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Sex</dt>
-                          <dd className="text-sm font-medium text-gray-900 capitalize">{patient.sex}</dd>
-                        </div>
-                      )}
-                      {patient.civilStatus && (
-                        <div>
-                          <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Civil Status</dt>
-                          <dd className="text-sm font-medium text-gray-900">{patient.civilStatus}</dd>
-                        </div>
-                      )}
-                      {patient.nationality && (
-                        <div>
-                          <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Nationality</dt>
-                          <dd className="text-sm font-medium text-gray-900">{patient.nationality}</dd>
-                        </div>
-                      )}
-                      {patient.occupation && (
-                        <div>
-                          <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Occupation</dt>
-                          <dd className="text-sm font-medium text-gray-900">{patient.occupation}</dd>
-                        </div>
-                      )}
-                    </dl>
-                  </div>
-
-                  {/* Contact Information */}
-                  <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-purple-500 rounded-lg">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <h3 className="text-lg font-bold text-gray-900">Contact Information</h3>
-                    </div>
-                    <dl className="space-y-3">
-                      <div>
-                        <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Email</dt>
-                        <dd className="text-sm font-medium text-gray-900">{patient.email}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Phone</dt>
-                        <dd className="text-sm font-medium text-gray-900">{patient.phone}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Address</dt>
-                        <dd className="text-sm font-medium text-gray-900">
-                          {patient.address.street}, {patient.address.city}, {patient.address.state} {patient.address.zipCode}
-                        </dd>
-                      </div>
-                    </dl>
-                  </div>
-                </div>
-
-                {/* Emergency Contact */}
-                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-emerald-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900">Emergency Contact</h3>
-                  </div>
-                  <dl className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Name</dt>
-                      <dd className="text-sm font-medium text-gray-900">{patient.emergencyContact?.name || '-'}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Phone</dt>
-                      <dd className="text-sm font-medium text-gray-900">{patient.emergencyContact?.phone || '-'}</dd>
-                    </div>
-                    {patient.emergencyContact?.relationship && (
-                      <div>
-                        <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Relationship</dt>
-                        <dd className="text-sm font-medium text-gray-900">{patient.emergencyContact?.relationship || '-'}</dd>
-                      </div>
-                    )}
-                  </dl>
-                </div>
-
-                {/* Identifiers */}
-                {(patient.identifiers?.philHealth || patient.identifiers?.govId) && (
-                  <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border border-amber-200 rounded-xl p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-amber-500 rounded-lg">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
-                        </svg>
-                      </div>
-                      <h3 className="text-lg font-bold text-gray-900">Identifiers</h3>
-                    </div>
-                    <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {patient.identifiers.philHealth && (
-                        <div>
-                          <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">PhilHealth ID</dt>
-                          <dd className="text-sm font-medium text-gray-900">{patient.identifiers.philHealth}</dd>
-                        </div>
-                      )}
-                      {patient.identifiers.govId && (
-                        <div>
-                          <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Government ID</dt>
-                          <dd className="text-sm font-medium text-gray-900">{patient.identifiers.govId}</dd>
-                        </div>
-                      )}
-                    </dl>
-                  </div>
-                )}
-
-                {/* Medical Information */}
-                <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-200 rounded-xl p-5">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-red-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900">Medical Information</h3>
-                  </div>
-                  <div className="space-y-4">
-                    <div>
-                      <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Medical History</dt>
-                      <dd className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed bg-white/50 p-3 rounded-lg border border-gray-200">
-                        {patient.medicalHistory || 'No medical history recorded'}
-                      </dd>
-                    </div>
-                    {patient.preExistingConditions && patient.preExistingConditions.length > 0 && (
-                      <div>
-                        <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Pre-existing Conditions</dt>
-                        <dd className="text-sm text-gray-900">
-                          <ul className="space-y-2">
-                            {patient.preExistingConditions.map((condition, idx) => (
-                              <li key={idx} className="bg-white/50 p-3 rounded-lg border border-gray-200">
-                                <div className="flex items-center gap-2 flex-wrap mb-1">
-                                  <span className="font-semibold text-gray-900">{condition.condition}</span>
-                                  {condition.status && (
-                                    <span className={`px-2.5 py-1 text-xs rounded-full font-semibold ${
-                                      condition.status === 'active' ? 'bg-red-100 text-red-700 border border-red-200' :
-                                      condition.status === 'chronic' ? 'bg-orange-100 text-orange-700 border border-orange-200' :
-                                      'bg-green-100 text-green-700 border border-green-200'
-                                    }`}>
-                                      {condition.status}
-                                    </span>
-                                  )}
-                                </div>
-                                {condition.diagnosisDate && (
-                                  <p className="text-xs text-gray-600 mt-1">
-                                    Diagnosed: {new Date(condition.diagnosisDate).toLocaleDateString()}
-                                  </p>
-                                )}
-                                {condition.notes && (
-                                  <p className="text-xs text-gray-600 mt-1">{condition.notes}</p>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        </dd>
-                      </div>
-                    )}
-                    <div>
-                      <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Allergies</dt>
-                      <dd className="text-sm font-medium text-gray-900 bg-white/50 p-3 rounded-lg border border-gray-200">{formatAllergies()}</dd>
-                    </div>
-                    {patient.familyHistory && Object.keys(patient.familyHistory).length > 0 && (
-                      <div>
-                        <dt className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Family History</dt>
-                        <dd className="text-sm text-gray-900">
-                          <ul className="space-y-2">
-                            {Object.entries(patient.familyHistory).map(([condition, relation]) => (
-                              <li key={condition} className="bg-white/50 p-3 rounded-lg border border-gray-200">
-                                <span className="font-semibold text-gray-900">{condition}</span>
-                                {relation && <span className="text-gray-600 ml-2">({relation})</span>}
-                              </li>
-                            ))}
-                          </ul>
-                        </dd>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+            </ul>
+            {shownOf && (
+              <p className="border-t border-gray-100 px-5 py-2.5 text-sm text-gray-500">
+                Newest <span className="font-mono text-gray-900">{shownOf.shown}</span> of <span className="font-mono text-gray-900">{shownOf.total.toLocaleString('en-US')}</span>
+              </p>
             )}
-
-            {/* Visits Tab */}
-            {activeTab === 'visits' && (
-              <div>
-                {visits.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">No medical records found</h3>
-                    <p className="text-sm text-gray-600 mb-4">Medical records will appear here once visits are created.</p>
-                    <Link
-                      href={`/visits/new?patientId=${patientId}`}
-                      className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-block"
-                    >
-                      Create First Visit
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    {/* Timeline View */}
-                    <div className="relative pl-8 border-l-2 border-blue-200">
-                      {visits
-                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                        .map((visit, index) => (
-                          <div key={visit._id} className="relative mb-6">
-                            {/* Timeline dot */}
-                            <div className="absolute -left-[21px] top-0 w-5 h-5 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full border-4 border-white shadow-md"></div>
-                            
-                            {/* Timeline content */}
-                            <div className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-5 hover:shadow-lg hover:border-blue-300 transition-all">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-3 flex-wrap">
-                                    <span className="text-sm font-bold text-gray-900">{visit.visitCode}</span>
-                                    <span className="px-2.5 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold capitalize border border-blue-200">
-                                      {visit.visitType}
-                                    </span>
-                                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                      visit.status === 'closed' ? 'bg-green-100 text-green-700 border border-green-200' :
-                                      visit.status === 'open' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
-                                      'bg-gray-100 text-gray-700 border border-gray-200'
-                                    }`}>
-                                      {visit.status}
-                                    </span>
-                                  </div>
-                                  <p className="text-sm font-semibold text-gray-900 mb-2">
-                                    {new Date(visit.date).toLocaleDateString('en-US', {
-                                      weekday: 'long',
-                                      year: 'numeric',
-                                      month: 'long',
-                                      day: 'numeric',
-                                    })}
-                                  </p>
-                                  {visit.chiefComplaint && (
-                                    <p className="text-sm text-gray-700 mb-2">
-                                      <span className="font-semibold">Chief Complaint:</span> {visit.chiefComplaint}
-                                    </p>
-                                  )}
-                                  {visit.diagnoses && visit.diagnoses.length > 0 && (
-                                    <div className="mt-3">
-                                      <p className="text-sm font-semibold text-gray-900 mb-2">Diagnoses:</p>
-                                      <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
-                                        {visit.diagnoses.map((diag, idx) => (
-                                          <li key={idx}>
-                                            {diag.code && <span className="font-mono text-blue-600">{diag.code}</span>}
-                                            {diag.description && ` - ${diag.description}`}
-                                            {diag.primary && <span className="text-blue-600 ml-2 font-semibold">(Primary)</span>}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                </div>
-                                <Link
-                                  href={`/visits/${visit._id}`}
-                                  className="ml-4 text-blue-600 hover:text-blue-700 text-sm font-semibold whitespace-nowrap inline-flex items-center gap-1"
-                                >
-                                  View
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                  </svg>
-                                </Link>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* History Tab */}
-            {activeTab === 'history' && (
-              <div>
-                {patientHistory.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">No history found</h3>
-                    <p className="text-sm text-gray-600">Patient activity history will appear here once records are added.</p>
-                  </div>
-                ) : (
-                  <div className="relative pl-8 border-l-2 border-blue-200">
-                    {patientHistory.map((historyItem) => {
-                      const style = historyTypeStyles[historyItem.type];
-
-                      return (
-                        <div key={historyItem.id} className="relative mb-6">
-                          <div className={`absolute -left-[21px] top-0 w-5 h-5 bg-gradient-to-br ${style.dot} rounded-full border-4 border-white shadow-md`}></div>
-
-                          <div className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-5 hover:shadow-lg hover:border-blue-300 transition-all">
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${style.badge}`}>
-                                    {style.label}
-                                  </span>
-                                  {historyItem.status && (
-                                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-200 capitalize">
-                                      {historyItem.status}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-sm font-bold text-gray-900 mb-1">{historyItem.title}</p>
-                                {historyItem.subtitle && (
-                                  <p className="text-sm text-gray-700 mb-2">{historyItem.subtitle}</p>
-                                )}
-                                <p className="text-xs text-gray-600">
-                                  {new Date(historyItem.date).toLocaleDateString('en-US', {
-                                    weekday: 'long',
-                                    year: 'numeric',
-                                    month: 'long',
-                                    day: 'numeric',
-                                  })}
-                                </p>
-                              </div>
-                              {historyItem.href && (
-                                <Link
-                                  href={historyItem.href}
-                                  className="text-blue-600 hover:text-blue-700 text-sm font-semibold whitespace-nowrap inline-flex items-center gap-1"
-                                >
-                                  View
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                  </svg>
-                                </Link>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Appointments Tab */}
-            {activeTab === 'appointments' && (
-              <div>
-                {appointments.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">No appointments found</h3>
-                    <p className="text-sm text-gray-600 mb-4">Schedule an appointment for this patient.</p>
-                    <Link
-                      href={`/appointments/new?patientId=${patientId}`}
-                      className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-block"
-                    >
-                      Schedule Appointment
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {appointments
-                      .sort((a, b) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime())
-                      .map((apt) => (
-                        <Link
-                          key={apt._id}
-                          href={`/appointments/${apt._id}`}
-                          className="block p-4 border border-gray-200 rounded-xl hover:shadow-md hover:border-blue-300 transition-all bg-gradient-to-r from-white to-gray-50"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                <span className="text-sm font-bold text-gray-900">{apt.appointmentCode}</span>
-                                <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                  apt.status === 'scheduled' || apt.status === 'confirmed'
-                                    ? 'bg-green-100 text-green-700 border border-green-200'
-                                    : apt.status === 'completed'
-                                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                    : apt.status === 'cancelled'
-                                    ? 'bg-red-100 text-red-700 border border-red-200'
-                                    : 'bg-gray-100 text-gray-700 border border-gray-200'
-                                }`}>
-                                  {apt.status}
-                                </span>
-                              </div>
-                              <p className="text-sm font-semibold text-gray-900 mb-1">
-                                {new Date(apt.appointmentDate).toLocaleDateString('en-US', {
-                                  weekday: 'long',
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric',
-                                })}
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                {new Date(`2000-01-01T${apt.appointmentTime}`).toLocaleTimeString('en-US', {
-                                  hour: 'numeric',
-                                  minute: '2-digit',
-                                  hour12: true,
-                                })}
-                              </p>
-                              {apt.doctor && (
-                                <p className="text-sm text-gray-600 mt-1">
-                                  Dr. {apt.doctor.firstName} {apt.doctor.lastName}
-                                </p>
-                              )}
-                            </div>
-                            <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                        </Link>
-                      ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Prescriptions Tab */}
-            {activeTab === 'prescriptions' && (
-              <div>
-                {prescriptions.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">No prescriptions found</h3>
-                    <p className="text-sm text-gray-600 mb-4">Create a prescription for this patient.</p>
-                    <Link
-                      href={`/prescriptions/new?patientId=${patientId}`}
-                      className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-block"
-                    >
-                      New Prescription
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {prescriptions
-                      .sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())
-                      .map((prescription) => (
-                        <Link
-                          key={prescription._id}
-                          href={`/prescriptions/${prescription._id}`}
-                          className="block p-4 border border-gray-200 rounded-xl hover:shadow-md hover:border-purple-300 transition-all bg-gradient-to-r from-white to-gray-50"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                <span className="text-sm font-bold text-gray-900">{prescription.prescriptionCode}</span>
-                                <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                  prescription.status === 'active'
-                                    ? 'bg-green-100 text-green-700 border border-green-200'
-                                    : prescription.status === 'completed'
-                                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                    : prescription.status === 'dispensed'
-                                    ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                                    : 'bg-gray-100 text-gray-700 border border-gray-200'
-                                }`}>
-                                  {prescription.status}
-                                </span>
-                              </div>
-                              <p className="text-sm font-semibold text-gray-900">
-                                Issued: {new Date(prescription.issuedAt).toLocaleDateString()}
-                              </p>
-                              {prescription.medications && prescription.medications.length > 0 && (
-                                <p className="text-sm text-gray-600 mt-1">
-                                  {prescription.medications.length} medication(s)
-                                </p>
-                              )}
-                            </div>
-                            <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                        </Link>
-                      ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Invoices Tab */}
-            {activeTab === 'invoices' && (
-              <div>
-                {invoices.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">No invoices found</h3>
-                    <p className="text-sm text-gray-600 mb-4">Create an invoice for this patient.</p>
-                    <Link
-                      href={`/invoices/new?patientId=${patientId}`}
-                      className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-block"
-                    >
-                      Create Invoice
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {invoices
-                      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                      .map((invoice) => (
-                        <Link
-                          key={invoice._id}
-                          href={`/invoices/${invoice._id}`}
-                          className="block p-4 border border-gray-200 rounded-xl hover:shadow-md hover:border-amber-300 transition-all bg-gradient-to-r from-white to-gray-50"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                <span className="text-sm font-bold text-gray-900">{invoice.invoiceNumber}</span>
-                                <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                  invoice.status === 'paid'
-                                    ? 'bg-green-100 text-green-700 border border-green-200'
-                                    : invoice.status === 'unpaid'
-                                    ? 'bg-red-100 text-red-700 border border-red-200'
-                                    : invoice.status === 'partial'
-                                    ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
-                                    : 'bg-gray-100 text-gray-700 border border-gray-200'
-                                }`}>
-                                  {invoice.status}
-                                </span>
-                              </div>
-                              <p className="text-sm font-semibold text-gray-900">
-                                Total: {formatCurrency(invoice.total)}
-                              </p>
-                              {invoice.outstandingBalance > 0 && invoice.status !== 'paid' && invoice.status !== 'refunded' && (
-                                <p className="text-sm text-red-600 font-semibold mt-1">
-                                  Outstanding: {formatCurrency(invoice.outstandingBalance)}
-                                </p>
-                              )}
-                              <p className="text-xs text-gray-600 mt-1">
-                                Created: {new Date(invoice.createdAt).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                        </Link>
-                      ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Lab Results Tab */}
-            {activeTab === 'lab-results' && (
-              <div>
-                {labResults.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">No lab results found</h3>
-                    <p className="text-sm text-gray-600 mb-4">Add lab results for this patient.</p>
-                    <Link
-                      href={`/lab-results/new?patientId=${patientId}`}
-                      className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-block"
-                    >
-                      Add Lab Result
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {labResults
-                      .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
-                      .map((lab) => (
-                        <Link
-                          key={lab._id}
-                          href={`/lab-results/${lab._id}`}
-                          className="block p-4 border border-gray-200 rounded-xl hover:shadow-md hover:border-teal-300 transition-all bg-gradient-to-r from-white to-gray-50"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                <span className="text-sm font-bold text-gray-900">{lab.requestCode}</span>
-                                <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                  lab.status === 'completed'
-                                    ? 'bg-green-100 text-green-700 border border-green-200'
-                                    : lab.status === 'pending'
-                                    ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
-                                    : 'bg-gray-100 text-gray-700 border border-gray-200'
-                                }`}>
-                                  {lab.status}
-                                </span>
-                              </div>
-                              {lab.testName && (
-                                <p className="text-sm font-semibold text-gray-900">{lab.testName}</p>
-                              )}
-                              <p className="text-xs text-gray-600 mt-1">
-                                Ordered: {new Date(lab.orderDate).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                        </Link>
-                      ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* App Access Tab */}
-            {activeTab === 'app-access' && (
-              <div className="max-w-lg space-y-6">
-                {/* Status banner */}
-                <div className={`flex items-center gap-3 p-4 rounded-xl border ${credStatus?.hasPassword ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${credStatus?.hasPassword ? 'bg-green-100' : 'bg-amber-100'}`}>
-                    {credStatus?.hasPassword ? (
-                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                    )}
-                  </div>
-                  <div>
-                    <p className={`font-semibold text-sm ${credStatus?.hasPassword ? 'text-green-800' : 'text-amber-800'}`}>
-                      {credStatus === null ? 'Loading…' : credStatus.hasPassword ? 'Password is set' : 'No password set'}
-                    </p>
-                    <p className={`text-xs mt-0.5 ${credStatus?.hasPassword ? 'text-green-700' : 'text-amber-700'}`}>
-                      Login email: <span className="font-medium">{credStatus?.email ?? patient.email ?? '—'}</span>
-                    </p>
-                  </div>
-                </div>
-
-                <form onSubmit={handleSetCredentials} className="space-y-5">
-                  {credError && (
-                    <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
-                      <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                      </svg>
-                      <p className="text-sm text-red-700 font-medium">{credError}</p>
-                    </div>
-                  )}
-
-                  {credSuccess && (
-                    <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl p-4">
-                      <svg className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
-                      <p className="text-sm text-green-700 font-medium">{credSuccess}</p>
-                    </div>
-                  )}
-
-                  {/* Login email */}
-                  <div>
-                    <label htmlFor="patient-app-email" className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      Login Email <span className="font-normal text-gray-500">(optional)</span>
-                    </label>
-                    <input
-                      id="patient-app-email"
-                      type="email"
-                      value={credEmail}
-                      onChange={(e) => setCredEmail(e.target.value)}
-                      placeholder={patient.email || 'patient@email.com'}
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition-all bg-white text-sm"
-                      disabled={credLoading}
-                    />
-                    <p className="text-xs text-gray-500 mt-1.5">
-                      Leave blank to keep the existing email on record.
-                    </p>
-                  </div>
-
-                  {/* New password */}
-                  <div>
-                    <label htmlFor="patient-app-password" className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      {credStatus?.hasPassword ? 'Reset Password' : 'Set Password'} <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      id="patient-app-password"
-                      type="password"
-                      value={credPassword}
-                      onChange={(e) => setCredPassword(e.target.value)}
-                      placeholder="Minimum 8 characters"
-                      required
-                      minLength={8}
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition-all bg-white text-sm"
-                      disabled={credLoading}
-                    />
-                  </div>
-
-                  {/* Confirm */}
-                  <div>
-                    <label htmlFor="patient-app-password-confirm" className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      Confirm Password <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      id="patient-app-password-confirm"
-                      type="password"
-                      value={credConfirm}
-                      onChange={(e) => setCredConfirm(e.target.value)}
-                      placeholder="Re-enter the password"
-                      required
-                      minLength={8}
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition-all bg-white text-sm"
-                      disabled={credLoading}
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={credLoading}
-                    className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {credLoading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Saving…
-                      </span>
-                    ) : (
-                      credStatus?.hasPassword ? 'Reset Patient Password' : 'Set Patient Password'
-                    )}
-                  </button>
-                </form>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-sm font-semibold text-blue-900">Staff note</span>
-                  </div>
-                  <p className="text-xs text-blue-800 leading-relaxed">
-                    After setting a password, provide the credentials to the patient so they can log in to the clinic mobile app. This action bypasses the current password — use it for initial setup or password resets only.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Files Tab */}
-            {activeTab === 'files' && (
-              <div>
-                <FileUploadSection onUpload={handleFileUpload} />
-                <div className="mt-6">
-                  {!patient.attachments || patient.attachments.length === 0 ? (
-                    <div className="text-center py-12">
-                      <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <h3 className="text-lg font-bold text-gray-900 mb-2">No files uploaded</h3>
-                      <p className="text-sm text-gray-600">Upload lab results, prescriptions, or other documents above.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {patient.attachments.map((file) => (
-                        <div key={file._id} className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:shadow-md hover:border-blue-300 transition-all bg-gradient-to-r from-white to-gray-50">
-                          <div className="flex items-center gap-4 flex-1 min-w-0">
-                            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
-                              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                              </svg>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-gray-900 truncate">{file.filename}</p>
-                              <p className="text-xs text-gray-600 mt-1">
-                                {file.size ? `${(file.size / 1024).toFixed(2)} KB` : 'Unknown size'} • 
-                                Uploaded {new Date(file.uploadDate).toLocaleDateString()}
-                              </p>
-                              {file.notes && (
-                                <p className="text-xs text-gray-600 mt-1">{file.notes}</p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            {file.url && (
-                              <a
-                                href={file.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-3 py-2 text-sm font-semibold text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-                              >
-                                View
-                              </a>
-                            )}
-                            <button
-                              onClick={() => handleDeleteFileClick(file._id)}
-                              className="px-3 py-2 text-sm font-semibold text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-          {/* Delete File Alert Dialog */}
-          <AlertDialog 
-          open={deleteFileDialogOpen} 
-          onOpenChange={setDeleteFileDialogOpen}
-          title="Delete File"
-          description="Are you sure you want to delete this file? This action cannot be undone."
-        >
-          <button
-            onClick={() => {
-              setDeleteFileDialogOpen(false);
-              setFileToDelete(null);
-            }}
-            className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleDeleteFile}
-            disabled={deletingFile}
-            className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold shadow-md"
-          >
-            {deletingFile ? 'Deleting…' : 'Delete'}
-          </button>
-        </AlertDialog>
-        </div>
+          </>
+        )}
       </div>
     </section>
   );
 }
 
-function FileUploadSection({ onUpload }: { onUpload: (file: File, notes?: string) => void }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [notes, setNotes] = useState('');
-  const [uploading, setUploading] = useState(false);
+function RecordRow({ row: r, showKind }: { row: Row; showKind: boolean }) {
+  const body = (
+    <>
+      <span className="font-mono text-sm tabular-nums text-gray-900 sm:w-28 sm:shrink-0">{shortDate(r.date)}</span>
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate text-sm ${r.struck ? 'text-gray-500 line-through decoration-gray-400' : 'text-gray-900'}`}>
+          {showKind && <span className="mr-2 text-xs font-medium text-gray-500">{r.kind}</span>}
+          {r.title}
+        </span>
+        {r.sub && <span className="block truncate text-sm text-gray-500">{r.sub}</span>}
+      </span>
+      {r.state && <span className="shrink-0 sm:text-right">{r.state}</span>}
+    </>
+  );
+  const cls = 'flex flex-col gap-1 px-5 py-3 sm:flex-row sm:items-center sm:gap-4';
+  return r.href ? (
+    <Link href={r.href} className={`${cls} transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal`}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
+  );
+}
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!file) return;
+function FilesList({
+  patientId,
+  files,
+  canEdit,
+  busy,
+  onRemove,
+  attach,
+}: {
+  patientId: string;
+  files: Patient['attachments'];
+  canEdit: boolean;
+  busy: boolean;
+  onRemove: (f: Patient['attachments'][number]) => void;
+  attach: ReactNode;
+}) {
+  const sorted = [...files].sort((a, b) => new Date(b.uploadDate ?? 0).getTime() - new Date(a.uploadDate ?? 0).getTime());
+  return (
+    <>
+      {sorted.length === 0 ? (
+        <p className="px-5 py-10 text-center text-sm text-gray-500">No files yet{canEdit ? '. Attach outside results, referral letters or ID scans below.' : '.'}</p>
+      ) : (
+        <ul className="divide-y divide-gray-100">
+          {sorted.map((f, i) => {
+            const url = `/api/patients/${patientId}/files/${f._id}`;
+            const name = f.filename || 'Untitled file';
+            return (
+              <li key={f._id} className="motion-row-in flex items-center gap-4 px-5 py-3" style={{ animationDelay: `${Math.min(i * 18, 220)}ms` }}>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-500" aria-hidden="true">
+                  <Svg d={ICONS.doc} className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-gray-900" title={name}>
+                    {name}
+                  </span>
+                  <span className="block truncate text-sm text-gray-500">
+                    <span className="font-mono text-xs">
+                      {f.uploadDate ? shortDate(f.uploadDate) : 'Date unknown'}
+                      {f.size ? ` · ${fileSize(f.size)}` : ''}
+                    </span>
+                    {has(f.notes) && <> · {f.notes}</>}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-1">
+                  <a href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${name}`} title="Open in a new tab" className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-brand-teal-light hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                    <Svg d={ICONS.external} />
+                  </a>
+                  <a href={`${url}?download=1`} aria-label={`Download ${name}`} title="Download" className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-brand-teal-light hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                    <Svg d={ICONS.download} />
+                  </a>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => onRemove(f)}
+                      disabled={busy}
+                      aria-label={`Remove ${name}`}
+                      title="Remove"
+                      className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-40 ${FOCUS_RING}`}
+                    >
+                      <Svg d={ICONS.trash} />
+                    </button>
+                  )}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {attach}
+    </>
+  );
+}
 
-    setUploading(true);
-    try {
-      await onUpload(file, notes || undefined);
-      setFile(null);
-      setNotes('');
-      // Reset file input
-      const fileInput = document.getElementById('file-input') as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
-    } finally {
-      setUploading(false);
-    }
-  };
+// ---------------------------------------------------------------------------
+// Side column
+// ---------------------------------------------------------------------------
+
+function ClinicalPanel({ patient: p, allergies }: { patient: Patient; allergies: ReturnType<typeof allergyList> }) {
+  const order = { active: 0, chronic: 1, resolved: 2 } as const;
+  const conditions = [...(p.preExistingConditions ?? [])].filter((c) => has(c.condition)).sort((a, b) => order[a.status ?? 'active'] - order[b.status ?? 'active']);
+  const family = Object.entries(p.familyHistory ?? {}).filter(([k]) => has(k));
 
   return (
-    <div className="border border-gray-200 rounded-xl p-5 sm:p-6 bg-gradient-to-br from-gray-50 to-white">
-      <div className="flex items-center gap-3 mb-5">
-        <div className="p-2 bg-blue-500 rounded-lg">
-          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-          </svg>
-        </div>
-        <h3 className="text-lg font-bold text-gray-900">Upload File</h3>
+    <Panel id="patient-clinical" title="Clinical background">
+      <div className="divide-y divide-gray-100">
+        <Group title="Allergies">
+          {allergies.length === 0 ? (
+            <p className="text-sm text-gray-500">None on file. That isn’t the same as none: ask the patient.</p>
+          ) : (
+            <ul className="space-y-1.5 text-sm">
+              {allergies.map((a, i) => (
+                <li key={i}>
+                  <span className={`font-semibold ${isSevere(a.severity) ? 'text-red-700' : 'text-gray-900'}`}>{a.substance}</span>
+                  {(a.reaction || a.severity) && (
+                    <span className={isSevere(a.severity) ? 'text-red-700' : 'text-gray-600'}> · {[a.reaction, a.severity?.toLowerCase()].filter(Boolean).join(', ')}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Group>
+        <Group title="Conditions">
+          {conditions.length === 0 ? (
+            <p className="text-sm text-gray-500">None on file.</p>
+          ) : (
+            <ul className="space-y-1.5 text-sm">
+              {conditions.map((c, i) => (
+                <li key={i}>
+                  <span className={c.status === 'resolved' ? 'text-gray-500' : 'text-gray-900'}>{c.condition}</span>
+                  <span className="text-gray-500">
+                    {' · '}
+                    {c.status ?? 'active'}
+                    {c.diagnosisDate ? ` since ${calendarDate(c.diagnosisDate)}` : ''}
+                  </span>
+                  {has(c.notes) && <span className="block text-gray-500">{c.notes}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Group>
+        {has(p.medicalHistory) && (
+          <Group title="Medical history">
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{p.medicalHistory}</p>
+          </Group>
+        )}
+        {family.length > 0 && (
+          <Group title="Family history">
+            <ul className="space-y-1 text-sm text-gray-700">
+              {family.map(([condition, who]) => (
+                <li key={condition}>
+                  {condition}
+                  {has(who) && <span className="text-gray-500"> · {who}</span>}
+                </li>
+              ))}
+            </ul>
+          </Group>
+        )}
       </div>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="file-input" className="block text-sm font-semibold text-gray-700 mb-2">
-            Select File (Lab Results, Prescriptions, Documents)
-          </label>
-          <input
-            id="file-input"
-            type="file"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-all"
-            required
-          />
-        </div>
-        <div>
-          <label htmlFor="file-notes" className="block text-sm font-semibold text-gray-700 mb-2">Notes (Optional)</label>
-          <input
-            id="file-notes"
-            type="text"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g., Lab results from 2024-01-15"
-            className="block w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={!file || uploading}
-          className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md"
-        >
-          {uploading ? 'Uploading...' : 'Upload File'}
-        </button>
-      </form>
+    </Panel>
+  );
+}
+
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="px-5 py-3.5">
+      <h3 className="mb-1.5 text-sm font-semibold text-gray-900">{title}</h3>
+      {children}
     </div>
   );
 }
 
+function DetailsPanel({ patient: p, missing, canEdit, patientId }: { patient: Patient; missing: string[]; canEdit: boolean; patientId: string }) {
+  const address = [p.address?.street, p.address?.city, p.address?.state, p.address?.zipCode].filter(has).join(', ');
+  const ec = p.emergencyContact;
+  return (
+    <Panel id="patient-details" title="Contact and details">
+      {missing.length > 0 && (
+        <p className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-sm text-amber-800">
+          <Svg d={ICONS.alert} className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Not on file: {missing.join(', ')}.
+            {canEdit && (
+              <>
+                {' '}
+                <Link href={`/patients/${patientId}/edit`} className={`rounded font-semibold underline underline-offset-2 hover:text-amber-900 ${FOCUS_RING}`}>
+                  Add them
+                </Link>
+              </>
+            )}
+          </span>
+        </p>
+      )}
+      <dl className="divide-y divide-gray-100 py-1">
+        <Field label="Phone">
+          {has(p.phone) ? (
+            <a href={`tel:${p.phone}`} className={`rounded font-mono hover:text-brand-teal-deep ${FOCUS_RING}`}>
+              {p.phone}
+            </a>
+          ) : (
+            <NotOnFile />
+          )}
+        </Field>
+        <Field label="Email">
+          {has(p.email) ? (
+            <a href={`mailto:${p.email}`} className={`rounded hover:text-brand-teal-deep ${FOCUS_RING}`}>
+              {p.email}
+            </a>
+          ) : (
+            <NotOnFile />
+          )}
+        </Field>
+        <Field label="Address">{address || <NotOnFile />}</Field>
+        <Field label="Emergency">
+          {ec?.name || ec?.phone ? (
+            <>
+              {ec.name}
+              {ec.relationship && <span className="text-gray-500"> · {ec.relationship}</span>}
+              {ec.phone && <span className="block font-mono">{ec.phone}</span>}
+            </>
+          ) : (
+            <NotOnFile />
+          )}
+        </Field>
+        {has(p.identifiers?.philHealth) && (
+          <Field label="PhilHealth">
+            <span className="font-mono">{p.identifiers!.philHealth}</span>
+          </Field>
+        )}
+        {has(p.identifiers?.govId) && (
+          <Field label="Government ID">
+            <span className="font-mono">{p.identifiers!.govId}</span>
+          </Field>
+        )}
+        {has(p.civilStatus) && <Field label="Civil status">{titleCase(p.civilStatus!)}</Field>}
+        {has(p.nationality) && <Field label="Nationality">{p.nationality}</Field>}
+        {has(p.occupation) && <Field label="Occupation">{p.occupation}</Field>}
+      </dl>
+    </Panel>
+  );
+}
+
+function BillingPanel({ billing, currency, canInvoice, patientId }: { billing: NonNullable<PatientRecord['billing']>; currency: string; canInvoice: boolean; patientId: string }) {
+  const owed = billing.outstanding > 0;
+  return (
+    <Panel
+      id="patient-billing"
+      title="Billing"
+      aside={
+        canInvoice ? (
+          <Link href={`/invoices/new?patientId=${patientId}`} className={`rounded text-sm font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+            New invoice
+          </Link>
+        ) : null
+      }
+    >
+      {billing.total === 0 ? (
+        <p className="px-5 py-4 text-sm text-gray-500">No invoices yet.</p>
+      ) : (
+        <dl className="divide-y divide-gray-100 py-1">
+          <Field label="Balance due">
+            <span className={`font-mono font-semibold ${owed ? 'text-red-700' : 'text-gray-900'}`}>{money(billing.outstanding, currency)}</span>
+            {owed && <span className="text-red-700"> · {billing.unpaidCount} unpaid</span>}
+          </Field>
+          <Field label="Billed">
+            <span className="font-mono">{money(billing.billed, currency)}</span>
+            <span className="text-gray-500"> · {billing.total} invoice{billing.total === 1 ? '' : 's'}</span>
+          </Field>
+          <Field label="Paid">
+            <span className="font-mono">{money(billing.paid, currency)}</span>
+          </Field>
+        </dl>
+      )}
+    </Panel>
+  );
+}
+
+function AppAccessPanel({ patientId, fallbackEmail, firstName }: { patientId: string; fallbackEmail?: string; firstName: string }) {
+  const ids = useId();
+  const status = useKeyedFetch<{ hasPassword: boolean; email: string | null }>(`/api/patients/${patientId}/app-credentials`);
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [show, setShow] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  const s = status.value;
+  const loginEmail = s?.email ?? fallbackEmail ?? null;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (password.length < 8) return setError('Use at least 8 characters.');
+    if (password !== confirm) return setError('The two passwords don’t match.');
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/app-credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, ...(email.trim() ? { email: email.trim() } : {}) }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(formatApiError(json, 'The password wasn’t saved'));
+      setDone(`Saved. ${firstName} can sign in as ${json.email ?? loginEmail ?? 'their email'}. Tell them the password in person or by text; it isn’t sent to them, and their other sign-ins end.`);
+      setOpen(false);
+      setPassword('');
+      setConfirm('');
+      setEmail('');
+      status.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The password wasn’t saved');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Panel id="patient-app" title="Patient app">
+      <div className="px-5 py-4 text-sm">
+        {status.error && !s ? (
+          <p className="text-gray-600">
+            The sign-in status didn’t load.{' '}
+            <button type="button" onClick={status.reload} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+              Try again
+            </button>
+          </p>
+        ) : !s ? (
+          <p className="text-gray-500">Checking…</p>
+        ) : (
+          <p className="text-gray-700">
+            {s.hasPassword ? 'Can sign in' : 'No app password yet'}
+            {loginEmail ? (
+              <>
+                {s.hasPassword ? ' as ' : '. Sign-in email will be '}
+                <span className="font-medium text-gray-900">{loginEmail}</span>
+              </>
+            ) : (
+              '. Add an email to sign in with.'
+            )}
+            {s.hasPassword ? '.' : loginEmail ? '.' : ''}
+          </p>
+        )}
+        {done && (
+          <p role="status" className="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-green-800">
+            {done}
+          </p>
+        )}
+        {s && !open && (
+          <button
+            type="button"
+            onClick={() => {
+              setDone(null);
+              setOpen(true);
+            }}
+            className={`mt-3 inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}
+          >
+            <Svg d={ICONS.key} />
+            {s.hasPassword ? 'Reset the password' : 'Set a password'}
+          </button>
+        )}
+      </div>
+      {open && (
+        <form onSubmit={submit} className="motion-panel-in flex flex-col gap-3 border-t border-gray-200 bg-gray-50/60 px-5 py-4" noValidate>
+          {error && (
+            <p role="alert" className="flex items-start gap-1.5 text-sm font-medium text-red-700">
+              <Svg d={ICONS.alert} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {error}
+            </p>
+          )}
+          <div>
+            <label htmlFor={`${ids}-email`} className="mb-1.5 block text-sm font-medium text-gray-700">
+              Sign-in email <span className="font-normal text-gray-500">(leave blank to keep {loginEmail ?? 'the one on file'})</span>
+            </label>
+            <input id={`${ids}-email`} type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={loginEmail ?? 'patient@example.com'} className={FIELD} />
+          </div>
+          <div>
+            <label htmlFor={`${ids}-pw`} className="mb-1.5 block text-sm font-medium text-gray-700">
+              New password
+            </label>
+            <input id={`${ids}-pw`} type={show ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" className={FIELD} />
+          </div>
+          <div>
+            <label htmlFor={`${ids}-pw2`} className="mb-1.5 block text-sm font-medium text-gray-700">
+              Type it again
+            </label>
+            <input id={`${ids}-pw2`} type={show ? 'text' : 'password'} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className={FIELD} />
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-teal-dark focus:ring-brand-teal" />
+            Show the password
+          </label>
+          <p className="text-xs text-gray-500">This replaces any password the patient set themselves and signs them out of the app everywhere.</p>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setOpen(false)} disabled={saving} className={`rounded-md px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 ${FOCUS_RING}`}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} aria-busy={saving} className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}>
+              {saving ? 'Saving…' : 'Save password'}
+            </button>
+          </div>
+        </form>
+      )}
+    </Panel>
+  );
+}

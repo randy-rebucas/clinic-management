@@ -47,7 +47,10 @@ export async function POST(
       tenantFilter(tenantId, { _id: id }),
       { $push: { internalNotes: note } },
       { new: true }
-    ).populate('specializationId', 'name description category');
+    )
+      .select('internalNotes')
+      .populate('internalNotes.createdBy', 'name')
+      .lean();
 
     if (!doctor) {
       return notFound('Doctor');
@@ -79,19 +82,19 @@ export async function DELETE(
     const { id } = await params;
     if (!isValidId(id)) return notFound('Doctor');
 
+    // By the note's own id, so a note added or removed meanwhile can't shift which one goes.
+    // (`index` is still read for older callers.)
+    const noteId = request.nextUrl.searchParams.get('noteId');
     const noteIndex = request.nextUrl.searchParams.get('index');
-    if (noteIndex === null) {
-      return NextResponse.json(
-        { success: false, error: 'Note index required' },
-        { status: 400 }
-      );
+    if (noteId === null && noteIndex === null) {
+      return NextResponse.json({ success: false, error: 'Note id required' }, { status: 400 });
+    }
+    if (noteId !== null && !isValidId(noteId)) {
+      return NextResponse.json({ success: false, error: 'Invalid note id' }, { status: 400 });
     }
     const index = Number(noteIndex);
-    if (!Number.isInteger(index) || index < 0) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid note index' },
-        { status: 400 }
-      );
+    if (noteId === null && (!Number.isInteger(index) || index < 0)) {
+      return NextResponse.json({ success: false, error: 'Invalid note index' }, { status: 400 });
     }
 
     const doctor = await Doctor.findOne(tenantFilter(tenantId, { _id: id }));
@@ -99,12 +102,17 @@ export async function DELETE(
       return notFound('Doctor');
     }
 
-    if (doctor.internalNotes && doctor.internalNotes.length > index) {
-      doctor.internalNotes.splice(index, 1);
-      await doctor.save();
-    }
+    const notes = doctor.internalNotes || [];
+    const at = noteId !== null ? notes.findIndex((n: any) => String(n._id) === noteId) : index < notes.length ? index : -1;
+    if (at === -1) return notFound('Note');
+    notes.splice(at, 1);
+    await doctor.save();
 
-    return NextResponse.json({ success: true, data: doctor });
+    const fresh = await Doctor.findOne(tenantFilter(tenantId, { _id: id }))
+      .select('internalNotes')
+      .populate('internalNotes.createdBy', 'name')
+      .lean();
+    return NextResponse.json({ success: true, data: fresh });
   } catch (error: any) {
     console.error('Error deleting note:', error);
     return NextResponse.json(

@@ -1,15 +1,7 @@
-import { getUser } from '@/app/lib/dal';
-import { redirect } from 'next/navigation';
 import MembershipsPageClient from '@/components/MembershipsPageClient';
+import { loadMembershipPermissions } from '@/lib/memberships-page';
 
-export default async function MembershipsPage() {
-  const user = await getUser();
-  
-  if (!user || !('role' in user)) {
-    redirect('/login');
-  }
-
-  const safeUser = JSON.parse(JSON.stringify(user));
-  return <MembershipsPageClient user={safeUser} />;
+export default async function MembershipsPage({ searchParams }: { searchParams: Promise<{ status?: string; tier?: string }> }) {
+  const [permissions, sp] = await Promise.all([loadMembershipPermissions(), searchParams]);
+  return <MembershipsPageClient permissions={permissions} initialStatus={sp.status ?? null} initialTier={sp.tier ?? null} />;
 }
-

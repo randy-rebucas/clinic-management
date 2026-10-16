@@ -10,6 +10,7 @@ import Prescription from '@/models/Prescription';
 import Visit from '@/models/Visit';
 import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
+import Referral from '@/models/Referral';
 import User from '@/models/User';
 import '@/models/Patient';
 import { nextSequence } from '@/lib/counters';
@@ -292,6 +293,54 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
     ],
     patient: (l) => l.patient,
     issuer: (l) => l.orderedBy?.name,
+  },
+
+  referral_letter: {
+    label: 'Referral Letter',
+    load: (id, tenantId) => {
+      const q = tenantScopedQuery(id, tenantId);
+      return q
+        ? Referral.findOne(q)
+            .populate('patient', 'firstName lastName')
+            .populate('referringDoctor', 'firstName lastName')
+            .populate('receivingDoctor', 'firstName lastName')
+        : Promise.resolve(null);
+    },
+    code: (r) => r.referralCode,
+    canonical: (r) => ({
+      code: str(r.referralCode),
+      patient: idOf(r.patient),
+      referringDoctor: idOf(r.referringDoctor),
+      receivingDoctor: idOf(r.receivingDoctor),
+      receivingClinic: str(r.receivingClinic),
+      referredDate: iso(r.referredDate),
+      reason: str(r.reason),
+      urgency: str(r.urgency),
+      specialty: str(r.specialty),
+      chiefComplaint: str(r.chiefComplaint),
+      diagnosis: str(r.diagnosis),
+      relevantHistory: str(r.relevantHistory),
+      medications: (r.medications || []).map((m: any) => str(m)),
+      notes: str(r.notes),
+    }),
+    revocation: (r) =>
+      r.status === 'cancelled'
+        ? 'This referral was cancelled by the clinic.'
+        : r.status === 'declined'
+          ? 'The receiving doctor or clinic declined this referral.'
+          : null,
+    facts: (r, _currency, tz) => [
+      { label: 'Referral code', value: r.referralCode || '—' },
+      { label: 'Date referred', value: longDate(r.referredDate, tz) },
+      {
+        label: 'Referred to',
+        value: r.receivingDoctor ? `Dr. ${r.receivingDoctor.firstName} ${r.receivingDoctor.lastName}` : r.receivingClinic || '—',
+      },
+      ...(r.specialty ? [{ label: 'Specialty', value: String(r.specialty) }] : []),
+      { label: 'Urgency', value: String(r.urgency || 'routine').toUpperCase() },
+    ],
+    patient: (r) => r.patient,
+    issuer: (r) => (r.referringDoctor ? `Dr. ${r.referringDoctor.firstName} ${r.referringDoctor.lastName}` : undefined),
   },
 
   receipt: {

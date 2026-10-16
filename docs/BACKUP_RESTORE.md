@@ -56,6 +56,9 @@ Never restore straight over production as a first step. Restore to a separate cl
 
 - `scripts/backup/backup.sh` / `restore.sh` wrap `mongodump` / `mongorestore` for ad-hoc copies
   (e.g. before a risky migration). `restore.sh` writes into whatever `MONGODB_URI` points at, so double-check it.
+- `pnpm db:backup:zip [label]` runs `mongodump` on `MONGODB_URI` and writes `backups/backup-<time>.zip`
+  (needs MongoDB Database Tools on PATH). To restore: unzip, then
+  `mongorestore --uri=<target> backup-<time>/` — add `--drop` only if you mean to replace existing collections.
 - `pnpm db:backup` / `pnpm db:restore` use EJSON. Restore loads into temporary collections and only swaps them
   in after the whole file has been validated, and it asks for `--confirm`.
 - Dumps contain patient data and password hashes: store them encrypted, never in the repo, and delete them

@@ -561,14 +561,14 @@ export default function TenantOnboardClient() {
         {/* Logo */}
         <div className="relative z-10">
           <Link href="/" className="flex items-center gap-3">
-            <BrandLogo size={48} rounded="rounded-2xl" />
+            <BrandLogo size={48} rounded="rounded-lg" />
             <span className="text-white font-bold text-lg">My Clinic Software</span>
           </Link>
         </div>
 
         {/* Center content */}
         <div className="relative z-10 space-y-6">
-          <div className="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center border border-white/20">
+          <div className="w-14 h-14 bg-white/15 rounded-lg flex items-center justify-center border border-white/20">
             <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
             </svg>
@@ -637,7 +637,7 @@ export default function TenantOnboardClient() {
         <div className="w-full max-w-xl">
           {/* Mobile logo */}
           <Link href="/" className="flex lg:hidden items-center justify-center gap-3 mb-10">
-            <BrandLogo size={44} rounded="rounded-2xl" className="shadow-lg" />
+            <BrandLogo size={44} rounded="rounded-lg" className="shadow-lg" />
             <span className="text-gray-900 font-bold text-lg">My Clinic Software</span>
           </Link>
 

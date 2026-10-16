@@ -94,10 +94,14 @@ export async function POST(
       }
     }
 
-    labResult.notificationSent = results.emailSent || results.smsSent;
-    labResult.notificationSentAt = new Date();
-    labResult.notificationMethod = notificationMethod;
-    await labResult.save();
+    const sent = results.emailSent || results.smsSent;
+    // Only a message that actually went out is recorded; a failed attempt must not read as "patient told".
+    if (sent) {
+      labResult.notificationSent = true;
+      labResult.notificationSentAt = new Date();
+      labResult.notificationMethod = results.emailSent && results.smsSent ? 'both' : results.smsSent ? 'sms' : 'email';
+      await labResult.save();
+    }
 
     // In-app notification for a user account at this clinic with the patient's email
     if (patient.email) {
@@ -105,7 +109,7 @@ export async function POST(
         const User = (await import('@/models/User')).default;
         const user = await User.findOne({ email: patient.email, tenantId: tenantObjectId }).select('_id');
         if (user) {
-          await createLabResultNotification(user._id, labResult);
+          await createLabResultNotification(user._id, labResult, tenantObjectId);
         }
       } catch (error: any) {
         console.error('Error creating in-app notification:', error);
@@ -113,8 +117,9 @@ export async function POST(
     }
 
     return NextResponse.json({
-      success: results.emailSent || results.smsSent,
+      success: sent,
       data: results,
+      ...(sent ? {} : { error: results.errors.join('. ') || 'Nothing was sent' }),
     });
   } catch (error: any) {
     console.error('Error sending lab result notification:', error);

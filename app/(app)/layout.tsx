@@ -41,14 +41,14 @@ export default async function AppLayout({
         <SidebarProvider>
           <a
             href="#main-content"
-            className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-4 focus:py-2 focus:bg-white focus:text-blue-700 focus:rounded-lg focus:shadow-lg focus:ring-2 focus:ring-blue-500"
+            className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-4 focus:py-2 focus:bg-white focus:text-brand-teal-deep focus:font-semibold focus:rounded-md focus:shadow-lg focus:ring-2 focus:ring-brand-teal"
           >
             Skip to main content
           </a>
           <Suspense fallback={
-            <div className="fixed left-0 top-0 h-screen bg-white border-r border-gray-300 z-40" style={{ width: '280px' }}>
+            <div className="hidden lg:block fixed left-0 top-0 h-screen w-[280px] bg-white border-r border-gray-200 z-40">
               <div className="flex items-center justify-center h-full">
-                <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-100 border-t-blue-600"></div>
+                <div className="animate-spin rounded-full h-7 w-7 border-[3px] border-brand-teal-light border-t-brand-teal"></div>
               </div>
             </div>
           }>

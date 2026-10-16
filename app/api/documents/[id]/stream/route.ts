@@ -5,6 +5,7 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { loadDocumentFile } from '@/lib/document-file';
 import { fileResponseHeaders } from '@/lib/upload-validation';
+import { createAuditLog } from '@/lib/audit';
 
 export async function GET(
   request: NextRequest,
@@ -30,6 +31,20 @@ export async function GET(
     if (!file) {
       return NextResponse.json({ success: false, error: 'File not available' }, { status: 404 });
     }
+
+    // Opening a patient's file is recorded (PH DPA), as on the patient record.
+    void createAuditLog({
+      userId: ctx.session.userId,
+      userEmail: ctx.session.email,
+      userRole: ctx.session.role,
+      tenantId: ctx.tenantId,
+      action: 'view',
+      resource: 'document',
+      resourceId: document._id,
+      dataSubject: document.patient,
+      isSensitive: Boolean(document.patient),
+      description: `Opened document ${document.documentCode ?? id}`,
+    });
 
     return new NextResponse(new Uint8Array(file.buffer), {
       headers: fileResponseHeaders(file.contentType, document.originalFilename || document.filename, { size: file.buffer.length }),

@@ -65,12 +65,20 @@ const navItems = [
     category: 'Billing & Operations',
     requiresPermission: { resource: 'invoices', action: 'read' }
   },
-  { 
-    href: '/documents', 
+  {
+    href: '/memberships',
+    label: 'Memberships',
+    icon: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z',
+    category: 'Billing & Operations',
+    // Same rule as the page (lib/membership-access): billing readers; admins see every item.
+    requiresPermission: { resource: 'invoices', action: 'read' }
+  },
+  {
+    href: '/documents',
     label: 'Documents', 
     icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z',
     category: 'Billing & Operations',
-    requiresPermission: null // Documents - check if needed
+    requiresPermission: { resource: 'documents', action: 'read' }
   },
   { 
     href: '/referrals', 
@@ -84,7 +92,7 @@ const navItems = [
     label: 'Inventory', 
     icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
     category: 'Billing & Operations',
-    requiresPermission: null // Inventory - check if needed
+    requiresPermission: { resource: 'inventory', action: 'read' }
   },
   // Staff Management
   { 

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
 import User from '@/models/User';
-import { requirePermission } from '@/app/lib/auth-helpers';
+import Appointment from '@/models/Appointment';
+import Visit from '@/models/Visit';
+import Prescription from '@/models/Prescription';
+import '@/models/Role';
+import { hasPermission, requirePermission } from '@/app/lib/auth-helpers';
 import { revokeUserSessions } from '@/app/lib/dal';
 import {
   requireTenantSession,
@@ -12,7 +17,7 @@ import {
   notFound,
 } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
-import { updateDoctorSchema, resolveSpecialization, validationMessage } from '../_lib/doctor-input';
+import { updateDoctorSchema, duplicateResponse, resolveSpecialization, validationMessage } from '../_lib/doctor-input';
 
 export async function GET(
   request: NextRequest,
@@ -32,9 +37,14 @@ export async function GET(
     const { id } = await params;
     if (!isValidId(id)) return notFound('Doctor');
 
-    const doctor = await Doctor.findOne(tenantFilter(tenantId, { _id: id }))
-      .populate('specializationId', 'name description category')
-      .lean();
+    // Internal notes are for the people who manage doctors (doctors:update); everyone else who
+    // may read the roster, medical representatives included, gets the profile without them.
+    const canSeeNotes = await hasPermission(session, 'doctors', 'update');
+    const query = Doctor.findOne(tenantFilter(tenantId, { _id: id }))
+      .select(canSeeNotes ? '-performanceMetrics -professionalFees' : '-internalNotes -performanceMetrics -professionalFees')
+      .populate('specializationId', 'name description category');
+    if (canSeeNotes) query.populate('internalNotes.createdBy', 'name');
+    const doctor = await query.lean();
     if (!doctor) {
       return notFound('Doctor');
     }
@@ -103,12 +113,7 @@ export async function PUT(
         { status: 400 }
       );
     }
-    if (error.code === 11000) {
-      return NextResponse.json(
-        { success: false, error: 'Doctor with this email or license number already exists' },
-        { status: 409 }
-      );
-    }
+    if (error.code === 11000) return duplicateResponse(error);
     console.error('Error updating doctor:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update doctor' },
@@ -135,16 +140,47 @@ export async function DELETE(
     const { id } = await params;
     if (!isValidId(id)) return notFound('Doctor');
 
-    const doctor = await Doctor.findOneAndDelete(tenantFilter(tenantId, { _id: id }));
+    const doctor = await Doctor.findOne(tenantFilter(tenantId, { _id: id })).select('_id').lean<{ _id: Types.ObjectId } | null>();
     if (!doctor) {
       return notFound('Doctor');
     }
 
-    const user = await User.findOneAndDelete(tenantFilter(tenantId, { doctorProfile: doctor._id }))
-      .select('_id')
-      .lean<{ _id: unknown } | null>();
+    const user = await User.findOne(tenantFilter(tenantId, { doctorProfile: doctor._id }))
+      .select('_id role')
+      .populate('role', 'name')
+      .lean<{ _id: Types.ObjectId; role?: { name?: string } | null } | null>();
+
+    // A doctor with patients on record is never deleted: their appointments, notes and
+    // prescriptions would lose their doctor. Marking them inactive keeps the history.
+    const actors = user ? [doctor._id, user._id] : [doctor._id];
+    const [appointments, visits, prescriptions] = await Promise.all([
+      Appointment.countDocuments(tenantFilter(tenantId, { doctor: doctor._id })),
+      Visit.countDocuments(tenantFilter(tenantId, { provider: { $in: actors } })),
+      Prescription.countDocuments(tenantFilter(tenantId, { prescribedBy: { $in: actors } })),
+    ]);
+    if (appointments + visits + prescriptions > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'This doctor has appointments, visit notes or prescriptions on record, so the profile can’t be deleted. Mark them inactive instead: they are signed out and can’t be booked, and the records keep their name.',
+          records: { appointments, visits, prescriptions },
+        },
+        { status: 409 }
+      );
+    }
+
+    await Doctor.deleteOne(tenantFilter(tenantId, { _id: doctor._id }));
+
+    // The login goes with the profile only when it is a doctor-only account. Someone who added
+    // themselves as a doctor (an admin, an owner) keeps their own login; it is just unlinked.
     if (user) {
-      await revokeUserSessions(String(user._id));
+      const ownLogin = String(user._id) === session.userId;
+      if (!ownLogin && user.role?.name === 'doctor') {
+        await User.deleteOne(tenantFilter(tenantId, { _id: user._id }));
+        await revokeUserSessions(String(user._id));
+      } else {
+        await User.updateOne(tenantFilter(tenantId, { _id: user._id }), { $unset: { doctorProfile: 1 } });
+      }
     }
 
     return NextResponse.json({ success: true, data: {} });

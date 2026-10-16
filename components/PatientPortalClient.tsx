@@ -453,7 +453,7 @@ export default function PatientPortalClient() {
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      scheduled: 'bg-blue-100 text-blue-700 border-blue-200',
+      scheduled: 'bg-brand-teal-light text-brand-teal-deep border-brand-teal/30',
       confirmed: 'bg-green-100 text-green-700 border-green-200',
       completed: 'bg-gray-100 text-gray-700 border-gray-200',
       cancelled: 'bg-red-100 text-red-700 border-red-200',
@@ -468,10 +468,10 @@ export default function PatientPortalClient() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50/30 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="relative">
-            <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100 border-t-blue-600 mx-auto mb-6"></div>
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-brand-teal/20 border-t-brand-teal-dark mx-auto mb-6"></div>
           </div>
           <p className="text-gray-600 text-base font-medium">Loading your portal...</p>
         </div>
@@ -481,8 +481,8 @@ export default function PatientPortalClient() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50/30 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full text-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-red-100 rounded-full mb-6">
             <svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -492,7 +492,7 @@ export default function PatientPortalClient() {
           <p className="text-gray-600 text-base mb-6">{error}</p>
           <Link
             href="/patient/login"
-            className="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
+            className="inline-flex items-center px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all text-sm font-semibold shadow-md"
           >
             Return to Login
           </Link>
@@ -510,7 +510,7 @@ export default function PatientPortalClient() {
       id: 'overview',
       label: 'My Profile',
       description: 'View your information',
-      color: 'from-blue-500 to-blue-600',
+      color: 'bg-brand-teal-dark',
       icon: (
         <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -522,7 +522,7 @@ export default function PatientPortalClient() {
       label: 'Appointments',
       description: 'Scheduled visits',
       count: appointments.length,
-      color: 'from-indigo-500 to-indigo-600',
+      color: 'bg-brand-teal-dark',
       icon: (
         <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -534,7 +534,7 @@ export default function PatientPortalClient() {
       label: 'Visit History',
       description: 'Past consultations',
       count: visits.length,
-      color: 'from-emerald-500 to-emerald-600',
+      color: 'bg-emerald-500',
       icon: (
         <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -546,7 +546,7 @@ export default function PatientPortalClient() {
       label: 'Prescriptions',
       description: 'Your medications',
       count: prescriptions.length,
-      color: 'from-violet-500 to-violet-600',
+      color: 'bg-violet-500',
       icon: (
         <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -558,7 +558,7 @@ export default function PatientPortalClient() {
       label: 'Lab Results',
       description: 'Test results',
       count: labResults.length,
-      color: 'from-amber-500 to-amber-600',
+      color: 'bg-amber-500',
       icon: (
         <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
@@ -570,7 +570,7 @@ export default function PatientPortalClient() {
       label: 'Billing',
       description: 'Your invoices',
       count: invoices.length,
-      color: 'from-rose-500 to-rose-600',
+      color: 'bg-rose-500',
       icon: (
         <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -582,7 +582,7 @@ export default function PatientPortalClient() {
       label: 'Documents',
       description: 'Medical records',
       count: documents.length,
-      color: 'from-cyan-500 to-cyan-600',
+      color: 'bg-cyan-500',
       icon: (
         <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -593,7 +593,7 @@ export default function PatientPortalClient() {
       id: 'security',
       label: 'App Access',
       description: 'Login credentials',
-      color: 'from-slate-600 to-slate-700',
+      color: 'bg-slate-600',
       icon: (
         <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
@@ -609,9 +609,9 @@ export default function PatientPortalClient() {
         return (
           <div className="grid sm:grid-cols-2 gap-6">
             {/* Contact Information */}
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+            <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-blue-500 rounded-lg">
+                <div className="p-2 bg-brand-teal-dark rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
@@ -639,7 +639,7 @@ export default function PatientPortalClient() {
             </div>
 
             {/* Emergency Contact */}
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
+            <div className="bg-white border border-gray-200 rounded-lg p-5">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-purple-500 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -673,7 +673,7 @@ export default function PatientPortalClient() {
             </div>
 
             {/* Allergies */}
-            <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-200 rounded-xl p-5">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-5">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-red-500 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -698,7 +698,7 @@ export default function PatientPortalClient() {
             </div>
 
             {/* Pre-existing Conditions */}
-            <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border border-amber-200 rounded-xl p-5">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-5">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-amber-500 rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -732,9 +732,9 @@ export default function PatientPortalClient() {
             {/* Referrals */}
             {referrals.length > 0 && (
               <div className="sm:col-span-2">
-                <div className="bg-gradient-to-br from-teal-50 to-teal-100/50 border border-teal-200 rounded-xl p-5">
+                <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-5">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-teal-500 rounded-lg">
+                    <div className="p-2 bg-brand-teal-dark rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                       </svg>
@@ -786,7 +786,7 @@ export default function PatientPortalClient() {
             <p className="text-sm text-gray-600 mb-4">Schedule your first appointment to get started</p>
             <button
               onClick={openBookingModal}
-              className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg text-sm font-semibold hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-md"
+              className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg text-sm font-semibold hover:bg-brand-teal-deep transition-all shadow-md"
             >
               Book an Appointment
             </button>
@@ -794,7 +794,7 @@ export default function PatientPortalClient() {
         ) : (
           <div className="space-y-3">
             {appointments.map((apt) => (
-              <div key={apt._id} className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-blue-300 transition-all">
+              <div key={apt._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-brand-teal/50 transition-all">
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap mb-2">
@@ -846,7 +846,7 @@ export default function PatientPortalClient() {
         ) : (
           <div className="space-y-3">
             {visits.map((visit) => (
-              <div key={visit._id} className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-emerald-300 transition-all">
+              <div key={visit._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-emerald-300 transition-all">
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
                   <p className="font-bold text-gray-900 text-sm">
                     Dr. {visit.doctor?.firstName} {visit.doctor?.lastName}
@@ -890,7 +890,7 @@ export default function PatientPortalClient() {
         ) : (
           <div className="space-y-3">
             {prescriptions.map((rx) => (
-              <div key={rx._id} className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-purple-300 transition-all">
+              <div key={rx._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-purple-300 transition-all">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
                   <p className="font-bold text-gray-900 text-sm">
                     Prescription #{rx.prescriptionCode || rx._id.slice(-6)}
@@ -929,7 +929,7 @@ export default function PatientPortalClient() {
         ) : (
           <div className="space-y-3">
             {labResults.map((lab) => (
-              <div key={lab._id} className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-amber-300 transition-all">
+              <div key={lab._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-amber-300 transition-all">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
                   <p className="font-bold text-gray-900 text-sm">{lab.testName || 'Lab Test'}</p>
                   <span className={`self-start sm:self-center px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getStatusColor(lab.status)}`}>
@@ -961,7 +961,7 @@ export default function PatientPortalClient() {
         ) : (
           <div className="space-y-3">
             {invoices.map((inv) => (
-              <div key={inv._id} className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-rose-300 transition-all">
+              <div key={inv._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-rose-300 transition-all">
                 <div className="flex items-start sm:items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-bold text-gray-900 text-sm">
@@ -997,9 +997,9 @@ export default function PatientPortalClient() {
         ) : (
           <div className="space-y-3">
             {documents.map((doc) => (
-              <div key={doc._id} className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-cyan-300 transition-all">
+              <div key={doc._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-cyan-300 transition-all">
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center text-xl flex-shrink-0 shadow-md">
+                  <div className="w-12 h-12 rounded-lg bg-cyan-500 flex items-center justify-center text-xl flex-shrink-0 shadow-md">
                     {getDocumentIcon(doc.category)}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -1031,7 +1031,7 @@ export default function PatientPortalClient() {
         return (
           <div className="space-y-6 max-w-xl">
             {/* Status banner */}
-            <div className={`flex items-center gap-3 p-4 rounded-xl border ${hasPassword ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+            <div className={`flex items-center gap-3 p-4 rounded-lg border ${hasPassword ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
               <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${hasPassword ? 'bg-green-100' : 'bg-amber-100'}`}>
                 {hasPassword ? (
                   <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1056,7 +1056,7 @@ export default function PatientPortalClient() {
             {/* Credential form */}
             <form onSubmit={handleSetupCredentials} className="space-y-5">
               {credError && (
-                <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
+                <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-4">
                   <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                   </svg>
@@ -1065,7 +1065,7 @@ export default function PatientPortalClient() {
               )}
 
               {credSuccess && (
-                <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl p-4">
+                <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-lg p-4">
                   <svg className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
@@ -1084,7 +1084,7 @@ export default function PatientPortalClient() {
                   value={credEmail}
                   onChange={(e) => setCredEmail(e.target.value)}
                   placeholder={patient?.email || 'your@email.com'}
-                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition-all bg-white text-sm"
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition-all bg-white text-sm"
                   disabled={credLoading}
                 />
                 <p className="text-xs text-gray-500 mt-1.5">
@@ -1105,7 +1105,7 @@ export default function PatientPortalClient() {
                   placeholder="Minimum 8 characters"
                   required
                   minLength={8}
-                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition-all bg-white text-sm"
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition-all bg-white text-sm"
                   disabled={credLoading}
                 />
               </div>
@@ -1123,7 +1123,7 @@ export default function PatientPortalClient() {
                   placeholder="Re-enter your new password"
                   required
                   minLength={8}
-                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition-all bg-white text-sm"
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition-all bg-white text-sm"
                   disabled={credLoading}
                 />
               </div>
@@ -1141,7 +1141,7 @@ export default function PatientPortalClient() {
                     onChange={(e) => setCredCurrent(e.target.value)}
                     placeholder="Enter your existing password"
                     required
-                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition-all bg-white text-sm"
+                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none transition-all bg-white text-sm"
                     disabled={credLoading}
                   />
                   <p className="text-xs text-gray-500 mt-1.5">
@@ -1153,7 +1153,7 @@ export default function PatientPortalClient() {
               <button
                 type="submit"
                 disabled={credLoading}
-                className="w-full py-3 bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white rounded-xl font-semibold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-semibold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {credLoading ? (
                   <span className="flex items-center justify-center gap-2">
@@ -1167,14 +1167,14 @@ export default function PatientPortalClient() {
             </form>
 
             {/* How to use info box */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
+            <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-5">
               <div className="flex items-center gap-2 mb-3">
-                <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-brand-teal-dark flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <h4 className="font-semibold text-blue-900 text-sm">Using the Clinic Mobile App</h4>
+                <h4 className="font-semibold text-brand-teal-deep text-sm">Using the Clinic Mobile App</h4>
               </div>
-              <ol className="space-y-2 text-xs text-blue-800 list-decimal list-inside">
+              <ol className="space-y-2 text-xs text-brand-teal-deep list-decimal list-inside">
                 <li>Download the clinic&apos;s mobile app on your device.</li>
                 <li>Open the app and select your clinic from the list.</li>
                 <li>Enter the email and password you set here to log in.</li>
@@ -1190,7 +1190,7 @@ export default function PatientPortalClient() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
@@ -1207,7 +1207,7 @@ export default function PatientPortalClient() {
                   </svg>
                 </button>
               )}
-              <div className="w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex-shrink-0 flex items-center justify-center">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 bg-brand-teal-dark rounded-lg flex-shrink-0 flex items-center justify-center">
                 <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
@@ -1220,7 +1220,7 @@ export default function PatientPortalClient() {
             <div className="flex items-center gap-1 sm:gap-3">
               <button
                 onClick={openQRCode}
-                className="p-2 sm:p-2.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                className="p-2 sm:p-2.5 text-gray-600 hover:text-brand-teal-dark hover:bg-brand-teal-light/60 rounded-lg transition-colors"
                 title="Show QR Code"
                 aria-label="Show QR code"
               >
@@ -1270,9 +1270,9 @@ export default function PatientPortalClient() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Patient Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8 mb-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 mb-6">
           <div className="flex items-center gap-4">
-            <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-2xl font-bold shadow-md">
+            <div className="w-20 h-20 bg-brand-teal-dark rounded-lg flex-shrink-0 flex items-center justify-center text-white text-2xl font-bold shadow-md">
               {patient.firstName.charAt(0)}{patient.lastName.charAt(0)}
             </div>
             <div className="min-w-0 flex-1">
@@ -1280,7 +1280,7 @@ export default function PatientPortalClient() {
                 {patient.firstName} {patient.lastName}
               </h2>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold border border-blue-200">
+                <span className="px-3 py-1 bg-brand-teal-light text-brand-teal-deep rounded-full text-xs font-semibold border border-brand-teal/30">
                   {patient.patientCode}
                 </span>
                 <span className="text-sm text-gray-600">{calculateAge(patient.dateOfBirth)} years old</span>
@@ -1305,9 +1305,9 @@ export default function PatientPortalClient() {
               {/* Book Appointment CTA */}
               <button
                 onClick={openBookingModal}
-                className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-xl shadow-lg p-5 text-left hover:shadow-xl transition-all active:scale-[0.98] flex items-center gap-4"
+                className="w-full bg-emerald-500 rounded-lg shadow-lg p-5 text-left hover:shadow-xl transition-all active:scale-[0.98] flex items-center gap-4"
               >
-                <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center text-white shadow-md">
+                <div className="w-14 h-14 rounded-lg bg-white/20 flex items-center justify-center text-white shadow-md">
                   <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
@@ -1327,9 +1327,9 @@ export default function PatientPortalClient() {
                   <button
                     key={tab.id}
                     onClick={() => { setActiveTab(tab.id); if (tab.id === 'security') checkHasPassword(); }}
-                    className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-left hover:shadow-md hover:border-blue-300 transition-all active:scale-[0.98]"
+                    className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 text-left hover:shadow-md hover:border-brand-teal/50 transition-all active:scale-[0.98]"
                   >
-                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tab.color} flex items-center justify-center text-white mb-3 shadow-md`}>
+                    <div className={`w-12 h-12 rounded-lg ${tab.color} flex items-center justify-center text-white mb-3 shadow-md`}>
                       {tab.icon}
                     </div>
                     <h3 className="font-bold text-gray-900 text-sm">{tab.label}</h3>
@@ -1345,10 +1345,10 @@ export default function PatientPortalClient() {
             </div>
           ) : (
             /* Mobile Content View */
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-5 sm:p-6">
                 <div className="flex items-center gap-3 mb-5">
-                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${tabs.find(t => t.id === activeTab)?.color} flex items-center justify-center text-white shadow-md`}>
+                  <div className={`w-10 h-10 rounded-lg ${tabs.find(t => t.id === activeTab)?.color} flex items-center justify-center text-white shadow-md`}>
                     {tabs.find(t => t.id === activeTab)?.icon}
                   </div>
                   <div>
@@ -1374,9 +1374,9 @@ export default function PatientPortalClient() {
               {/* Book Appointment CTA */}
               <button
                 onClick={openBookingModal}
-                className="w-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 rounded-2xl shadow-lg p-6 text-left hover:shadow-xl hover:-translate-y-1 transition-all flex items-center gap-6"
+                className="w-full bg-emerald-500 rounded-lg shadow-lg p-6 text-left hover:shadow-xl transition-all flex items-center gap-6"
               >
-                <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-white shadow-md">
+                <div className="w-16 h-16 rounded-lg bg-white/20 flex items-center justify-center text-white shadow-md">
                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
@@ -1399,12 +1399,12 @@ export default function PatientPortalClient() {
                 <button
                   key={tab.id}
                   onClick={() => { setActiveTab(tab.id); if (tab.id === 'security') checkHasPassword(); }}
-                  className="group bg-white rounded-2xl shadow-sm border border-gray-200 p-5 lg:p-6 text-center hover:shadow-lg hover:border-blue-300 hover:-translate-y-1 transition-all duration-200"
+                  className="group bg-white rounded-lg shadow-sm border border-gray-200 p-5 lg:p-6 text-center hover:shadow-lg hover:border-brand-teal/50 transition-all duration-200"
                 >
-                  <div className={`w-14 h-14 lg:w-16 lg:h-16 mx-auto rounded-2xl bg-gradient-to-br ${tab.color} flex items-center justify-center text-white mb-4 group-hover:scale-110 transition-transform shadow-md`}>
+                  <div className={`w-14 h-14 lg:w-16 lg:h-16 mx-auto rounded-lg ${tab.color} flex items-center justify-center text-white mb-4 transition-transform shadow-md`}>
                     {tab.icon}
                   </div>
-                  <h3 className="font-bold text-gray-900 text-sm lg:text-base group-hover:text-blue-600 transition-colors">{tab.label}</h3>
+                  <h3 className="font-bold text-gray-900 text-sm lg:text-base group-hover:text-brand-teal-dark transition-colors">{tab.label}</h3>
                   <p className="text-xs text-gray-600 mt-1 hidden lg:block">{tab.description}</p>
                   {tab.count !== undefined && tab.count > 0 && (
                     <span className="inline-block mt-3 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold border border-gray-200">
@@ -1417,10 +1417,10 @@ export default function PatientPortalClient() {
             </div>
           ) : (
             /* Desktop Content View */
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
               {/* Section Header */}
-              <div className="flex items-center gap-4 px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50/50 to-white">
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tabs.find(t => t.id === activeTab)?.color} flex items-center justify-center text-white shadow-md`}>
+              <div className="flex items-center gap-4 px-6 py-5 border-b border-gray-200 bg-gray-50/50">
+                <div className={`w-12 h-12 rounded-lg ${tabs.find(t => t.id === activeTab)?.color} flex items-center justify-center text-white shadow-md`}>
                   {tabs.find(t => t.id === activeTab)?.icon}
                 </div>
                 <div>
@@ -1451,12 +1451,12 @@ export default function PatientPortalClient() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="patient-qr-title"
-            className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 sm:p-8 mx-4"
+            className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 sm:p-8 mx-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="p-2 bg-brand-teal-light rounded-lg">
+                <svg className="w-6 h-6 text-brand-teal-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                 </svg>
               </div>
@@ -1471,7 +1471,7 @@ export default function PatientPortalClient() {
                 </svg>
               </button>
             </div>
-            <div className="bg-white p-6 rounded-xl border-2 border-gray-200 flex items-center justify-center shadow-md min-h-[200px]">
+            <div className="bg-white p-6 rounded-lg border-2 border-gray-200 flex items-center justify-center shadow-md min-h-[200px]">
               {loginQr ? (
                 <QRCode value={loginQr.qrData} size={200} className="w-full max-w-[200px] h-auto" />
               ) : loginQrLoading ? (
@@ -1526,13 +1526,13 @@ export default function PatientPortalClient() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="patient-booking-title"
-            className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto mx-4"
+            className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto mx-4"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-5 flex items-center justify-between rounded-t-2xl">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-5 flex items-center justify-between rounded-t-lg">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-md">
+                <div className="w-12 h-12 rounded-lg bg-emerald-500 flex items-center justify-center text-white shadow-md">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
@@ -1558,7 +1558,7 @@ export default function PatientPortalClient() {
             <div className="p-6 space-y-5">
               {/* Success Message */}
               {bookingSuccess && (
-                <div className="bg-green-50 border-l-4 border-green-500 rounded-lg p-4 flex items-start gap-3 shadow-sm">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3 shadow-sm">
                   <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
                     <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1573,7 +1573,7 @@ export default function PatientPortalClient() {
 
               {/* Error Message */}
               {bookingError && (
-                <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm">
                   <div className="flex items-start gap-2">
                     <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1594,7 +1594,7 @@ export default function PatientPortalClient() {
                       id="patient-booking-doctor"
                       value={selectedDoctor}
                       onChange={(e) => handleDoctorChange(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none bg-white transition-all text-sm"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none bg-white transition-all text-sm"
                       disabled={bookingLoading}
                     >
                       <option value="">Choose a doctor...</option>
@@ -1619,7 +1619,7 @@ export default function PatientPortalClient() {
                       onChange={(e) => handleDateChange(e.target.value)}
                       min={getMinDate()}
                       max={getMaxDate()}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all text-sm"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none transition-all text-sm"
                       disabled={bookingLoading}
                     />
                   </div>
@@ -1635,11 +1635,11 @@ export default function PatientPortalClient() {
                         <span className="ml-3 text-sm font-medium text-gray-600">Loading available slots...</span>
                       </div>
                     ) : !selectedDoctor || !selectedDate ? (
-                      <p className="text-sm text-gray-600 py-6 text-center bg-gray-50 rounded-xl border border-gray-200">
+                      <p className="text-sm text-gray-600 py-6 text-center bg-gray-50 rounded-lg border border-gray-200">
                         Select a doctor and date to see available times
                       </p>
                     ) : availableSlots.length === 0 ? (
-                      <p className="text-sm text-amber-700 py-6 text-center bg-amber-50 rounded-xl border border-amber-200 font-medium">
+                      <p className="text-sm text-amber-700 py-6 text-center bg-amber-50 rounded-lg border border-amber-200 font-medium">
                         No available slots for this date. Please try another date.
                       </p>
                     ) : (
@@ -1652,7 +1652,7 @@ export default function PatientPortalClient() {
                             onClick={() => setSelectedTime(slot)}
                             className={`px-3 py-2.5 rounded-lg text-sm font-semibold transition-all ${
                               selectedTime === slot
-                                ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md'
+                                ? 'bg-emerald-500 text-white shadow-md'
                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
                             }`}
                             disabled={bookingLoading}
@@ -1675,7 +1675,7 @@ export default function PatientPortalClient() {
                       onChange={(e) => setBookingReason(e.target.value)}
                       placeholder="e.g., General checkup, Follow-up, Consultation..."
                       rows={3}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none resize-none transition-all text-sm"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none resize-none transition-all text-sm"
                       disabled={bookingLoading}
                     />
                   </div>
@@ -1684,7 +1684,7 @@ export default function PatientPortalClient() {
                   <button
                     onClick={submitBooking}
                     disabled={bookingLoading || !selectedDoctor || !selectedDate || !selectedTime}
-                    className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-semibold hover:from-emerald-600 hover:to-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md"
+                    className="w-full py-3.5 bg-brand-teal-dark text-white rounded-lg font-semibold hover:bg-brand-teal-deep transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md"
                   >
                     {bookingLoading ? (
                       <>

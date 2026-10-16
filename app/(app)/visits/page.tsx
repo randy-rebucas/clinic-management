@@ -1,10 +1,7 @@
-import { requirePagePermission } from '@/app/lib/auth-helpers';
 import VisitsPageClient from '@/components/VisitsPageClient';
+import { loadVisitsPageContext } from '@/lib/visits-page';
 
 export default async function VisitsPage() {
-  // Require permission to read visits
-  await requirePagePermission('visits', 'read');
-
-  return <VisitsPageClient />;
+  const context = await loadVisitsPageContext();
+  return <VisitsPageClient {...context} />;
 }
-

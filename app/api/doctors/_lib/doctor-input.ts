@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { NextResponse } from 'next/server';
 import Specialization from '@/models/Specialization';
 import { zObjectId, zPhone, zShortText, zEmail } from '@/lib/api/validate';
 
@@ -58,6 +59,19 @@ export async function resolveSpecialization<T extends { specialization?: string;
     return { ...rest, specializationId: String(spec._id) };
   }
   return rest;
+}
+
+/** 409 for a duplicate key, naming the field so the form can put the message on it. */
+export function duplicateResponse(error: any) {
+  const keys = Object.keys(error?.keyPattern || error?.keyValue || {});
+  const field = keys.includes('email') ? 'email' : keys.includes('licenseNumber') ? 'licenseNumber' : undefined;
+  const message =
+    field === 'email'
+      ? 'Another doctor in this clinic already uses this email.'
+      : field === 'licenseNumber'
+        ? 'Another doctor in this clinic already has this licence number.'
+        : 'Another doctor in this clinic already has this email or licence number.';
+  return NextResponse.json({ success: false, error: message, field }, { status: 409 });
 }
 
 /** User-facing messages from a Mongoose ValidationError (schema messages only). */

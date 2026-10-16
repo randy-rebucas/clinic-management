@@ -6,7 +6,7 @@ import User from '@/models/User';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { Types } from 'mongoose';
 import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
-import { parseBody, isValidationError } from '@/lib/api/validate';
+import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
 import { createVisitSchema, signatureWithMetadata } from '@/lib/visit-schema';
 import { nextVisitCode } from '@/lib/clinical-codes';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
@@ -14,6 +14,7 @@ import { dayRangeInTz, combineDateAndTimeInTz } from '@/lib/tz';
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
+const VISIT_TYPES = ['consultation', 'follow-up', 'checkup', 'emergency', 'teleconsult', 'vaccination'];
 
 export async function GET(request: NextRequest) {
   const ctx = await requireTenantSession();
@@ -33,9 +34,35 @@ export async function GET(request: NextRequest) {
     const providerId = searchParams.get('providerId');
     const status = searchParams.get('status');
     const date = searchParams.get('date');
+    const search = (searchParams.get('search') || '').trim().slice(0, 100);
+    const visitType = searchParams.get('visitType');
+    const diagnosis = (searchParams.get('diagnosis') || '').trim().slice(0, 20);
+    const mine = searchParams.get('mine') === 'true';
+    const pageParam = searchParams.get('page');
+    const page = Math.max(parseInt(pageParam || '1', 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '', 10) || DEFAULT_LIMIT, 1), MAX_LIMIT);
 
     const query: any = { tenantId: tenantObjectId };
+    if (mine) query.provider = new Types.ObjectId(session.userId);
+    if (visitType && VISIT_TYPES.includes(visitType)) query.visitType = visitType;
+    if (diagnosis) query['diagnoses.code'] = diagnosis;
+    if (search) {
+      // Visit code, or the name / code / phone of a patient of this clinic.
+      const rx = new RegExp(escapeRegex(search), 'i');
+      const words = search.split(/\s+/).filter(Boolean).map((w) => new RegExp(escapeRegex(w), 'i'));
+      const patientIds = await Patient.find({
+        tenantIds: tenantObjectId,
+        $or: [
+          { patientCode: rx },
+          { phone: rx },
+          words.length > 1 ? { $and: words.map((w) => ({ $or: [{ firstName: w }, { lastName: w }] })) } : { $or: [{ firstName: rx }, { lastName: rx }] },
+        ],
+      })
+        .select('_id')
+        .limit(500)
+        .lean();
+      query.$or = [{ visitCode: rx }, { patient: { $in: patientIds.map((p) => p._id) } }];
+    }
 
     if (patientId) {
       if (!isValidId(patientId)) return NextResponse.json({ success: true, data: [] });
@@ -56,13 +83,19 @@ export async function GET(request: NextRequest) {
       query.date = { $gte: start, $lte: end };
     }
 
-    const visits = await Visit.find(query)
-      .populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } })
-      .populate('provider', 'name email')
-      .sort({ date: -1 })
-      .limit(limit)
-      .lean();
+    const find = () =>
+      Visit.find(query)
+        .populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } })
+        .populate('provider', 'name email')
+        .sort({ date: -1, _id: -1 });
 
+    // Paged when `page` is passed (the visits list); otherwise the newest `limit` (other screens).
+    if (pageParam) {
+      const [visits, total] = await Promise.all([find().skip((page - 1) * limit).limit(limit).lean(), Visit.countDocuments(query)]);
+      return NextResponse.json({ success: true, data: visits, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) } });
+    }
+
+    const visits = await find().limit(limit).lean();
     return NextResponse.json({ success: true, data: visits });
   } catch (error: any) {
     console.error('Error fetching visits:', error);
@@ -130,9 +163,10 @@ export async function POST(request: NextRequest) {
     await visit.populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } });
     await visit.populate('provider', 'name email');
 
-    // Auto-create prescription if medications are present in treatment plan
+    // Auto-create prescription if medications are present in treatment plan. A draft is not a
+    // finished note: its prescription (and the patient's email) waits until it is saved as open.
     let prescriptionId: string | undefined;
-    if (body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {
+    if (visit.status !== 'draft' && body.treatmentPlan?.medications && body.treatmentPlan.medications.length > 0) {
       try {
         const { createPrescriptionFromVisit } = await import('@/lib/automations/prescription-from-visit');
         const prescription = await createPrescriptionFromVisit({

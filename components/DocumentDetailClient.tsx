@@ -1,729 +1,490 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { AlertDialog } from './ui/Modal';
+import { formatApiError } from './utils/apiError';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
+import { FOCUS_RING, ICON, Svg } from './appointments/shared';
+import EditDialog, { type DocumentDetail } from './documents/EditDialog';
+import { DETAIL_FIELDS } from './documents/fields';
+import { ExpiryLine, KindMark, clock, shortDate } from './documents/shared';
+import { KIND_LABEL, categoryLabel, daysUntil, expiryOf, fileSize, type DocumentCategory } from '@/lib/documents';
+import type { DocumentPermissions } from '@/lib/documents-page';
 
-interface Document {
-  _id: string;
-  documentCode: string;
-  title: string;
-  description?: string;
-  category: string;
-  documentType: 'pdf' | 'image' | 'word' | 'excel' | 'other';
-  filename: string;
-  originalFilename: string;
-  contentType: string;
-  size: number;
-  url: string;
-  thumbnailUrl?: string;
-  patient?: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    patientCode?: string;
-  };
-  visit?: {
-    _id: string;
-    visitCode: string;
-    date: string;
-  };
-  appointment?: {
-    _id: string;
-    appointmentCode: string;
-  };
-  labResult?: {
-    _id: string;
-    requestCode: string;
-  };
-  invoice?: {
-    _id: string;
-    invoiceNumber: string;
-  };
-  uploadedBy?: {
-    _id: string;
-    name: string;
-  };
-  uploadDate: string;
-  lastModifiedBy?: {
-    _id: string;
-    name: string;
-  };
-  lastModifiedDate?: string;
-  status: 'active' | 'archived' | 'deleted';
-  isConfidential?: boolean;
-  notes?: string;
-  tags?: string[];
-  scanned?: boolean;
-  expiryDate?: string;
-  referral?: {
-    referringDoctor?: string;
-    referringClinic?: string;
-    referralDate?: string;
-    reason?: string;
-  };
-  imaging?: {
-    modality?: string;
-    bodyPart?: string;
-    studyDate?: string;
-    radiologist?: string;
-  };
-  medicalCertificate?: {
-    issueDate: string;
-    validUntil?: string;
-    purpose?: string;
-    restrictions?: string;
-  };
-  labResultMetadata?: {
-    testType?: string;
-    testDate?: string;
-    labName?: string;
-  };
-}
+const ICONS = {
+  ...ICON,
+  download: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4',
+  eye: 'M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z',
+  edit: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
+  trash: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+  archive: 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4',
+  doc: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+};
 
-export default function DocumentDetailClient({ documentId }: { documentId: string }) {
-  const [document, setDocument] = useState<Document | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+type Dialog = { kind: 'edit'; focus?: 'patient' } | { kind: 'delete' } | null;
+
+export default function DocumentDetailClient({ documentId, permissions, uploaded }: { documentId: string; permissions: DocumentPermissions; uploaded: boolean }) {
   const router = useRouter();
+  const res = useKeyedFetch<DocumentDetail>(`/api/documents/${documentId}`);
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [notice, setNotice] = useState<string | null>(uploaded ? 'Uploaded.' : null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const d = res.value;
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 7000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  if (!d && res.error) {
+    const missing = /not found/i.test(res.error);
+    return (
+      <Shell>
+        <BackLink />
+        <div role="alert" className="rounded-lg border border-gray-200 bg-white px-6 py-14 text-center">
+          <div className={`mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md ${missing ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-600'}`}>
+            <Svg d={missing ? ICONS.doc : ICONS.alert} className="h-5 w-5" />
+          </div>
+          <p className="font-semibold text-gray-900">{missing ? 'Document not found' : 'This document didn’t load'}</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">{missing ? 'It may have been deleted, or it belongs to another clinic.' : `${res.error}. Check your connection and try again.`}</p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link href="/documents" className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              All documents
+            </Link>
+            {!missing && (
+              <button type="button" onClick={res.reload} className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+                Try again
+              </button>
+            )}
+          </div>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (!d) {
+    return (
+      <Shell>
+        <BackLink />
+        <div className="animate-pulse space-y-6" aria-hidden="true">
+          <div className="space-y-2">
+            <div className="h-8 w-72 rounded bg-gray-200" />
+            <div className="h-4 w-96 max-w-full rounded bg-gray-100" />
+          </div>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <div className="h-[28rem] rounded-lg border border-gray-200 bg-white" />
+            <div className="h-64 rounded-lg border border-gray-200 bg-white" />
+          </div>
+        </div>
+        <span className="sr-only" role="status">
+          Loading the document…
+        </span>
+      </Shell>
+    );
+  }
+
+  const archived = d.status === 'archived';
+  const expiry = expiryOf(d);
+  const left = expiry ? daysUntil(String(expiry)) : null;
+  const stream = `/api/documents/${d._id}/stream`;
+  const patientName = d.patient ? `${d.patient.firstName} ${d.patient.lastName}` : null;
+
+  const done = (message: string) => {
+    setDialog(null);
+    setActionError(null);
+    setNotice(message);
+    res.reload();
   };
 
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-  };
-
-  const getCategoryLabel = (category: string) => {
-    return category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'archived':
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-      case 'deleted':
-        return 'bg-red-100 text-red-800 border-red-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+  const update = async (body: Record<string, unknown>, message: string) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const r = await fetch(`/api/documents/${d._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (r.status === 401) {
+        router.push('/login');
+        return;
+      }
+      const json = await r.json().catch(() => null);
+      if (!r.ok || !json?.success) throw new Error(formatApiError(json, 'The change could not be saved'));
+      done(message);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'The change could not be saved');
+    } finally {
+      setBusy(false);
     }
   };
 
-  useEffect(() => {
-    const fetchDocument = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const res = await fetch(`/api/documents/${documentId}`);
-
-        if (res.status === 401) {
-          router.push('/login');
-          return;
-        }
-
-        const contentType = res.headers.get('content-type');
-        let data;
-      
-        if (contentType && contentType.includes('application/json')) {
-          data = await res.json();
-        } else {
-          const text = await res.text();
-          console.error('API returned non-JSON response:', text.substring(0, 500));
-          setError(`API error: ${res.status} ${res.statusText}`);
-          return;
-        }
-
-        if (!res.ok) {
-          const errorMsg = data?.error || `Failed to load document: ${res.status} ${res.statusText}`;
-          setError(errorMsg);
-          return;
-        }
-
-        if (data.success && data.data) {
-          setDocument(data.data);
-        } else {
-          setError(data.error || 'Failed to load document');
-        }
-      } catch (error: any) {
-        console.error('Failed to fetch document:', error);
-        setError(error.message || 'Failed to load document. Please try again.');
-      } finally {
-        setLoading(false);
+  const remove = async () => {
+    setDialog(null);
+    setBusy(true);
+    setActionError(null);
+    try {
+      const r = await fetch(`/api/documents/${d._id}`, { method: 'DELETE' });
+      if (r.status === 401) {
+        router.push('/login');
+        return;
       }
-    };
-    fetchDocument();
-  }, [documentId, router]);
-
-  const handleDownload = () => {
-    window.open(`/api/documents/${documentId}/download`, '_blank');
+      const json = await r.json().catch(() => null);
+      if (!r.ok || !json?.success) throw new Error(formatApiError(json, 'The document could not be deleted'));
+      router.push(d.patient ? `/patients/${d.patient._id}` : '/documents');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'The document could not be deleted');
+      setBusy(false);
+    }
   };
 
-  const handleView = () => {
-    window.open(`/api/documents/${documentId}/view`, '_blank');
-  };
-
-  if (loading) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-purple-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-100 border-t-purple-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading document...</p>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (error || !document) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-purple-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-6 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-red-100 rounded-full flex-shrink-0">
-                <svg className="w-6 h-6 text-red-600" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-red-800 mb-1">Error</h3>
-                <p className="text-sm text-red-700 mb-4">{error || 'Document not found'}</p>
-                <button
-                  onClick={() => router.push('/documents')}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold"
-                >
-                  ← Back to Documents
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    );
-  }
+  const detailDef = DETAIL_FIELDS[d.category as DocumentCategory];
+  const detailGroup = detailDef ? ((d as unknown as Record<string, Record<string, string | undefined> | null | undefined>)[detailDef.group] ?? null) : null;
+  const detailRows = detailDef && detailGroup ? detailDef.fields.filter((f) => detailGroup[f.key]) : [];
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-purple-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex items-center gap-4">
-              <Link
-                href="/documents"
-                aria-label="Back to documents"
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+    <Shell>
+      <BackLink patient={d.patient ?? null} />
+
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <KindMark kind={d.documentType} size="lg" />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900 break-words">{d.title}</h1>
+              {archived && <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600 ring-1 ring-inset ring-gray-300">Archived</span>}
+              {d.isConfidential && <span className="rounded px-2 py-0.5 text-xs font-semibold text-gray-700 ring-1 ring-inset ring-gray-300">Staff only</span>}
+              <span className="font-mono text-sm text-gray-500">{d.documentCode}</span>
+            </div>
+            <p className="mt-1 text-sm sm:text-base text-gray-600">
+              {categoryLabel(d.category)} · {KIND_LABEL[d.documentType] ?? 'File'}, <span className="font-mono">{fileSize(d.size)}</span> · added <span className="font-mono">{shortDate(d.uploadDate)}</span>
+              {d.uploadedBy?.name && ` by ${d.uploadedBy.name}`}
+            </p>
+          </div>
+        </div>
+        <div className={`flex flex-wrap items-center gap-2 transition-opacity ${busy ? 'opacity-60' : ''}`}>
+          <a href={`/api/documents/${d._id}/view`} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+            <Svg d={ICONS.eye} />
+            Open
+          </a>
+          <a href={`/api/documents/${d._id}/download`} className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+            <Svg d={ICONS.download} />
+            Download
+          </a>
+          {permissions.canEdit && (
+            <>
+              <button
+                type="button"
+                onClick={() => update({ status: archived ? 'active' : 'archived' }, archived ? 'Back in use.' : 'Archived. It stays on file but leaves the main list.')}
+                disabled={busy}
+                className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </Link>
-              <div className="flex items-center gap-3 flex-1">
-                <div className="p-2 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-md">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Document Details</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Document #{document.documentCode}</p>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {document.documentType === 'pdf' || document.documentType === 'image' ? (
-                  <button
-                    onClick={handleView}
-                    className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center gap-2 text-sm font-semibold shadow-md"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                    View
-                  </button>
-                ) : null}
-                <button
-                  onClick={handleDownload}
-                  className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all flex items-center gap-2 text-sm font-semibold shadow-md"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Download
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Document Info Card */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-            <div className="p-6 sm:p-8">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left Column */}
-                <div className="flex flex-col gap-6">
-                  <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-purple-500 rounded-lg">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <h2 className="text-lg font-bold text-gray-900">Document Information</h2>
-                    </div>
-                    <div className="space-y-3 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Document Code:</span>
-                        <span className="font-bold text-gray-900">{document.documentCode}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Title:</span>
-                        <span className="font-medium text-gray-900">{document.title}</span>
-                      </div>
-                      {document.description && (
-                        <div className="flex justify-between">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Description:</span>
-                          <span className="font-medium text-right max-w-xs text-gray-900">{document.description}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between">
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Category:</span>
-                        <span className="font-medium text-gray-900">{getCategoryLabel(document.category)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Type:</span>
-                        <span className="font-medium text-gray-900 uppercase">{document.documentType}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Status:</span>
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusColor(document.status)}`}>
-                          {document.status.toUpperCase()}
-                        </span>
-                      </div>
-                      {document.isConfidential && (
-                        <div className="flex justify-between">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Confidential:</span>
-                          <span className="font-bold text-red-600">Yes</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-blue-500 rounded-lg">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                        </svg>
-                      </div>
-                      <h2 className="text-lg font-bold text-gray-900">File Information</h2>
-                    </div>
-                    <div className="space-y-3 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Filename:</span>
-                        <span className="font-medium text-right max-w-xs truncate text-gray-900">{document.originalFilename}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Size:</span>
-                        <span className="font-medium text-gray-900">{formatFileSize(document.size)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Content Type:</span>
-                        <span className="font-medium text-gray-900">{document.contentType}</span>
-                      </div>
-                      {document.scanned && (
-                        <div className="flex justify-between">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Scanned:</span>
-                          <span className="font-medium text-gray-900">Yes</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Column */}
-                <div className="flex flex-col gap-6">
-                  <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 border border-cyan-200 rounded-xl p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-cyan-500 rounded-lg">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                      </div>
-                      <h2 className="text-lg font-bold text-gray-900">Relationships</h2>
-                    </div>
-                    <div className="space-y-3 text-sm">
-                      {document.patient ? (
-                        <div className="flex justify-between">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Patient:</span>
-                          <Link href={`/patients/${document.patient._id}`} className="font-bold text-cyan-600 hover:text-cyan-700 hover:underline transition-colors">
-                            {document.patient.firstName} {document.patient.lastName}
-                            {document.patient.patientCode && ` (${document.patient.patientCode})`}
-                          </Link>
-                        </div>
-                      ) : (
-                        <div className="flex justify-between">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Patient:</span>
-                          <span className="font-medium text-gray-500">N/A</span>
-                        </div>
-                      )}
-                      {document.visit && (
-                        <div className="flex justify-between">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Visit:</span>
-                          <Link href={`/visits/${document.visit._id}`} className="font-bold text-cyan-600 hover:text-cyan-700 hover:underline transition-colors">
-                            {document.visit.visitCode}
-                          </Link>
-                        </div>
-                      )}
-                      {document.appointment && (
-                        <div className="flex justify-between">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Appointment:</span>
-                          <Link href={`/appointments/${document.appointment._id}`} className="font-bold text-cyan-600 hover:text-cyan-700 hover:underline transition-colors">
-                            {document.appointment.appointmentCode}
-                          </Link>
-                        </div>
-                      )}
-                      {document.labResult && (
-                        <div className="flex justify-between">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Lab Result:</span>
-                          <Link href={`/lab-results/${document.labResult._id}`} className="font-bold text-cyan-600 hover:text-cyan-700 hover:underline transition-colors">
-                            {document.labResult.requestCode}
-                          </Link>
-                        </div>
-                      )}
-                      {document.invoice && (
-                        <div className="flex justify-between">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Invoice:</span>
-                          <Link href={`/invoices/${document.invoice._id}`} className="font-bold text-cyan-600 hover:text-cyan-700 hover:underline transition-colors">
-                            {document.invoice.invoiceNumber}
-                          </Link>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-gray-500 rounded-lg">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <h2 className="text-lg font-bold text-gray-900">Metadata</h2>
-                    </div>
-                    <div className="space-y-3 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Uploaded By:</span>
-                        <span className="font-medium text-gray-900">{document.uploadedBy?.name || 'Unknown'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Upload Date:</span>
-                        <span className="font-medium text-gray-900">{formatDateTime(document.uploadDate)}</span>
-                      </div>
-                      {document.lastModifiedBy && (
-                        <div className="flex justify-between">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Last Modified By:</span>
-                          <span className="font-medium text-gray-900">{document.lastModifiedBy.name}</span>
-                        </div>
-                      )}
-                      {document.lastModifiedDate && (
-                        <div className="flex justify-between">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Last Modified:</span>
-                          <span className="font-medium text-gray-900">{formatDateTime(document.lastModifiedDate)}</span>
-                        </div>
-                      )}
-                      {document.expiryDate && (
-                        <div className="flex justify-between">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Expiry Date:</span>
-                          <span className={`font-medium ${new Date(document.expiryDate) < new Date() ? 'text-red-600 font-bold' : 'text-gray-900'}`}>
-                            {formatDate(document.expiryDate)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Document Preview */}
-          {(document.documentType === 'pdf' || document.documentType === 'image') && (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-emerald-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Preview</h2>
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50" style={{ minHeight: '500px' }}>
-                  {document.documentType === 'pdf' ? (
-                    <iframe
-                      src={document.url}
-                      className="w-full"
-                      style={{ height: '600px' }}
-                      title={document.title}
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center p-4">
-                      <img
-                        src={document.thumbnailUrl || document.url}
-                        alt={document.title}
-                        className="max-w-full max-h-[600px] object-contain rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer"
-                        onClick={() => window.open(document.url, '_blank')}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Category-Specific Information */}
-          {document.referral && (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Referral Information</h2>
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  {document.referral.referringDoctor && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Referring Doctor:</span>
-                      <span className="font-medium text-gray-900">{document.referral.referringDoctor}</span>
-                    </div>
-                  )}
-                  {document.referral.referringClinic && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Referring Clinic:</span>
-                      <span className="font-medium text-gray-900">{document.referral.referringClinic}</span>
-                    </div>
-                  )}
-                  {document.referral.referralDate && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Referral Date:</span>
-                      <span className="font-medium text-gray-900">{formatDate(document.referral.referralDate)}</span>
-                    </div>
-                  )}
-                  {document.referral.reason && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Reason:</span>
-                      <span className="font-medium text-right max-w-xs text-gray-900">{document.referral.reason}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {document.imaging && (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-indigo-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Imaging Information</h2>
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  {document.imaging.modality && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Modality:</span>
-                      <span className="font-medium text-gray-900">{document.imaging.modality}</span>
-                    </div>
-                  )}
-                  {document.imaging.bodyPart && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Body Part:</span>
-                      <span className="font-medium text-gray-900">{document.imaging.bodyPart}</span>
-                    </div>
-                  )}
-                  {document.imaging.studyDate && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Study Date:</span>
-                      <span className="font-medium text-gray-900">{formatDate(document.imaging.studyDate)}</span>
-                    </div>
-                  )}
-                  {document.imaging.radiologist && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Radiologist:</span>
-                      <span className="font-medium text-gray-900">{document.imaging.radiologist}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {document.medicalCertificate && (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-teal-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Medical Certificate Information</h2>
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Issue Date:</span>
-                    <span className="font-medium text-gray-900">{formatDate(document.medicalCertificate.issueDate)}</span>
-                  </div>
-                  {document.medicalCertificate.validUntil && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Valid Until:</span>
-                      <span className={`font-medium ${new Date(document.medicalCertificate.validUntil) < new Date() ? 'text-red-600 font-bold' : 'text-gray-900'}`}>
-                        {formatDate(document.medicalCertificate.validUntil)}
-                      </span>
-                    </div>
-                  )}
-                  {document.medicalCertificate.purpose && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Purpose:</span>
-                      <span className="font-medium text-gray-900">{document.medicalCertificate.purpose}</span>
-                    </div>
-                  )}
-                  {document.medicalCertificate.restrictions && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Restrictions:</span>
-                      <span className="font-medium text-right max-w-xs text-gray-900">{document.medicalCertificate.restrictions}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {document.labResultMetadata && (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-rose-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Lab Result Information</h2>
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  {document.labResultMetadata.testType && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Test Type:</span>
-                      <span className="font-medium text-gray-900">{document.labResultMetadata.testType}</span>
-                    </div>
-                  )}
-                  {document.labResultMetadata.testDate && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Test Date:</span>
-                      <span className="font-medium text-gray-900">{formatDate(document.labResultMetadata.testDate)}</span>
-                    </div>
-                  )}
-                  {document.labResultMetadata.labName && (
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Lab Name:</span>
-                      <span className="font-medium text-gray-900">{document.labResultMetadata.labName}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Tags */}
-          {document.tags && document.tags.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-violet-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Tags</h2>
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="flex flex-wrap gap-2">
-                  {document.tags.map((tag, idx) => (
-                    <span
-                      key={idx}
-                      className="px-3 py-1.5 bg-violet-100 text-violet-700 rounded-full text-sm font-semibold border border-violet-200"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Notes */}
-          {document.notes && (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gray-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-900">Notes</h2>
-                </div>
-              </div>
-              <div className="p-5">
-                <p className="text-sm text-gray-900 whitespace-pre-wrap font-medium">{document.notes}</p>
-              </div>
-            </div>
+                <Svg d={ICONS.archive} />
+                {archived ? 'Restore' : 'Archive'}
+              </button>
+              <button type="button" onClick={() => setDialog({ kind: 'edit' })} className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+                <Svg d={ICONS.edit} />
+                Edit details
+              </button>
+              <button
+                type="button"
+                onClick={() => setDialog({ kind: 'delete' })}
+                disabled={busy}
+                aria-label={`Delete ${d.title}`}
+                title="Delete document"
+                className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-40 ${FOCUS_RING}`}
+              >
+                <Svg d={ICONS.trash} />
+              </button>
+            </>
           )}
         </div>
+      </header>
+
+      <p className="sr-only" aria-live="polite">
+        {notice ?? ''}
+      </p>
+      {notice && (
+        <div role="status" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+          <p>{notice}</p>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 opacity-80 hover:opacity-100 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
+        </div>
+      )}
+      {actionError && (
+        <div role="alert" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          <p>{actionError}</p>
+          <button type="button" onClick={() => setActionError(null)} aria-label="Dismiss error" className={`shrink-0 rounded p-0.5 text-red-700 hover:text-red-900 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
+        </div>
+      )}
+      {!d.patient && (
+        <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-start gap-2">
+            <Svg d={ICONS.alert} className="mt-0.5 h-4 w-4 shrink-0" />
+            Not filed to a patient, so it isn’t on anyone’s record yet.
+          </p>
+          {permissions.canEdit && (
+            <button type="button" onClick={() => setDialog({ kind: 'edit', focus: 'patient' })} className={`shrink-0 rounded-md border border-amber-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-amber-900 hover:border-amber-700 ${FOCUS_RING}`}>
+              File to a patient
+            </button>
+          )}
+        </div>
+      )}
+      {left !== null && left <= 30 && (
+        <div role={left < 0 ? 'alert' : undefined} className={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${left < 0 ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+          <Svg d={ICONS.alert} className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            {left < 0 ? (
+              <>
+                This {categoryLabel(d.category).toLowerCase()} expired on <span className="font-mono font-semibold">{shortDate(String(expiry))}</span>.
+                {patientName && ` Ask ${d.patient!.firstName} for a current one.`}
+              </>
+            ) : (
+              <>
+                This {categoryLabel(d.category).toLowerCase()} {left === 0 ? 'expires today' : (
+                  <>
+                    expires in <span className="font-mono font-semibold">{left}</span> {left === 1 ? 'day' : 'days'}
+                  </>
+                )}
+                .
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <Panel id="doc-preview" title="Preview" aside={<span className="text-sm text-gray-500">Opening it is recorded in the audit log</span>}>
+            {d.documentType === 'image' ? (
+              <div className="flex justify-center bg-gray-50 p-4">
+                {/* eslint-disable-next-line @next/next/no-img-element -- streamed from the authenticated route */}
+                <img src={stream} alt={d.title} className="max-h-[36rem] max-w-full rounded-md object-contain ring-1 ring-gray-200" />
+              </div>
+            ) : d.documentType === 'pdf' ? (
+              <iframe src={stream} title={`Preview of ${d.title}`} className="block h-[36rem] w-full bg-gray-50" />
+            ) : (
+              <div className="px-5 py-10 text-center">
+                <p className="text-sm text-gray-600">{KIND_LABEL[d.documentType] ?? 'This file'}s don’t preview in the browser.</p>
+                <a href={`/api/documents/${d._id}/download`} className={`mt-4 inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+                  <Svg d={ICONS.download} />
+                  Download to open it
+                </a>
+              </div>
+            )}
+          </Panel>
+
+          {detailRows.length > 0 && (
+            <Panel id="doc-details" title={`${categoryLabel(d.category)} details`}>
+              <dl className="divide-y divide-gray-100">
+                {detailRows.map((f) => (
+                  <Field key={f.key} label={f.label}>
+                    {f.kind === 'date' ? <span className="font-mono">{shortDate(detailGroup![f.key]!)}</span> : <span className="whitespace-pre-wrap">{detailGroup![f.key]}</span>}
+                  </Field>
+                ))}
+              </dl>
+            </Panel>
+          )}
+
+          {(d.notes || d.description) && (
+            <Panel id="doc-notes" title="Notes">
+              {d.description && <p className="max-w-prose whitespace-pre-wrap px-5 pt-4 text-sm leading-relaxed text-gray-700">{d.description}</p>}
+              {d.notes && <p className="max-w-prose whitespace-pre-wrap px-5 py-4 text-sm leading-relaxed text-gray-700">{d.notes}</p>}
+            </Panel>
+          )}
+        </div>
+
+        <aside className="flex min-w-0 flex-col gap-6">
+          <Panel id="doc-belongs" title="Belongs to">
+            <dl className="divide-y divide-gray-100">
+              <Field label="Patient">
+                {d.patient ? (
+                  <Link href={`/patients/${d.patient._id}`} className={`rounded font-semibold text-gray-900 hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                    {patientName}
+                    {d.patient.patientCode && <span className="ml-1.5 font-mono text-xs font-normal text-gray-500">{d.patient.patientCode}</span>}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-amber-800">Not filed</span>
+                )}
+              </Field>
+              {d.visit && (
+                <Field label="Visit">
+                  <Link href={`/visits/${d.visit._id}`} className={`rounded font-mono text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                    {d.visit.visitCode}
+                  </Link>
+                  {d.visit.date && <span className="text-gray-500"> · {shortDate(d.visit.date)}</span>}
+                </Field>
+              )}
+              {d.appointment && (
+                <Field label="Appointment">
+                  <Link href={`/appointments/${d.appointment._id}`} className={`rounded font-mono text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                    {d.appointment.appointmentCode}
+                  </Link>
+                </Field>
+              )}
+              {d.labResult && (
+                <Field label="Lab request">
+                  <Link href={`/lab-results/${d.labResult._id}`} className={`rounded font-mono text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                    {d.labResult.requestCode}
+                  </Link>
+                </Field>
+              )}
+              {d.invoice && (
+                <Field label="Invoice">
+                  <Link href={`/invoices/${d.invoice._id}`} className={`rounded font-mono text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                    {d.invoice.invoiceNumber}
+                  </Link>
+                </Field>
+              )}
+              {expiry && (
+                <Field label="Valid until">
+                  <ExpiryLine iso={String(expiry)} />
+                </Field>
+              )}
+            </dl>
+          </Panel>
+
+          <Panel id="doc-who" title="Who can see it">
+            <div className="space-y-3 px-5 py-4 text-sm">
+              <p className="text-gray-700">
+                {d.isConfidential
+                  ? 'Staff only. It is kept out of the patient’s portal.'
+                  : d.patient
+                    ? archived
+                      ? `Archived, so ${d.patient.firstName} doesn’t see it in the patient portal now.`
+                      : `${d.patient.firstName} can see it in the patient portal.`
+                    : 'Only staff, until it is filed to a patient.'}
+              </p>
+              <p className="text-gray-500">Staff who may read documents can open it; each opening and download is recorded.</p>
+              {permissions.canEdit && (
+                <button
+                  type="button"
+                  onClick={() => update({ isConfidential: !d.isConfidential }, d.isConfidential ? 'The patient can see it again.' : 'Now staff only.')}
+                  disabled={busy}
+                  className={`rounded-md border border-gray-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-gray-900 hover:border-gray-900 disabled:opacity-60 ${FOCUS_RING}`}
+                >
+                  {d.isConfidential ? 'Let the patient see it' : 'Make it staff only'}
+                </button>
+              )}
+            </div>
+          </Panel>
+
+          <Panel id="doc-file" title="File">
+            <dl className="divide-y divide-gray-100">
+              <Field label="Name">{d.originalFilename || d.filename || '—'}</Field>
+              <Field label="Type">
+                {KIND_LABEL[d.documentType] ?? 'File'}
+                {d.scanned && <span className="text-gray-500"> · scanned</span>}
+              </Field>
+              <Field label="Size">
+                <span className="font-mono">{fileSize(d.size)}</span>
+              </Field>
+              <Field label="Added">
+                <span className="font-mono">
+                  {shortDate(d.uploadDate)}, {clock(d.uploadDate)}
+                </span>
+                {d.uploadedBy?.name && <span className="text-gray-500"> · {d.uploadedBy.name}</span>}
+              </Field>
+              {d.lastModifiedDate && (
+                <Field label="Changed">
+                  <span className="font-mono">
+                    {shortDate(d.lastModifiedDate)}, {clock(d.lastModifiedDate)}
+                  </span>
+                  {d.lastModifiedBy?.name && <span className="text-gray-500"> · {d.lastModifiedBy.name}</span>}
+                </Field>
+              )}
+              {d.tags && d.tags.length > 0 && (
+                <Field label="Tags">
+                  <span className="flex flex-wrap gap-1">
+                    {d.tags.map((t) => (
+                      <span key={t} className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-700">
+                        {t}
+                      </span>
+                    ))}
+                  </span>
+                </Field>
+              )}
+            </dl>
+          </Panel>
+        </aside>
       </div>
+
+      {dialog?.kind === 'edit' && <EditDialog doc={d} focus={dialog.focus} onClose={() => setDialog(null)} onDone={done} />}
+      {dialog?.kind === 'delete' &&
+        createPortal(
+          <AlertDialog
+            open
+            onOpenChange={(o) => !o && setDialog(null)}
+            title={`Delete ${d.title}?`}
+            description={
+              <>
+                <p>The file is removed for good{patientName ? ` and leaves ${patientName}’s record and patient portal` : ''}. A note that it existed, and who deleted it, stays in the audit log.</p>
+                <p className="mt-2">To keep it but take it out of daily use, archive it instead.</p>
+              </>
+            }
+          >
+            <button type="button" onClick={() => setDialog(null)} className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              Keep it
+            </button>
+            <button type="button" onClick={remove} className={`rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 ${FOCUS_RING}`}>
+              Delete document
+            </button>
+          </AlertDialog>,
+          document.body
+        )}
+    </Shell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-6xl mx-auto flex flex-col gap-6">{children}</div>
     </section>
   );
 }
 
+function BackLink({ patient }: { patient?: { _id: string; firstName: string; lastName: string } | null }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <Link href="/documents" className={`inline-flex w-fit items-center gap-1.5 rounded text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+        <Svg d={ICON.chevL} />
+        All documents
+      </Link>
+      {patient && (
+        <Link href={`/patients/${patient._id}`} className={`rounded text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+          {patient.firstName} {patient.lastName}’s record
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function Panel({ id, title, aside, children }: { id: string; title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="motion-panel-in overflow-hidden rounded-lg border border-gray-200 bg-white" aria-labelledby={id}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-gray-200 px-5 py-4">
+        <h2 id={id} className="text-base font-bold tracking-tight text-gray-900">
+          {title}
+        </h2>
+        {aside}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-4 px-5 py-3 text-sm">
+      <dt className="text-gray-500">{label}</dt>
+      <dd className="min-w-0 break-words text-gray-900">{children}</dd>
+    </div>
+  );
+}

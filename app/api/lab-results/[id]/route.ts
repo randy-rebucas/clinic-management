@@ -5,7 +5,7 @@ import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
-import { parseBody, isValidationError } from '@/lib/api/validate';
+import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
 import { updateLabResultSchema } from '@/lib/lab-result-schema';
 
 export async function GET(
@@ -26,8 +26,9 @@ export async function GET(
     const { id } = await params;
     if (!isValidId(id)) return notFound('Lab result');
 
+    // File contents (inline data URLs) are not sent; files open through ./files/[fileId].
     const labResult = await LabResult.findOne(tenantFilter(tenantId, { _id: id }))
-      .select('-thirdPartyLab.apiKey')
+      .select('-thirdPartyLab.apiKey -attachments.url')
       .populate({ path: 'patient', select: 'firstName lastName patientCode email phone dateOfBirth', match: { tenantIds: tenantObjectId } })
       .populate({ path: 'visit', select: 'visitCode date visitType', match: { tenantId: tenantObjectId } })
       .populate('orderedBy', 'name email')
@@ -35,7 +36,26 @@ export async function GET(
 
     if (!labResult) return notFound('Lab result');
 
-    return NextResponse.json({ success: true, data: labResult });
+    // The patient's earlier results for the same test, so each value can be read against the last.
+    const testType = String(labResult.request?.testType ?? '').trim();
+    const history = testType
+      ? await LabResult.find(
+          tenantFilter(tenantId, {
+            _id: { $ne: labResult._id },
+            patient: labResult.patient?._id ?? labResult.patient,
+            'request.testType': new RegExp(`^${escapeRegex(testType)}$`, 'i'),
+            status: { $in: ['completed', 'reviewed'] },
+            results: { $exists: true },
+            orderDate: { $lte: labResult.orderDate ?? new Date() },
+          })
+        )
+          .select('requestCode orderDate resultDate results abnormalFlags')
+          .sort({ resultDate: -1, orderDate: -1 })
+          .limit(6)
+          .lean()
+      : [];
+
+    return NextResponse.json({ success: true, data: labResult, history });
   } catch (error: any) {
     console.error('Error fetching lab result:', error);
     return NextResponse.json(
@@ -104,7 +124,7 @@ export async function PUT(
     const labResult = await LabResult.findOneAndUpdate(query, { $set: update }, {
       new: true,
       runValidators: true,
-    }).select('-thirdPartyLab.apiKey');
+    }).select('-thirdPartyLab.apiKey -attachments.url');
 
     if (!labResult) return notFound('Lab result');
 

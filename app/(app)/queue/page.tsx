@@ -1,10 +1,7 @@
-import { requirePagePermission } from '@/app/lib/auth-helpers';
 import QueuePageClient from '@/components/QueuePageClient';
+import { loadQueuePageContext } from '@/lib/queue-page';
 
 export default async function QueuePage() {
-  // Require permission to read queue
-  await requirePagePermission('queue', 'read');
-
-  return <QueuePageClient />;
+  const { permissions, doctors } = await loadQueuePageContext();
+  return <QueuePageClient permissions={permissions} doctors={doctors} />;
 }
-

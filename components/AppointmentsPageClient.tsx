@@ -1,1469 +1,813 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
+import { ClinicDay, STATE, stateOf, toMinutes, type StateKey, type TodaySchedule } from './dashboards/charts';
+import MonthCalendar, { monthOf, type DayLoad } from './appointments/MonthCalendar';
+import BookingModal, { type BookingMode, type DoctorOption, type PatientOption } from './appointments/BookingModal';
+import {
+  AppointmentActions,
+  FIELD,
+  FOCUS_RING,
+  ICON,
+  InQueueBadge,
+  Svg,
+  WalkInBadge,
+  dayLabel,
+  doctorName,
+  endLabel,
+  keyToDate,
+  localKey,
+  patientName,
+  relationTo,
+  shiftDay,
+  specialty,
+  timeLabel,
+  useAppointmentActions,
+  type Appointment,
+  type AppointmentPermissions,
+} from './appointments/shared';
+import { StatusBadge } from './dashboards/shared';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
 
-const AppointmentCalendar = dynamic(() => import('./AppointmentCalendar'));
-import { Modal } from './ui/Modal';
-import { useSetting } from './SettingsContext';
-import { toDateKey } from './utils/dateKey';
-import { formatApiError } from './utils/apiError';
-
-interface Appointment {
-  _id: string;
-  appointmentCode?: string;
-  patient: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone: string;
-  };
-  doctor?: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    specialization: string;
-  };
-  provider?: {
-    _id: string;
-    name: string;
-  };
-  appointmentDate: string;
-  appointmentTime: string;
-  scheduledAt?: string;
-  duration: number;
-  status: 'pending' | 'scheduled' | 'confirmed' | 'rescheduled' | 'no-show' | 'completed' | 'cancelled';
-  reason?: string;
-  notes?: string;
-  isWalkIn?: boolean;
-  queueNumber?: number;
-  estimatedWaitTime?: number;
-  room?: string;
+interface Summary {
+  month: string;
+  today: string;
+  now: string;
+  defaultDuration: number;
+  businessHours: { day: string; open: string | null; close: string | null; closed: boolean }[];
+  days: DayLoad[];
 }
 
-interface Patient {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
+const WEEKDAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const STATE_ORDER: StateKey[] = ['upcoming', 'pending', 'completed', 'noShow', 'cancelled'];
+const ROW_GRID =
+  'lg:grid lg:grid-cols-[6.5rem_minmax(0,1.6fr)_minmax(0,1.3fr)_minmax(0,0.9fr)_auto] lg:items-center lg:gap-4';
+
+function relativeDay(key: string, today: string) {
+  const diff = Math.round((keyToDate(key).getTime() - keyToDate(today).getTime()) / 86_400_000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  if (diff === -1) return 'Yesterday';
+  return diff > 0 ? `In ${diff} days` : `${-diff} days ago`;
 }
 
-interface Doctor {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  specialization: string;
-}
+export default function AppointmentsPageClient({
+  permissions,
+  doctors,
+  initialDate,
+  openBooking = false,
+  patientId,
+  initialDoctor,
+  bookingDoctor,
+}: {
+  permissions: AppointmentPermissions;
+  /** The clinic's doctors, loaded on the server (names only). */
+  doctors: DoctorOption[];
+  /** Day to open on ("yyyy-MM-dd", from ?date=); today otherwise. */
+  initialDate?: string;
+  /** Opened at /appointments/new: start with the booking form. */
+  openBooking?: boolean;
+  /** Prefill the booking form with this patient. */
+  patientId?: string;
+  /** Show only this doctor's bookings (from ?doctor=, e.g. a doctor's page). */
+  initialDoctor?: string;
+  /** Prefill the booking form with this doctor (from /appointments/new?doctorId=). */
+  bookingDoctor?: string;
+}) {
+  const router = useRouter();
+  const [browserToday] = useState(() => localKey(new Date()));
+  const [selected, setSelected] = useState(initialDate ?? browserToday);
+  const [month, setMonth] = useState(monthOf(initialDate ?? browserToday));
+  const [doctorFilter, setDoctorFilter] = useState(initialDoctor ?? '');
+  const [roomFilter, setRoomFilter] = useState('');
+  const [stateFilter, setStateFilter] = useState<StateKey | null>(null);
+  const [walkInsOnly, setWalkInsOnly] = useState(false);
 
-function getCurrentTime() {
-  const now = new Date();
-  const hours = now.getHours().toString().padStart(2, '0');
-  const minutes = now.getMinutes().toString().padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [booking, setBooking] = useState<{ mode: BookingMode; n: number } | null>(() =>
+    openBooking && !patientId ? { mode: 'scheduled', n: 0 } : null
+  );
+  const [bookingPatient, setBookingPatient] = useState<PatientOption | null>(null);
 
-export default function AppointmentsPageClient({ patientId }: { patientId?: string } = {}) {
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [showWalkInForm, setShowWalkInForm] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<'calendar' | 'list' | 'queue'>('calendar');
-  const defaultDuration = useSetting('appointmentSettings.defaultDuration', 30);
-  const [filterDoctor, setFilterDoctor] = useState<string>('');
-  const [filterRoom, setFilterRoom] = useState<string>('');
+  // --- Data -----------------------------------------------------------------
 
-  // Appointments and queue state
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [loadingAppointments, setLoadingAppointments] = useState(true);
-  const [queue, setQueue] = useState<any[]>([]);
-  const [loadingQueue, setLoadingQueue] = useState(true);
+  const summary = useKeyedFetch<Summary>(`/api/appointments/summary?${new URLSearchParams({ month, ...(doctorFilter ? { doctorId: doctorFilter } : {}) })}`);
+  const dayUrl = `/api/appointments?${new URLSearchParams({ date: selected, limit: '500', ...(doctorFilter ? { doctorId: doctorFilter } : {}) })}`;
+  const day = useKeyedFetch<Appointment[]>(dayUrl);
+  const queue = useKeyedFetch<{ appointment?: string | { _id: string } | null }[]>(permissions.canSeeQueue ? '/api/queue?status=waiting,in-progress' : null);
 
-  // Track which appointments are in queue
-  const appointmentsInQueue = new Set<string>(
-    queue
-      .filter((q: any) => q.appointment)
-      .map((q: any) => {
-        const apt = q.appointment;
-        return typeof apt === 'string' ? apt : (apt._id?.toString() || apt.toString());
+  const reloadDay = day.reload;
+  const reloadSummary = summary.reload;
+  const reloadQueue = queue.reload;
+  const refreshAll = useCallback(() => {
+    reloadDay();
+    reloadSummary();
+    reloadQueue();
+  }, [reloadDay, reloadSummary, reloadQueue]);
+
+  // Opened from a patient record: load that patient, then open the form for them.
+  useEffect(() => {
+    if (!openBooking || !patientId) return;
+    let cancelled = false;
+    fetch(`/api/patients/${patientId}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (json?.success && json.data) setBookingPatient(json.data);
+        setBooking({ mode: 'scheduled', n: 0 });
       })
+      .catch(() => !cancelled && setBooking({ mode: 'scheduled', n: 0 }));
+    return () => {
+      cancelled = true;
+    };
+  }, [openBooking, patientId]);
+
+  const today = summary.value?.today ?? browserToday;
+  const relation = relationTo(selected, today);
+  const queuedIds = useMemo(
+    () =>
+      new Set(
+        (queue.value ?? [])
+          .map((q) => (typeof q.appointment === 'string' ? q.appointment : q.appointment?._id))
+          .filter((id): id is string => Boolean(id))
+      ),
+    [queue.value]
   );
 
-  const [formData, setFormData] = useState({
-    patient: '',
-    doctor: '',
-    room: '',
-    appointmentDate: '',
-    appointmentTime: '',
-    duration: defaultDuration,
-    reason: '',
-    notes: '',
-    status: 'scheduled' as const,
-    isWalkIn: false,
-  });
-  const [patientSearch, setPatientSearch] = useState('');
-  const [debouncedPatientSearch, setDebouncedPatientSearch] = useState('');
-  const [showPatientSearch, setShowPatientSearch] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [busyAppointmentId, setBusyAppointmentId] = useState<string | null>(null);
-  const router = useRouter();
+  const showDay = day.valueUrl === dayUrl;
+  const dayItems = useMemo(() => (showDay ? day.value ?? [] : []), [showDay, day.value]);
+  const firstLoad = !showDay && !day.error;
+  const refreshing = day.loading && showDay;
 
-  // Debounce patient search input
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedPatientSearch(patientSearch);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [patientSearch]);
+  const rooms = useMemo(() => [...new Set(dayItems.map((a) => a.room?.trim()).filter((r): r is string => Boolean(r)))].sort(), [dayItems]);
+  const mix = useMemo(() => {
+    const out: Record<StateKey, number> = { upcoming: 0, completed: 0, pending: 0, noShow: 0, cancelled: 0 };
+    dayItems.forEach((a) => (out[stateOf(a.status)] += 1));
+    return out;
+  }, [dayItems]);
+  const walkInCount = dayItems.filter((a) => a.isWalkIn && a.status !== 'cancelled').length;
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.patient-search-container')) {
-        setShowPatientSearch(false);
-        setHighlightedIndex(-1);
-      }
-    };
+  const filtered = useMemo(
+    () =>
+      dayItems
+        .filter((a) => !roomFilter || a.room?.trim() === roomFilter)
+        .filter((a) => !stateFilter || stateOf(a.status) === stateFilter)
+        .filter((a) => !walkInsOnly || a.isWalkIn)
+        .sort((a, b) => (toMinutes(a.appointmentTime) ?? 9999) - (toMinutes(b.appointmentTime) ?? 9999)),
+    [dayItems, roomFilter, stateFilter, walkInsOnly]
+  );
 
-    if (showPatientSearch) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [showPatientSearch]);
+  const weekday = WEEKDAY_NAMES[keyToDate(selected).getDay()];
+  const hours = summary.value?.businessHours.find((h) => h.day === weekday);
+  const closedWeekdays = useMemo(() => new Set((summary.value?.businessHours ?? []).filter((h) => h.closed).map((h) => h.day)), [summary.value]);
+  const doctorLabel = doctors.find((d) => d._id === doctorFilter);
 
-  const fetchAppointments = useCallback(async () => {
-    try {
-      setLoadingAppointments(true);
-      
-      const params = new URLSearchParams();
-      params.append('date', toDateKey(selectedDate));
-      if (filterDoctor) {
-        params.append('doctorId', filterDoctor);
-      }
-      
-      const response = await fetch(`/api/appointments?${params.toString()}`);
-      
-      if (response.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to fetch appointments');
-      }
-      
-      const data = await response.json();
-      setAppointments(data.data || data.appointments || []);
-    } catch (error) {
-      console.error('Failed to fetch appointments:', error);
-      setError(error instanceof Error ? error.message : 'Failed to fetch appointments');
-    } finally {
-      setLoadingAppointments(false);
-    }
-  }, [selectedDate, filterDoctor, router]);
+  const schedule: TodaySchedule = useMemo(
+    () => ({
+      open: hours && !hours.closed ? hours.open : null,
+      close: hours && !hours.closed ? hours.close : null,
+      closedToday: Boolean(hours?.closed),
+      now: relation === 'today' ? summary.value?.now ?? null : null,
+      past: relation === 'past',
+      appointments: filtered
+        .filter((a) => toMinutes(a.appointmentTime) !== null)
+        .map((a) => ({
+          _id: a._id,
+          time: a.appointmentTime as string,
+          duration: a.duration || summary.value?.defaultDuration || 30,
+          status: a.status,
+          patient: patientName(a),
+          doctorId: a.doctor?._id ?? null,
+          doctor: a.doctor ? doctorName(a) : 'Unassigned',
+        })),
+    }),
+    [hours, relation, summary.value, filtered]
+  );
+  const untimed = filtered.length - schedule.appointments.length;
 
-  const fetchQueue = useCallback(async () => {
-    try {
-      setLoadingQueue(true);
-      
-      const response = await fetch('/api/queue');
-      
-      if (response.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      if (response.ok) {
-        const data = await response.json();
-        setQueue(data.data || data.queue || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch queue:', error);
-    } finally {
-      setLoadingQueue(false);
-    }
-  }, [router]);
+  // --- Navigation -------------------------------------------------------------
 
-  const fetchPatients = useCallback(async (search?: string) => {
-    try {
-      const params = new URLSearchParams({ limit: '500' });
-      if (search?.trim()) params.set('search', search.trim());
-      const res = await fetch(`/api/patients?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) setPatients(data.data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch patients:', error);
-    }
+  const goTo = useCallback((key: string) => {
+    setSelected(key);
+    setMonth(monthOf(key));
+    setStateFilter(null);
+    setRoomFilter('');
+    setWalkInsOnly(false);
   }, []);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [patientsRes, doctorsRes] = await Promise.all([
-        fetch('/api/patients?limit=500'),
-        fetch('/api/doctors'),
-      ]);
+  const clearFilters = () => {
+    setDoctorFilter('');
+    setRoomFilter('');
+    setStateFilter(null);
+    setWalkInsOnly(false);
+  };
 
-      if (patientsRes.status === 401 || doctorsRes.status === 401) {
-        router.push('/login');
-        return;
-      }
+  const chips: { key: string; label: string; clear: () => void }[] = [];
+  if (doctorLabel) chips.push({ key: 'doctor', label: `Dr. ${doctorLabel.firstName} ${doctorLabel.lastName}`, clear: () => setDoctorFilter('') });
+  if (roomFilter) chips.push({ key: 'room', label: `Room: ${roomFilter}`, clear: () => setRoomFilter('') });
+  if (stateFilter) chips.push({ key: 'state', label: STATE[stateFilter].label, clear: () => setStateFilter(null) });
+  if (walkInsOnly) chips.push({ key: 'walkin', label: 'Walk-ins', clear: () => setWalkInsOnly(false) });
+  const narrowed = Boolean(roomFilter || stateFilter || walkInsOnly);
 
-      const parseResponse = async (res: Response) => {
-        const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          return await res.json();
-        }
-        return { success: false, error: `API error: ${res.status}` };
-      };
+  // --- Actions ----------------------------------------------------------------
 
-      const patientsData = await parseResponse(patientsRes);
-      const doctorsData = await parseResponse(doctorsRes);
-
-      if (patientsData.success) {
-        setPatients(patientsData.data);
-        // Opened with ?patientId: start a new appointment for that patient.
-        const patient = patientId
-          ? (patientsData.data as Patient[]).find((p) => p._id === patientId)
-          : undefined;
-        if (patient) {
-          setFormData((prev) => ({
-            ...prev,
-            patient: patient._id,
-            appointmentDate: toDateKey(new Date()),
-            appointmentTime: getCurrentTime(),
-          }));
-          setSelectedPatient(patient);
-          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-          setShowForm(true);
-          setShowWalkInForm(false);
-        }
-      }
-      if (doctorsData.success) setDoctors(doctorsData.data);
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [patientId, router]);
+  const onDone = useCallback(
+    (message: string) => {
+      setActionError(null);
+      setNotice(message);
+      refreshAll();
+    },
+    [refreshAll]
+  );
+  const onError = useCallback((message: string) => {
+    setNotice(null);
+    setActionError(message);
+  }, []);
+  const actions = useAppointmentActions({ onDone, onError });
 
   useEffect(() => {
-    const load = async () => {
-      await Promise.all([fetchData(), fetchQueue()]);
-    };
-    load();
-  }, [fetchData, fetchQueue]);
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
-  useEffect(() => {
-    const load = async () => {
-      await fetchAppointments();
-    };
-    load();
-  }, [fetchAppointments]);
-
-  // Server-side patient search; skipped while a patient is selected.
-  useEffect(() => {
-    if (selectedPatient) return;
-    const load = async () => {
-      await fetchPatients(debouncedPatientSearch);
-    };
-    load();
-  }, [debouncedPatientSearch, selectedPatient, fetchPatients]);
-
-  const filteredPatients = patients.filter((patient) => {
-    if (!patientSearch.trim()) return true;
-    const searchLower = patientSearch.toLowerCase();
-    const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
-    const email = (patient.email || '').toLowerCase();
-    const phone = (patient.phone || '').toLowerCase();
-    return fullName.includes(searchLower) || email.includes(searchLower) || phone.includes(searchLower);
-  });
-
-  const selectPatient = (patient: Patient) => {
-    setFormData({ ...formData, patient: patient._id });
-    setSelectedPatient(patient);
-    setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-    setShowPatientSearch(false);
-    setHighlightedIndex(-1);
+  const closeBooking = () => {
+    setBooking(null);
+    setBookingPatient(null);
+    if (openBooking) window.history.replaceState(null, '', '/appointments');
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.patient || !selectedPatient) {
-      setError('Please select a valid patient');
-      setTimeout(() => setError(null), 3000);
-      setShowPatientSearch(true);
-      return;
-    }
-    if (submitting) return;
-    setSubmitting(true);
-    try {
-      const isWalkIn = formData.isWalkIn;
+  const dayName = dayLabel(selected);
+  const booked = dayItems.filter((a) => a.status !== 'cancelled').length;
 
-      // For walk-ins, get next queue number
-      let queueNumber;
-      if (isWalkIn) {
-        const today = toDateKey(new Date());
-        const todayRes = await fetch(`/api/appointments?date=${today}&status=scheduled,confirmed`);
-        if (todayRes.ok) {
-          const todayData = await todayRes.json();
-          if (todayData.success) {
-            const todayWalkIns = todayData.data.filter((apt: Appointment) => apt.isWalkIn);
-            queueNumber = todayWalkIns.length > 0
-              ? Math.max(...todayWalkIns.map((apt: Appointment) => apt.queueNumber || 0)) + 1
-              : 1;
-          }
-        }
-      }
-
-      const res = await fetch('/api/appointments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          appointmentDate: new Date(formData.appointmentDate),
-          queueNumber: isWalkIn ? queueNumber : undefined,
-          estimatedWaitTime: isWalkIn ? 30 : undefined, // Default 30 min wait for walk-ins
-        }),
-      });
-
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const contentType = res.headers.get('content-type');
-      let data;
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        console.error('API returned non-JSON response:', text.substring(0, 500));
-        setError('Failed to create appointment: API error');
-        setTimeout(() => setError(null), 5000);
-        return;
-      }
-
-      if (data.success) {
-        setShowForm(false);
-        setShowWalkInForm(false);
-        setFormData({
-          patient: '',
-          doctor: '',
-          room: '',
-          appointmentDate: '',
-          appointmentTime: '',
-          duration: 30,
-          reason: '',
-          notes: '',
-          status: 'scheduled',
-          isWalkIn: false,
-        });
-        setPatientSearch('');
-        setSelectedPatient(null);
-        setHighlightedIndex(-1);
-        // Refresh data
-        fetchAppointments();
-        if (isWalkIn) fetchQueue();
-        setSuccess(isWalkIn ? `Walk-in appointment created! Queue number: ${data.data?.queueNumber ?? queueNumber}` : 'Appointment scheduled successfully!');
-        setTimeout(() => setSuccess(null), 5000);
-      } else {
-        setError(formatApiError(data, 'Request failed'));
-        setTimeout(() => setError(null), 5000);
-      }
-    } catch (error) {
-      console.error('Failed to create appointment:', error);
-      setError('Failed to create appointment');
-      setTimeout(() => setError(null), 5000);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleStatusUpdate = async (id: string, status: string) => {
-    if (busyAppointmentId) return;
-    setBusyAppointmentId(id);
-    try {
-      const res = await fetch(`/api/appointments/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const contentType = res.headers.get('content-type');
-      let data;
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        setError('Failed to update appointment: API error');
-        setTimeout(() => setError(null), 5000);
-        return;
-      }
-
-      if (data.success) {
-        // Refresh data
-        fetchAppointments();
-        setSuccess('Appointment updated successfully!');
-        setTimeout(() => setSuccess(null), 3000);
-        // Send reminder if status is confirmed
-        if (status === 'confirmed') {
-          // Trigger reminder (will be implemented)
-        }
-      } else {
-        setError(formatApiError(data, 'Request failed'));
-        setTimeout(() => setError(null), 5000);
-      }
-    } catch (error) {
-      console.error('Failed to update appointment:', error);
-      setError('Failed to update appointment');
-      setTimeout(() => setError(null), 5000);
-    } finally {
-      setBusyAppointmentId(null);
-    }
-  };
-
-  const handleMoveToQueue = async (id: string, autoConfirm: boolean = false) => {
-    if (busyAppointmentId) return;
-    setBusyAppointmentId(id);
-    try {
-      // Find the appointment to get patient and doctor info
-      const appointment = appointments.find((apt: any) => apt._id === id) as Appointment | undefined;
-      if (!appointment) {
-        setError('Appointment not found');
-        setTimeout(() => setError(null), 5000);
-        return;
-      }
-
-      // Add to Queue system
-      // Handle both populated and unpopulated patient reference
-      const patientId = appointment.patient?._id.toString();
-      const doctorId = appointment.doctor?._id?.toString();
-
-      if (!patientId) {
-        setError('Patient information is missing from appointment');
-        setTimeout(() => setError(null), 5000);
-        return;
-      }
-
-      const queueRes = await fetch('/api/queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patientId: patientId,
-          appointmentId: id,
-          visitId: undefined, // Appointments don't have visits
-          doctorId: doctorId,
-          roomId: undefined, // Room in appointment is a string, not an ID reference
-          queueType: 'appointment',
-          priority: 0,
-          notes: appointment.notes || appointment.reason || undefined,
-        }),
-      });
-
-      if (queueRes.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const queueData = await queueRes.json();
-
-      if (!queueData.success) {
-        const errorMsg = queueData.error || 'Failed to add to queue';
-        setError(`Error adding to queue: ${errorMsg}`);
-        setTimeout(() => setError(null), 5000);
-        return;
-      }
-
-      if (autoConfirm) {
-        // Update appointment status to confirmed (patient is now in queue)
-        const aptRes = await fetch(`/api/appointments/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: 'confirmed',
-          }),
-        });
-
-        if (aptRes.ok) {
-          const aptData = await aptRes.json();
-          if (aptData.success) {
-            // Refresh data
-            fetchQueue();
-            fetchAppointments();
-            const patientName = typeof appointment.patient === 'string'
-              ? 'Patient'
-              : `${appointment.patient?.firstName || ''} ${appointment.patient?.lastName || ''}`.trim() || 'Patient';
-            setSuccess(`${patientName} added to queue! Queue number: ${queueData.data.queueNumber}`);
-            setTimeout(() => setSuccess(null), 5000);
-          }
-        } else {
-          // Queue was created but appointment update failed
-          setSuccess(`Added to queue (${queueData.data.queueNumber}) but appointment status update failed`);
-          setTimeout(() => setSuccess(null), 5000);
-        }
-      } else {
-        setSuccess('Added to queue successfully!');
-        setTimeout(() => setSuccess(null), 5000);
-      }
-
-      // Refresh queue data
-      fetchQueue();
-      fetchAppointments();
-    } catch (error) {
-      console.error('Failed to move to queue:', error);
-      setError('Failed to move to queue');
-      setTimeout(() => setError(null), 5000);
-    } finally {
-      setBusyAppointmentId(null);
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
-  const formatTime = (timeString: string) => {
-    const [hours, minutes] = timeString.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
-  const getStatusColor = (status: string): 'green' | 'blue' | 'gray' | 'red' | 'yellow' | 'purple' | 'orange' => {
-    switch (status) {
-      case 'confirmed':
-        return 'green';
-      case 'scheduled':
-        return 'blue';
-      case 'completed':
-        return 'gray';
-      case 'cancelled':
-        return 'red';
-      case 'no-show':
-        return 'yellow';
-      case 'pending':
-        return 'purple';
-      case 'rescheduled':
-        return 'orange';
-      default:
-        return 'gray';
-    }
-  };
-
-  const getSelectedDateAppointments = () => {
-    const dateStr = toDateKey(selectedDate);
-    return appointments.filter((apt: Appointment) => {
-      const aptDate = toDateKey(apt.appointmentDate);
-      return aptDate === dateStr;
-    }).sort((a: Appointment, b: Appointment) => {
-      const timeA = a.appointmentTime || '00:00';
-      const timeB = b.appointmentTime || '00:00';
-      return timeA.localeCompare(timeB);
-    });
-  };
-
-  const getWalkInQueue = () => {
-    const today = toDateKey(new Date());
-    return appointments
-      .filter((apt: Appointment) => {
-        const aptDate = toDateKey(apt.appointmentDate);
-        return apt.isWalkIn && aptDate === today && ['scheduled', 'confirmed'].includes(apt.status);
-      })
-      .sort((a: Appointment, b: Appointment) => (a.queueNumber || 0) - (b.queueNumber || 0));
-  };
-
-  if (loading) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100 border-t-blue-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading appointments...</p>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  const selectedDateAppointments = getSelectedDateAppointments();
-  const walkInQueue = getWalkInQueue();
+  // --- Render -------------------------------------------------------------------
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
-          {/* Error/Success Messages */}
-          {error && (
-            <div role="alert" className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-red-800 mb-1">Error</h3>
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
-              </div>
-            </div>
-          )}
-          {success && (
-            <div role="status" className="bg-green-50 border-l-4 border-green-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-green-800 mb-1">Success</h3>
-                  <p className="text-sm text-green-700">{success}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Appointments</h1>
-                  </div>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">
-                    Manage appointments and walk-in queue
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3 flex-wrap">
-                <button
-                  onClick={() => {
-                    fetchAppointments();
-                    fetchQueue();
-                  }}
-                  disabled={loadingAppointments || loadingQueue}
-                  className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all flex items-center gap-2 text-sm font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Refresh appointments and queue"
-                >
-                  <svg className={`w-5 h-5 ${loadingAppointments || loadingQueue ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Refresh
-                </button>
-                <button
-                  onClick={() => {
-                    const selectedDateStr = toDateKey(selectedDate);
-                    const todayStr = toDateKey(new Date());
-                    setFormData({
-                      ...formData,
-                      isWalkIn: false,
-                      appointmentDate: selectedDateStr,
-                      appointmentTime: selectedDateStr === todayStr ? getCurrentTime() : ''
-                    });
-                    setShowWalkInForm(false);
-                    setShowForm(true);
-                  }}
-                  className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center gap-2 text-sm font-semibold shadow-md"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  Schedule Appointment
-                </button>
-                <button
-                  onClick={() => {
-                    const todayStr = toDateKey(new Date());
-                    setFormData({
-                      ...formData,
-                      isWalkIn: true,
-                      appointmentDate: todayStr,
-                      appointmentTime: getCurrentTime()
-                    });
-                    setShowForm(false);
-                    setShowWalkInForm(true);
-                  }}
-                  className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all flex items-center gap-2 text-sm font-semibold shadow-md"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Add Walk-In
-                </button>
-              </div>
-            </div>
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-7xl mx-auto flex flex-col gap-6">
+        {/* Title row */}
+        <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Appointments</h1>
+            <p className="text-sm sm:text-base text-gray-600 mt-1">Book, confirm and check in patients, one day at a time.</p>
           </div>
-
-          {/* View Mode Tabs */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="border-b border-gray-200 bg-gray-50/50">
-              <div className="flex">
-                <button
-                  type="button"
-                  aria-pressed={viewMode === 'calendar'}
-                  onClick={() => setViewMode('calendar')}
-                  className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all relative ${viewMode === 'calendar'
-                    ? 'text-blue-600 bg-white'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                >
-                  {viewMode === 'calendar' && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-blue-600"></span>
-                  )}
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    Calendar View
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={viewMode === 'list'}
-                  onClick={() => setViewMode('list')}
-                  className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all relative ${viewMode === 'list'
-                    ? 'text-blue-600 bg-white'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                >
-                  {viewMode === 'list' && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-blue-600"></span>
-                  )}
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                    </svg>
-                    List View
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={viewMode === 'queue'}
-                  onClick={() => setViewMode('queue')}
-                  className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center ${viewMode === 'queue'
-                    ? 'text-blue-600 bg-white'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                >
-                  {viewMode === 'queue' && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-blue-600"></span>
-                  )}
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Walk-In Queue
-                    {walkInQueue.length > 0 && (
-                      <span className="ml-1 px-2 py-0.5 bg-orange-500 text-white text-xs rounded-full font-bold border border-orange-600">
-                        {walkInQueue.length}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              </div>
+          {permissions.canBook && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setBooking((b) => ({ mode: 'walk-in', n: (b?.n ?? 0) + 1 }))}
+                className={`inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
+              >
+                <Svg d={ICON.walk} />
+                Add walk-in
+              </button>
+              <button
+                type="button"
+                onClick={() => setBooking((b) => ({ mode: 'scheduled', n: (b?.n ?? 0) + 1 }))}
+                className={`inline-flex items-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep ${FOCUS_RING}`}
+              >
+                <Svg d={ICON.calendar} />
+                Book appointment
+              </button>
             </div>
+          )}
+        </header>
+
+        <p className="sr-only" aria-live="polite">
+          {notice ?? (showDay && !day.loading ? `${dayName}: ${booked} booked${narrowed ? `, ${filtered.length} shown` : ''}.` : '')}
+        </p>
+        {notice && (
+          <div role="status" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+            <p>{notice}</p>
+            <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 text-green-700 hover:text-green-900 ${FOCUS_RING}`}>
+              <Svg d={ICON.x} />
+            </button>
           </div>
+        )}
+        {actionError && (
+          <div role="alert" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+            <p>{actionError}</p>
+            <button type="button" onClick={() => setActionError(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 text-red-700 hover:text-red-900 ${FOCUS_RING}`}>
+              <Svg d={ICON.x} />
+            </button>
+          </div>
+        )}
 
-          {/* Calendar View */}
-          {viewMode === 'calendar' && (
-            <div className="flex flex-col lg:flex-row gap-6">
-              <div className="flex-none w-full lg:w-[380px]">
-                <AppointmentCalendar
-                  appointments={appointments}
-                  selectedDate={selectedDate}
-                  onDateSelect={setSelectedDate}
-                />
-                {/* Filters */}
-                <div className="bg-white border border-gray-200 rounded-xl shadow-sm mt-4">
-                  <div className="p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-purple-500 rounded-lg">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                        </svg>
-                      </div>
-                      <h3 className="text-lg font-bold text-gray-900">Filters</h3>
-                    </div>
-                    <div className="flex flex-col gap-4">
-                      <div>
-                        <label htmlFor="appt-filter-doctor" className="block text-sm font-semibold text-gray-700 mb-2">Doctor</label>
-                        <select id="appt-filter-doctor"
-                          value={filterDoctor || ''}
-                          onChange={(e) => setFilterDoctor(e.target.value === 'all' ? '' : e.target.value)}
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm transition-all bg-white"
-                        >
-                          <option value="all">All Doctors</option>
-                          {doctors.map((doctor) => (
-                            <option key={doctor._id} value={doctor._id}>
-                              {doctor.firstName} {doctor.lastName}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label htmlFor="appt-filter-room" className="block text-sm font-semibold text-gray-700 mb-2">Room</label>
-                        <input id="appt-filter-room"
-                          type="text"
-                          placeholder="Filter by room..."
-                          value={filterRoom}
-                          onChange={(e) => setFilterRoom(e.target.value)}
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm transition-all"
-                        />
-                      </div>
-                      {(filterDoctor || filterRoom) && (
-                        <button
-                          onClick={() => {
-                            setFilterDoctor('');
-                            setFilterRoom('');
-                          }}
-                          className="w-full px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
-                        >
-                          Clear Filters
-                        </button>
-                      )}
-                    </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
+          {/* The day */}
+          <div className="flex min-w-0 flex-col gap-4 lg:order-2">
+            {/* Day toolbar */}
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => goTo(shiftDay(selected, -1))}
+                    aria-label="Previous day"
+                    className={`rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 ${FOCUS_RING}`}
+                  >
+                    <Svg d={ICON.chevL} />
+                  </button>
+                  <div className="min-w-0 px-1">
+                    <h2 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900" aria-live="polite">
+                      {dayName}
+                    </h2>
+                    <p className="text-sm text-gray-500">
+                      <span className={relation === 'today' ? 'font-semibold text-brand-teal-deep' : ''}>{relativeDay(selected, today)}</span>
+                      {hours?.closed ? ' · clinic closed' : ''}
+                    </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => goTo(shiftDay(selected, 1))}
+                    aria-label="Next day"
+                    className={`rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 ${FOCUS_RING}`}
+                  >
+                    <Svg d={ICON.chevR} />
+                  </button>
+                  {relation !== 'today' && (
+                    <button
+                      type="button"
+                      onClick={() => goTo(today)}
+                      className={`ml-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}
+                    >
+                      Today
+                    </button>
+                  )}
                 </div>
-              </div>
-              <div className="flex-1">
-                <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-                  <div className="p-5 sm:p-6">
-                    <div className="flex items-center gap-3 mb-5">
-                      <div className="p-2 bg-blue-500 rounded-lg">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-bold text-gray-900">
-                          Appointments for {formatDate(selectedDate.toISOString())}
-                        </h3>
-                        {(filterDoctor || filterRoom) && (
-                          <p className="text-sm text-gray-600 mt-0.5">
-                            Filtered{filterDoctor ? ' by doctor' : ''}{filterRoom ? ' by room' : ''}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    {selectedDateAppointments.length === 0 ? (
-                      <div className="text-center py-12">
-                        <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-900 mb-2">No appointments scheduled</h3>
-                        <p className="text-sm text-gray-600">No appointments found for this date</p>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-3">
-                        {selectedDateAppointments.map((appointment: Appointment) => (
-                          <div key={appointment._id} className="bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-blue-300 transition-all">
-                            <div className="flex justify-between items-start gap-3">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-3 flex-wrap">
-                                  <span className={`px-2.5 py-1 text-xs rounded-full font-semibold border ${getStatusColor(appointment.status) === 'green' ? 'bg-green-100 text-green-700 border-green-200' :
-                                    getStatusColor(appointment.status) === 'blue' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                                      getStatusColor(appointment.status) === 'red' ? 'bg-red-100 text-red-700 border-red-200' :
-                                        getStatusColor(appointment.status) === 'yellow' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
-                                          getStatusColor(appointment.status) === 'purple' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                                            getStatusColor(appointment.status) === 'orange' ? 'bg-orange-100 text-orange-700 border-orange-200' :
-                                              'bg-gray-100 text-gray-700 border-gray-200'
-                                    }`}>
-                                    {appointment.status}
-                                  </span>
-                                  {appointment.isWalkIn && (
-                                    <span className="px-2.5 py-1 bg-orange-100 text-orange-700 text-xs rounded-full font-semibold border border-orange-200">
-                                      Walk-In #{appointment.queueNumber}
-                                    </span>
-                                  )}
-                                  {appointment.appointmentCode && (
-                                    <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full font-semibold border border-gray-200">
-                                      #{appointment.appointmentCode}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-base font-bold text-gray-900 mb-2">
-                                  {appointment.patient.firstName} {appointment.patient.lastName}
-                                </div>
-                                <div className="text-sm text-gray-600 mb-2 flex items-center gap-2">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                  </svg>
-                                  {appointment.doctor
-                                    ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName} - ${appointment.doctor.specialization}`
-                                    : appointment.provider
-                                      ? appointment.provider.name
-                                      : 'No provider assigned'}
-                                </div>
-                                <div className="text-sm text-gray-600 mb-2 flex items-center gap-2">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                  {formatTime(appointment.appointmentTime)} ({appointment.duration} min)
-                                  {appointment.room && (
-                                    <span className="text-blue-600 ml-2 font-semibold">
-                                      • Room: {appointment.room}
-                                    </span>
-                                  )}
-                                </div>
-                                {appointment.reason && (
-                                  <div className="text-sm text-gray-600 mt-2 bg-white/50 p-2 rounded-lg border border-gray-200">
-                                    <span className="font-semibold">Reason:</span> {appointment.reason}
-                                  </div>
-                                )}
-                                {appointment.estimatedWaitTime && (
-                                  <div className="text-xs text-orange-700 font-semibold mt-2 bg-orange-50 p-2 rounded-lg border border-orange-200">
-                                    Estimated wait: {appointment.estimatedWaitTime} minutes
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex flex-col gap-2 flex-shrink-0">
-                                {appointment.status === 'scheduled' && (
-                                  <>
-                                    <button
-                                      onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
-                                      disabled={busyAppointmentId === appointment._id}
-                                      className="px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-xs font-semibold border border-green-200"
-                                    >
-                                      Confirm
-                                    </button>
-                                    <button
-                                      onClick={() => handleStatusUpdate(appointment._id, 'cancelled')}
-                                      disabled={busyAppointmentId === appointment._id}
-                                      className="px-3 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors text-xs font-semibold border border-red-200"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </>
-                                )}
-                                {appointment.status === 'confirmed' && (
-                                  <>
-                                    <button
-                                      onClick={() => handleStatusUpdate(appointment._id, 'completed')}
-                                      disabled={busyAppointmentId === appointment._id}
-                                      className="px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-xs font-semibold border border-gray-200"
-                                    >
-                                      Complete
-                                    </button>
-                                    {appointmentsInQueue.has(appointment._id) ? (
-                                      <span className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-semibold border border-green-200">
-                                        ✓ In Queue
-                                      </span>
-                                    ) : (
-                                      <button
-                                        onClick={() => handleMoveToQueue(appointment._id, true)}
-                                        disabled={busyAppointmentId === appointment._id}
-                                        className="px-3 py-1.5 text-orange-700 hover:bg-orange-50 rounded-lg transition-colors text-xs font-semibold border border-orange-200"
-                                      >
-                                        Move to Queue
-                                      </button>
-                                    )}
-                                    <button
-                                      onClick={() => handleStatusUpdate(appointment._id, 'no-show')}
-                                      disabled={busyAppointmentId === appointment._id}
-                                      className="px-3 py-2 bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100 transition-colors text-xs font-semibold border border-yellow-200"
-                                    >
-                                      No-Show
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* List View */}
-          {viewMode === 'list' && (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Patient</th>
-                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Provider</th>
-                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Date & Time</th>
-                      <th className="px-5 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                      <th className="px-5 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {appointments.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="px-5 py-12 text-center">
-                          <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                            </svg>
-                          </div>
-                          <h3 className="text-lg font-bold text-gray-900 mb-2">No appointments found</h3>
-                          <p className="text-sm text-gray-600">Schedule an appointment to get started</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      appointments.map((appointment: Appointment) => (
-                        <tr key={appointment._id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-5 py-4">
-                            <div className="text-sm font-bold text-gray-900">
-                              {appointment.patient.firstName} {appointment.patient.lastName}
-                            </div>
-                            {appointment.isWalkIn && (
-                              <span className="inline-block mt-1.5 px-2.5 py-1 bg-orange-100 text-orange-700 text-xs rounded-full font-semibold border border-orange-200">
-                                Walk-In #{appointment.queueNumber}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-5 py-4">
-                            <div className="text-sm text-gray-600">
-                              {appointment.doctor
-                                ? `Dr. ${appointment.doctor.firstName} ${appointment.doctor.lastName}`
-                                : appointment.provider
-                                  ? appointment.provider.name
-                                  : 'N/A'}
-                            </div>
-                          </td>
-                          <td className="px-5 py-4">
-                            <div className="text-sm text-gray-600">
-                              {formatDate(appointment.appointmentDate)} at {formatTime(appointment.appointmentTime)}
-                            </div>
-                            {appointment.room && (
-                              <div className="text-xs text-blue-600 mt-1 font-semibold">Room: {appointment.room}</div>
-                            )}
-                          </td>
-                          <td className="px-5 py-4">
-                            <span className={`px-2.5 py-1 text-xs rounded-full font-semibold border ${getStatusColor(appointment.status) === 'green' ? 'bg-green-100 text-green-700 border-green-200' :
-                              getStatusColor(appointment.status) === 'blue' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                                getStatusColor(appointment.status) === 'red' ? 'bg-red-100 text-red-700 border-red-200' :
-                                  getStatusColor(appointment.status) === 'yellow' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
-                                    getStatusColor(appointment.status) === 'purple' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                                      getStatusColor(appointment.status) === 'orange' ? 'bg-orange-100 text-orange-700 border-orange-200' :
-                                        'bg-gray-100 text-gray-700 border-gray-200'
-                              }`}>
-                              {appointment.status}
-                            </span>
-                          </td>
-                          <td className="px-5 py-4 text-right">
-                            <div className="flex gap-2 justify-end flex-wrap">
-                              {appointment.status === 'scheduled' && (
-                                <>
-                                  <button
-                                    onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
-                                    disabled={busyAppointmentId === appointment._id}
-                                    className="px-3 py-1.5 text-green-700 hover:bg-green-50 rounded-lg transition-colors text-xs font-semibold border border-green-200"
-                                  >
-                                    Confirm
-                                  </button>
-                                  <button
-                                    onClick={() => handleStatusUpdate(appointment._id, 'cancelled')}
-                                    disabled={busyAppointmentId === appointment._id}
-                                    className="px-3 py-1.5 text-red-700 hover:bg-red-50 rounded-lg transition-colors text-xs font-semibold border border-red-200"
-                                  >
-                                    Cancel
-                                  </button>
-                                </>
-                              )}
-                              {appointment.status === 'confirmed' && (
-                                <>
-                                  <button
-                                    onClick={() => handleStatusUpdate(appointment._id, 'completed')}
-                                    disabled={busyAppointmentId === appointment._id}
-                                    className="px-3 py-1.5 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-xs font-semibold border border-gray-200"
-                                  >
-                                    Complete
-                                  </button>
-                                  {appointmentsInQueue.has(appointment._id) ? (
-                                    <span className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-semibold border border-green-200">
-                                      ✓ In Queue
-                                    </span>
-                                  ) : (
-                                    <button
-                                      onClick={() => handleMoveToQueue(appointment._id)}
-                                      disabled={busyAppointmentId === appointment._id}
-                                      className="px-3 py-1.5 text-orange-700 hover:bg-orange-50 rounded-lg transition-colors text-xs font-semibold border border-orange-200"
-                                    >
-                                      Move to Queue
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={() => handleStatusUpdate(appointment._id, 'no-show')}
-                                    disabled={busyAppointmentId === appointment._id}
-                                    className="px-3 py-1.5 text-yellow-700 hover:bg-yellow-50 rounded-lg transition-colors text-xs font-semibold border border-yellow-200"
-                                  >
-                                    No-Show
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Walk-In Queue View */}
-          {viewMode === 'queue' && (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-              <div className="p-5 sm:p-6">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 bg-orange-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-xl font-bold text-gray-900">Today&apos;s Walk-In Queue</h2>
-                </div>
-                {walkInQueue.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">No walk-in patients in queue</h3>
-                    <p className="text-sm text-gray-600">Walk-in patients will appear here</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    {walkInQueue.map((appointment: Appointment) => (
-                      <div key={appointment._id} className="bg-gradient-to-r from-orange-50 to-orange-100/50 border border-orange-200 rounded-xl p-4 hover:shadow-md transition-all">
-                        <div className="flex justify-between items-center gap-3">
-                          <div className="flex items-center gap-4">
-                            <div
-                              className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white text-lg font-bold shadow-md"
-                            >
-                              {appointment.queueNumber}
-                            </div>
-                            <div>
-                              <div className="text-base font-bold text-gray-900">
-                                {appointment.patient.firstName} {appointment.patient.lastName}
-                              </div>
-                              <div className="text-sm text-gray-600 mt-1">{appointment.patient.phone}</div>
-                              {appointment.estimatedWaitTime && (
-                                <div className="text-xs text-orange-700 font-semibold mt-2 bg-white/50 px-2 py-1 rounded-lg border border-orange-200">
-                                  Est. wait: {appointment.estimatedWaitTime} minutes
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2.5 py-1 text-xs rounded-full font-semibold border ${getStatusColor(appointment.status) === 'red' ? 'bg-red-100 text-red-700 border-red-200' :
-                              getStatusColor(appointment.status) === 'yellow' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
-                                getStatusColor(appointment.status) === 'green' ? 'bg-green-100 text-green-700 border-green-200' :
-                                  'bg-blue-100 text-blue-700 border-blue-200'
-                              }`}>
-                              {appointment.status}
-                            </span>
-                            {appointment.status !== 'confirmed' && (
-                            <button
-                              onClick={() => handleStatusUpdate(appointment._id, 'confirmed')}
-                              disabled={busyAppointmentId === appointment._id}
-                              className="px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-xs font-semibold border border-green-200"
-                            >
-                              Confirm
-                            </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label htmlFor="appt-doctor-filter" className="sr-only">
+                    Doctor
+                  </label>
+                  <select id="appt-doctor-filter" value={doctorFilter} onChange={(e) => setDoctorFilter(e.target.value)} className={`${FIELD} w-auto min-w-44`}>
+                    <option value="">All doctors</option>
+                    {doctors.map((d) => (
+                      <option key={d._id} value={d._id}>
+                        Dr. {d.firstName} {d.lastName}
+                      </option>
                     ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Appointment Form Modal */}
-          <Modal open={showForm || showWalkInForm} onOpenChange={(open) => {
-            if (!open) {
-              setShowForm(false);
-              setShowWalkInForm(false);
-              setPatientSearch('');
-              setSelectedPatient(null);
-              setHighlightedIndex(-1);
-              setFormData({ ...formData, patient: '' });
-            }
-          }} className="max-w-3xl">
-            <div className="p-6 sm:p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className={`p-2 rounded-lg ${showWalkInForm ? 'bg-orange-500' : 'bg-blue-500'}`}>
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {showWalkInForm ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    )}
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">
-                    {showWalkInForm ? 'Add Walk-In Patient' : 'Schedule Appointment'}
-                  </h2>
-                  <p className="text-sm text-gray-600 mt-0.5">
-                    {showWalkInForm ? 'Register a walk-in patient' : 'Create a new appointment'}
-                  </p>
-                </div>
-              </div>
-              <form onSubmit={handleSubmit}>
-                <div className="flex flex-col gap-5">
-                  <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1">
-                      <label htmlFor="appt-patient" className="block text-sm font-semibold text-gray-700 mb-2">Patient <span className="text-red-500">*</span></label>
-                      <div className="relative patient-search-container">
-                        <input id="appt-patient"
-                          type="text"
-                          required
-                          value={patientSearch}
-                          onChange={(e) => {
-                            setPatientSearch(e.target.value);
-                            setShowPatientSearch(true);
-                            setHighlightedIndex(-1);
-                            if (!e.target.value) {
-                              setFormData({ ...formData, patient: '' });
-                              setSelectedPatient(null);
-                            }
-                          }}
-                          onFocus={() => {
-                            setShowPatientSearch(true);
-                            setHighlightedIndex(-1);
-                          }}
-                          onKeyDown={(e) => {
-                            if (!showPatientSearch || filteredPatients.length === 0) return;
-
-                            if (e.key === 'ArrowDown') {
-                              e.preventDefault();
-                              setHighlightedIndex(prev =>
-                                prev < filteredPatients.length - 1 ? prev + 1 : prev
-                              );
-                            } else if (e.key === 'ArrowUp') {
-                              e.preventDefault();
-                              setHighlightedIndex(prev => prev > 0 ? prev - 1 : -1);
-                            } else if (e.key === 'Enter' && highlightedIndex >= 0) {
-                              e.preventDefault();
-                              selectPatient(filteredPatients[highlightedIndex]);
-                            } else if (e.key === 'Escape') {
-                              setShowPatientSearch(false);
-                              setHighlightedIndex(-1);
-                            }
-                          }}
-                          placeholder="Type to search patients..."
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                        />
-                        {showPatientSearch && (
-                          <div
-                            className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto"
-                          >
-                            {filteredPatients.length > 0 ? (
-                              <div className="flex flex-col gap-1 p-1">
-                                {filteredPatients.map((patient, index) => (
-                                  <button
-                                    key={patient._id}
-                                    type="button"
-                                    onClick={() => {
-                                      selectPatient(patient);
-                                      setShowPatientSearch(false);
-                                    }}
-                                    onMouseEnter={() => setHighlightedIndex(index)}
-                                    className={`w-full text-left px-4 py-2.5 rounded-lg transition-colors ${highlightedIndex === index
-                                      ? 'bg-blue-50 hover:bg-blue-100 border border-blue-200'
-                                      : 'hover:bg-gray-50 border border-transparent'
-                                      }`}
-                                  >
-                                    <div className="flex flex-col">
-                                      <span className="font-semibold text-sm text-gray-900">{patient.firstName} {patient.lastName}</span>
-                                      {(patient.email || patient.phone) && (
-                                        <span className="text-xs text-gray-600 mt-0.5">
-                                          {patient.email && patient.phone
-                                            ? `${patient.email} • ${patient.phone}`
-                                            : patient.email || patient.phone}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            ) : patientSearch.trim() ? (
-                              <div className="p-4 text-center">
-                                <p className="text-sm text-gray-600">No patients found</p>
-                              </div>
-                            ) : (
-                              <div className="p-4 text-center">
-                                <p className="text-sm text-gray-600">All patients ({patients.length})</p>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {formData.patient && !selectedPatient && (
-                        <p className="text-xs text-red-600 mt-1.5 font-medium">Please select a valid patient from the list</p>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <label htmlFor="appt-doctor" className="block text-sm font-semibold text-gray-700 mb-2">Doctor/Provider <span className="text-red-500">*</span></label>
-                      <select id="appt-doctor"
-                        required
-                        value={formData.doctor || ''}
-                        onChange={(e) => setFormData({ ...formData, doctor: e.target.value })}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                      >
-                        <option value="">Select a doctor</option>
-                        {doctors.map((doctor) => (
-                          <option key={doctor._id} value={doctor._id}>
-                            {doctor.firstName} {doctor.lastName} - {doctor.specialization}
+                  </select>
+                  {rooms.length > 0 && (
+                    <>
+                      <label htmlFor="appt-room-filter" className="sr-only">
+                        Room
+                      </label>
+                      <select id="appt-room-filter" value={roomFilter} onChange={(e) => setRoomFilter(e.target.value)} className={`${FIELD} w-auto min-w-36`}>
+                        <option value="">All rooms</option>
+                        {rooms.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
                           </option>
                         ))}
                       </select>
-                    </div>
-                  </div>
-                  <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1">
-                      <label htmlFor="appt-date" className="block text-sm font-semibold text-gray-700 mb-2">Date <span className="text-red-500">*</span></label>
-                      <input id="appt-date"
-                        type="date"
-                        required
-                        value={formData.appointmentDate}
-                        onChange={(e) => {
-                          const selectedDateStr = e.target.value;
-                          const todayStr = toDateKey(new Date());
-                          setFormData({
-                            ...formData,
-                            appointmentDate: selectedDateStr,
-                            appointmentTime: selectedDateStr === todayStr && !formData.appointmentTime ? getCurrentTime() : formData.appointmentTime
-                          });
-                        }}
-                        min={toDateKey(new Date())}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label htmlFor="appt-time" className="block text-sm font-semibold text-gray-700 mb-2">Time <span className="text-red-500">*</span></label>
-                      <input id="appt-time"
-                        type="time"
-                        required
-                        value={formData.appointmentTime}
-                        onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1">
-                      <label htmlFor="appt-duration" className="block text-sm font-semibold text-gray-700 mb-2">Duration (minutes)</label>
-                      <input id="appt-duration"
-                        type="number"
-                        min="15"
-                        max="240"
-                        step="15"
-                        value={formData.duration}
-                        onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 30 })}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label htmlFor="appt-room" className="block text-sm font-semibold text-gray-700 mb-2">Room (Optional)</label>
-                      <input id="appt-room"
-                        type="text"
-                        value={formData.room}
-                        onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                        placeholder="e.g., Room 101, Consultation Room A"
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="appt-status" className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
-                    <select id="appt-status"
-                      value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                    >
-                      <option value="scheduled">Scheduled</option>
-                      <option value="confirmed">Confirmed</option>
-                      <option value="pending">Pending</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="appt-reason" className="block text-sm font-semibold text-gray-700 mb-2">Reason</label>
-                    <input id="appt-reason"
-                      type="text"
-                      value={formData.reason}
-                      onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                      placeholder="Appointment reason"
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="appt-notes" className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
-                    <textarea id="appt-notes"
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      rows={3}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white resize-none"
-                    />
-                  </div>
-                  <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowForm(false);
-                        setShowWalkInForm(false);
-                        setPatientSearch('');
-                        setSelectedPatient(null);
-                        setHighlightedIndex(-1);
-                        setFormData({ ...formData, patient: '' });
-                      }}
-                      className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
-                    >
-                      Cancel
-                    </button>
-                    <button type="submit" disabled={submitting} aria-busy={submitting} className={`px-5 py-2.5 text-white rounded-lg transition-all text-sm font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed ${showWalkInForm
-                      ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
-                      : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
-                      }`}>
-                      {submitting ? 'Saving…' : showWalkInForm ? 'Add Walk-In' : 'Schedule Appointment'}
-                    </button>
-                  </div>
+                    </>
+                  )}
                 </div>
-              </form>
+              </div>
+
+              {chips.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2" aria-label="Active filters">
+                  {chips.map((c) => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={c.clear}
+                      aria-label={`Remove filter ${c.label}`}
+                      className={`motion-chip-in inline-flex items-center gap-1.5 rounded-md bg-brand-teal-light py-1 pl-2.5 pr-1.5 text-sm font-medium text-brand-teal-deep transition-colors hover:bg-brand-teal-light/60 ${FOCUS_RING}`}
+                    >
+                      {c.label}
+                      <Svg d={ICON.x} className="h-3.5 w-3.5" />
+                    </button>
+                  ))}
+                  <button type="button" onClick={clearFilters} className={`rounded px-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+                    Clear all
+                  </button>
+                </div>
+              )}
             </div>
-          </Modal>
+
+            {day.error ? (
+              <div role="alert" className="flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 p-4">
+                <p className="text-sm font-medium text-red-800">The appointments for {dayName} didn&apos;t load ({day.error}).</p>
+                <button type="button" onClick={day.reload} className={`inline-flex shrink-0 items-center gap-1.5 rounded text-sm font-semibold text-red-800 hover:text-red-900 ${FOCUS_RING}`}>
+                  <Svg d={ICON.refresh} />
+                  Try again
+                </button>
+              </div>
+            ) : firstLoad ? (
+              <DaySkeleton />
+            ) : dayItems.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-white">
+                <Empty
+                  icon={ICON.calendar}
+                  title={`Nothing booked for ${dayName}`}
+                  hint={
+                    hours?.closed
+                      ? `Business hours in Settings mark ${weekday.charAt(0).toUpperCase() + weekday.slice(1)}s as closed.`
+                      : doctorLabel
+                        ? `Dr. ${doctorLabel.firstName} ${doctorLabel.lastName} has no appointments this day.`
+                        : relation === 'past'
+                          ? 'No appointments were recorded for this day.'
+                          : 'Bookings for this day will appear here, by doctor and time.'
+                  }
+                  action={
+                    permissions.canBook && relation !== 'past' && !hours?.closed ? (
+                      <button
+                        type="button"
+                        onClick={() => setBooking((b) => ({ mode: 'scheduled', n: (b?.n ?? 0) + 1 }))}
+                        className={`mt-5 inline-flex items-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}
+                      >
+                        <Svg d={ICON.calendar} />
+                        Book for this day
+                      </button>
+                    ) : null
+                  }
+                />
+              </div>
+            ) : (
+              <div className={`flex flex-col gap-4 transition-opacity duration-200 ${refreshing ? 'opacity-60' : ''}`} aria-busy={day.loading}>
+                {/* Board */}
+                {schedule.appointments.length > 0 && (
+                  <section className="rounded-lg border border-gray-200 bg-white overflow-hidden" aria-labelledby="board-title">
+                    <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-5 py-4">
+                      <div className="min-w-0">
+                        <h3 id="board-title" className="text-base font-bold tracking-tight text-gray-900">
+                          {doctorLabel ? `Dr. ${doctorLabel.firstName} ${doctorLabel.lastName}'s day` : 'Day by doctor'}
+                        </h3>
+                        <p className="mt-0.5 truncate text-sm text-gray-500">
+                          {schedule.closedToday
+                            ? 'Clinic closed this day'
+                            : schedule.open && schedule.close
+                              ? `Open ${timeLabel(schedule.open)} – ${timeLabel(schedule.close)}`
+                              : 'Business hours not set'}
+                          {' · '}
+                          <span className="font-mono">{schedule.appointments.filter((a) => a.status !== 'cancelled').length}</span> on the board
+                          {untimed > 0 && (
+                            <>
+                              {' · '}
+                              <span className="font-mono">{untimed}</span> without a time, listed below
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                    <ClinicDay
+                      key={selected}
+                      schedule={schedule}
+                      receivedAt={summary.receivedAt}
+                      singleLane={doctorLabel ? `Dr. ${doctorLabel.firstName} ${doctorLabel.lastName}` : null}
+                      caption={`Appointments for ${dayName}`}
+                    />
+                  </section>
+                )}
+
+                {/* List */}
+                <section className="rounded-lg border border-gray-200 bg-white overflow-hidden" aria-labelledby="list-title">
+                  <h3 id="list-title" className="sr-only">
+                    Appointments for {dayName}
+                  </h3>
+                  <div className={`hidden ${ROW_GRID} border-b border-gray-200 bg-gray-50/60 px-4 py-2.5 text-sm font-medium text-gray-500`}>
+                    <span>Time</span>
+                    <span>Patient</span>
+                    <span>Doctor</span>
+                    <span>Status</span>
+                    <span className="sr-only">Actions</span>
+                  </div>
+                  {filtered.length === 0 ? (
+                    <Empty
+                      icon={ICON.search}
+                      title="No appointments match these filters"
+                      hint={`${booked} booked for ${dayName} in all.`}
+                      action={
+                        <button
+                          type="button"
+                          onClick={clearFilters}
+                          className={`mt-5 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}
+                        >
+                          Clear filters
+                        </button>
+                      }
+                    />
+                  ) : (
+                    <ul key={`${selected}:${stateFilter}:${roomFilter}:${walkInsOnly}`} className="divide-y divide-gray-100">
+                      {filtered.map((a, i) => (
+                        <Row
+                          key={a._id}
+                          appointment={a}
+                          index={i}
+                          relation={relation}
+                          inQueue={queuedIds.has(a._id)}
+                          permissions={permissions}
+                          actions={actions}
+                          onOpen={() => router.push(`/appointments/${a._id}`)}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                  {filtered.length > 0 && (
+                    <p className="border-t border-gray-200 px-4 py-3 text-sm text-gray-600">
+                      <span className="font-mono text-gray-900">{filtered.length}</span>
+                      {narrowed ? (
+                        <>
+                          {' '}
+                          of <span className="font-mono text-gray-900">{dayItems.length}</span> appointments
+                        </>
+                      ) : (
+                        ` appointment${filtered.length === 1 ? '' : 's'}`
+                      )}
+                      {permissions.canSeeQueue && relation === 'today' && (
+                        <>
+                          {' · '}
+                          <Link href="/queue" className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                            Open the queue
+                          </Link>
+                        </>
+                      )}
+                    </p>
+                  )}
+                </section>
+              </div>
+            )}
+          </div>
+
+          {/* Month + mix: both choose what the day column shows */}
+          <aside className="flex min-w-0 flex-col gap-4 lg:order-1">
+            <MonthCalendar
+              month={month}
+              days={summary.value?.month === month ? summary.value.days : null}
+              today={today}
+              selected={selected}
+              closedWeekdays={closedWeekdays}
+              refreshing={summary.loading && summary.value !== null}
+              onSelect={goTo}
+              onMonth={setMonth}
+            />
+            {summary.error && (
+              <p role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                Daily counts didn&apos;t load.
+                <button type="button" onClick={summary.reload} className={`rounded font-semibold hover:text-red-900 ${FOCUS_RING}`}>
+                  Try again
+                </button>
+              </p>
+            )}
+            {showDay && dayItems.length > 0 && (
+              <DayMix
+                mix={mix}
+                walkIns={walkInCount}
+                active={stateFilter}
+                walkInsOnly={walkInsOnly}
+                onState={(k) => setStateFilter((cur) => (cur === k ? null : k))}
+                onWalkIns={() => setWalkInsOnly((v) => !v)}
+                day={dayLabel(selected, { weekday: 'long' })}
+              />
+            )}
+          </aside>
         </div>
       </div>
+
+      {booking && (
+        <BookingModal
+          key={booking.n}
+          mode={booking.mode}
+          date={selected}
+          today={today}
+          patient={bookingPatient}
+          doctors={doctors}
+          initialDoctor={booking.n === 0 ? bookingDoctor : undefined}
+          defaultDuration={summary.value?.defaultDuration ?? 30}
+          canQueue={permissions.canQueue}
+          onClose={closeBooking}
+          onBooked={(created, message) => {
+            closeBooking();
+            setActionError(null);
+            setNotice(message);
+            if (created?.appointmentDate) goTo(localKey(new Date(created.appointmentDate)));
+            refreshAll();
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pieces
+// ---------------------------------------------------------------------------
+
+function Row({
+  appointment: a,
+  index,
+  relation,
+  inQueue,
+  permissions,
+  actions,
+  onOpen,
+}: {
+  appointment: Appointment;
+  index: number;
+  relation: ReturnType<typeof relationTo>;
+  inQueue: boolean;
+  permissions: AppointmentPermissions;
+  actions: ReturnType<typeof useAppointmentActions>;
+  onOpen: () => void;
+}) {
+  const st = stateOf(a.status);
+  const cancelled = st === 'cancelled';
+  const end = endLabel(a);
+  const spec = specialty(a);
+
+  // Row click opens the appointment; its own controls, and dialogs portalled out of it, don't.
+  const onRowClick = (e: React.MouseEvent<HTMLLIElement>) => {
+    const target = e.target as HTMLElement;
+    if (!e.currentTarget.contains(target) || target.closest('a,button,input,label')) return;
+    onOpen();
+  };
+
+  return (
+    <li
+      onClick={onRowClick}
+      className={`motion-row-in group flex cursor-pointer flex-col gap-2 px-4 py-3 transition-colors hover:bg-gray-50 ${ROW_GRID}`}
+      style={{ animationDelay: `${Math.min(index * 18, 220)}ms` }}
+    >
+      {/* Time, with the board's state swatch */}
+      <span className="flex items-start gap-2.5">
+        <span
+          aria-hidden="true"
+          className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-sm ${cancelled ? 'ring-1 ring-inset ring-gray-400' : ''}`}
+          style={cancelled ? undefined : { background: STATE[st].fill }}
+        />
+        <span className="min-w-0">
+          <span className={`block font-mono text-sm font-medium tabular-nums ${cancelled ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
+            {timeLabel(a.appointmentTime)}
+          </span>
+          <span className="block font-mono text-xs text-gray-500 tabular-nums">{end ? `to ${end}` : `${a.duration || 30} min`}</span>
+        </span>
+      </span>
+
+      {/* Patient */}
+      <span className="min-w-0 pl-5 lg:pl-0">
+        <span className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/appointments/${a._id}`}
+            className={`truncate rounded font-semibold hover:text-brand-teal-deep ${cancelled ? 'text-gray-500' : 'text-gray-900'} ${FOCUS_RING}`}
+          >
+            {patientName(a)}
+          </Link>
+          {a.isWalkIn && <WalkInBadge n={a.queueNumber} />}
+        </span>
+        <span className="mt-0.5 block truncate text-sm text-gray-500">
+          {a.appointmentCode && <span className="font-mono text-xs">{a.appointmentCode}</span>}
+          {a.appointmentCode && a.reason ? ' · ' : ''}
+          {a.reason}
+        </span>
+      </span>
+
+      {/* Doctor */}
+      <span className="min-w-0 pl-5 text-sm lg:pl-0">
+        <span className="block truncate text-gray-700">{doctorName(a)}</span>
+        {(spec || a.room) && <span className="block truncate text-gray-500">{[spec, a.room].filter(Boolean).join(' · ')}</span>}
+      </span>
+
+      {/* Status */}
+      <span className="flex flex-wrap items-center gap-1.5 pl-5 lg:pl-0">
+        <StatusBadge status={a.status} />
+        {inQueue && <span className="lg:hidden"><InQueueBadge /></span>}
+      </span>
+
+      {/* Actions */}
+      <span className="pl-5 lg:pl-0">
+        <AppointmentActions appointment={a} relation={relation} inQueue={inQueue} permissions={permissions} actions={actions} />
+      </span>
+    </li>
+  );
+}
+
+function DayMix({
+  mix,
+  walkIns,
+  active,
+  walkInsOnly,
+  onState,
+  onWalkIns,
+  day,
+}: {
+  mix: Record<StateKey, number>;
+  walkIns: number;
+  active: StateKey | null;
+  walkInsOnly: boolean;
+  onState: (k: StateKey) => void;
+  onWalkIns: () => void;
+  day: string;
+}) {
+  const groups = STATE_ORDER.filter((k) => mix[k] > 0);
+  const total = groups.reduce((s, k) => s + mix[k], 0);
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white overflow-hidden" aria-labelledby="mix-title">
+      <div className="border-b border-gray-200 px-5 py-4">
+        <h2 id="mix-title" className="text-base font-bold tracking-tight text-gray-900">
+          {day}&apos;s status
+        </h2>
+        <p className="mt-0.5 text-sm text-gray-500">Pick a status to list only those.</p>
+      </div>
+      <div className="px-5 py-4">
+        <div className="flex h-3 w-full gap-0.5 overflow-hidden rounded" aria-hidden="true">
+          {groups.map((k, i) => (
+            <span
+              key={k}
+              className={`motion-seg-grow h-full transition-opacity duration-200 ${k === 'cancelled' ? 'ring-1 ring-inset ring-gray-300' : ''}`}
+              style={{
+                flexGrow: mix[k],
+                flexBasis: 0,
+                background: k === 'cancelled' ? '#F3F4F6' : STATE[k].fill,
+                opacity: active && active !== k ? 0.3 : 1,
+                animationDelay: `${i * 60}ms`,
+              }}
+            />
+          ))}
+        </div>
+        <ul className="mt-3 divide-y divide-gray-100" role="group" aria-label="Filter by status">
+          {groups.map((k) => {
+            const on = active === k;
+            return (
+              <li key={k}>
+                <button
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => onState(k)}
+                  className={`-mx-2 flex w-[calc(100%+1rem)] items-center justify-between rounded px-2 py-2 text-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal ${on ? 'bg-brand-teal-light/60' : ''}`}
+                >
+                  <span className="flex items-center gap-2 text-gray-700">
+                    <span
+                      aria-hidden="true"
+                      className={`h-2.5 w-2.5 rounded-sm ${k === 'cancelled' ? 'ring-1 ring-inset ring-gray-400' : ''}`}
+                      style={k === 'cancelled' ? undefined : { background: STATE[k].fill }}
+                    />
+                    <span className={on ? 'font-semibold text-gray-900' : ''}>{STATE[k].label}</span>
+                  </span>
+                  <span className="font-mono tabular-nums text-gray-900">
+                    {mix[k]}
+                    <span className="ml-2 inline-block w-9 text-right text-gray-500">{Math.round((mix[k] / total) * 100)}%</span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {walkIns > 0 && (
+          <button
+            type="button"
+            aria-pressed={walkInsOnly}
+            onClick={onWalkIns}
+            className={`-mx-2 mt-1 flex w-[calc(100%+1rem)] items-center justify-between rounded border-t border-gray-100 px-2 py-2 text-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal ${walkInsOnly ? 'bg-brand-teal-light/60' : ''}`}
+          >
+            <span className={`flex items-center gap-2 ${walkInsOnly ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+              <Svg d={ICON.walk} className="h-3.5 w-3.5 text-gray-500" />
+              Walk-ins
+            </span>
+            <span className="font-mono tabular-nums text-gray-900">{walkIns}</span>
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function Empty({ icon, title, hint, action }: { icon: string; title: string; hint: string; action?: ReactNode }) {
+  return (
+    <div className="px-6 py-14 text-center">
+      <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md bg-gray-100 text-gray-500">
+        <Svg d={icon} className="h-5 w-5" />
+      </div>
+      <p className="font-semibold text-gray-900">{title}</p>
+      <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">{hint}</p>
+      {action}
+    </div>
+  );
+}
+
+function DaySkeleton() {
+  return (
+    <div className="flex flex-col gap-4 animate-pulse" aria-hidden="true">
+      <div className="h-56 rounded-lg border border-gray-200 bg-white" />
+      <div className="rounded-lg border border-gray-200 bg-white">
+        <ul className="divide-y divide-gray-100">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <li key={i} className="flex items-center gap-4 px-4 py-3.5">
+              <span className="h-8 w-20 rounded bg-gray-100" />
+              <span className="flex-1 space-y-1.5">
+                <span className="block h-3.5 w-40 rounded bg-gray-100" />
+                <span className="block h-3 w-24 rounded bg-gray-50" />
+              </span>
+              <span className="hidden h-3.5 w-28 rounded bg-gray-50 sm:block" />
+              <span className="h-5 w-16 rounded bg-gray-100" />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }

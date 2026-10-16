@@ -4,7 +4,7 @@ import Doctor from '@/models/Doctor';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
-import { createDoctorSchema, resolveSpecialization, validationMessage } from './_lib/doctor-input';
+import { createDoctorSchema, duplicateResponse, resolveSpecialization, validationMessage } from './_lib/doctor-input';
 
 export async function GET() {
   const ctx = await requireTenantSession();
@@ -19,7 +19,11 @@ export async function GET() {
   try {
     await connectDB();
 
+    // List fields only: internal notes are staff-only (and this list is open to medical
+    // representatives), and the stored performance snapshot is stale; figures come from the
+    // productivity reports instead.
     const doctors = await Doctor.find(tenantFilter(tenantId))
+      .select('-internalNotes -performanceMetrics -availabilityOverrides -professionalFees')
       .populate('specializationId', 'name description category')
       .sort({ createdAt: -1 })
       .lean();
@@ -85,12 +89,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (error.code === 11000) {
-      return NextResponse.json(
-        { success: false, error: 'Doctor with this email or license number already exists' },
-        { status: 409 }
-      );
-    }
+    if (error.code === 11000) return duplicateResponse(error);
     console.error('Error creating doctor:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to create doctor' },

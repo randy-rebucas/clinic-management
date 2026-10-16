@@ -103,7 +103,9 @@ const NotificationSchema: Schema = new Schema(
 // Indexes for efficient queries (tenant-scoped)
 NotificationSchema.index({ tenantId: 1, user: 1, read: 1, createdAt: -1 });
 NotificationSchema.index({ tenantId: 1, user: 1, type: 1, read: 1 });
-NotificationSchema.index({ tenantId: 1, expiresAt: 1 }, { expireAfterSeconds: 0 }); // Auto-delete expired notifications
+// Auto-delete expired notifications. TTL must be a single-field index: MongoDB ignores
+// expireAfterSeconds on compound indexes. Deletion lags up to a minute, so reads also filter on it.
+NotificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export default mongoose.models.Notification || mongoose.model<INotification>('Notification', NotificationSchema);
 

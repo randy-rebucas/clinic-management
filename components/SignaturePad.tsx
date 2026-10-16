@@ -137,7 +137,7 @@ export default function SignaturePad({ onSave, onCancel, providerName }: Signatu
           <button
             type="button"
             onClick={handleSave}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+            className="px-3 py-1.5 bg-brand-teal-dark hover:bg-brand-teal-deep text-white rounded-lg text-sm font-medium transition-colors"
           >
             Save Signature
           </button>

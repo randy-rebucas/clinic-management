@@ -240,11 +240,11 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-teal-100 border-t-teal-600"></div>
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-brand-teal/20 border-t-brand-teal-dark"></div>
             </div>
             <p className="text-gray-600 font-medium">Loading staff...</p>
           </div>
@@ -254,12 +254,12 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-teal-50/30 min-h-screen">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6">
           {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -271,7 +271,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
             </div>
           )}
           {success && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-green-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -284,22 +284,22 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg shadow-md">
+                <div className="p-2 bg-brand-teal-dark rounded-lg shadow-md">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Staff Management</h1>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Staff Management</h1>
                   <p className="text-sm sm:text-base text-gray-600 mt-1">Manage nurses, receptionists, and accountants</p>
                 </div>
               </div>
               <button
                 onClick={() => { resetForm(); setShowModal(true); }}
-                className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
+                className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all inline-flex items-center gap-2 text-sm font-semibold shadow-md"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -311,9 +311,9 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
 
           {/* Quick Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-teal-500 rounded-lg">
+                <div className="p-1.5 bg-brand-teal-dark rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
@@ -322,7 +322,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
               </div>
               <div className="text-2xl font-bold text-gray-900">{counts.nurses + counts.receptionists + counts.accountants}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-green-500 rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -333,7 +333,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
               </div>
               <div className="text-2xl font-bold text-green-600">{counts.nurses}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-purple-500 rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -342,9 +342,9 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                 </div>
                 <div className="text-xs font-semibold text-gray-500 uppercase">Receptionists</div>
               </div>
-              <div className="text-2xl font-bold text-purple-600">{counts.receptionists}</div>
+              <div className="font-mono tabular-nums text-2xl font-semibold text-gray-900">{counts.receptionists}</div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-orange-500 rounded-lg">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -358,10 +358,10 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
           </div>
 
           {/* Search and Filter Bar */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-teal-500 rounded-lg">
+                <div className="p-2 bg-brand-teal-dark rounded-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
@@ -383,7 +383,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                       placeholder="Search by name, email, or employee ID..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="w-full pl-12 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                      className="w-full pl-12 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                     {search && (
                       <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
@@ -403,7 +403,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                     aria-label="Filter by staff type"
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                   >
                     {STAFF_TYPES.map(type => (
                       <option key={type.value} value={type.value}>{type.label}</option>
@@ -417,7 +417,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                     aria-label="Filter by status"
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                   >
                     <option value="">All Status</option>
                     {STATUS_OPTIONS.map(status => (
@@ -431,7 +431,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
 
           {/* Staff List */}
           {staff.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
               <div className="p-12 text-center">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
                   <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -442,7 +442,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                 <p className="text-sm text-gray-600 font-medium mb-4">Get started by adding your first staff member.</p>
                 <button
                   onClick={() => { resetForm(); setShowModal(true); }}
-                  className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-all font-semibold shadow-md"
+                  className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all font-semibold shadow-md"
                 >
                   Add First Staff Member
                 </button>
@@ -451,15 +451,15 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
           ) : (
             <div className="flex flex-col gap-3">
               {staff.map((member) => (
-                <div key={member._id} className="bg-white border border-gray-200 rounded-xl hover:shadow-md transition-all">
+                <div key={member._id} className="bg-white border border-gray-200 rounded-lg hover:shadow-md transition-all">
                   <div className="p-4">
                     <div className="flex items-center gap-3 justify-between flex-wrap sm:flex-nowrap">
                       {/* Staff Info */}
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className={`w-14 h-14 rounded-full flex items-center justify-center text-white text-base font-bold flex-shrink-0 shadow-md ${
-                          member.staffType === 'nurse' ? 'bg-gradient-to-br from-green-500 to-green-600' :
-                          member.staffType === 'receptionist' ? 'bg-gradient-to-br from-purple-500 to-purple-600' :
-                          'bg-gradient-to-br from-orange-500 to-orange-600'
+                          member.staffType === 'nurse' ? 'bg-green-500' :
+                          member.staffType === 'receptionist' ? 'bg-purple-500' :
+                          'bg-orange-500'
                         }`}>
                           {member.firstName.charAt(0)}{member.lastName.charAt(0)}
                         </div>
@@ -507,7 +507,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                         <button
                           onClick={() => handleEdit(member)}
                           aria-label={`Edit ${member.firstName} ${member.lastName}`}
-                          className="p-2.5 bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 transition-colors"
+                          className="p-2.5 bg-brand-teal-light/60 text-brand-teal-deep rounded-lg hover:bg-brand-teal-light transition-colors"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -519,7 +519,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                           disabled={invitingId !== null}
                           aria-label={`Send set-password link to ${member.firstName} ${member.lastName}`}
                           title="Send set-password link"
-                          className="p-2.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="p-2.5 bg-brand-teal-light/60 text-brand-teal-deep rounded-lg hover:bg-brand-teal-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -546,10 +546,10 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
         {/* Add/Edit Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="staff-modal-title" className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
-              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-teal-50 to-teal-100/50">
+            <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="staff-modal-title" className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
+              <div className="p-6 border-b border-gray-200 bg-brand-teal-light/60">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-teal-500 rounded-lg">
+                  <div className="p-2 bg-brand-teal-dark rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
@@ -568,7 +568,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                       value={formData.staffType}
                       onChange={(e) => setFormData({ ...formData, staffType: e.target.value })}
                       disabled={!!editingStaff}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-100"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none disabled:bg-gray-100"
                     >
                       <option value="nurse">Nurse</option>
                       <option value="receptionist">Receptionist</option>
@@ -584,7 +584,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                       value={formData.firstName}
                       onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
                   <div>
@@ -594,7 +594,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                       value={formData.lastName}
                       onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -606,7 +606,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
                   <div>
@@ -616,7 +616,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                       value={formData.phone}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -627,7 +627,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                       type="text"
                       value={formData.employeeId}
                       onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
                   <div>
@@ -636,7 +636,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                       type="text"
                       value={formData.department}
                       onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
 
@@ -650,7 +650,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                           value={formData.specialization}
                           onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
                           placeholder="e.g., Emergency, Pediatrics"
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                         />
                       </div>
                       <div>
@@ -659,7 +659,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                           type="text"
                           value={formData.licenseNumber}
                           onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                         />
                       </div>
                     </>
@@ -674,7 +674,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                           value={formData.certification}
                           onChange={(e) => setFormData({ ...formData, certification: e.target.value })}
                           placeholder="e.g., CPA, CMA"
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                         />
                       </div>
                       <div>
@@ -683,7 +683,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                           type="text"
                           value={formData.licenseNumber}
                           onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                         />
                       </div>
                     </>
@@ -696,7 +696,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                       type="date"
                       value={formData.hireDate}
                       onChange={(e) => setFormData({ ...formData, hireDate: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
                   <div>
@@ -704,7 +704,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                     <select id="staff-status"
                       value={formData.status}
                       onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     >
                       {STATUS_OPTIONS.map(status => (
                         <option key={status.value} value={status.value}>{status.label}</option>
@@ -719,7 +719,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                       value={formData.address}
                       onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                       rows={2}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none"
                     />
                   </div>
                 </div>
@@ -736,7 +736,7 @@ export default function StaffManagementClient({ user }: StaffManagementClientPro
                   <button
                     type="submit"
                     disabled={saving}
-                    className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 disabled:from-teal-400 disabled:to-teal-500 transition-all font-semibold shadow-md"
+                    className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep disabled:bg-brand-teal/60 transition-all font-semibold shadow-md"
                   >
                     {saving ? 'Saving...' : editingStaff ? 'Update Staff' : 'Create Staff'}
                   </button>

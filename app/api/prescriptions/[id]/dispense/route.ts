@@ -4,9 +4,11 @@ import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
 import InventoryItem from '@/models/Inventory';
+import { recordMovement } from '@/lib/inventory-movements';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
+import { distribute, dispensedPerMedication, type DispenseItem } from '@/lib/prescription-dispense';
 
 const dispenseSchema = z.object({
   pharmacyId: z.string().trim().max(100).optional(),
@@ -23,36 +25,7 @@ const dispenseSchema = z.object({
   trackingNumber: z.string().trim().max(200).optional(),
 });
 
-type Item = { medicationIndex: number; quantity: number };
-
-/** Spread a lump quantity over medications in order, filling each one's remaining amount. */
-function distribute(total: number, prescribed: number[], already: number[]): Item[] {
-  const items: Item[] = [];
-  let left = total;
-  for (let i = 0; i < prescribed.length && left > 0; i++) {
-    const remaining = Math.max(0, prescribed[i] - already[i]);
-    const take = Math.min(left, remaining);
-    if (take > 0) {
-      items.push({ medicationIndex: i, quantity: take });
-      left -= take;
-    }
-  }
-  return items;
-}
-
-/** Quantity already dispensed per medication, including legacy records without a breakdown. */
-function dispensedPerMedication(prescribed: number[], records: any[]): number[] {
-  const done = prescribed.map(() => 0);
-  for (const r of records || []) {
-    const items: Item[] = Array.isArray(r.items) && r.items.length
-      ? r.items
-      : distribute(r.quantityDispensed || 0, prescribed, done);
-    for (const it of items) {
-      if (it.medicationIndex >= 0 && it.medicationIndex < done.length) done[it.medicationIndex] += it.quantity || 0;
-    }
-  }
-  return done;
-}
+type Item = DispenseItem;
 
 export async function POST(
   request: NextRequest,
@@ -127,13 +100,16 @@ export async function POST(
 
     // Deduct stock first; a shortage of a stocked item blocks the dispense.
     const warnings: string[] = [];
-    const deducted: Array<{ itemId: Types.ObjectId; quantity: number }> = [];
+    const deducted: Array<{ itemId: Types.ObjectId; quantity: number; after: number }> = [];
     for (const it of items) {
       const med = medications[it.medicationIndex];
+      // A stock item linked to the medicine, or else one not linked to any medicine with the same name.
+      const byName = { name: new RegExp(`^${escapeRegex(String(med.name || '').trim())}$`, 'i') };
       const match: Record<string, unknown> = med.medicineId
-        ? { medicineId: med.medicineId }
-        : { name: new RegExp(`^${escapeRegex(String(med.name || '').trim())}$`, 'i') };
+        ? { $or: [{ medicineId: med.medicineId }, { medicineId: null, ...byName }] }
+        : byName;
       const stockItem = await InventoryItem.findOne(tenantFilter(tenantObjectId, { category: 'medicine', ...match }))
+        .sort({ medicineId: -1 }) // the linked item first
         .select('_id quantity')
         .lean() as any;
       if (!stockItem) {
@@ -154,7 +130,21 @@ export async function POST(
           { status: 409 }
         );
       }
-      deducted.push({ itemId: stockItem._id, quantity: it.quantity });
+      deducted.push({ itemId: stockItem._id, quantity: it.quantity, after: updated.quantity });
+    }
+
+    // Every deduction held, so the stock ledger can record them against this prescription.
+    for (const d of deducted) {
+      await recordMovement({
+        tenantId: tenantObjectId,
+        item: d.itemId,
+        type: 'dispense',
+        change: -d.quantity,
+        quantityAfter: d.after,
+        prescription: prescription._id,
+        prescriptionCode: prescription.prescriptionCode,
+        performedBy: session.userId,
+      });
     }
 
     prescription.pharmacyDispenses = prescription.pharmacyDispenses || [];

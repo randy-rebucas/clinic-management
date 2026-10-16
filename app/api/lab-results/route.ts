@@ -7,7 +7,8 @@ import User from '@/models/User';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { Types } from 'mongoose';
 import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
-import { parseBody, isValidationError } from '@/lib/api/validate';
+import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
+import { HAS_ABNORMAL_EXPR, LAB_STATUSES, OUTSTANDING, waitRange } from '@/lib/lab-results';
 import { createLabResultSchema, nextLabRequestCode } from '@/lib/lab-result-schema';
 
 const DEFAULT_LIMIT = 200;
@@ -30,9 +31,45 @@ export async function GET(request: NextRequest) {
     const patientId = searchParams.get('patientId');
     const visitId = searchParams.get('visitId');
     const status = searchParams.get('status');
+    const search = (searchParams.get('search') || '').trim().slice(0, 100);
+    const testType = (searchParams.get('testType') || '').trim().slice(0, 200);
+    const urgency = searchParams.get('urgency');
+    const waiting = searchParams.get('waiting');
+    const abnormal = searchParams.get('abnormal') === 'true';
+    const mine = searchParams.get('mine') === 'true';
+    const pageParam = searchParams.get('page');
+    const page = Math.max(parseInt(pageParam || '1', 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '', 10) || DEFAULT_LIMIT, 1), MAX_LIMIT);
 
     const query: any = { tenantId: tenantObjectId };
+    if (mine) query.orderedBy = new Types.ObjectId(session.userId);
+    if (testType) query['request.testType'] = new RegExp(`^${escapeRegex(testType)}$`, 'i');
+    if (urgency && ['routine', 'urgent', 'stat'].includes(urgency)) query['request.urgency'] = urgency;
+    if (abnormal) query.$expr = HAS_ABNORMAL_EXPR;
+    if (waiting) {
+      const range = waitRange(waiting);
+      if (range) {
+        query.orderDate = range;
+        query.status = { $in: OUTSTANDING };
+      }
+    }
+    if (search) {
+      // Request code, test name, or the name / code / phone of a patient of this clinic.
+      const rx = new RegExp(escapeRegex(search), 'i');
+      const words = search.split(/\s+/).filter(Boolean).map((w) => new RegExp(escapeRegex(w), 'i'));
+      const patientIds = await Patient.find({
+        tenantIds: tenantObjectId,
+        $or: [
+          { patientCode: rx },
+          { phone: rx },
+          words.length > 1 ? { $and: words.map((w) => ({ $or: [{ firstName: w }, { lastName: w }] })) } : { $or: [{ firstName: rx }, { lastName: rx }] },
+        ],
+      })
+        .select('_id')
+        .limit(500)
+        .lean();
+      query.$or = [{ requestCode: rx }, { 'request.testType': rx }, { patient: { $in: patientIds.map((p) => p._id) } }];
+    }
     if (patientId) {
       if (!isValidId(patientId)) return NextResponse.json({ success: true, data: [] });
       query.patient = new Types.ObjectId(patientId);
@@ -41,20 +78,32 @@ export async function GET(request: NextRequest) {
       if (!isValidId(visitId)) return NextResponse.json({ success: true, data: [] });
       query.visit = new Types.ObjectId(visitId);
     }
-    if (status) {
+    if (status && !query.status && (LAB_STATUSES as readonly string[]).includes(status)) {
       query.status = status;
     }
 
-    const labResults = await LabResult.find(query)
-      .select('-thirdPartyLab.apiKey')
-      .populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } })
-      .populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } })
-      .populate('orderedBy', 'name email')
-      .populate('reviewedBy', 'name email')
-      .sort({ orderDate: -1 })
-      .limit(limit)
-      .lean();
+    const find = (select: string) =>
+      LabResult.find(query)
+        .select(select)
+        .populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } })
+        .populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } })
+        .populate('orderedBy', 'name email')
+        .populate('reviewedBy', 'name email')
+        .sort({ orderDate: -1, _id: -1 });
 
+    // Paged (the lab results list) returns list fields only; otherwise the newest `limit` in full (other screens).
+    if (pageParam) {
+      const [labResults, total] = await Promise.all([
+        find('requestCode patient visit orderedBy reviewedBy orderDate request.testType request.urgency status resultDate reviewedAt abnormalFlags notificationSent')
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+        LabResult.countDocuments(query),
+      ]);
+      return NextResponse.json({ success: true, data: labResults, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) } });
+    }
+
+    const labResults = await find('-thirdPartyLab.apiKey').limit(limit).lean();
     return NextResponse.json({ success: true, data: labResults });
   } catch (error: any) {
     console.error('Error fetching lab results:', error);
