@@ -1,8 +1,7 @@
-import { requireAdmin } from '@/app/lib/auth-helpers';
 import InventoryFormClient from '@/components/InventoryFormClient';
+import { requireInventoryWriter } from '@/lib/inventory-page';
 
 export default async function NewInventoryPage() {
-  await requireAdmin();
-
+  await requireInventoryWriter();
   return <InventoryFormClient />;
 }

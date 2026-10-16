@@ -104,7 +104,7 @@ export async function GET() {
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Failed to check installation status',
+        error: 'Failed to check installation status',
       },
       { status: 500 }
     );

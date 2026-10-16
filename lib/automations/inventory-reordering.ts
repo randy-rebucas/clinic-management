@@ -4,9 +4,17 @@
 import connectDB from '@/lib/mongodb';
 import Inventory from '@/models/Inventory';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { Types } from 'mongoose';
+import {
+  forEachTenant,
+  automationEnabled,
+  getTenantStaff,
+  safeNotify,
+  errorMessage,
+  BATCH_LIMIT,
+  type AutomationTenant,
+} from './shared';
 
 export interface ReorderRequest {
   inventoryId: Types.ObjectId;
@@ -122,81 +130,54 @@ function generateReorderRequest(item: any): ReorderRequest | null {
 }
 
 /**
- * Send reorder notification to administrators
+ * Send reorder digest to administrators
  */
 async function sendReorderNotification(
   requests: ReorderRequest[],
-  tenantId?: Types.ObjectId
+  tenantId: Types.ObjectId
 ): Promise<{ sent: boolean; error?: string }> {
   try {
-    const { default: User } = await import('@/models/User');
-    
-    // Group requests by priority
     const urgent = requests.filter(r => r.priority === 'urgent');
     const high = requests.filter(r => r.priority === 'high');
     const medium = requests.filter(r => r.priority === 'medium');
     const low = requests.filter(r => r.priority === 'low');
-    
-    // Get admin and accountant users
-    const userQuery: any = {};
-    if (tenantId) {
-      userQuery.tenantId = tenantId;
-    }
-    
-    const users = await User.find(userQuery)
-      .populate('role')
-      .exec();
-    
-    const recipients = users.filter((user: any) => {
-      const role = user.role;
-      if (!role) return false;
-      return role.name === 'admin' || role.name === 'accountant';
-    });
-    
+
+    const recipients = await getTenantStaff(tenantId, ['admin', 'accountant']);
     if (recipients.length === 0) {
       return { sent: false, error: 'No recipients found' };
     }
-    
-    // Create notification content
+
+    const line = (req: ReorderRequest) =>
+      `- ${req.inventoryItem.name}: Order ${req.quantity} ${req.inventoryItem.unit || 'units'} (${req.reason})\n`;
+
     let message = `Inventory reorder request:\n\n`;
-    
     if (urgent.length > 0) {
       message += `🚨 URGENT (${urgent.length}):\n`;
-      urgent.forEach(req => {
-        message += `- ${req.inventoryItem.name}: Order ${req.quantity} ${req.inventoryItem.unit || 'units'} (${req.reason})\n`;
-      });
+      urgent.forEach(req => { message += line(req); });
       message += '\n';
     }
-    
     if (high.length > 0) {
       message += `⚠️ High Priority (${high.length}):\n`;
-      high.forEach(req => {
-        message += `- ${req.inventoryItem.name}: Order ${req.quantity} ${req.inventoryItem.unit || 'units'} (${req.reason})\n`;
-      });
+      high.forEach(req => { message += line(req); });
       message += '\n';
     }
-    
     if (medium.length > 0) {
       message += `📋 Medium Priority (${medium.length}):\n`;
-      medium.slice(0, 10).forEach(req => {
-        message += `- ${req.inventoryItem.name}: Order ${req.quantity} ${req.inventoryItem.unit || 'units'} (${req.reason})\n`;
-      });
+      medium.slice(0, 10).forEach(req => { message += line(req); });
       if (medium.length > 10) {
         message += `... and ${medium.length - 10} more\n`;
       }
       message += '\n';
     }
-    
     if (low.length > 0) {
       message += `📝 Low Priority (${low.length}):\n`;
       message += `See inventory management for details.\n\n`;
     }
-    
     message += `Total items requiring reorder: ${requests.length}`;
-    
-    // Send notifications
+
+    let sent = false;
     for (const user of recipients) {
-      await createNotification({
+      const ok = await safeNotify({
         userId: user._id,
         tenantId,
         type: 'system',
@@ -204,144 +185,118 @@ async function sendReorderNotification(
         title: `Inventory Reorder Request (${requests.length} items)`,
         message,
         actionUrl: '/inventory',
-      }).catch(console.error);
+      });
+      if (ok) sent = true;
     }
-    
-    // Send email to first admin if available
+
     const firstAdmin = recipients.find((u: any) => u.email);
-    if (firstAdmin && firstAdmin.email) {
-      const emailSubject = `Inventory Reorder Request - ${requests.length} Items`;
+    if (firstAdmin?.email) {
       const emailHtml = `
         <h2>Inventory Reorder Request</h2>
-        <p>${message.replace(/\n/g, '<br>')}</p>
-        <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/inventory">View Inventory</a></p>
+        <p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>
+        <p><a href="${escapeHtml(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')}/inventory">View Inventory</a></p>
       `;
-      
-      await sendEmail({
+      const r = await sendEmail({
         to: firstAdmin.email,
-        subject: emailSubject,
+        subject: `Inventory Reorder Request - ${requests.length} Items`,
         html: emailHtml,
-      }).catch(console.error);
+      }).catch((e) => {
+        console.error('Error sending reorder email:', e);
+        return null;
+      });
+      if (r?.success) sent = true;
     }
-    
-    return { sent: true };
+
+    return { sent };
   } catch (error: any) {
     console.error('Error sending reorder notification:', error);
-    return { sent: false, error: error.message };
+    return { sent: false, error: errorMessage(error) };
   }
 }
 
+function emptyResult(): ReorderResult {
+  return { success: true, processed: 0, requestsCreated: 0, notificationsSent: 0, errors: 0, requests: [] };
+}
+
+async function processTenant(tenant: AutomationTenant): Promise<ReorderResult> {
+  const out = emptyResult();
+
+  const settings = await getSettings(tenant.tenantId);
+  if (!automationEnabled(settings, 'autoInventoryReordering')) return out;
+
+  const tenantId = tenant.tenantObjectId;
+  const ninetyDaysFromNow = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+
+  const [lowStockItems, expiringItems] = await Promise.all([
+    Inventory.find({
+      tenantId,
+      $or: [{ status: { $in: ['low-stock', 'out-of-stock'] } }, { quantity: { $lte: 0 } }],
+    })
+      .limit(BATCH_LIMIT)
+      .lean(),
+    Inventory.find({
+      tenantId,
+      expiryDate: { $exists: true, $lte: ninetyDaysFromNow, $gte: new Date() },
+      quantity: { $gt: 0 },
+    })
+      .limit(BATCH_LIMIT)
+      .lean(),
+  ]);
+
+  const byId = new Map<string, any>();
+  for (const item of [...lowStockItems, ...expiringItems] as any[]) byId.set(String(item._id), item);
+  const allItems = Array.from(byId.values());
+
+  const requests: ReorderRequest[] = [];
+  for (const item of allItems) {
+    const request = generateReorderRequest(item);
+    if (request) requests.push(request);
+  }
+
+  const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+  requests.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+
+  if (requests.length > 0) {
+    const notificationResult = await sendReorderNotification(requests, tenantId);
+    if (notificationResult.sent) out.notificationsSent = 1;
+    else if (notificationResult.error) out.errors++;
+  }
+
+  out.processed = allItems.length;
+  out.requestsCreated = requests.length;
+  out.requests = requests.map((r) => ({
+    ...r,
+    inventoryItem: { _id: r.inventoryItem._id, name: r.inventoryItem.name, unit: r.inventoryItem.unit },
+  }));
+  return out;
+}
+
 /**
- * Process inventory items and generate reorder requests
- * This should be called by a cron job
+ * Process inventory items and send a reorder digest (one per tenant per run).
+ * Without a tenantId every active tenant is processed.
  */
 export async function processInventoryReordering(
   tenantId?: string | Types.ObjectId
 ): Promise<ReorderResult> {
   try {
     await connectDB();
-    
-    const settings = await getSettings();
-    const autoInventoryReordering = (settings.automationSettings as any)?.autoInventoryReordering !== false;
-    
-    if (!autoInventoryReordering) {
-      return {
-        success: true,
-        processed: 0,
-        requestsCreated: 0,
-        notificationsSent: 0,
-        errors: 0,
-        requests: [],
-      };
-    }
-    
-    // Find items that need reordering
-    const query: any = {
-      $or: [
-        { status: { $in: ['low-stock', 'out-of-stock'] } },
-        { quantity: { $lte: 0 } },
-      ],
-    };
-    
-    // Also check for items with expiry date approaching
-    const ninetyDaysFromNow = new Date();
-    ninetyDaysFromNow.setDate(ninetyDaysFromNow.getDate() + 90);
-    
-    const expiryQuery: any = {
-      expiryDate: { $exists: true, $lte: ninetyDaysFromNow, $gte: new Date() },
-      quantity: { $gt: 0 }, // Only items with stock
-    };
-    
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string'
-        ? new Types.ObjectId(tenantId)
-        : tenantId;
-      expiryQuery.tenantId = typeof tenantId === 'string'
-        ? new Types.ObjectId(tenantId)
-        : tenantId;
-    }
-    
-    // Get low stock/out of stock items
-    const lowStockItems = await Inventory.find(query);
-    
-    // Get expiring items
-    const expiringItems = await Inventory.find(expiryQuery);
-    
-    // Combine and deduplicate
-    const allItems = [...lowStockItems];
-    const expiringIds = new Set(expiringItems.map(item => item._id.toString()));
-    for (const item of expiringItems) {
-      if (!allItems.find(i => i._id.toString() === item._id.toString())) {
-        allItems.push(item);
+    const runs = await forEachTenant(tenantId, processTenant);
+    const total = emptyResult();
+    total.success = runs.every((r) => r.success);
+    for (const run of runs) {
+      if (!run.result) {
+        total.errors++;
+        continue;
       }
+      total.processed += run.result.processed;
+      total.requestsCreated += run.result.requestsCreated;
+      total.notificationsSent += run.result.notificationsSent;
+      total.errors += run.result.errors;
+      total.requests.push(...run.result.requests);
     }
-    
-    // Generate reorder requests
-    const requests: ReorderRequest[] = [];
-    for (const item of allItems) {
-      const request = generateReorderRequest(item);
-      if (request) {
-        requests.push(request);
-      }
-    }
-    
-    // Sort by priority
-    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
-    requests.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
-    
-    // Send notifications if there are requests
-    let notificationsSent = 0;
-    if (requests.length > 0) {
-      const notificationResult = await sendReorderNotification(
-        requests,
-        tenantId ? (typeof tenantId === 'string' ? new Types.ObjectId(tenantId) : tenantId) : undefined
-      );
-      
-      if (notificationResult.sent) {
-        notificationsSent = 1;
-      }
-    }
-    
-    // TODO: Create actual purchase orders in a PurchaseOrder model (if exists)
-    // For now, we just send notifications
-    
-    return {
-      success: true,
-      processed: allItems.length,
-      requestsCreated: requests.length,
-      notificationsSent,
-      errors: 0,
-      requests,
-    };
+    return total;
   } catch (error: any) {
     console.error('Error processing inventory reordering:', error);
-    return {
-      success: false,
-      processed: 0,
-      requestsCreated: 0,
-      notificationsSent: 0,
-      errors: 1,
-      requests: [],
-    };
+    return { ...emptyResult(), success: false, errors: 1 };
   }
 }

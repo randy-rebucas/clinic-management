@@ -1,18 +1,12 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import SubPageHeader from './SubPageHeader';
-import AlertBanner from './sharable/AlertBanner';
 import { AlertDialog } from './ui/Modal';
-import PatientListItem from './PatientListItem';
 import PatientExportModal from './PatientExportModal';
 import { BulkCommunicationModal } from './BulkCommunicationModal';
-import SearchStatsFiltersBar from './SearchStatsFiltersBar';
-import QuickStatsPanel from './QuickStatsPanel';
-import PatientFiltersSection from './PatientFiltersSection';
-import ResultsInfoPanel from './ResultsInfoPanel';
+import PatientInsights, { PatientInsightsSkeleton, type PatientInsightsData } from './patients/PatientInsights';
 import {
   Patient,
   SortOption,
@@ -23,578 +17,894 @@ import {
   DEFAULT_FILTERS,
   DEFAULT_PAGINATION,
 } from './types/PatientTypes';
+import { AGE_BANDS, type AgeBand } from '@/lib/patient-age-bands';
 import { ApiError, parseApiResponse, formatErrorMessage } from '@/lib/errors';
 
+const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2';
+const FIELD =
+  'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/30';
+
+const SEGMENT_FLAGS: { key: string; label: string }[] = [
+  { key: 'isVIP', label: 'VIP' },
+  { key: 'isHighRisk', label: 'High risk' },
+  { key: 'isHighUtilizer', label: 'High utilizer' },
+  { key: 'hasRecurringNoShow', label: 'Recurring no-show' },
+  { key: 'isPendingVerification', label: 'Pending verification' },
+  { key: 'hasOutstandingBalance', label: 'Outstanding balance' },
+];
+
+const SORT_LABELS: Record<SortOption, string> = {
+  [PATIENT_SORT_OPTIONS.NAME_ASC]: 'Name, A–Z',
+  [PATIENT_SORT_OPTIONS.NAME_DESC]: 'Name, Z–A',
+  [PATIENT_SORT_OPTIONS.ADDED_DESC]: 'Recently added',
+  [PATIENT_SORT_OPTIONS.ADDED_ASC]: 'Oldest records',
+  [PATIENT_SORT_OPTIONS.DATE_ASC]: 'Oldest patients',
+  [PATIENT_SORT_OPTIONS.DATE_DESC]: 'Youngest patients',
+  [PATIENT_SORT_OPTIONS.CODE_ASC]: 'Patient code, ascending',
+  [PATIENT_SORT_OPTIONS.CODE_DESC]: 'Patient code, descending',
+};
+
+const ROW_GRID =
+  'lg:grid lg:grid-cols-[2.25rem_minmax(0,2.3fr)_minmax(0,0.9fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_6.75rem] lg:items-center lg:gap-4';
+
+function ageOf(dob: string) {
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age >= 0 && age < 150 ? age : null;
+}
+
+function isThisMonth(iso?: string) {
+  if (!iso) return false;
+  const d = new Date(iso);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+
+function shortDate(iso?: string) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/** Wraps the part of `text` that matches `query` so a search result shows why it matched. */
+function Highlight({ text, query }: { text: string; query: string }) {
+  const q = query.trim();
+  if (!q) return <>{text}</>;
+  const i = text.toLowerCase().indexOf(q.toLowerCase());
+  if (i === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, i)}
+      <mark className="rounded-sm bg-brand-teal-light px-0.5 text-brand-teal-deep">{text.slice(i, i + q.length)}</mark>
+      {text.slice(i + q.length)}
+    </>
+  );
+}
+
+function Svg({ d, className = 'h-4 w-4' }: { d: string; className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d={d} />
+    </svg>
+  );
+}
+
+const ICON = {
+  search: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
+  filter: 'M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z',
+  plus: 'M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z',
+  calendar: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
+  edit: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
+  trash: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+  mail: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+  download: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4',
+  x: 'M6 18L18 6M6 6l12 12',
+  users: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z',
+  chevL: 'M15 19l-7-7 7-7',
+  chevR: 'M9 5l7 7-7 7',
+  refresh: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
+};
+
+/** 1 … 4 5 6 … 20 */
+function pageWindow(page: number, pages: number): (number | 'gap')[] {
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+  const set = new Set([1, pages, page - 1, page, page + 1]);
+  const nums = [...set].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b);
+  const out: (number | 'gap')[] = [];
+  nums.forEach((n, i) => {
+    if (i > 0 && n - nums[i - 1] > 1) out.push('gap');
+    out.push(n);
+  });
+  return out;
+}
+
 export default function PatientsPageClient() {
+  const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [showStats, setShowStats] = useState(false);
-  const [patientToDelete, setPatientToDelete] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [insights, setInsights] = useState<PatientInsightsData | null>(null);
+  const [insightsVersion, setInsightsVersion] = useState(0);
+  const [settledKey, setSettledKey] = useState<string | null>(null);
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>(PATIENT_SORT_OPTIONS.NAME_ASC);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [pagination, setPagination] = useState<PaginationState>(DEFAULT_PAGINATION);
+  const [reload, setReload] = useState(0);
+
+  const [selected, setSelected] = useState<string[]>([]);
+  const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [exportModalOpen, setExportModalOpen] = useState(false);
-  const [bulkCommunicationOpen, setBulkCommunicationOpen] = useState(false);
-  const [selectedPatients, setSelectedPatients] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [selectedSegmentFlags, setSelectedSegmentFlags] = useState<Record<string, boolean>>({});
-  const selectAllCheckboxRef = useRef<HTMLInputElement>(null);
-  const router = useRouter();
+  const [exportOpen, setExportOpen] = useState(false);
+  const [messageOpen, setMessageOpen] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const requestIdRef = useRef(0);
 
-  // Update indeterminate state for select-all checkbox
-  useEffect(() => {
-    if (selectAllCheckboxRef.current) {
-      selectAllCheckboxRef.current.indeterminate =
-        selectedPatients.length > 0 && selectedPatients.length < patients.length;
-    }
-  }, [selectedPatients.length, patients.length]);
+  // --- Data -----------------------------------------------------------------
 
-  // Debounce search query
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
+    if (searchQuery === debouncedSearch) return;
+    const t = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPagination((p) => (p.page === 1 ? p : { ...p, page: 1 }));
     }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    return () => clearTimeout(t);
+  }, [searchQuery, debouncedSearch]);
 
-  const handleSearchForm = useCallback((e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    // Only update debouncedSearchQuery if not already set (prevents double fetch)
-    if (debouncedSearchQuery !== searchQuery) {
-      setDebouncedSearchQuery(searchQuery);
-    }
-  }, [debouncedSearchQuery, searchQuery]);
-
-  // Fetch patients when filters or search change
   useEffect(() => {
-    fetchPatients();
-  }, [debouncedSearchQuery, sortBy, JSON.stringify(filters), pagination.page]);
+    let cancelled = false;
+    fetch('/api/patients/insights')
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && json?.success) setInsights(json.data);
+      })
+      .catch(() => {
+        // The roster still works without its summary.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [insightsVersion]);
 
-  const fetchPatients = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  // Loading is derived: the list is loading whenever its inputs differ from the last settled request.
+  const requestKey = JSON.stringify([debouncedSearch, filters, sortBy, pagination.page, pagination.limit, reload]);
+  const loading = settledKey !== requestKey;
+  const loaded = settledKey !== null;
 
-      // Build query parameters
-      const params = new URLSearchParams();
-      if (debouncedSearchQuery.trim()) {
-        params.append('search', debouncedSearchQuery.trim());
-      }
-      if (filters.sex !== 'all') {
-        params.append('sex', filters.sex);
-      }
-      if (filters.active !== 'all') {
-        params.append('active', filters.active);
-      }
-      if (filters.minAge) {
-        params.append('minAge', filters.minAge);
-      }
-      if (filters.maxAge) {
-        params.append('maxAge', filters.maxAge);
-      }
-      if (filters.city) {
-        params.append('city', filters.city);
-      }
-      if (filters.state) {
-        params.append('state', filters.state);
-      }
-      if (filters.global) {
-        params.append('global', 'true');
-      }
+  useEffect(() => {
+    const requestId = ++requestIdRef.current;
+    const stale = () => requestId !== requestIdRef.current;
 
-      // Add pagination params
-      params.append('page', pagination.page.toString());
-      params.append('limit', pagination.limit.toString());
+    async function load() {
+      try {
+        const params = new URLSearchParams();
+        if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
+        if (filters.sex !== 'all') params.set('sex', filters.sex);
+        if (filters.active !== 'all') params.set('active', filters.active);
+        if (filters.minAge) params.set('minAge', filters.minAge);
+        if (filters.maxAge) params.set('maxAge', filters.maxAge);
+        if (filters.city) params.set('city', filters.city);
+        if (filters.state) params.set('state', filters.state);
+        if (filters.tags.length) params.set('tags', filters.tags.join(','));
+        if (filters.flags.length) params.set('flags', filters.flags.join(','));
+        params.set('page', String(pagination.page));
+        params.set('limit', String(pagination.limit));
+        params.set('sortBy', SORT_MAP[sortBy].sortBy);
+        params.set('sortOrder', SORT_MAP[sortBy].sortOrder);
 
-      // Map sortBy to API format
-      const sort = SORT_MAP[sortBy];
-      params.append('sortBy', sort.sortBy);
-      params.append('sortOrder', sort.sortOrder);
-
-      const res = await fetch(`/api/patients?${params.toString()}`);
-
-      // Check for authentication errors
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const data = await parseApiResponse<Patient[]>(res);
-
-      if (data.success && data.data) {
-        setPatients(data.data);
-        if (data.pagination) {
-          setPagination(data.pagination);
+        const res = await fetch(`/api/patients?${params}`);
+        if (res.status === 401) {
+          router.push('/login');
+          return;
         }
-      } else {
-        throw new ApiError(res.status, data.error || 'Failed to fetch patients');
+        const data = await parseApiResponse<Patient[]>(res);
+        if (stale()) return;
+        if (!data.success || !data.data) throw new ApiError(res.status, data.error || 'Failed to fetch patients');
+        setPatients(data.data);
+        if (data.pagination) setPagination(data.pagination);
+        setError(null);
+      } catch (err) {
+        if (stale()) return;
+        const apiError = err instanceof ApiError ? err : new ApiError(500, 'Unknown error', err);
+        console.error('Failed to fetch patients:', apiError);
+        setError(formatErrorMessage(apiError));
+      } finally {
+        if (!stale()) setSettledKey(requestKey);
       }
-    } catch (err) {
-      const apiError = err instanceof ApiError ? err : new ApiError(500, 'Unknown error', err);
-      const message = formatErrorMessage(apiError);
-      console.error('Failed to fetch patients:', apiError);
-      setError(message);
-      // Auto-clear error after 5 seconds
-      const timer = setTimeout(() => setError(null), 5000);
-      return () => clearTimeout(timer);
-    } finally {
-      setLoading(false);
     }
-  }, [debouncedSearchQuery, filters, sortBy, pagination.page, pagination.limit, router]);
 
-  // Patients are already filtered and sorted on the server, apply client-side segmentation filters
-  const filteredPatients = useMemo(() => {
-    let result = patients;
+    load();
+    // pagination.page/limit are the only pagination inputs; total/pages come back from the server.
+  }, [debouncedSearch, filters, sortBy, pagination.page, pagination.limit, router, reload, requestKey]);
 
-    // Apply tag filters
-    if (selectedTags.length > 0) {
-      result = result.filter((p) => {
-        const patientTags = (p as any).tags || [];
-        return selectedTags.some((tag) => patientTags.includes(tag));
+  // Selection is per page: drop ids that left the page.
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate = selected.length > 0 && selected.length < patients.length;
+  }, [selected.length, patients.length]);
+
+  // --- Filters --------------------------------------------------------------
+
+  const updateFilters = useCallback((patch: Partial<FilterState>) => {
+    setFilters((prev) => ({ ...prev, ...patch }));
+    setPagination((p) => ({ ...p, page: 1 }));
+    setSelected([]);
+  }, []);
+
+  const activeAge = useMemo(() => {
+    const band = AGE_BANDS.find((b) => String(b.min) === filters.minAge && (b.max === null ? filters.maxAge === '' : String(b.max) === filters.maxAge));
+    return band?.label ?? null;
+  }, [filters.minAge, filters.maxAge]);
+
+  const chips = useMemo(() => {
+    const out: { key: string; label: string; clear: () => void }[] = [];
+    if (filters.sex !== 'all') out.push({ key: 'sex', label: filters.sex.charAt(0).toUpperCase() + filters.sex.slice(1), clear: () => updateFilters({ sex: 'all' }) });
+    if (filters.active !== 'all') out.push({ key: 'active', label: filters.active === 'true' ? 'Active' : 'Inactive', clear: () => updateFilters({ active: 'all' }) });
+    if (filters.minAge || filters.maxAge)
+      out.push({
+        key: 'age',
+        label: activeAge ? `Ages ${activeAge}` : `Ages ${filters.minAge || '0'}–${filters.maxAge || 'any'}`,
+        clear: () => updateFilters({ minAge: '', maxAge: '' }),
       });
-    }
+    if (filters.city) out.push({ key: 'city', label: `City: ${filters.city}`, clear: () => updateFilters({ city: '' }) });
+    if (filters.state) out.push({ key: 'state', label: `Province: ${filters.state}`, clear: () => updateFilters({ state: '' }) });
+    filters.tags.forEach((t) => out.push({ key: `tag-${t}`, label: `#${t}`, clear: () => updateFilters({ tags: filters.tags.filter((x) => x !== t) }) }));
+    filters.flags.forEach((f) =>
+      out.push({ key: `flag-${f}`, label: SEGMENT_FLAGS.find((s) => s.key === f)?.label ?? f, clear: () => updateFilters({ flags: filters.flags.filter((x) => x !== f) }) })
+    );
+    return out;
+  }, [filters, activeAge, updateFilters]);
 
-    // Apply segment flag filters (AND logic - all selected flags must be true)
-    const activeFlagKeys = Object.keys(selectedSegmentFlags).filter((k) => selectedSegmentFlags[k]);
-    if (activeFlagKeys.length > 0) {
-      result = result.filter((p) => {
-        const flags = (p as any).segmentFlags || {};
-        return activeFlagKeys.every((key) => flags[key] === true);
-      });
-    }
-
-    return result;
-  }, [patients, selectedTags, selectedSegmentFlags]);
-
-  // Count active filters
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (filters.sex !== 'all') count++;
-    if (filters.active !== 'all') count++;
-    if (filters.minAge) count++;
-    if (filters.maxAge) count++;
-    if (filters.city) count++;
-    if (filters.state) count++;
-    if (selectedTags.length > 0) count++;
-    if (Object.values(selectedSegmentFlags).some(Boolean)) count++;
-    return count;
-  }, [filters, selectedTags, selectedSegmentFlags]);
-
-  const clearFilters = useCallback(() => {
+  const clearAll = useCallback(() => {
     setFilters(DEFAULT_FILTERS);
     setSearchQuery('');
-    setDebouncedSearchQuery('');
-    setPagination(DEFAULT_PAGINATION);
+    setDebouncedSearch('');
+    setPagination((p) => ({ ...p, page: 1 }));
+    setSelected([]);
   }, []);
 
-  // Extract unique tags from all patients
-  const availableTags = useMemo(() => {
-    const tags = new Set<string>();
-    patients.forEach((p) => {
-      if ((p as any).tags && Array.isArray((p as any).tags)) {
-        (p as any).tags.forEach((tag: string) => tags.add(tag));
-      }
-    });
-    return Array.from(tags).sort();
-  }, [patients]);
+  const narrowed = chips.length > 0 || debouncedSearch.trim() !== '';
 
-  const handleToggleSelectAll = useCallback(() => {
-    if (selectedPatients.length === filteredPatients.length) {
-      setSelectedPatients([]);
-    } else {
-      setSelectedPatients(filteredPatients.map((p) => p._id));
-    }
-  }, [selectedPatients.length, filteredPatients]);
+  // --- Actions --------------------------------------------------------------
 
-  const handleTogglePatient = useCallback((patientId: string) => {
-    setSelectedPatients((prev) =>
-      prev.includes(patientId) ? prev.filter((id) => id !== patientId) : [...prev, patientId]
-    );
-  }, []);
-
-  const handleApplySegmentationFilters = useCallback(() => {
-    // Filter patients based on tags and segment flags
-    const newFilters = { ...filters };
-    // Pass tags/flags to filter state for server-side filtering (future enhancement)
-    // For now, this demonstrates the segmentation UI integration
-    console.log('Segmentation filters:', { tags: selectedTags, flags: selectedSegmentFlags });
-    // Could extend FilterState to include these fields and refetch
-  }, [selectedTags, selectedSegmentFlags, filters]);
-
-  const handleClearSegmentationFilters = useCallback(() => {
-    setSelectedTags([]);
-    setSelectedSegmentFlags({});
-    setSelectedPatients([]);
-  }, []);
-
-  const handleFilterChange = useCallback((newFilters: Partial<FilterState>) => {
-    setFilters((prev) => ({ ...prev, ...newFilters }));
-    // Reset to first page when filters change
-    setPagination((prev) => ({ ...prev, page: 1 }));
-  }, []);
-
-  const handleDeleteClick = useCallback((id: string) => {
-    setPatientToDelete(id);
-    setDeleteDialogOpen(true);
-  }, []);
+  const toggleAll = () => setSelected((s) => (s.length === patients.length ? [] : patients.map((p) => p._id)));
+  const toggleOne = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   const handleDelete = useCallback(async () => {
     if (!patientToDelete) return;
-
+    setDeleteLoading(true);
     try {
-      setDeleteLoading(true);
-      setError(null);
-      const res = await fetch(`/api/patients/${patientToDelete}`, { method: 'DELETE' });
-
-      // Check for authentication errors
+      const res = await fetch(`/api/patients/${patientToDelete._id}`, { method: 'DELETE' });
       if (res.status === 401) {
         router.push('/login');
         return;
       }
-
       const data = await parseApiResponse(res);
-
-      if (data.success) {
-        await fetchPatients();
-        setDeleteDialogOpen(false);
-        setPatientToDelete(null);
-        setSuccess('Patient deleted successfully!');
-        setTimeout(() => setSuccess(null), 3000);
-      } else {
-        throw new ApiError(res.status, data.error || 'Failed to delete patient');
-      }
+      if (!data.success) throw new ApiError(res.status, data.error || 'Failed to delete patient');
+      const name = `${patientToDelete.firstName} ${patientToDelete.lastName}`;
+      setPatientToDelete(null);
+      setSelected((s) => s.filter((x) => x !== patientToDelete._id));
+      setNotice(`${name} was deleted.`);
+      setTimeout(() => setNotice(null), 4000);
+      setReload((n) => n + 1);
+      setInsightsVersion((n) => n + 1);
     } catch (err) {
       const apiError = err instanceof ApiError ? err : new ApiError(500, 'Unknown error', err);
-      const message = formatErrorMessage(apiError);
       console.error('Failed to delete patient:', apiError);
-      setError(message);
-      setTimeout(() => setError(null), 5000);
+      setError(formatErrorMessage(apiError));
+      setPatientToDelete(null);
     } finally {
       setDeleteLoading(false);
     }
-  }, [patientToDelete, router, fetchPatients]);
+  }, [patientToDelete, router]);
+
+  // Selection describes the visible page, so it resets when the page changes.
+  const goToPage = (n: number) => {
+    setSelected([]);
+    setPagination((p) => ({ ...p, page: Math.min(Math.max(1, n), Math.max(1, p.pages)) }));
+  };
+
+  const exportIds = selected.length > 0 ? selected : patients.map((p) => p._id);
+  const firstRow = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1;
+  const lastRow = Math.min(pagination.page * pagination.limit, pagination.total);
+  const refreshing = loading && loaded;
+
+  // --- Render -----------------------------------------------------------------
 
   return (
-    <section className="bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex flex-col gap-6">
-          {/* Header */}
-          <SubPageHeader
-            backHref="/dashboard"
-            iconPath="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-            title="Patients"
-            subtitle="Manage patient records and information"
-            actions={
-              <>
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                  <button
-                    onClick={() => setBulkCommunicationOpen(true)}
-                    disabled={selectedPatients.length === 0}
-                    className="px-3 py-2.5 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-all font-semibold text-xs sm:text-sm inline-flex items-center gap-1.5 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                    title={`Send bulk SMS or email (${selectedPatients.length} selected)`}
-                    aria-label="Send bulk communications"
-                  >
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    <span className="hidden sm:inline">Communicate</span>
-                    {selectedPatients.length > 0 && <span className="bg-purple-700 text-white text-xs px-1.5 py-0.5 rounded">+{selectedPatients.length}</span>}
-                  </button>
-                  <button
-                    onClick={() => setExportModalOpen(true)}
-                    disabled={patients.length === 0}
-                    className="px-3 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-all font-semibold text-xs sm:text-sm inline-flex items-center gap-1.5 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Export patient data"
-                    aria-label="Export patients"
-                  >
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2m0 0v-8m0 8a9 9 0 018.354-8.646M3.646 3.646a9 9 0 1016.708 0M9 5h.01M15 5h.01" />
-                    </svg>
-                    <span className="hidden sm:inline">Export</span>
-                  </button>
-                </div>
-                <Link
-                  href="/patients/new"
-                  className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg font-semibold text-sm inline-flex items-center gap-2 flex-shrink-0"
-                >
-                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  <span className="hidden sm:inline">Add Patient</span>
-                  <span className="sm:hidden">Add</span>
-                </Link>
-              </>
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-7xl mx-auto flex flex-col gap-6">
+        {/* Title row */}
+        <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Patients</h1>
+            <p className="text-sm sm:text-base text-gray-600 mt-1">Every patient registered with your clinic.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              disabled={patients.length === 0}
+              className={`inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
+            >
+              <Svg d={ICON.download} />
+              Export
+            </button>
+            <Link
+              href="/patients/new"
+              className={`inline-flex items-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep ${FOCUS_RING}`}
+            >
+              <Svg d={ICON.plus} />
+              Add patient
+            </Link>
+          </div>
+        </header>
+
+        {/* Roster at a glance: the charts are also filters */}
+        {insights ? (
+          <PatientInsights
+            data={insights}
+            activeAge={activeAge}
+            activeSex={filters.sex}
+            onAgeBand={(band: AgeBand | null) =>
+              updateFilters(band ? { minAge: String(band.min), maxAge: band.max === null ? '' : String(band.max) } : { minAge: '', maxAge: '' })
             }
+            onSex={(sex) => updateFilters({ sex })}
           />
-          {/* Alerts */}
-          {error && <AlertBanner type="error" message={error} />}
-          {success && <AlertBanner type="success" message={success} />}
+        ) : (
+          !loaded && <PatientInsightsSkeleton />
+        )}
 
-          {/* Search, Stats and Filters */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 space-y-4">
-            {/* Search, Stats, and Filter Controls */}
-            <SearchStatsFiltersBar
-              showStats={showStats}
-              onShowStatsChange={setShowStats}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              onSearchSubmit={handleSearchForm}
-              sortBy={sortBy}
-              onSortChange={setSortBy}
-              showFilters={showFilters}
-              onShowFiltersChange={setShowFilters}
-              activeFilterCount={activeFilterCount}
-            />
-
-            {/* Quick Stats Panel */}
-            <QuickStatsPanel showStats={showStats} patients={patients} filteredPatients={filteredPatients} />
-
-            {/* Filters Section */}
-            <PatientFiltersSection
-              showFilters={showFilters}
-              filters={filters}
-              onFilterChange={handleFilterChange}
-              onClearFilters={clearFilters}
-              activeFilterCount={activeFilterCount}
-              selectedTags={selectedTags}
-              onTagsChange={setSelectedTags}
-              selectedSegmentFlags={selectedSegmentFlags}
-              onFlagsChange={setSelectedSegmentFlags}
-              availableTags={availableTags}
-              onApplySegmentation={handleApplySegmentationFilters}
-              onClearSegmentation={handleClearSegmentationFilters}
-              showStats={showStats}
-            />
-
-            {/* Results Info Panel */}
-            <ResultsInfoPanel
-              debouncedSearchQuery={debouncedSearchQuery}
-              activeFilterCount={activeFilterCount}
-              filteredPatients={filteredPatients}
-              pagination={pagination}
-            />
+        {/* Toolbar */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <form
+              role="search"
+              className="relative flex-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setDebouncedSearch(searchQuery);
+                setPagination((p) => ({ ...p, page: 1 }));
+              }}
+            >
+              <label htmlFor="patient-search" className="sr-only">
+                Search patients
+              </label>
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <Svg d={ICON.search} />
+              </span>
+              <input
+                id="patient-search"
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name, patient code, phone, email or city"
+                autoComplete="off"
+                className={`${FIELD} pl-9`}
+              />
+            </form>
+            <div className="flex gap-2">
+              <label htmlFor="patient-sort" className="sr-only">
+                Sort patients
+              </label>
+              <select
+                id="patient-sort"
+                value={sortBy}
+                onChange={(e) => {
+                  setSortBy(e.target.value as SortOption);
+                  setPagination((p) => ({ ...p, page: 1 }));
+                }}
+                className={`${FIELD} sm:w-52`}
+              >
+                {Object.values(PATIENT_SORT_OPTIONS).map((v) => (
+                  <option key={v} value={v}>
+                    {SORT_LABELS[v]}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setShowFilters((v) => !v)}
+                aria-expanded={showFilters}
+                aria-controls="patient-filters"
+                className={`inline-flex shrink-0 items-center gap-2 rounded-md border px-3.5 py-2 text-sm font-semibold transition-colors ${FOCUS_RING} ${
+                  showFilters ? 'border-brand-teal-dark bg-brand-teal-light text-brand-teal-deep' : 'border-gray-300 bg-white text-gray-900 hover:border-gray-900'
+                }`}
+              >
+                <Svg d={ICON.filter} />
+                Filters
+                {chips.length > 0 && (
+                  <span className="rounded bg-brand-teal-dark px-1.5 py-0.5 font-mono text-xs leading-none text-white">{chips.length}</span>
+                )}
+              </button>
+            </div>
           </div>
 
-          {/* Pagination Controls */}
-          {pagination.total > pagination.limit && (
-            <nav aria-label="Pagination" className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-2 order-2 sm:order-1">
-                  <button
-                    onClick={() => setPagination((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
-                    disabled={pagination.page === 1 || loading}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                    aria-label="Previous page"
-                  >
-                    ← Prev
-                  </button>
-                  <button
-                    onClick={() => setPagination((prev) => ({ ...prev, page: Math.min(prev.pages, prev.page + 1) }))}
-                    disabled={pagination.page === pagination.pages || loading}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                    aria-label="Next page"
-                  >
-                    Next →
-                  </button>
+          {showFilters && (
+            <div id="patient-filters" className="motion-panel-in rounded-lg border border-gray-200 bg-white p-5">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+                <div>
+                  <label htmlFor="f-sex" className="mb-1.5 block text-sm font-medium text-gray-700">Sex</label>
+                  <select id="f-sex" value={filters.sex} onChange={(e) => updateFilters({ sex: e.target.value })} className={FIELD}>
+                    <option value="all">Any</option>
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                    <option value="other">Other</option>
+                  </select>
                 </div>
-
-                <div className="flex items-center gap-1 order-1 sm:order-2">
-                  {Array.from({ length: Math.min(5, pagination.pages) }).map((_, i) => {
-                    const pageNum = pagination.page <= 3 ? i + 1 : pagination.page + i - 2;
-                    if (pageNum > pagination.pages) return null;
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setPagination((prev) => ({ ...prev, page: pageNum }))}
-                        disabled={loading}
-                        className={`w-10 h-10 rounded-lg transition-colors text-sm font-semibold ${
-                          pagination.page === pageNum
-                            ? 'bg-blue-500 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed'
-                        }`}
-                        aria-current={pagination.page === pageNum ? 'page' : undefined}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
+                <div>
+                  <label htmlFor="f-active" className="mb-1.5 block text-sm font-medium text-gray-700">Status</label>
+                  <select id="f-active" value={filters.active} onChange={(e) => updateFilters({ active: e.target.value })} className={FIELD}>
+                    <option value="all">Any</option>
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="f-min" className="mb-1.5 block text-sm font-medium text-gray-700">Age from</label>
+                  <input id="f-min" type="number" min={0} max={150} inputMode="numeric" value={filters.minAge} onChange={(e) => updateFilters({ minAge: e.target.value })} className={`${FIELD} font-mono`} placeholder="0" />
+                </div>
+                <div>
+                  <label htmlFor="f-max" className="mb-1.5 block text-sm font-medium text-gray-700">Age to</label>
+                  <input id="f-max" type="number" min={0} max={150} inputMode="numeric" value={filters.maxAge} onChange={(e) => updateFilters({ maxAge: e.target.value })} className={`${FIELD} font-mono`} placeholder="Any" />
+                </div>
+                <div>
+                  <label htmlFor="f-city" className="mb-1.5 block text-sm font-medium text-gray-700">City</label>
+                  <input id="f-city" value={filters.city} onChange={(e) => updateFilters({ city: e.target.value })} className={FIELD} placeholder="Any city" />
+                </div>
+                <div>
+                  <label htmlFor="f-state" className="mb-1.5 block text-sm font-medium text-gray-700">Province</label>
+                  <input id="f-state" value={filters.state} onChange={(e) => updateFilters({ state: e.target.value })} className={FIELD} placeholder="Any province" />
                 </div>
               </div>
+
+              <div className="mt-5 grid gap-5 border-t border-gray-100 pt-5 lg:grid-cols-2">
+                <fieldset>
+                  <legend className="mb-2 text-sm font-medium text-gray-700">Flags <span className="font-normal text-gray-500">· all must apply</span></legend>
+                  <div className="flex flex-wrap gap-2">
+                    {SEGMENT_FLAGS.map((f) => {
+                      const on = filters.flags.includes(f.key);
+                      return (
+                        <button
+                          key={f.key}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => updateFilters({ flags: on ? filters.flags.filter((x) => x !== f.key) : [...filters.flags, f.key] })}
+                          className={`rounded-md border px-2.5 py-1 text-sm transition-colors ${FOCUS_RING} ${
+                            on ? 'border-brand-teal-dark bg-brand-teal-light font-semibold text-brand-teal-deep' : 'border-gray-200 text-gray-700 hover:border-gray-400'
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+                <fieldset>
+                  <legend className="mb-2 text-sm font-medium text-gray-700">Tags <span className="font-normal text-gray-500">· any may apply</span></legend>
+                  {insights && insights.tags.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {insights.tags.map(({ tag, count }) => {
+                        const on = filters.tags.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() => updateFilters({ tags: on ? filters.tags.filter((x) => x !== tag) : [...filters.tags, tag] })}
+                            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm transition-colors ${FOCUS_RING} ${
+                              on ? 'border-brand-teal-dark bg-brand-teal-light font-semibold text-brand-teal-deep' : 'border-gray-200 text-gray-700 hover:border-gray-400'
+                            }`}
+                          >
+                            #{tag}
+                            <span className="font-mono text-xs text-gray-500">{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No patients are tagged yet. Add tags from a patient&apos;s record.</p>
+                  )}
+                </fieldset>
+              </div>
+            </div>
+          )}
+
+          {chips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2" aria-label="Active filters">
+              {chips.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={c.clear}
+                  aria-label={`Remove filter ${c.label}`}
+                  className={`motion-chip-in inline-flex items-center gap-1.5 rounded-md bg-brand-teal-light py-1 pl-2.5 pr-1.5 text-sm font-medium text-brand-teal-deep transition-colors hover:bg-brand-teal-light/60 ${FOCUS_RING}`}
+                >
+                  {c.label}
+                  <Svg d={ICON.x} className="h-3.5 w-3.5" />
+                </button>
+              ))}
+              <button type="button" onClick={clearAll} className={`rounded px-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+                Clear all
+              </button>
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div role="alert" className="flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 p-4">
+            <p className="text-sm font-medium text-red-800">{error}</p>
+            <button
+              type="button"
+              onClick={() => setReload((n) => n + 1)}
+              className={`inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-red-800 hover:text-red-900 rounded ${FOCUS_RING}`}
+            >
+              <Svg d={ICON.refresh} />
+              Try again
+            </button>
+          </div>
+        )}
+        <p className="sr-only" aria-live="polite">
+          {notice ?? (loaded && !loading ? `${pagination.total} patients${narrowed ? ' match' : ''}.` : '')}
+        </p>
+        {notice && (
+          <div role="status" className="motion-chip-in rounded-lg border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-800">
+            {notice}
+          </div>
+        )}
+
+        {/* Roster */}
+        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden" aria-busy={loading}>
+          {/* Header row */}
+          <div className={`hidden ${ROW_GRID} border-b border-gray-200 bg-gray-50/60 px-4 py-2.5 text-sm font-medium text-gray-500 lg:grid`}>
+            <span className="flex items-center">
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                checked={patients.length > 0 && selected.length === patients.length}
+                onChange={toggleAll}
+                disabled={patients.length === 0}
+                className="h-4 w-4 cursor-pointer rounded accent-brand-teal-dark"
+                aria-label="Select every patient on this page"
+              />
+            </span>
+            <span>Patient</span>
+            <span>Age · sex</span>
+            <span>Contact</span>
+            <span>Location</span>
+            <span>Added</span>
+            <span className="sr-only">Actions</span>
+          </div>
+
+          {!loaded ? (
+            <ul aria-hidden="true" className="divide-y divide-gray-100 animate-pulse">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <li key={i} className={`px-4 py-3.5 ${ROW_GRID} flex items-center gap-3`}>
+                  <span className="hidden lg:block h-4 w-4 rounded bg-gray-100" />
+                  <span className="flex items-center gap-3">
+                    <span className="h-9 w-9 rounded-md bg-gray-100" />
+                    <span className="space-y-1.5">
+                      <span className="block h-3.5 w-36 rounded bg-gray-100" />
+                      <span className="block h-3 w-20 rounded bg-gray-50" />
+                    </span>
+                  </span>
+                  <span className="hidden lg:block h-3.5 w-16 rounded bg-gray-50" />
+                  <span className="hidden lg:block h-3.5 w-32 rounded bg-gray-50" />
+                  <span className="hidden lg:block h-3.5 w-24 rounded bg-gray-50" />
+                  <span className="hidden lg:block h-3.5 w-20 rounded bg-gray-50" />
+                </li>
+              ))}
+            </ul>
+          ) : patients.length === 0 ? (
+            <EmptyRoster
+              narrowed={narrowed}
+              onClear={clearAll}
+              query={debouncedSearch}
+            />
+          ) : (
+            <ul key={`${pagination.page}:${debouncedSearch}:${chips.length}`} className={`divide-y divide-gray-100 transition-opacity duration-200 ${refreshing ? 'opacity-60' : ''}`}>
+              {patients.map((p, i) => (
+                <PatientRow
+                  key={p._id}
+                  patient={p}
+                  index={i}
+                  query={debouncedSearch}
+                  selected={selected.includes(p._id)}
+                  onToggle={() => toggleOne(p._id)}
+                  onOpen={() => router.push(`/patients/${p._id}`)}
+                  onDelete={() => setPatientToDelete(p)}
+                />
+              ))}
+            </ul>
+          )}
+
+          {/* Footer: count + pagination */}
+          {loaded && pagination.total > 0 && (
+            <nav aria-label="Pagination" className="flex flex-col gap-3 border-t border-gray-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-600">
+                <span className="font-mono text-gray-900">
+                  {firstRow.toLocaleString('en-US')}–{lastRow.toLocaleString('en-US')}
+                </span>{' '}
+                of <span className="font-mono text-gray-900">{pagination.total.toLocaleString('en-US')}</span>
+                {narrowed ? ' matching patients' : ' patients'}
+              </p>
+              {pagination.pages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => goToPage(pagination.page - 1)}
+                    disabled={pagination.page === 1 || loading}
+                    aria-label="Previous page"
+                    className={`rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent ${FOCUS_RING}`}
+                  >
+                    <Svg d={ICON.chevL} />
+                  </button>
+                  {pageWindow(pagination.page, pagination.pages).map((n, i) =>
+                    n === 'gap' ? (
+                      <span key={`g${i}`} className="px-1.5 text-gray-400" aria-hidden="true">…</span>
+                    ) : (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => goToPage(n)}
+                        disabled={loading}
+                        aria-current={pagination.page === n ? 'page' : undefined}
+                        aria-label={`Page ${n}`}
+                        className={`min-w-9 rounded-md px-2 py-1.5 font-mono text-sm transition-colors ${FOCUS_RING} ${
+                          pagination.page === n ? 'bg-brand-teal-dark font-semibold text-white' : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    )
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => goToPage(pagination.page + 1)}
+                    disabled={pagination.page === pagination.pages || loading}
+                    aria-label="Next page"
+                    className={`rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent ${FOCUS_RING}`}
+                  >
+                    <Svg d={ICON.chevR} />
+                  </button>
+                </div>
+              )}
             </nav>
           )}
         </div>
 
-        {loading ? (
-          <div className="flex flex-col gap-3 mt-4" aria-busy="true" aria-live="polite">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm animate-pulse flex flex-col">
-                <div className="p-4 sm:p-6 flex items-center gap-4 justify-between flex-wrap sm:flex-nowrap">
-                  {/* Avatar skeleton */}
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center text-white text-lg font-bold flex-shrink-0 shadow-md" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2 flex-wrap">
-                        <div className="h-5 bg-gray-200 rounded w-32 mb-1" />
-                        <div className="h-4 bg-gray-100 rounded w-16" />
-                        <div className="h-4 bg-blue-100 rounded w-12" />
-                        <div className="h-4 bg-gray-100 rounded w-10" />
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3 text-sm">
-                        <div className="h-4 bg-gray-100 rounded w-24" />
-                        <div className="h-4 bg-gray-100 rounded w-20" />
-                        <div className="h-4 bg-gray-100 rounded w-20" />
-                        <div className="h-4 bg-gray-100 rounded w-24" />
-                      </div>
-                    </div>
-                  </div>
-                  {/* Actions skeleton */}
-                  <div className="flex gap-2 items-center flex-shrink-0">
-                    <div className="w-10 h-10 bg-gray-100 rounded-lg" />
-                    <div className="w-10 h-10 bg-gray-100 rounded-lg" />
-                    <div className="w-10 h-10 bg-gray-100 rounded-lg" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        {/* Patients List */}
-        {filteredPatients.length === 0 && patients.length > 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-            <div className="p-12 text-center">
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-4">
-                <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">No patients found</h2>
-              <p className="text-sm text-gray-600 mb-4">Try adjusting your search or filter criteria.</p>
-              <button onClick={() => setSearchQuery('')} className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold">
-                Clear Search
+        {/* Selection tray: rises when the list becomes a set you can act on */}
+        {selected.length > 0 && (
+          <div className="sticky bottom-4 z-20 flex justify-center pointer-events-none">
+            <div
+              role="region"
+              aria-label="Selected patients"
+              className="motion-tray-in pointer-events-auto flex items-center gap-1 rounded-lg bg-brand-navy px-2 py-1.5 text-sm text-white shadow-[0_20px_50px_rgb(15,23,42,0.28)]"
+            >
+              <span className="px-2.5 font-semibold">
+                <span className="font-mono">{selected.length}</span> selected
+              </span>
+              <span className="h-5 w-px bg-white/20" aria-hidden="true" />
+              <button type="button" onClick={() => setMessageOpen(true)} className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-semibold hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal">
+                <Svg d={ICON.mail} />
+                Message
+              </button>
+              <button type="button" onClick={() => setExportOpen(true)} className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-semibold hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal">
+                <Svg d={ICON.download} />
+                Export
+              </button>
+              <button type="button" onClick={() => setSelected([])} aria-label="Clear selection" className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal">
+                <Svg d={ICON.x} />
               </button>
             </div>
           </div>
-        ) : filteredPatients.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-            <div className="p-12 text-center">
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-4">
-                <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">No patients found</h2>
-              <p className="text-sm text-gray-600 mb-4">Get started by adding your first patient.</p>
-              <Link
-                href="/patients/new"
-                className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-block"
-              >
-                Add First Patient
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3 mt-4">
-            {/* Select All Section */}
-            {filteredPatients.length > 0 && (
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-4 flex items-center justify-between gap-3">
-                <label className="flex items-center gap-3 cursor-pointer flex-1">
-                  <input
-                    ref={selectAllCheckboxRef}
-                    type="checkbox"
-                    checked={selectedPatients.length === filteredPatients.length && filteredPatients.length > 0}
-                    onChange={handleToggleSelectAll}
-                    className="w-5 h-5 rounded cursor-pointer accent-blue-600"
-                    aria-label="Select all patients on this page"
-                  />
-                  <span className="text-sm font-semibold text-gray-800">
-                    {selectedPatients.length === 0
-                      ? `Select all (${filteredPatients.length})`
-                      : `${selectedPatients.length} of ${filteredPatients.length} selected`}
-                  </span>
-                </label>
-                {selectedPatients.length > 0 && (
-                  <button
-                    onClick={() => setSelectedPatients([])}
-                    className="text-xs px-3 py-1.5 text-blue-600 hover:text-blue-700 font-semibold bg-white rounded hover:bg-blue-50 transition-colors"
-                    aria-label="Clear selection"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Patient List Items */}
-            {filteredPatients.map((patient) => (
-              <div key={patient._id} className="group flex items-center gap-3 transition-all">
-                <div className="flex-shrink-0 pt-0.5">
-                  <input
-                    type="checkbox"
-                    checked={selectedPatients.includes(patient._id)}
-                    onChange={() => handleTogglePatient(patient._id)}
-                    className="w-5 h-5 rounded cursor-pointer accent-blue-600"
-                    aria-label={`Select patient ${patient.firstName} ${patient.lastName}`}
-                  />
-                </div>
-                <div className="flex-1">
-                  <PatientListItem
-                    patient={patient}
-                    onDelete={handleDeleteClick}
-                    onClick={() => router.push(`/patients/${patient._id}`)}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
         )}
-
-        {/* Delete Confirmation Dialog */}
-        <AlertDialog
-          open={deleteDialogOpen}
-          onOpenChange={setDeleteDialogOpen}
-          title="Delete Patient"
-          description="Are you sure you want to delete this patient? This action cannot be undone."
-        >
-          <button
-            onClick={() => setDeleteDialogOpen(false)}
-            disabled={deleteLoading}
-            className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={deleteLoading}
-            className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {deleteLoading ? 'Deleting...' : 'Delete'}
-          </button>
-        </AlertDialog>
-
-        {/* Patient Export Modal */}
-        <PatientExportModal
-          open={exportModalOpen}
-          onOpenChange={setExportModalOpen}
-          patientIds={patients.map((p) => p._id)}
-          patientCount={patients.length}
-        />
-
-        {/* Bulk Communication Modal */}
-        <BulkCommunicationModal
-          isOpen={bulkCommunicationOpen}
-          onClose={() => setBulkCommunicationOpen(false)}
-          selectedPatients={selectedPatients}
-        />
-
       </div>
+
+      <AlertDialog
+        open={patientToDelete !== null}
+        onOpenChange={(open) => !open && !deleteLoading && setPatientToDelete(null)}
+        title="Delete this patient?"
+        description={
+          patientToDelete
+            ? `${patientToDelete.firstName} ${patientToDelete.lastName}${patientToDelete.patientCode ? ` (${patientToDelete.patientCode})` : ''} and their record will be removed. This can't be undone.`
+            : ''
+        }
+      >
+        <button
+          type="button"
+          onClick={() => setPatientToDelete(null)}
+          disabled={deleteLoading}
+          className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 disabled:opacity-50 ${FOCUS_RING}`}
+        >
+          Keep patient
+        </button>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleteLoading}
+          className={`rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 ${FOCUS_RING}`}
+        >
+          {deleteLoading ? 'Deleting…' : 'Delete patient'}
+        </button>
+      </AlertDialog>
+
+      <PatientExportModal open={exportOpen} onOpenChange={setExportOpen} patientIds={exportIds} patientCount={exportIds.length} />
+      <BulkCommunicationModal isOpen={messageOpen} onClose={() => setMessageOpen(false)} selectedPatients={selected} />
     </section>
+  );
+}
+
+function PatientRow({
+  patient: p,
+  index,
+  query,
+  selected,
+  onToggle,
+  onOpen,
+  onDelete,
+}: {
+  patient: Patient;
+  index: number;
+  query: string;
+  selected: boolean;
+  onToggle: () => void;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  const name = `${p.firstName} ${p.lastName}`;
+  const age = ageOf(p.dateOfBirth);
+  const inactive = p.active === false;
+  const fresh = isThisMonth(p.createdAt);
+  const place = [p.address?.city, p.address?.state].filter(Boolean).join(', ');
+  const initials = `${p.firstName?.[0] ?? ''}${p.lastName?.[0] ?? ''}`.toUpperCase();
+
+  // Row click opens the record; clicks on its own controls don't.
+  const onRowClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('a,button,input,label')) return;
+    onOpen();
+  };
+
+  return (
+    <li
+      onClick={onRowClick}
+      className={`motion-row-in group relative cursor-pointer px-4 py-3 transition-colors ${ROW_GRID} flex items-start gap-3 ${
+        selected ? 'bg-brand-teal-light/50' : 'hover:bg-gray-50'
+      }`}
+      style={{ animationDelay: `${Math.min(index * 18, 220)}ms` }}
+    >
+      <span className="flex pt-2.5 lg:pt-0">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggle}
+          className="h-4 w-4 cursor-pointer rounded accent-brand-teal-dark"
+          aria-label={`Select ${name}`}
+        />
+      </span>
+
+      {/* Patient */}
+      <span className="flex min-w-0 flex-1 items-center gap-3">
+        <span
+          aria-hidden="true"
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-sm font-semibold ${
+            inactive ? 'bg-gray-100 text-gray-500' : 'bg-brand-teal-light text-brand-teal-deep'
+          }`}
+        >
+          {initials}
+        </span>
+        <span className="min-w-0">
+          <span className="flex items-center gap-2">
+            <Link
+              href={`/patients/${p._id}`}
+              className={`truncate font-semibold text-gray-900 hover:text-brand-teal-deep rounded ${FOCUS_RING}`}
+            >
+              <Highlight text={name} query={query} />
+            </Link>
+            {inactive && <span className="shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold text-gray-600 ring-1 ring-inset ring-gray-200">Inactive</span>}
+            {fresh && !inactive && (
+              <span className="shrink-0 rounded bg-brand-teal-light px-1.5 py-0.5 text-xs font-semibold text-brand-teal-deep">New</span>
+            )}
+          </span>
+          <span className="mt-0.5 block font-mono text-xs text-gray-500">
+            {p.patientCode ? <Highlight text={p.patientCode} query={query} /> : 'No code'}
+          </span>
+          {/* Compact details below lg */}
+          <span className="mt-1 block text-sm text-gray-600 lg:hidden">
+            {[age !== null ? `${age} yrs` : null, p.sex && p.sex !== 'unknown' ? p.sex : null, p.phone].filter(Boolean).join(' · ')}
+          </span>
+        </span>
+      </span>
+
+      <span className="hidden text-sm text-gray-700 lg:block">
+        {age !== null ? <span className="font-mono">{age}</span> : <span className="text-gray-400">—</span>}
+        {p.sex && p.sex !== 'unknown' && <span className="capitalize text-gray-500"> · {p.sex}</span>}
+      </span>
+
+      <span className="hidden min-w-0 text-sm lg:block">
+        <span className="block truncate font-mono text-gray-900">{p.phone || '—'}</span>
+        {p.email && <span className="block truncate text-gray-500">{p.email}</span>}
+      </span>
+
+      <span className="hidden truncate text-sm text-gray-600 lg:block">{place || <span className="text-gray-400">—</span>}</span>
+
+      <span className="hidden font-mono text-sm text-gray-600 lg:block">{shortDate(p.createdAt)}</span>
+
+      {/* Actions */}
+      <span className="flex shrink-0 items-center justify-end gap-0.5 lg:opacity-60 lg:transition-opacity lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+        <RowAction href={`/appointments/new?patientId=${p._id}`} label={`Book an appointment for ${name}`} d={ICON.calendar} />
+        <RowAction href={`/patients/${p._id}/edit`} label={`Edit ${name}`} d={ICON.edit} />
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label={`Delete ${name}`}
+          title="Delete"
+          className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-700 ${FOCUS_RING}`}
+        >
+          <Svg d={ICON.trash} />
+        </button>
+      </span>
+    </li>
+  );
+}
+
+function RowAction({ href, label, d }: { href: string; label: string; d: string }) {
+  return (
+    <Link
+      href={href}
+      aria-label={label}
+      title={label}
+      className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-brand-teal-light hover:text-brand-teal-deep ${FOCUS_RING}`}
+    >
+      <Svg d={d} />
+    </Link>
+  );
+}
+
+function EmptyRoster({ narrowed, onClear, query }: { narrowed: boolean; onClear: () => void; query: string }) {
+  let body: ReactNode;
+  if (narrowed) {
+    body = (
+      <>
+        <p className="font-semibold text-gray-900">{query ? `No patients match “${query}”` : 'No patients match these filters'}</p>
+        <p className="mt-1 text-sm text-gray-500">Check the spelling, search by patient code or phone, or loosen a filter.</p>
+        <button
+          type="button"
+          onClick={onClear}
+          className={`mt-5 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}
+        >
+          Clear search and filters
+        </button>
+      </>
+    );
+  } else {
+    body = (
+      <>
+        <p className="font-semibold text-gray-900">No patients yet</p>
+        <p className="mt-1 text-sm text-gray-500">Register your first patient, or they can sign up from your public booking page.</p>
+        <Link
+          href="/patients/new"
+          className={`mt-5 inline-flex items-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}
+        >
+          <Svg d={ICON.plus} />
+          Add patient
+        </Link>
+      </>
+    );
+  }
+  return (
+    <div className="px-6 py-14 text-center">
+      <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md bg-gray-100 text-gray-500">
+        <Svg d={narrowed ? ICON.search : ICON.users} className="h-5 w-5" />
+      </div>
+      {body}
+    </div>
   );
 }

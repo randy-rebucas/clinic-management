@@ -1,9 +1,8 @@
 'use client';
 
 import { login } from '@/app/actions/auth';
-import { useActionState, useState, useEffect } from 'react';
+import { useActionState, useState, useEffect, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 
 interface Clinic {
   _id: string;
@@ -21,89 +20,63 @@ interface Clinic {
   };
 }
 
+const subscribeNoop = () => () => {};
+
+/** Clinic subdomain from the current hostname, '' on the root domain (incl. www), null during SSR. */
+function getHostSubdomain(): string {
+  const parts = window.location.hostname.split('.');
+  const firstPart = parts[0]?.toLowerCase() ?? '';
+  // 'www' is not a subdomain - treat it as root domain
+  const isWww = firstPart === 'www';
+  const hasSubdomain = !isWww && (
+    (parts.length > 2) ||
+    (parts.length === 2 && firstPart !== 'localhost')
+  );
+  return hasSubdomain ? firstPart : '';
+}
+
 export default function LoginForm() {
   const [state, action, pending] = useActionState(login, undefined);
   const [showPassword, setShowPassword] = useState(false);
-  const [hasSubdomain, setHasSubdomain] = useState(false);
-  const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null);
   const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
-  const [showClinicSelection, setShowClinicSelection] = useState(false);
-  const router = useRouter();
+  const subdomain = useSyncExternalStore(subscribeNoop, getHostSubdomain, () => null);
+  // On the root domain the user first picks a clinic, then logs in on its subdomain.
+  const showClinicSelection = subdomain === '';
 
   useEffect(() => {
-    const checkSubdomain = async () => {
-      if (typeof window !== 'undefined') {
-        const hostname = window.location.hostname;
-        const parts = hostname.split('.');
-        // Extract potential subdomain (first part)
-        const firstPart = parts[0]?.toLowerCase();
-        // 'www' is not a subdomain - treat it as root domain
-        const isWww = firstPart === 'www';
-        // If hostname has more than 2 parts AND first part is not 'www', we have a subdomain
-        // Or if 2 parts and first is not 'localhost' or 'www'
-        const hasSubdomain = !isWww && (
-          (parts.length > 2) || 
-          (parts.length === 2 && firstPart !== 'localhost')
-        );
-        setHasSubdomain(hasSubdomain);
-        
-        if (!hasSubdomain) {
-          // No subdomain (including www), fetch available clinics
-          fetchClinics();
-          setShowClinicSelection(true);
-        } else {
-          // Has subdomain, get tenant info
-          try {
-            const subdomain = firstPart;
-            const res = await fetch(`/api/tenants/public?subdomain=${subdomain}`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data.success && data.tenant) {
-                setSelectedClinic(data.tenant);
-              }
-            }
-          } catch (error) {
-            console.error('Failed to fetch tenant info:', error);
+    if (!showClinicSelection) return;
+    const fetchClinics = async () => {
+      try {
+        const res = await fetch('/api/tenants/public');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.tenants) {
+            setAvailableClinics(data.tenants);
           }
         }
+      } catch (error) {
+        console.error('Failed to fetch clinics:', error);
+      } finally {
+        setLoadingClinics(false);
       }
     };
-    
-    checkSubdomain();
-  }, []);
-
-  const fetchClinics = async () => {
-    try {
-      setLoadingClinics(true);
-      const res = await fetch('/api/tenants/public');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.tenants) {
-          setAvailableClinics(data.tenants);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch clinics:', error);
-    } finally {
-      setLoadingClinics(false);
-    }
-  };
+    fetchClinics();
+  }, [showClinicSelection]);
 
   const handleClinicSelect = (clinic: Clinic) => {
-    setSelectedClinic(clinic);
     // Redirect to clinic's subdomain for login
     if (typeof window !== 'undefined') {
       const protocol = window.location.protocol;
       const rootDomain = window.location.hostname.split('.').slice(-2).join('.');
       const port = window.location.port ? `:${window.location.port}` : '';
       const loginUrl = `${protocol}//${clinic.subdomain}.${rootDomain}${port}/login`;
-      window.location.href = loginUrl;
+      window.open(loginUrl, '_self');
     }
   };
 
   // If showing clinic selection, render that instead
-  if (showClinicSelection && !hasSubdomain) {
+  if (showClinicSelection) {
     return (
       <div className="space-y-6 sm:space-y-8">
         <div>
@@ -267,11 +240,11 @@ export default function LoginForm() {
             className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none focus:text-brand-teal-dark transition-colors"
           >
             {showPassword ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.243 4.243L9.88 9.88" />
               </svg>
             ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>

@@ -133,68 +133,117 @@ export async function createPayPalOrder(
     };
   } catch (error: any) {
     console.error('Error creating PayPal order:', error);
-    throw new Error(error.message || 'Failed to create PayPal order');
+    throw new Error('Failed to create PayPal order');
   }
 }
 
-/**
- * Capture a PayPal order after user approval
- */
-export async function capturePayPalOrder(orderId: string): Promise<{
+export interface PayPalCaptureResult {
   success: boolean;
   transactionId?: string;
   amount?: number;
   currency?: string;
   payerEmail?: string;
+  /** PayPal order status (e.g. COMPLETED, APPROVED) when known. */
+  orderStatus?: string;
+  /** PayPal reported the order was captured already (e.g. a retried request). */
+  alreadyCaptured?: boolean;
+  /** Network/5xx failure: the outcome is unknown and the caller should check the order. */
+  transient?: boolean;
   error?: string;
-}> {
+}
+
+const PAYPAL_ORDER_ID = /^[A-Z0-9-]{5,64}$/i;
+
+export function isValidPayPalOrderId(orderId: unknown): orderId is string {
+  return typeof orderId === 'string' && PAYPAL_ORDER_ID.test(orderId);
+}
+
+function parseOrder(order: any): PayPalCaptureResult {
+  const capture = order?.purchase_units?.[0]?.payments?.captures?.[0];
+  if (!capture) {
+    return { success: false, orderStatus: order?.status, error: 'No capture found in PayPal response' };
+  }
+  return {
+    success: capture.status === 'COMPLETED',
+    orderStatus: order?.status,
+    transactionId: capture.id,
+    amount: parseFloat(capture.amount?.value || '0'),
+    currency: capture.amount?.currency_code || 'USD',
+    payerEmail: order?.payer?.email_address,
+    error: capture.status === 'COMPLETED' ? undefined : `Capture status ${capture.status}`,
+  };
+}
+
+/**
+ * Capture a PayPal order after user approval
+ */
+export async function capturePayPalOrder(orderId: string): Promise<PayPalCaptureResult> {
+  if (!isValidPayPalOrderId(orderId)) {
+    return { success: false, error: 'Invalid order id' };
+  }
   try {
     const accessToken = await getPayPalAccessToken();
     const environment = process.env.PAYPAL_ENVIRONMENT || 'sandbox';
     const baseUrl = PAYPAL_API_BASE[environment as keyof typeof PAYPAL_API_BASE] || PAYPAL_API_BASE.sandbox;
 
-    const response = await fetch(`${baseUrl}/v2/checkout/orders/${orderId}/capture`, {
+    const response = await fetch(`${baseUrl}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${accessToken}`,
         'Prefer': 'return=representation',
+        // Makes a retried capture of the same order idempotent on PayPal's side.
+        'PayPal-Request-Id': `capture-${orderId}`,
       },
       body: JSON.stringify({}),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {
-      const error = await response.text();
+      const text = await response.text();
+      console.error(`PayPal capture failed for ${orderId}: ${response.status} ${text}`);
       return {
         success: false,
-        error: `PayPal capture failed: ${response.status} - ${error}`,
+        alreadyCaptured: response.status === 422 && text.includes('ORDER_ALREADY_CAPTURED'),
+        transient: response.status >= 500 || response.status === 429,
+        error: 'PayPal capture failed',
       };
     }
 
-    const order = await response.json();
-    const capture = order.purchase_units?.[0]?.payments?.captures?.[0];
-    const payer = order.payer;
-
-    if (!capture) {
-      return {
-        success: false,
-        error: 'No capture found in PayPal response',
-      };
-    }
-
-    return {
-      success: capture.status === 'COMPLETED',
-      transactionId: capture.id,
-      amount: parseFloat(capture.amount?.value || '0'),
-      currency: capture.amount?.currency_code || 'USD',
-      payerEmail: payer?.email_address,
-    };
+    return parseOrder(await response.json());
   } catch (error: any) {
     console.error('Error capturing PayPal order:', error);
-    return {
-      success: false,
-      error: error.message || 'Failed to capture PayPal order',
-    };
+    return { success: false, transient: true, error: 'Failed to capture PayPal order' };
+  }
+}
+
+/**
+ * Fetch an order from PayPal. Used to resolve the real outcome after a capture
+ * timed out or was reported as already captured.
+ */
+export async function getPayPalOrder(orderId: string): Promise<PayPalCaptureResult> {
+  if (!isValidPayPalOrderId(orderId)) {
+    return { success: false, error: 'Invalid order id' };
+  }
+  try {
+    const accessToken = await getPayPalAccessToken();
+    const environment = process.env.PAYPAL_ENVIRONMENT || 'sandbox';
+    const baseUrl = PAYPAL_API_BASE[environment as keyof typeof PAYPAL_API_BASE] || PAYPAL_API_BASE.sandbox;
+
+    const response = await fetch(`${baseUrl}/v2/checkout/orders/${encodeURIComponent(orderId)}`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      console.error(`PayPal get order failed for ${orderId}: ${response.status} ${await response.text()}`);
+      return { success: false, transient: response.status >= 500, error: 'Failed to fetch PayPal order' };
+    }
+    const order = await response.json();
+    const result = parseOrder(order);
+    return { ...result, success: result.success && order?.status === 'COMPLETED' };
+  } catch (error: any) {
+    console.error('Error fetching PayPal order:', error);
+    return { success: false, transient: true, error: 'Failed to fetch PayPal order' };
   }
 }
 

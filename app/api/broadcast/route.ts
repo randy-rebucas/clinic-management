@@ -1,58 +1,100 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
+import Patient from '@/models/Patient';
 import { sendBroadcastMessage } from '@/lib/automations/broadcast-messaging';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { isAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, patientTenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zObjectId, escapeRegex } from '@/lib/api/validate';
+
+const broadcastSchema = z.object({
+  message: z.string().trim().min(1).max(5000),
+  subject: z.string().trim().max(200).optional(),
+  targetGroup: z
+    .object({
+      type: z.enum(['all', 'ageRange', 'condition', 'lastVisit', 'custom']),
+      minAge: z.number().int().min(0).max(150).optional(),
+      maxAge: z.number().int().min(0).max(150).optional(),
+      // The automation builds a RegExp from this, so it is length-bounded and escaped here.
+      condition: z.string().trim().min(1).max(100).optional(),
+      daysSinceLastVisit: z.number().int().min(1).max(3650).optional(),
+      patientIds: z.array(zObjectId).max(1000).optional(),
+    })
+    .optional(),
+  sendSMS: z.boolean().optional(),
+  sendEmail: z.boolean().optional(),
+  sendNotification: z.boolean().optional(),
+});
 
 /**
- * Send broadcast message to patient group
- * Requires admin or manager permissions
+ * Send broadcast message to patient group. Admin only.
  */
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
+  if (!isAdmin(ctx.session)) {
+    return forbiddenResponse('Admin access required to send broadcasts');
   }
 
-  // Check permission - only admins and managers can send broadcasts
-  const permissionCheck = await requirePermission(session, 'patients', 'write');
-  if (permissionCheck) {
-    return permissionCheck;
-  }
+  const parsed = await parseBody(request, broadcastSchema);
+  if (isValidationError(parsed)) return parsed;
+  const body = parsed.data;
 
   try {
     await connectDB();
-    const body = await request.json();
 
-    if (!body.message) {
-      return NextResponse.json(
-        { success: false, error: 'Message is required' },
-        { status: 400 }
-      );
+    let targetGroup = body.targetGroup;
+    if (targetGroup) {
+      targetGroup = { ...targetGroup };
+      if (targetGroup.condition) {
+        targetGroup.condition = escapeRegex(targetGroup.condition);
+      }
+      if (targetGroup.type === 'custom') {
+        if (!targetGroup.patientIds || targetGroup.patientIds.length === 0) {
+          return NextResponse.json(
+            { success: false, error: 'patientIds required for a custom target group' },
+            { status: 400 }
+          );
+        }
+        const owned = await Patient.find(patientTenantFilter(ctx.tenantId, { _id: { $in: targetGroup.patientIds } }))
+          .select('_id')
+          .lean<{ _id: unknown }[]>();
+        if (owned.length === 0) {
+          return NextResponse.json(
+            { success: false, error: 'No patients found' },
+            { status: 404 }
+          );
+        }
+        targetGroup.patientIds = owned.map((p) => String(p._id));
+      }
     }
-
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
 
     const result = await sendBroadcastMessage({
       message: body.message,
       subject: body.subject,
-      targetGroup: body.targetGroup,
-      tenantId: tenantId ? new Types.ObjectId(tenantId) : undefined,
+      targetGroup,
+      tenantId: ctx.tenantObjectId,
       sendSMS: body.sendSMS !== false,
       sendEmail: body.sendEmail !== false,
       sendNotification: body.sendNotification !== false,
     });
 
+    if (result.errors.length > 0) {
+      console.error('Broadcast delivery errors:', result.errors);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Broadcast message sent',
-      data: result,
+      data: {
+        success: result.success,
+        sent: result.sent,
+        failed: result.failed,
+        errors: result.errors.map((e) => ({ patientId: e.patientId, error: 'Delivery failed' })),
+      },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error sending broadcast message:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to send broadcast message' },
@@ -60,4 +102,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

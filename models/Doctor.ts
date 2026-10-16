@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
-import bcrypt from 'bcryptjs';
+import { ensureStaffUser } from './staff-user-link';
 
 export interface IDoctor extends Document {
   tenantId?: Types.ObjectId; // Reference to Tenant (optional for backward compatibility)
@@ -10,6 +10,7 @@ export interface IDoctor extends Document {
   specializationId: Types.ObjectId; // Reference to Specialization model
   licenseNumber: string;
   ptr?: string;
+  ptrNumber?: string;
   
   // Schedule and availability
   schedule: {
@@ -102,6 +103,10 @@ const DoctorSchema: Schema = new Schema(
       trim: true,
       default: '',
     },
+    ptrNumber: {
+      type: String,
+      trim: true,
+    },
     schedule: [
       {
         dayOfWeek: { type: Number, required: true, min: 0, max: 6 },
@@ -169,73 +174,12 @@ DoctorSchema.index({ tenantId: 1, status: 1 }); // Tenant-scoped status queries
 // Post-save hook to automatically create a User when a Doctor is created
 // IMPORTANT: Hook must be added BEFORE model registration
 DoctorSchema.post('save', async function (doc: IDoctor) {
-  try {
-    // Ensure models are registered by importing them first
-    // Import the model files to ensure they're registered in mongoose.models
-    if (!mongoose.models.User) {
-      await import('./User');
-    }
-    if (!mongoose.models.Role) {
-      await import('./Role');
-    }
-    
-    // Now get the models from mongoose.models (they should be registered now)
-    const User = mongoose.models.User;
-    const Role = mongoose.models.Role;
-    
-    if (!User || !Role) {
-      console.warn(`⚠️  Required models not registered. User: ${!!User}, Role: ${!!Role}`);
-      return;
-    }
-
-    // Check if a User with this doctorProfile already exists (to avoid duplicates on updates)
-    const existingUserByProfile = await User.findOne({ doctorProfile: doc._id });
-    
-    if (existingUserByProfile) {
-      // User already linked to this doctor, skip
-      return;
-    }
-
-    // Check if a User with this email already exists
-    const existingUserByEmail = await User.findOne({ email: doc.email.toLowerCase().trim() });
-    
-    if (!existingUserByEmail) {
-      // Find the doctor role
-      const doctorRole = await Role.findOne({ name: 'doctor' });
-      
-      if (!doctorRole) {
-        console.warn(`⚠️  Doctor role not found. User not created for doctor: ${doc.email}`);
-        return;
-      }
-
-      // Generate a default password (can be changed on first login)
-      // Using a combination of license number for security
-      const defaultPassword = `Password1234!`;
-      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-
-      // Create the user
-      const user = await User.create({
-        name: `${doc.firstName} ${doc.lastName}`.trim(),
-        email: doc.email.toLowerCase().trim(),
-        password: hashedPassword,
-        role: doctorRole._id,
-        doctorProfile: doc._id,
-        status: doc.status === 'active' ? 'active' : 'inactive',
-      });
-
-      console.log(`✅ Created user account for doctor: ${doc.email} (default password: ${defaultPassword})`);
-    } else {
-      // User exists, but update the doctorProfile reference if not set
-      if (!existingUserByEmail.doctorProfile) {
-        existingUserByEmail.doctorProfile = doc._id;
-        await existingUserByEmail.save();
-        console.log(`✅ Linked existing user to doctor: ${doc.email}`);
-      }
-    }
-  } catch (error: any) {
-    // Log error but don't throw - we don't want to prevent doctor creation if user creation fails
-    console.error(`⚠️  Error creating user for doctor ${doc.email}:`, error.message);
-  }
+  await ensureStaffUser({
+    doc,
+    profileField: 'doctorProfile',
+    roleNames: ['doctor'],
+    label: 'doctor',
+  });
 });
 
 // Register Doctor model immediately to ensure it's available when other models reference it

@@ -1,18 +1,18 @@
 export default function PatientDetailLoading() {
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+    <section role="status" aria-busy="true" aria-label="Loading" className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6 animate-pulse">
 
           {/* Header card */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex items-start gap-4">
               {/* Back button placeholder */}
               <div className="w-9 h-9 rounded-lg bg-gray-100 flex-shrink-0 mt-1" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-4 flex-wrap">
                   {/* Avatar */}
-                  <div className="w-16 h-16 rounded-xl bg-gray-200 flex-shrink-0" />
+                  <div className="w-16 h-16 rounded-lg bg-gray-200 flex-shrink-0" />
                   <div className="flex-1 min-w-0 space-y-2">
                     {/* Name */}
                     <div className="h-8 w-64 bg-gray-200 rounded" />
@@ -49,7 +49,7 @@ export default function PatientDetailLoading() {
           {/* Stats row */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+              <div key={i} className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
                 <div className="h-3 w-24 bg-gray-200 rounded mb-3" />
                 <div className="h-7 w-20 bg-gray-300 rounded mb-1" />
                 <div className="h-3 w-16 bg-gray-100 rounded" />
@@ -58,7 +58,7 @@ export default function PatientDetailLoading() {
           </div>
 
           {/* Tabs + content */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             {/* Tab bar */}
             <div className="border-b border-gray-200 bg-gray-50/50 flex gap-1 px-4 py-2">
               {Array.from({ length: 5 }).map((_, i) => (

@@ -1,40 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import { processWaitlistFills } from '@/lib/automations/waitlist-management';
 
-// This endpoint should be called by a cron job service (e.g., Vercel Cron, cron-job.org, etc.)
-// For security, you should add authentication via a secret token
+export const maxDuration = 300;
+
+/**
+ * Offers freed (cancelled) slots to waitlisted patients for every active tenant.
+ * Schedule: see vercel.json. Auth: Authorization: Bearer $CRON_SECRET.
+ */
 export async function GET(request: NextRequest) {
-  // Authenticate request
-  // Vercel Cron sends 'x-vercel-cron' header for internal authentication
-  // External cron services should use 'Authorization: Bearer CRON_SECRET'
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-  
-  // If CRON_SECRET is set, require authentication (unless it's Vercel Cron)
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-  }
+  const denied = requireCron(request);
+  if (denied) return denied;
 
   try {
     const result = await processWaitlistFills();
-
     return NextResponse.json({
-      success: true,
-      message: 'Waitlist management processed',
+      success: result.success,
+      message: 'Waitlist fills processed',
       data: result,
     });
-  } catch (error: any) {
-    console.error('Error processing waitlist management:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to process waitlist management' },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('[Cron] waitlist-management error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to process waitlist-management' }, { status: 500 });
   }
 }
-

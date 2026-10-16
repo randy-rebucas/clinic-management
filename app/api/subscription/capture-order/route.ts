@@ -1,136 +1,132 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
-import { capturePayPalOrder } from '@/lib/paypal';
+import { capturePayPalOrder, getPayPalOrder, isValidPayPalOrderId, type PayPalCaptureResult } from '@/lib/paypal';
 import connectDB from '@/lib/mongodb';
-import Tenant from '@/models/Tenant';
 import PaypalOrder from '@/models/PaypalOrder';
-import { Types } from 'mongoose';
+import Tenant from '@/models/Tenant';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
+import { activateSubscriptionFromOrder } from '@/lib/subscription';
+
+// A 'processing' claim older than this is treated as abandoned (crashed request) and may be retried.
+const STALE_CLAIM_MS = 2 * 60 * 1000;
+
+function subscriptionPayload(sub: any) {
+  return {
+    plan: sub?.plan,
+    status: sub?.status,
+    billingCycle: sub?.billingCycle,
+    expiresAt: sub?.expiresAt,
+    renewalAt: sub?.renewalAt,
+  };
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const ctx = await requireTenantSession();
+    if (isTenantSessionError(ctx)) return ctx;
+    const { session, tenantObjectId } = ctx;
 
     // Only admin/owner may capture payments
     if (!['admin', 'owner'].includes(session.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { orderId } = body;
-
-    if (!orderId) {
-      return NextResponse.json({ error: 'Order ID is required' }, { status: 400 });
+    let body: any;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+    }
+    const orderId = body?.orderId;
+    if (!isValidPayPalOrderId(orderId)) {
+      return NextResponse.json({ success: false, error: 'Order ID is required' }, { status: 400 });
     }
 
     await connectDB();
 
-    // ── Verify order belongs to this tenant ──────────────────────────────────
-    // Atomically claim the order: transition pending → processing.
-    // If another request already claimed it (webhook or duplicate client call),
-    // findOneAndUpdate returns null and we bail — preventing double-processing.
-    const pendingOrder = await PaypalOrder.findOneAndUpdate(
+    // Atomically claim the order so concurrent requests don't double-process it.
+    const claimed = await PaypalOrder.findOneAndUpdate(
       {
         orderId,
-        tenantId: new Types.ObjectId(session.tenantId),
-        status: 'pending',
+        tenantId: tenantObjectId,
+        $or: [
+          { status: 'pending' },
+          { status: 'processing', updatedAt: { $lt: new Date(Date.now() - STALE_CLAIM_MS) } },
+        ],
       },
       { $set: { status: 'processing' } },
       { new: true }
     );
 
-    if (!pendingOrder) {
-      // Could be: wrong tenant, already processing, already completed, or unknown orderId
-      const existing = await PaypalOrder.findOne({ orderId }).lean();
+    if (!claimed) {
+      const existing = await PaypalOrder.findOne({ orderId, tenantId: tenantObjectId }).lean<any>();
       if (!existing) {
-        return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+        return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
       }
-      if ((existing as any).status === 'completed') {
-        return NextResponse.json({ error: 'Order already processed' }, { status: 409 });
+      if (existing.status === 'completed') {
+        // Already applied (by an earlier request or the webhook): report success idempotently.
+        const tenant = await Tenant.findOne({
+          _id: tenantObjectId,
+          'subscription.paymentHistory': { $elemMatch: { orderId, status: 'completed' } },
+        }).select('subscription').lean<any>();
+        if (tenant) {
+          return NextResponse.json({
+            success: true,
+            message: 'Subscription already activated',
+            subscription: subscriptionPayload(tenant.subscription),
+          });
+        }
       }
-      return NextResponse.json({ error: 'Order cannot be processed' }, { status: 409 });
+      return NextResponse.json({ success: false, error: 'Order is being processed, please retry shortly' }, { status: 409 });
     }
 
     // ── Capture with PayPal ──────────────────────────────────────────────────
-    let captureResult: Awaited<ReturnType<typeof capturePayPalOrder>>;
-    try {
-      captureResult = await capturePayPalOrder(orderId);
-    } catch (err: any) {
-      // Roll back the lock so the order can be retried
-      await PaypalOrder.findOneAndUpdate({ orderId }, { $set: { status: 'pending' } });
-      throw err;
+    let capture: PayPalCaptureResult = await capturePayPalOrder(orderId);
+    if (!capture.success && (capture.alreadyCaptured || capture.transient)) {
+      // The capture may have gone through (timeout / retry): ask PayPal for the real state.
+      const order = await getPayPalOrder(orderId);
+      if (order.success) capture = order;
     }
 
-    if (!captureResult.success) {
-      await PaypalOrder.findOneAndUpdate({ orderId }, { $set: { status: 'failed' } });
+    if (!capture.success) {
+      // Unknown outcome → release the claim so it can be retried; definite failure → mark failed.
+      await PaypalOrder.updateOne(
+        { orderId },
+        { $set: { status: capture.transient ? 'pending' : 'failed' } }
+      );
       return NextResponse.json(
-        { error: captureResult.error || 'Payment capture failed' },
-        { status: 400 }
+        { success: false, error: capture.transient ? 'Payment provider unavailable, please retry' : 'Payment capture failed' },
+        { status: capture.transient ? 502 : 400 }
       );
     }
 
-    // ── Update tenant subscription ───────────────────────────────────────────
-    const tenant = await Tenant.findById(pendingOrder.tenantId);
-    if (!tenant) {
-      await PaypalOrder.findOneAndUpdate({ orderId }, { $set: { status: 'failed' } });
-      return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+    // ── Update tenant subscription (idempotent per order) ───────────────────
+    let result;
+    try {
+      result = await activateSubscriptionFromOrder(orderId, capture);
+    } catch (err) {
+      // Money is captured; leave the claim to go stale so a retry or the webhook can finish activation.
+      console.error(`Activation failed after capture for order ${orderId}:`, err);
+      return NextResponse.json(
+        { success: false, error: 'Payment received but activation is delayed. Please retry in a few minutes.' },
+        { status: 503 }
+      );
     }
 
-    // Calendar-accurate expiration (not fixed 30-day window)
-    const now = new Date();
-    const expiresAt = new Date(now);
-    if (pendingOrder.billingCycle === 'yearly') {
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-    } else {
-      expiresAt.setMonth(expiresAt.getMonth() + 1);
+    if (!result.ok) {
+      console.error(`Activation rejected for order ${orderId}: ${result.error}`);
+      return NextResponse.json({ success: false, error: result.error }, { status: result.status });
     }
-
-    const paymentEntry = {
-      transactionId: captureResult.transactionId || orderId,
-      orderId,
-      amount: captureResult.amount || pendingOrder.amount,
-      currency: captureResult.currency || pendingOrder.currency,
-      payerEmail: captureResult.payerEmail,
-      plan: pendingOrder.plan,
-      billingCycle: pendingOrder.billingCycle,
-      status: 'completed' as const,
-      paidAt: now,
-    };
-
-    if (!tenant.subscription) tenant.subscription = {} as any;
-    tenant.subscription.plan = pendingOrder.plan;
-    tenant.subscription.status = 'active';
-    tenant.subscription.billingCycle = pendingOrder.billingCycle;
-    tenant.subscription.expiresAt = expiresAt;
-    tenant.subscription.renewalAt = expiresAt;
-    tenant.subscription.paypalOrderId = orderId;
-
-    if (!tenant.subscription.paymentHistory) tenant.subscription.paymentHistory = [];
-    tenant.subscription.paymentHistory.push(paymentEntry);
-
-    await tenant.save();
-
-    // Mark the pending order record as completed
-    await PaypalOrder.findOneAndUpdate({ orderId }, { $set: { status: 'completed' } });
 
     return NextResponse.json({
       success: true,
       message: 'Subscription activated successfully',
-      subscription: {
-        plan: tenant.subscription.plan,
-        status: tenant.subscription.status,
-        billingCycle: tenant.subscription.billingCycle,
-        expiresAt: tenant.subscription.expiresAt,
-        renewalAt: tenant.subscription.renewalAt,
-      },
-      transactionId: captureResult.transactionId,
+      subscription: subscriptionPayload(result.subscription),
+      transactionId: capture.transactionId,
     });
   } catch (error: any) {
     console.error('Error capturing subscription order:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to process payment' },
+      { success: false, error: 'Failed to process payment' },
       { status: 500 }
     );
   }

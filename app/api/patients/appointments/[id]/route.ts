@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
+import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { isValidId } from '@/lib/api/tenant-session';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { combineDateAndTimeInTz } from '@/lib/tz';
 
 /**
  * Cancel an appointment for logged-in patient
@@ -22,8 +26,7 @@ export async function DELETE(
 
     await connectDB();
 
-    const Patient = (await import('@/models/Patient')).default;
-    const patient = await Patient.findById(sessionData.patientId);
+    const patient = await Patient.findById(sessionData.patientId).select('tenantIds').lean();
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
@@ -31,19 +34,17 @@ export async function DELETE(
       );
     }
 
-    const patientTenantId = patient.tenantIds?.[0];
-    
     const { id } = await params;
-
-    // Find the appointment (tenant-scoped)
-    const appointmentQuery: any = { _id: id };
-    if (patientTenantId) {
-      appointmentQuery.tenantId = patientTenantId;
-    } else {
-      appointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    if (!isValidId(id)) {
+      return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
     }
-    
-    const appointment = await Appointment.findOne(appointmentQuery);
+
+    // Only the patient's own appointments at one of their clinics.
+    const appointment = await Appointment.findOne({
+      _id: id,
+      patient: (patient as any)._id,
+      tenantId: { $in: (patient as any).tenantIds || [] },
+    });
 
     if (!appointment) {
       return NextResponse.json(
@@ -52,15 +53,6 @@ export async function DELETE(
       );
     }
 
-    // Verify the appointment belongs to this patient
-    if (appointment.patient.toString() !== sessionData.patientId) {
-      return NextResponse.json(
-        { success: false, error: 'You can only cancel your own appointments' },
-        { status: 403 }
-      );
-    }
-
-    // Check if appointment can be cancelled
     if (['completed', 'cancelled', 'no-show'].includes(appointment.status)) {
       return NextResponse.json(
         { success: false, error: `Cannot cancel an appointment that is already ${appointment.status}` },
@@ -68,21 +60,18 @@ export async function DELETE(
       );
     }
 
-    // Check if appointment is in the past
-    const appointmentDateTime = new Date(appointment.appointmentDate);
-    if (appointment.appointmentTime) {
-      const [hours, minutes] = appointment.appointmentTime.split(':').map(Number);
-      appointmentDateTime.setHours(hours, minutes, 0, 0);
-    }
+    const tz = await getTenantTimezone(appointment.tenantId);
+    const appointmentDateTime = appointment.appointmentDate
+      ? combineDateAndTimeInTz(appointment.appointmentDate, appointment.appointmentTime || '00:00', tz)
+      : appointment.scheduledAt;
 
-    if (appointmentDateTime < new Date()) {
+    if (appointmentDateTime && appointmentDateTime < new Date()) {
       return NextResponse.json(
         { success: false, error: 'Cannot cancel past appointments' },
         { status: 400 }
       );
     }
 
-    // Cancel the appointment
     appointment.status = 'cancelled';
     appointment.notes = `${appointment.notes ? appointment.notes + '\n' : ''}Cancelled by patient on ${new Date().toISOString()}`;
     await appointment.save();
@@ -106,4 +95,3 @@ export async function DELETE(
     );
   }
 }
-

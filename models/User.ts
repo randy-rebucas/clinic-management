@@ -20,8 +20,15 @@ export interface IUser extends Document {
   status: 'active' | 'inactive' | 'suspended';
   lastLogin?: Date;
   // 2FA / TOTP
-  totpSecret?: string;
+  totpSecret?: string; // AES-GCM encrypted via lib/encryption (legacy rows may be plaintext base32)
   totpEnabled?: boolean;
+  totpPendingSecret?: string; // Encrypted secret awaiting confirmation during (re-)enrollment
+  totpLastUsedStep?: number; // Last accepted TOTP time-step, for replay protection
+  sessionVersion?: number; // Bumped to revoke all existing sessions for this user
+  // Invite / admin-triggered password setup (see lib/user-invite.ts)
+  mustSetPassword?: boolean; // Login is refused until the user sets a password via the invite link
+  inviteTokenHash?: string; // sha256 of the single-use set-password token
+  inviteExpiresAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -80,6 +87,12 @@ const UserSchema = new Schema<IUser>(
     lastLogin: { type: Date },
     totpSecret: { type: String, select: false },
     totpEnabled: { type: Boolean, default: false },
+    totpPendingSecret: { type: String, select: false },
+    totpLastUsedStep: { type: Number, select: false },
+    sessionVersion: { type: Number, default: 0 },
+    mustSetPassword: { type: Boolean, default: false },
+    inviteTokenHash: { type: String, select: false },
+    inviteExpiresAt: { type: Date, select: false },
   },
   {
     timestamps: true,
@@ -96,9 +109,12 @@ UserSchema.index({ medicalRepresentativeProfile: 1 });
 UserSchema.index({ role: 1, status: 1 }); // For role-based status queries
 UserSchema.index({ status: 1 }); // For status-based queries
 UserSchema.index({ email: 1, tenantId: 1 }); // Compound index for tenant-scoped email lookups
+// Login resolves users by (tenantId, email), so the pair must be unique. Tenant-less users share tenantId=null.
+UserSchema.index({ tenantId: 1, email: 1 }, { unique: true, name: 'tenant_email_unique' });
 UserSchema.index({ tenantId: 1, status: 1 }); // For tenant-scoped user queries
 UserSchema.index({ lastLogin: -1 }); // For recent login queries
 UserSchema.index({ createdAt: -1 }); // For sorting by creation date
+UserSchema.index({ inviteTokenHash: 1 }, { sparse: true }); // Set-password token lookup
 
 // Validation: Ensure role consistency with all profile types
 UserSchema.pre('save', async function (next) {

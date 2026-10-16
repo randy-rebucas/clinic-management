@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useId, FormEvent } from 'react';
 import dynamic from 'next/dynamic';
 
 const SignaturePad = dynamic(() => import('./SignaturePad'), { ssr: false });
 import { calculateDosage, calculateQuantity, formatDosageInstructions } from '@/lib/dosage-calculator';
 import { AlertDialog } from './ui/Modal';
+import { useModalA11y } from './hooks/useModalA11y';
 
 interface Medicine {
   _id: string;
@@ -59,9 +60,11 @@ interface PrescriptionFormProps {
     notes?: string;
   };
   patients: Patient[];
-  onSubmit: (data: any) => void;
+  onSubmit: (data: any) => void | Promise<unknown>;
   onCancel?: () => void;
   providerName: string;
+  /** When provided, patient search is done server-side and `patients` holds the results. */
+  onPatientSearch?: (query: string) => void;
 }
 
 export default function PrescriptionForm({
@@ -70,7 +73,9 @@ export default function PrescriptionForm({
   onSubmit,
   onCancel,
   providerName,
+  onPatientSearch,
 }: PrescriptionFormProps) {
+  const uid = useId();
   const [formData, setFormData] = useState({
     patient: initialData?.patient || '',
     visit: initialData?.visit || '',
@@ -79,10 +84,10 @@ export default function PrescriptionForm({
   });
 
   const [medicineSearch, setMedicineSearch] = useState('');
-  const [medicineResults, setMedicineResults] = useState<Medicine[]>([]);
+  const [fetchedMedicines, setMedicineResults] = useState<Medicine[]>([]);
   const [showMedicineSearch, setShowMedicineSearch] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [patientSearch, setPatientSearch] = useState('');
+  const [pickedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [patientSearchInput, setPatientSearch] = useState<string | null>(null);
   const [showPatientSearch, setShowPatientSearch] = useState(false);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [digitalSignature, setDigitalSignature] = useState<string | null>(null);
@@ -96,33 +101,35 @@ export default function PrescriptionForm({
     recommendation?: string;
   }>>([]);
   const [checkingInteractions, setCheckingInteractions] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const signaturePadRef = useModalA11y<HTMLDivElement>(showSignaturePad, () => setShowSignaturePad(false));
+
+  // A preset patient (initialData) is resolved once it shows up in `patients`; an explicit pick wins.
+  const selectedPatient =
+    (pickedPatient && pickedPatient._id === formData.patient ? pickedPatient : null) ??
+    (formData.patient ? patients.find((p) => p._id === formData.patient) ?? null : null);
+  const patientSearch =
+    patientSearchInput ?? (selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : '');
+
+  const medicineResults = medicineSearch.length >= 2 ? fetchedMedicines : [];
 
   useEffect(() => {
-    if (formData.patient) {
-      const patient = patients.find((p) => p._id === formData.patient);
-      setSelectedPatient(patient || null);
-      if (patient) {
-        setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-      }
-    }
-  }, [formData.patient, patients]);
-
-  useEffect(() => {
-    if (medicineSearch.length >= 2) {
-      const timer = setTimeout(() => {
-        fetch(`/api/medicines?search=${encodeURIComponent(medicineSearch)}`)
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success) {
-              setMedicineResults(data.data.slice(0, 10));
-            }
-          })
-          .catch(console.error);
-      }, 300);
-      return () => clearTimeout(timer);
-    } else {
-      setMedicineResults([]);
-    }
+    if (medicineSearch.length < 2) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      fetch(`/api/medicines?search=${encodeURIComponent(medicineSearch)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data.success) {
+            setMedicineResults(data.data.slice(0, 10));
+          }
+        })
+        .catch(console.error);
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [medicineSearch]);
 
   useEffect(() => {
@@ -141,6 +148,7 @@ export default function PrescriptionForm({
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     if (!formData.patient || !selectedPatient) {
       alert('Please select a valid patient');
       setShowPatientSearch(true);
@@ -164,8 +172,11 @@ export default function PrescriptionForm({
     handleSubmitConfirm();
   };
 
-  const handleSubmitConfirm = () => {
-    onSubmit({
+  const handleSubmitConfirm = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await onSubmit({
       ...formData,
       digitalSignature: digitalSignature
         ? {
@@ -177,7 +188,10 @@ export default function PrescriptionForm({
         ...i,
         checkedAt: new Date(),
       })) : undefined,
-    });
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const addMedication = () => {
@@ -331,7 +345,7 @@ export default function PrescriptionForm({
       .catch(console.error);
   };
 
-  const filteredPatients = patients.filter((patient) => {
+  const filteredPatients = onPatientSearch ? patients : patients.filter((patient) => {
     if (!patientSearch.trim()) return true;
     const searchLower = patientSearch.toLowerCase();
     const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
@@ -350,25 +364,26 @@ export default function PrescriptionForm({
       <div className="max-h-[80vh] overflow-y-auto">
         <div className="flex flex-col gap-6 p-4">
           {/* Patient Selection */}
-          <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 rounded-xl p-5">
+          <div className="bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-indigo-500 rounded-lg">
+              <div className="p-2 bg-brand-teal-dark rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-              <label className="block text-sm font-bold text-gray-900">
+              <label htmlFor={`${uid}-patient`} className="block text-sm font-bold text-gray-900">
                 Patient <span className="text-red-600">*</span>
               </label>
             </div>
             <div className="relative patient-search-container">
-              <input
+              <input id={`${uid}-patient`}
                 type="text"
                 required
                 value={patientSearch}
                 onChange={(e) => {
                   setPatientSearch(e.target.value);
                   setShowPatientSearch(true);
+                  onPatientSearch?.(e.target.value);
                   if (!e.target.value) {
                     setFormData({ ...formData, patient: '' });
                     setSelectedPatient(null);
@@ -376,7 +391,7 @@ export default function PrescriptionForm({
                 }}
                 onFocus={() => setShowPatientSearch(true)}
                 placeholder="Type to search patients..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent outline-none transition-all text-sm"
               />
               {showPatientSearch && filteredPatients.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
@@ -394,7 +409,7 @@ export default function PrescriptionForm({
                               selectPatient(patient);
                               setShowPatientSearch(false);
                             }}
-                            className="w-full text-left px-3 py-2 hover:bg-indigo-50 rounded transition-colors flex flex-col items-start"
+                            className="w-full text-left px-3 py-2 hover:bg-brand-teal-light/60 rounded transition-colors flex flex-col items-start"
                           >
                             <span className="font-semibold text-sm text-gray-900">{patient.firstName} {patient.lastName}</span>
                             <span className="text-xs text-gray-600">
@@ -422,16 +437,17 @@ export default function PrescriptionForm({
           {/* Drug Interactions Warning */}
           {drugInteractions.length > 0 && (
             <div
+              role="alert"
               className={
                 drugInteractions.some(i => i.severity === 'contraindicated' || i.severity === 'severe')
-                  ? 'bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm'
+                  ? 'bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm'
                   : drugInteractions.some(i => i.severity === 'moderate')
-                  ? 'bg-yellow-50 border-l-4 border-yellow-500 rounded-lg p-4 shadow-sm'
-                  : 'bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm'
+                  ? 'bg-yellow-50 border border-yellow-200 rounded-lg p-4 shadow-sm'
+                  : 'bg-brand-teal-light/60 border border-brand-teal/30 rounded-lg p-4 shadow-sm'
               }
             >
               <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                   <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                 </svg>
                 <div className="flex-1">
@@ -449,7 +465,7 @@ export default function PrescriptionForm({
                                 ? 'px-2.5 py-1 bg-red-600 text-white text-xs rounded-full font-semibold border border-red-700'
                                 : interaction.severity === 'moderate'
                                 ? 'px-2.5 py-1 bg-yellow-600 text-white text-xs rounded-full font-semibold border border-yellow-700'
-                                : 'px-2.5 py-1 bg-blue-600 text-white text-xs rounded-full font-semibold border border-blue-700'
+                                : 'px-2.5 py-1 bg-brand-teal-dark text-white text-xs rounded-full font-semibold border border-brand-teal-dark'
                             }
                           >
                             {interaction.severity.toUpperCase()}
@@ -468,7 +484,7 @@ export default function PrescriptionForm({
           )}
 
           {/* Medications */}
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 rounded-xl p-5">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-5">
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-emerald-500 rounded-lg">
@@ -493,7 +509,7 @@ export default function PrescriptionForm({
                 <button
                   type="button"
                   onClick={addMedication}
-                  className="px-3 py-1.5 text-xs bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all font-semibold shadow-sm"
+                  className="px-3 py-1.5 text-xs bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all font-semibold shadow-sm"
                 >
                   + Add Medication
                 </button>
@@ -507,12 +523,13 @@ export default function PrescriptionForm({
             ) : (
               <div className="flex flex-col gap-4">
                 {formData.medications.map((medication, index) => (
-                  <div key={index} className="bg-gradient-to-r from-white to-emerald-50/50 border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all">
+                  <div key={index} className="bg-white border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all">
                     <div className="flex justify-between items-start mb-4">
                       <h3 className="text-lg font-bold text-gray-900">Medication {index + 1}</h3>
                       <button
                         type="button"
                         onClick={() => removeMedication(index)}
+                        aria-label={`Remove medication ${index + 1}`}
                         className="px-3 py-1.5 text-xs text-red-700 hover:bg-red-100 rounded-lg transition-colors border border-red-200 font-semibold"
                       >
                         Remove
@@ -521,9 +538,9 @@ export default function PrescriptionForm({
 
                     {/* Medicine Search */}
                     <div className="mb-4">
-                        <label className="block text-xs font-semibold text-gray-700 mb-2">Search Medicine</label>
+                        <label htmlFor={`${uid}-med-${index}-search`} className="block text-xs font-semibold text-gray-700 mb-2">Search Medicine</label>
                         <div className="relative">
-                          <input
+                          <input id={`${uid}-med-${index}-search`}
                             type="text"
                             value={medicineSearch}
                             onChange={(e) => {
@@ -532,7 +549,7 @@ export default function PrescriptionForm({
                             }}
                             onFocus={() => setShowMedicineSearch(true)}
                             placeholder="Type to search medicines..."
-                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                           />
                           {showMedicineSearch && (
                             <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-[200px] overflow-y-auto">
@@ -572,21 +589,21 @@ export default function PrescriptionForm({
                     <div className="flex flex-col gap-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                           <div className="md:col-span-2">
-                            <label className="block text-xs font-semibold text-gray-700 mb-2">
+                            <label htmlFor={`${uid}-med-${index}-name`} className="block text-xs font-semibold text-gray-700 mb-2">
                               Name <span className="text-red-600">*</span>
                             </label>
-                            <input
+                            <input id={`${uid}-med-${index}-name`}
                               type="text"
                               required
                               value={medication.name}
                               onChange={(e) => updateMedication(index, 'name', e.target.value)}
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                             />
                           </div>
                           {medication.genericName && (
                             <div className="md:col-span-2">
-                              <label className="block text-xs font-semibold text-gray-700 mb-2">Generic Name</label>
-                              <input
+                              <label htmlFor={`${uid}-med-${index}-generic`} className="block text-xs font-semibold text-gray-700 mb-2">Generic Name</label>
+                              <input id={`${uid}-med-${index}-generic`}
                                 type="text"
                                 value={medication.genericName}
                                 readOnly
@@ -596,38 +613,38 @@ export default function PrescriptionForm({
                             </div>
                           )}
                           <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-2">Form</label>
-                            <input
+                            <label htmlFor={`${uid}-med-${index}-form`} className="block text-xs font-semibold text-gray-700 mb-2">Form</label>
+                            <input id={`${uid}-med-${index}-form`}
                               type="text"
                               value={medication.form || ''}
                               onChange={(e) => updateMedication(index, 'form', e.target.value)}
                               placeholder="tablet, capsule, etc."
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-2">Strength</label>
-                            <input
+                            <label htmlFor={`${uid}-med-${index}-strength`} className="block text-xs font-semibold text-gray-700 mb-2">Strength</label>
+                            <input id={`${uid}-med-${index}-strength`}
                               type="text"
                               value={medication.strength || ''}
                               onChange={(e) => updateMedication(index, 'strength', e.target.value)}
                               placeholder="500 mg"
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-2">
+                            <label htmlFor={`${uid}-med-${index}-dose`} className="block text-xs font-semibold text-gray-700 mb-2">
                               Dose <span className="text-red-600">*</span>
                             </label>
                             <div className="flex gap-2">
                               <div className="flex-1">
-                                <input
+                                <input id={`${uid}-med-${index}-dose`}
                                   type="text"
                                   required
                                   value={medication.dose || ''}
                                   onChange={(e) => updateMedication(index, 'dose', e.target.value)}
                                   placeholder="500 mg"
-                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                                 />
                               </div>
                               {medication.medicineId && selectedPatient && (
@@ -635,55 +652,56 @@ export default function PrescriptionForm({
                                   type="button"
                                   onClick={() => calculateDosageForMedication(index)}
                                   title="Recalculate dosage based on patient info"
+                                  aria-label={`Recalculate dosage for medication ${index + 1}`}
                                   className="px-3 py-2.5 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors text-sm font-semibold border border-emerald-200"
                                 >
-                                  ↻
+                                  <span aria-hidden="true">↻</span>
                                 </button>
                               )}
                             </div>
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-2">
+                            <label htmlFor={`${uid}-med-${index}-frequency`} className="block text-xs font-semibold text-gray-700 mb-2">
                               Frequency <span className="text-red-600">*</span>
                             </label>
-                            <input
+                            <input id={`${uid}-med-${index}-frequency`}
                               type="text"
                               required
                               value={medication.frequency || ''}
                               onChange={(e) => updateMedication(index, 'frequency', e.target.value)}
                               placeholder="BID, TID, QID, etc."
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-2">Duration (days)</label>
-                            <input
+                            <label htmlFor={`${uid}-med-${index}-duration`} className="block text-xs font-semibold text-gray-700 mb-2">Duration (days)</label>
+                            <input id={`${uid}-med-${index}-duration`}
                               type="number"
                               min="1"
                               value={medication.durationDays || 7}
                               onChange={(e) => updateMedication(index, 'durationDays', parseInt(e.target.value) || 7)}
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-2">Quantity</label>
-                            <input
+                            <label htmlFor={`${uid}-med-${index}-quantity`} className="block text-xs font-semibold text-gray-700 mb-2">Quantity</label>
+                            <input id={`${uid}-med-${index}-quantity`}
                               type="number"
                               min="1"
                               value={medication.quantity || 0}
                               onChange={(e) => updateMedication(index, 'quantity', parseInt(e.target.value) || 0)}
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm transition-all"
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm transition-all"
                             />
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-2">Instructions</label>
-                          <textarea
+                          <label htmlFor={`${uid}-med-${index}-instructions`} className="block text-xs font-semibold text-gray-700 mb-2">Instructions</label>
+                          <textarea id={`${uid}-med-${index}-instructions`}
                             value={medication.instructions || ''}
                             onChange={(e) => updateMedication(index, 'instructions', e.target.value)}
                             rows={2}
                             placeholder="Take with food, etc."
-                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm resize-y transition-all"
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent text-sm resize-y transition-all"
                           />
                         </div>
                       </div>
@@ -694,16 +712,16 @@ export default function PrescriptionForm({
           </div>
 
           {/* Additional Notes */}
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-gray-500 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
               </div>
-              <label className="block text-sm font-bold text-gray-900">Additional Notes</label>
+              <label htmlFor={`${uid}-notes`} className="block text-sm font-bold text-gray-900">Additional Notes</label>
             </div>
-            <textarea
+            <textarea id={`${uid}-notes`}
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               rows={3}
@@ -712,14 +730,14 @@ export default function PrescriptionForm({
           </div>
 
           {/* Digital Signature */}
-          <div className="bg-gradient-to-br from-green-50 to-green-100/50 border border-green-200 rounded-xl p-5">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-green-500 rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
               </div>
-              <label className="block text-sm font-bold text-gray-900">Digital Signature</label>
+              <p className="block text-sm font-bold text-gray-900">Digital Signature</p>
             </div>
             {digitalSignature ? (
               <div className="bg-white border border-green-300 rounded-lg p-4">
@@ -744,7 +762,7 @@ export default function PrescriptionForm({
               <button
                 type="button"
                 onClick={() => setShowSignaturePad(true)}
-                className="w-full px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all text-sm font-semibold shadow-md"
+                className="w-full px-4 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all text-sm font-semibold shadow-md"
               >
                 + Add Digital Signature
               </button>
@@ -763,11 +781,13 @@ export default function PrescriptionForm({
                 Cancel
               </button>
             )}
-            <button 
+            <button
               type="submit"
-              className="px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all text-sm font-semibold shadow-md"
+              disabled={submitting}
+              aria-busy={submitting}
+              className="px-4 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep transition-all text-sm font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Create Prescription
+              {submitting ? 'Creating…' : 'Create Prescription'}
             </button>
           </div>
         </div>
@@ -777,8 +797,8 @@ export default function PrescriptionForm({
       {showSignaturePad && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black/30 backdrop-blur-md" onClick={() => setShowSignaturePad(false)} />
-            <div className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-2xl w-full z-10">
+            <div className="fixed inset-0 bg-black/30 backdrop-blur-md" aria-hidden="true" onClick={() => setShowSignaturePad(false)} />
+            <div ref={signaturePadRef} role="dialog" aria-modal="true" aria-label="Digital signature" className="relative bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-2xl w-full z-10">
               <SignaturePad
                 onSave={(signatureData) => {
                   setDigitalSignature(signatureData);
@@ -811,6 +831,7 @@ export default function PrescriptionForm({
         }
       >
         <button
+          type="button"
           onClick={() => {
             setShowInteractionAlert(false);
             setPendingSubmit(false);
@@ -820,6 +841,8 @@ export default function PrescriptionForm({
           Cancel
         </button>
         <button
+          type="button"
+          disabled={submitting}
           onClick={() => {
             setShowInteractionAlert(false);
             handleSubmitConfirm();

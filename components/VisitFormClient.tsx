@@ -1,368 +1,284 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import VisitForm from './VisitForm';
+import VisitForm, { type VisitFormData } from './VisitForm';
+import { formatApiError } from './utils/apiError';
+import { FOCUS_RING, ICON, Svg } from './appointments/shared';
+import type { PatientOption } from './patients/PatientSearch';
 
-interface Patient {
+interface QueueEntry {
   _id: string;
-  firstName: string;
-  lastName: string;
-  email?: string;
-  phone?: string;
-  patientCode?: string;
+  queueNumber: string;
+  patient: PatientOption | null;
+  vitals?: VisitFormData['vitals'] | null;
 }
 
-interface QueueVitals {
-  bp?: string;
-  hr?: number;
-  rr?: number;
-  tempC?: number;
-  spo2?: number;
-  heightCm?: number;
-  weightKg?: number;
-  bmi?: number;
+interface DraftVisit extends Partial<VisitFormData> {
+  _id: string;
+  updatedAt?: string;
+  patient: string;
+  patientInfo: PatientOption | null;
 }
 
-export default function VisitFormClient({ patientId, queueId }: { patientId?: string; queueId?: string } = {}) {
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [providerName, setProviderName] = useState('Dr. Provider');
-  const [queueVitals, setQueueVitals] = useState<QueueVitals | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [serverDraft, setServerDraft] = useState<any | null>(null);
-  const [showDraftBanner, setShowDraftBanner] = useState(false);
-  const [activeInitialData, setActiveInitialData] = useState<any | null>(null);
+interface Loaded {
+  patient: PatientOption | null;
+  queue: QueueEntry | null;
+  queueFailed: boolean;
+  providerName: string;
+  draft: DraftVisit | null;
+}
+
+const shortQueue = (n: string) => n.replace(/^([A-Z]+)\d{8}-(\d+)$/, '$1-$2');
+
+async function getJson(url: string) {
+  const res = await fetch(url);
+  if (res.status === 401) throw Object.assign(new Error('signed out'), { status: 401 });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.success) throw Object.assign(new Error(json?.error || `Request failed (${res.status})`), { status: res.status });
+  return json;
+}
+
+const hasReadings = (v?: VisitFormData['vitals'] | null) => Boolean(v && Object.values(v).some((x) => x !== null && x !== undefined && x !== ''));
+
+export default function VisitFormClient({ patientId, queueId }: { patientId?: string; queueId?: string }) {
   const router = useRouter();
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [failure, setFailure] = useState<{ status: number; message: string } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [useDraft, setUseDraft] = useState<'ask' | 'continue' | 'new'>('ask');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchData();
-    if (queueId) {
-      fetchQueueVitals();
-    }
-    if (!patientId) {
-      fetchLatestDraft();
-    }
-  }, [queueId, patientId]);
-
-  const fetchData = async () => {
-    try {
-      const [patientsRes, userRes] = await Promise.all([
-        fetch('/api/patients'),
-        fetch('/api/user/me'),
-      ]);
-
-      if (patientsRes.status === 401 || userRes.status === 401) {
-        router.push('/login');
-        return;
-      }
-
-      const parseResponse = async (res: Response) => {
-        const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          return await res.json();
-        }
-        return { success: false };
-      };
-
-      const patientsData = await parseResponse(patientsRes);
-      const userData = await parseResponse(userRes);
-
-      if (patientsData.success) {
-        let loadedPatients: Patient[] = Array.isArray(patientsData.data) ? patientsData.data : [];
-
-        // /api/patients is paginated; ensure URL-provided patient is present for autosuggest validation.
-        if (patientId && !loadedPatients.some((patient) => String(patient._id) === String(patientId))) {
-          try {
-            const patientRes = await fetch(`/api/patients/${patientId}`);
-            if (patientRes.status === 401) {
-              router.push('/login');
-              return;
-            }
-            const patientData = await parseResponse(patientRes);
-            if (patientData.success && patientData.data?._id) {
-              loadedPatients = [...loadedPatients, patientData.data as Patient];
-            }
-          } catch (error) {
-            console.error('Failed to fetch URL patient:', error);
-          }
-        }
-
-        setPatients(loadedPatients);
-      }
-      if (userData.success && userData.data) {
-        setProviderName(userData.data.name || 'Dr. Provider');
-      }
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
-      setError('Failed to load form data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchLatestDraft = async () => {
-    try {
-      const res = await fetch('/api/visits?status=draft&limit=1');
-      if (!res.ok) return;
-      const data = await res.json();
-      const draft = data?.data?.[0];
-      if (draft) {
-        setServerDraft(draft);
-        setShowDraftBanner(true);
-      }
-    } catch {
-      // non-fatal
-    }
-  };
-
-  const restoreServerDraft = () => {
-    if (!serverDraft) return;
-    setActiveInitialData({
-      _id: serverDraft._id,
-      status: serverDraft.status,
-      patient: serverDraft.patient?._id ?? serverDraft.patient,
-      visitType: serverDraft.visitType,
-      chiefComplaint: serverDraft.chiefComplaint,
-      historyOfPresentIllness: serverDraft.historyOfPresentIllness,
-      admittingImpression: serverDraft.admittingImpression,
-      vitals: serverDraft.vitals,
-      physicalExam: serverDraft.physicalExam,
-      diagnoses: serverDraft.diagnoses,
-      soapNotes: serverDraft.soapNotes,
-      treatmentPlan: serverDraft.treatmentPlan,
-      followUpDate: serverDraft.followUpDate
-        ? new Date(serverDraft.followUpDate).toISOString().split('T')[0]
-        : '',
-      notes: serverDraft.notes,
-      digitalSignature: serverDraft.digitalSignature,
-    });
-    setShowDraftBanner(false);
-  };
-
-  const dismissServerDraft = () => setShowDraftBanner(false);
-
-  const fetchQueueVitals = async () => {
-    try {
-      const res = await fetch(`/api/queue/${queueId}`);
-
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      const data = await res.json();
-      if (data.success && data.data.vitals) {
-        // Map queue vitals to visit vitals format
-        setQueueVitals({
-          bp: data.data.vitals.bp,
-          hr: data.data.vitals.hr,
-          rr: data.data.vitals.rr,
-          tempC: data.data.vitals.tempC,
-          spo2: data.data.vitals.spo2,
-          heightCm: data.data.vitals.heightCm,
-          weightKg: data.data.vitals.weightKg,
-          bmi: data.data.vitals.bmi,
-        });
-      }
-    } catch (error) {
-      console.error('Failed to fetch queue vitals:', error);
-      setError('Failed to load queue vitals');
-    }
-  };
-
-  const handleSubmit = async (formData: any) => {
-    // Client-side validation for medications
-    if (
-      formData?.treatmentPlan?.medications &&
-      Array.isArray(formData.treatmentPlan.medications)
-    ) {
-      for (const [i, med] of formData.treatmentPlan.medications.entries()) {
-        if (!med.name || typeof med.name !== 'string' || !med.name.trim()) {
-          setError(`Medication #${i + 1} is missing a name. Please enter a medication name.`);
+    let cancelled = false;
+    (async () => {
+      try {
+        const draftParams = new URLSearchParams({ status: 'draft', limit: '1', mine: 'true', ...(patientId ? { patientId } : {}) });
+        const [patientRes, queueRes, meRes, draftRes] = await Promise.allSettled([
+          patientId ? getJson(`/api/patients/${patientId}`) : Promise.resolve(null),
+          queueId ? getJson(`/api/queue/${queueId}`) : Promise.resolve(null),
+          getJson('/api/user/me'),
+          getJson(`/api/visits?${draftParams}`),
+        ]);
+        if (cancelled) return;
+        const signedOut = [patientRes, queueRes, meRes, draftRes].some((r) => r.status === 'rejected' && (r.reason as { status?: number })?.status === 401);
+        if (signedOut) return router.push('/login');
+        if (patientId && patientRes.status === 'rejected') {
+          const reason = patientRes.reason as { status?: number; message?: string };
+          setFailure({ status: reason.status ?? 0, message: reason.message ?? 'Request failed' });
           return;
         }
+
+        const queue = queueRes.status === 'fulfilled' && queueRes.value ? (queueRes.value.data as QueueEntry) : null;
+        const p = patientRes.status === 'fulfilled' && patientRes.value ? (patientRes.value.data as PatientOption) : queue?.patient ?? null;
+        const rawDraft = draftRes.status === 'fulfilled' ? draftRes.value.data?.[0] : null;
+        const draft: DraftVisit | null = rawDraft
+          ? {
+              ...rawDraft,
+              patient: rawDraft.patient?._id ?? rawDraft.patient,
+              patientInfo: rawDraft.patient?._id ? rawDraft.patient : null,
+              followUpDate: rawDraft.followUpDate ? String(rawDraft.followUpDate).slice(0, 10) : '',
+            }
+          : null;
+        // A draft for someone else is not offered when this visit is already for a known patient.
+        const usableDraft = draft && (!p || draft.patient === p._id) ? draft : null;
+
+        setLoaded({
+          patient: p ? { _id: p._id, firstName: p.firstName, lastName: p.lastName, patientCode: p.patientCode, phone: p.phone, email: p.email } : null,
+          queue,
+          queueFailed: Boolean(queueId) && queueRes.status === 'rejected',
+          providerName: meRes.status === 'fulfilled' ? meRes.value.data?.name || 'Attending doctor' : 'Attending doctor',
+          draft: usableDraft,
+        });
+        setFailure(null);
+      } catch (err) {
+        if (!cancelled) setFailure({ status: 0, message: err instanceof Error ? err.message : 'Request failed' });
       }
-    }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [patientId, queueId, attempt, router]);
+
+  const handleSubmit = async (data: VisitFormData): Promise<boolean> => {
+    setError(null);
+    const { _id: draftId, ...fields } = data;
     try {
-      setSubmitting(true);
-      setError(null);
-
-      // If the form was loaded from a draft, PATCH it (promote to open) instead of POSTing a new visit
-      const draftIdToPromote: string | undefined = (formData as any)._id;
-      const payload = {
-        ...formData,
-        status: 'open',
-        date: new Date(),
-        followUpDate: formData.followUpDate ? new Date(formData.followUpDate) : undefined,
-      };
-
-      const res = draftIdToPromote
-        ? await fetch(`/api/visits/${draftIdToPromote}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          })
-        : await fetch('/api/visits', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-
+      const body = JSON.stringify({ ...fields, status: 'open', date: new Date() });
+      const res = draftId
+        ? await fetch(`/api/visits/${draftId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body })
+        : await fetch('/api/visits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
       if (res.status === 401) {
         router.push('/login');
-        return;
+        return false;
       }
-
-      const contentType = res.headers.get('content-type');
-      let data;
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        setError('Failed to create visit: API error');
-        return;
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        setError(formatApiError(json, 'The visit could not be saved'));
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return false;
       }
-
-      if (data.success) {
-        const prescriptionId = data.prescriptionId;
-        if (prescriptionId) {
-          window.open(`/api/prescriptions/${prescriptionId}/print`, '_blank');
-        }
-        router.push('/visits?success=true');
-      } else {
-        setError('Error: ' + data.error);
-      }
-    } catch (error) {
-      console.error('Failed to create visit:', error);
-      setError('Failed to create visit');
-    } finally {
-      setSubmitting(false);
+      const params = new URLSearchParams({ saved: '1', ...(json.prescriptionId ? { rx: String(json.prescriptionId) } : {}) });
+      router.push(`/visits/${json.data._id}?${params}`);
+      return true;
+    } catch {
+      setError('The visit could not be saved. Check your connection and try again; your note is still here.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return false;
     }
   };
 
-  const handleCancel = () => {
-    router.push('/visits');
-  };
+  // --- States -------------------------------------------------------------------
 
-  if (loading) {
+  if (failure) {
+    const missing = failure.status === 404 || failure.status === 400;
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100 border-t-blue-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading form...</p>
+      <Shell back={queueId ? { href: '/queue', label: 'Queue' } : { href: '/visits', label: 'All visits' }}>
+        <div role="alert" className="rounded-lg border border-gray-200 bg-white px-6 py-14 text-center">
+          <div className={`mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md ${missing ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-600'}`}>
+            <Svg d={ICON.alert} className="h-5 w-5" />
           </div>
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-red-800 mb-1">Error</h3>
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handleCancel}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
+          <p className="font-semibold text-gray-900">{missing ? 'Patient not found' : 'The new visit didn’t open'}</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">
+            {missing ? 'The patient may have been removed, or belongs to another clinic. Start the visit from Patients or the queue.' : `${failure.message}. Check your connection and try again.`}
+          </p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link href="/visits/new" className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              Choose another patient
+            </Link>
+            {!missing && (
+              <button type="button" onClick={() => setAttempt((a) => a + 1)} className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+                Try again
               </button>
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg shadow-md">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </div>
-                <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">New Clinical Visit</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Create a new clinical visit record</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Form Card */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            {submitting ? (
-              <div className="flex flex-col items-center justify-center gap-4 p-12">
-                <div className="animate-spin rounded-full h-16 w-16 border-4 border-teal-100 border-t-teal-600"></div>
-                <p className="text-sm text-gray-600 font-medium">Creating visit...</p>
-              </div>
-            ) : (
-              <div className="p-6 sm:p-8">
-                {/* Server draft banner */}
-                {showDraftBanner && serverDraft && (
-                  <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 bg-amber-50 border border-amber-300 rounded-lg text-sm">
-                    <div className="flex items-start gap-2">
-                      <svg className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-                      </svg>
-                      <div>
-                        <p className="font-semibold text-amber-800">You have a saved draft</p>
-                        <p className="text-amber-700 text-xs mt-0.5">
-                          Last updated: {new Date(serverDraft.updatedAt).toLocaleString()}
-                          {serverDraft.patient?.firstName && ` — Patient: ${serverDraft.patient.firstName} ${serverDraft.patient.lastName}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={restoreServerDraft}
-                        className="px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-xs font-semibold"
-                      >
-                        Continue Editing
-                      </button>
-                      <button
-                        type="button"
-                        onClick={dismissServerDraft}
-                        className="px-3 py-1.5 bg-white text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors text-xs font-semibold"
-                      >
-                        Start Fresh
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <VisitForm
-                  initialData={activeInitialData ?? {
-                    ...(patientId ? { patient: patientId } : {}),
-                    ...(queueVitals ? { vitals: queueVitals } : {}),
-                  }}
-                  lockPatientSelection={Boolean(patientId)}
-                  patients={patients}
-                  onSubmit={handleSubmit}
-                  onCancel={handleCancel}
-                  onDraftSaved={(id) => setServerDraft((prev: any) => ({ ...prev, _id: id }))}
-                  providerName={providerName}
-                />
-              </div>
             )}
           </div>
         </div>
+      </Shell>
+    );
+  }
+
+  if (!loaded) {
+    return (
+      <Shell back={queueId ? { href: '/queue', label: 'Queue' } : { href: '/visits', label: 'All visits' }}>
+        <div className="animate-pulse space-y-6" aria-hidden="true">
+          <div className="space-y-2">
+            <div className="h-8 w-48 rounded bg-gray-200" />
+            <div className="h-4 w-80 max-w-full rounded bg-gray-100" />
+          </div>
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
+            <div className="space-y-6">
+              <div className="h-44 rounded-lg border border-gray-200 bg-white" />
+              <div className="h-56 rounded-lg border border-gray-200 bg-white" />
+            </div>
+            <div className="h-72 rounded-lg border border-gray-200 bg-white" />
+          </div>
+        </div>
+        <span className="sr-only" role="status">
+          Opening a new visit…
+        </span>
+      </Shell>
+    );
+  }
+
+  const { patient, queue, draft } = loaded;
+  const continuing = draft && useDraft === 'continue';
+  const queueVitals = queue && hasReadings(queue.vitals) ? queue.vitals : null;
+  const formPatient = continuing ? draft.patientInfo ?? patient : patient;
+
+  return (
+    <Shell back={queue ? { href: '/queue', label: 'Queue' } : { href: '/visits', label: 'All visits' }}>
+      <header className="min-w-0">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">{continuing ? 'Finish the draft' : 'New visit'}</h1>
+        <p className="mt-1 text-sm sm:text-base text-gray-600">
+          {formPatient ? (
+            <>
+              For <span className="font-semibold text-gray-900">{formPatient.firstName} {formPatient.lastName}</span>
+              {queue && (
+                <>
+                  , called in from the queue as <span className="font-mono">{shortQueue(queue.queueNumber)}</span>
+                </>
+              )}
+              .
+            </>
+          ) : (
+            'Choose the patient, then write the note. Save it as a draft if you need to come back to it.'
+          )}
+        </p>
+      </header>
+
+      {error && (
+        <div role="alert" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          <p>{error}</p>
+          <button type="button" onClick={() => setError(null)} aria-label="Dismiss error" className={`shrink-0 rounded p-0.5 text-red-700 hover:text-red-900 ${FOCUS_RING}`}>
+            <Svg d={ICON.x} />
+          </button>
+        </div>
+      )}
+
+      {loaded.queueFailed && (
+        <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          The triage vital signs couldn’t be loaded from the queue. Enter them below, or check the queue entry.
+        </p>
+      )}
+
+      {draft && useDraft === 'ask' && (
+        <div role="status" className="motion-chip-in flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-amber-800">
+            <span className="font-semibold">You have a draft</span>
+            {draft.patientInfo && !patient && (
+              <>
+                {' '}
+                for {draft.patientInfo.firstName} {draft.patientInfo.lastName}
+              </>
+            )}
+            {draft.updatedAt && (
+              <>
+                , last saved <span className="font-mono">{new Date(draft.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+              </>
+            )}
+            .
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <button type="button" onClick={() => setUseDraft('continue')} className={`rounded-md bg-brand-teal-dark px-3 py-1.5 font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+              Continue the draft
+            </button>
+            <button type="button" onClick={() => setUseDraft('new')} className={`rounded-md border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900 hover:border-amber-500 ${FOCUS_RING}`}>
+              Start a new visit
+            </button>
+          </div>
+        </div>
+      )}
+
+      <VisitForm
+        // Continuing the draft remounts the form so every field comes from it.
+        key={continuing ? draft._id : 'new'}
+        initialData={
+          continuing
+            ? { ...draft, status: 'draft', vitals: hasReadings(draft.vitals) ? draft.vitals : queueVitals ?? undefined }
+            : { ...(formPatient ? { patient: formPatient._id } : {}), ...(queueVitals ? { vitals: queueVitals } : {}) }
+        }
+        patients={formPatient ? [formPatient] : []}
+        lockPatientSelection={Boolean(patient)}
+        vitalsSource={queueVitals && !(continuing && hasReadings(draft.vitals)) ? `Filled in from triage (queue ${shortQueue(queue!.queueNumber)}). Correct anything that has changed.` : undefined}
+        onSubmit={handleSubmit}
+        onCancel={() => router.push(queue ? '/queue' : '/visits')}
+        providerName={loaded.providerName}
+      />
+    </Shell>
+  );
+}
+
+function Shell({ back, children }: { back: { href: string; label: string }; children: ReactNode }) {
+  return (
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-7xl mx-auto flex flex-col gap-6">
+        <Link href={back.href} className={`inline-flex w-fit items-center gap-1.5 rounded text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+          <Svg d={ICON.chevL} />
+          {back.label}
+        </Link>
+        {children}
       </div>
     </section>
   );
 }
-

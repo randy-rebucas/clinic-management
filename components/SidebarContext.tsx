@@ -6,6 +6,9 @@ import { usePathname } from 'next/navigation';
 interface SidebarContextType {
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean) => void;
+  /** Off-canvas drawer state below the lg breakpoint. */
+  isMobileOpen: boolean;
+  setIsMobileOpen: (open: boolean) => void;
 }
 
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
@@ -17,6 +20,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   
   // Always start with false (expanded) to match server render
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
   // After hydration, load from localStorage or settings
@@ -68,7 +72,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   }, [isCollapsed, isHydrated]);
 
   return (
-    <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed }}>
+    <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed, isMobileOpen, setIsMobileOpen }}>
       {children}
     </SidebarContext.Provider>
   );

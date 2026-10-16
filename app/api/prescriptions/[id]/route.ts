@@ -1,22 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import Patient from '@/models/Patient';
+import Visit from '@/models/Visit';
+import User from '@/models/User';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+import { updatePrescriptionSchema } from '@/lib/prescription-schema';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to read prescriptions
   const permissionCheck = await requirePermission(session, 'prescriptions', 'read');
   if (permissionCheck) {
     return permissionCheck;
@@ -26,94 +27,45 @@ export async function GET(
     await connectDB();
     const { id } = await params;
 
-    // Validate ObjectId format
-    const mongoose = await import('mongoose');
-    if (!mongoose.default.Types.ObjectId.isValid(id)) {
+    if (!isValidId(id)) {
       return NextResponse.json(
         { success: false, error: 'Invalid prescription ID format' },
         { status: 400 }
       );
     }
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode email phone dateOfBirth',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-
-    const prescription = await Prescription.findOne(query)
-      .populate(patientPopulateOptions)
+    const prescription = await Prescription.findOne(tenantFilter(tenantId, { _id: id }))
+      // Allergies travel with the prescription: whoever dispenses it should see them first.
+      .populate({ path: 'patient', select: 'firstName lastName patientCode phone dateOfBirth allergies', match: { tenantIds: tenantObjectId } })
       .populate('prescribedBy', 'name email')
-      .populate('visit', 'visitCode date followUpDate');
+      .populate({ path: 'visit', select: 'visitCode date followUpDate', match: { tenantId: tenantObjectId } });
 
-    console.log('Fetched prescription with visit data:', {
-      prescriptionId: prescription?._id,
-      visit: prescription?.visit,
-    });
+    if (!prescription) return notFound('Prescription');
 
-    if (!prescription) {
-      return NextResponse.json(
-        { success: false, error: 'Prescription not found' },
-        { status: 404 }
-      );
-    }
+    const prescriptionData: any = prescription.toObject();
 
-    // Convert to plain object for JSON serialization
-    let prescriptionData: any;
-    if (prescription && typeof prescription.toObject === 'function') {
-      prescriptionData = prescription.toObject();
-    } else {
-      prescriptionData = prescription;
-    }
-
-    // Optionally populate medicineId references if they exist (non-blocking)
-    if (prescriptionData.medications && Array.isArray(prescriptionData.medications)) {
-      const Medicine = mongoose.default.models.Medicine;
+    // Optionally attach medicine details (non-blocking)
+    if (Array.isArray(prescriptionData.medications)) {
+      const Medicine = mongoose.models.Medicine;
       if (Medicine) {
-        // Use Promise.all for parallel fetching, but don't fail if any fail
-        const medicinePromises = prescriptionData.medications
-          .filter((med: any) => med.medicineId && mongoose.default.Types.ObjectId.isValid(med.medicineId))
-          .map(async (medication: any) => {
-            try {
-              const medicine = await Medicine.findById(medication.medicineId)
+        await Promise.allSettled(
+          prescriptionData.medications
+            .filter((med: any) => med.medicineId && mongoose.Types.ObjectId.isValid(med.medicineId))
+            .map(async (medication: any) => {
+              const medicine = await Medicine.findOne({ _id: medication.medicineId, tenantId: tenantObjectId })
                 .select('name genericName form strength')
                 .lean();
-              if (medicine) {
-                medication.medicine = medicine;
-              }
-            } catch (err) {
-              // Silently skip if medicine not found - not critical
-            }
-          });
-
-        // Wait for all medicine lookups, but don't fail if some fail
-        await Promise.allSettled(medicinePromises);
+              if (medicine) medication.medicine = medicine;
+            })
+        );
       }
     }
 
     return NextResponse.json({ success: true, data: prescriptionData });
   } catch (error: any) {
     console.error('Error fetching prescription:', error);
-    const errorMessage = error.message || error.toString() || 'Failed to fetch prescription';
     return NextResponse.json(
-      { success: false, error: errorMessage },
+      { success: false, error: 'Failed to fetch prescription' },
       { status: 500 }
     );
   }
@@ -123,13 +75,10 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId, tenantObjectId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to update prescriptions
   const permissionCheck = await requirePermission(session, 'prescriptions', 'update');
   if (permissionCheck) {
     return permissionCheck;
@@ -138,71 +87,48 @@ export async function PUT(
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
+    if (!isValidId(id)) return notFound('Prescription');
 
-    // Sanitize ObjectId fields - convert empty strings to undefined
-    if (body.visit === '' || body.visit === null) {
-      body.visit = undefined;
-    }
-    if (body.prescribedBy === '' || body.prescribedBy === null) {
-      body.prescribedBy = undefined;
-    }
-    if (body.patient === '' || body.patient === null) {
-      body.patient = undefined;
-    }
+    const parsed = await parseBody(request, updatePrescriptionSchema);
+    if (isValidationError(parsed)) return parsed;
+    const body = parsed.data;
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    if (body.patient && !(await Patient.exists({ _id: body.patient, tenantIds: tenantObjectId }))) {
+      return NextResponse.json({ success: false, error: 'Invalid patient' }, { status: 400 });
+    }
+    if (body.visit && !(await Visit.exists({ _id: body.visit, tenantId: tenantObjectId }))) {
+      return NextResponse.json({ success: false, error: 'Invalid visit' }, { status: 400 });
+    }
+    if (body.prescribedBy && body.prescribedBy !== session.userId
+      && !(await User.exists({ _id: body.prescribedBy, tenantId: tenantObjectId }))) {
+      return NextResponse.json({ success: false, error: 'Invalid prescriber' }, { status: 400 });
     }
 
-    const prescription = await Prescription.findOneAndUpdate(query, body, {
-      new: true,
-      runValidators: true,
-    });
-
-    if (!prescription) {
-      return NextResponse.json(
-        { success: false, error: 'Prescription not found' },
-        { status: 404 }
-      );
+    const update: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (value !== undefined) update[key] = value;
     }
+    if (body.digitalSignature) update.digitalSignature = { ...body.digitalSignature, signedAt: new Date() };
+    if (body.drugInteractions) update.drugInteractions = body.drugInteractions.map((i) => ({ ...i, checkedAt: new Date() }));
 
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
+    const prescription = await Prescription.findOneAndUpdate(
+      tenantFilter(tenantId, { _id: id }),
+      { $set: update },
+      { new: true, runValidators: true }
+    );
 
-    await prescription.populate(patientPopulateOptions);
+    if (!prescription) return notFound('Prescription');
+
+    await prescription.populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } });
     await prescription.populate('prescribedBy', 'name email');
-    await prescription.populate('visit', 'visitCode date');
-
-    if (!prescription) {
-      return NextResponse.json(
-        { success: false, error: 'Prescription not found' },
-        { status: 404 }
-      );
-    }
+    await prescription.populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } });
 
     return NextResponse.json({ success: true, data: prescription });
   } catch (error: any) {
     console.error('Error updating prescription:', error);
-    if (error.name === 'ValidationError') {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid prescription data' },
         { status: 400 }
       );
     }
@@ -217,14 +143,10 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Check permission to delete prescriptions
-  const permissionCheck = await requirePermission(session, 'prescriptions', 'delete');
+  const permissionCheck = await requirePermission(ctx.session, 'prescriptions', 'delete');
   if (permissionCheck) {
     return permissionCheck;
   }
@@ -232,27 +154,10 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
+    if (!isValidId(id)) return notFound('Prescription');
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    const prescription = await Prescription.findOneAndDelete(query);
-
-    if (!prescription) {
-      return NextResponse.json(
-        { success: false, error: 'Prescription not found' },
-        { status: 404 }
-      );
-    }
+    const prescription = await Prescription.findOneAndDelete(tenantFilter(ctx.tenantId, { _id: id }));
+    if (!prescription) return notFound('Prescription');
 
     return NextResponse.json({ success: true, data: {} });
   } catch (error: any) {
@@ -263,4 +168,3 @@ export async function DELETE(
     );
   }
 }
-

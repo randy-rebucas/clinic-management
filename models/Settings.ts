@@ -197,7 +197,7 @@ const SettingsSchema = new Schema<ISettings>(
     },
 
     generalSettings: {
-      timezone: { type: String, default: 'UTC' },
+      timezone: { type: String, default: 'Asia/Manila' },
       dateFormat: { type: String, default: 'MM/DD/YYYY' },
       timeFormat: { type: String, enum: ['12h', '24h'], default: '12h' },
       itemsPerPage: { type: Number, default: 20 },
@@ -234,7 +234,7 @@ const SettingsSchema = new Schema<ISettings>(
       autoPeriodicReports: { type: Boolean, default: true },
       autoStaffPerformanceReports: { type: Boolean, default: true },
       autoInsuranceVerification: { type: Boolean, default: true },
-      autoQueueOptimization: { type: Boolean, default: true },
+      autoQueueOptimization: { type: Boolean, default: false },
       autoDataRetention: { type: Boolean, default: true },
       // New Priority 1 automations
       autoSmartAssignment: { type: Boolean, default: true },
@@ -251,7 +251,7 @@ const SettingsSchema = new Schema<ISettings>(
     },
     // Prescription Settings
     prescriptionDigitalSignatureEnabled: { type: Boolean, default: true },
-    prescriptionPaperSize: { type: String, enum: ['A5', 'A4'], default: 'A5' },
+    prescriptionPaperSize: { type: String, enum: ['A5', 'A4'], default: 'A4' },
   },
   {
     timestamps: true,

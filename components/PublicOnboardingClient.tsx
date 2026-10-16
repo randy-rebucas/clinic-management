@@ -3,6 +3,7 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { toDateKey } from './utils/dateKey';
 import QRCode from 'react-qr-code';
 
 interface AllergyEntry {
@@ -64,7 +65,7 @@ export default function PublicOnboardingClient() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [patientCode, setPatientCode] = useState<string | null>(null);
-  const [patientId, setPatientId] = useState<string | null>(null);
+  const [loginQrData, setLoginQrData] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<PatientFormData>({
     firstName: '',
@@ -266,7 +267,7 @@ export default function PublicOnboardingClient() {
         if (data.data && data.data.patientCode) {
           setSuccess(true);
           setPatientCode(data.data.patientCode);
-          setPatientId(data.data._id || null);
+          setLoginQrData(typeof data.data.qrData === 'string' && data.data.qrData ? data.data.qrData : null);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         } else {
           console.error('API response missing patient data:', data);
@@ -395,7 +396,7 @@ export default function PublicOnboardingClient() {
                   )}
                   
                   {/* QR Code for Patient Login */}
-                  {patientId && patientCode && (
+                  {loginQrData && (
                     <div className="bg-white rounded-lg p-4 sm:p-6 mb-3 border border-green-200">
                       <h4 className="text-sm sm:text-base font-semibold text-gray-900 mb-2 text-center">
                         Your Patient QR Code
@@ -406,12 +407,7 @@ export default function PublicOnboardingClient() {
                       <div className="flex justify-center mb-3">
                         <div className="p-3 bg-white border-2 border-gray-200 rounded-lg inline-block">
                           <QRCode
-                            value={JSON.stringify({
-                              patientId: patientId,
-                              patientCode: patientCode,
-                              type: 'patient_login',
-                              timestamp: Date.now(),
-                            })}
+                            value={loginQrData}
                             size={200}
                             style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
                             viewBox="0 0 256 256"
@@ -426,7 +422,7 @@ export default function PublicOnboardingClient() {
                           href="/patient/login"
                           className="text-xs text-brand-teal hover:text-brand-teal-dark font-medium underline"
                         >
-                          Or login with your patient code
+                          Go to patient login
                         </Link>
                       </div>
                     </div>
@@ -473,7 +469,7 @@ export default function PublicOnboardingClient() {
               <aside className="hidden lg:block lg:col-span-1">
                 <div className="sticky top-24 space-y-1">
                   {STEPS.map((step, index) => (
-                    <div key={step.id} className="flex items-start gap-3 py-2">
+                    <div key={step.id} className="flex items-start gap-3 py-2" aria-current={currentStep === index ? 'step' : undefined}>
                       <div
                         className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors flex-shrink-0 ${
                           currentStep > index
@@ -484,9 +480,12 @@ export default function PublicOnboardingClient() {
                         }`}
                       >
                         {currentStep > index ? (
-                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
+                          <>
+                            <svg aria-hidden="true" className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            <span className="sr-only">Completed: </span>
+                          </>
                         ) : (
                           index + 1
                         )}
@@ -508,7 +507,7 @@ export default function PublicOnboardingClient() {
                 <div className="px-4 sm:px-6 py-4 bg-gray-50 border border-gray-200 rounded-lg mb-6 lg:hidden">
                   <div className="flex justify-between items-center">
                     {STEPS.map((step, index) => (
-                      <div key={step.id} className="flex-1 flex flex-col items-center">
+                      <div key={step.id} className="flex-1 flex flex-col items-center" aria-current={currentStep === index ? 'step' : undefined}>
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
                             currentStep > index
@@ -519,9 +518,12 @@ export default function PublicOnboardingClient() {
                           }`}
                         >
                           {currentStep > index ? (
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
+                            <>
+                              <svg aria-hidden="true" className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                              <span className="sr-only">Completed: </span>
+                            </>
                           ) : (
                             index + 1
                           )}
@@ -564,10 +566,11 @@ export default function PublicOnboardingClient() {
                         <div className="space-y-4">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                              <label htmlFor="onboard-first-name" className="block text-sm font-medium text-gray-700 mb-1.5">
                                 First Name <span className="text-red-500">*</span>
                               </label>
                               <input
+                                id="onboard-first-name"
                                 type="text"
                                 required
                                 value={formData.firstName}
@@ -577,8 +580,9 @@ export default function PublicOnboardingClient() {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">Middle Name</label>
+                              <label htmlFor="onboard-middle-name" className="block text-sm font-medium text-gray-700 mb-1.5">Middle Name</label>
                               <input
+                                id="onboard-middle-name"
                                 type="text"
                                 value={formData.middleName}
                                 onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
@@ -587,10 +591,11 @@ export default function PublicOnboardingClient() {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                              <label htmlFor="onboard-last-name" className="block text-sm font-medium text-gray-700 mb-1.5">
                                 Last Name <span className="text-red-500">*</span>
                               </label>
                               <input
+                                id="onboard-last-name"
                                 type="text"
                                 required
                                 value={formData.lastName}
@@ -600,8 +605,9 @@ export default function PublicOnboardingClient() {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">Suffix</label>
+                              <label htmlFor="onboard-suffix" className="block text-sm font-medium text-gray-700 mb-1.5">Suffix</label>
                               <input
+                                id="onboard-suffix"
                                 type="text"
                                 value={formData.suffix}
                                 onChange={(e) => setFormData({ ...formData, suffix: e.target.value })}
@@ -612,21 +618,23 @@ export default function PublicOnboardingClient() {
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                              <label htmlFor="onboard-dob" className="block text-sm font-medium text-gray-700 mb-1.5">
                                 Date of Birth <span className="text-red-500">*</span>
                               </label>
                               <input
+                                id="onboard-dob"
                                 type="date"
                                 required
                                 value={formData.dateOfBirth}
                                 onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-                                max={new Date().toISOString().split('T')[0]}
+                                max={toDateKey(new Date())}
                                 className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400"
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">Sex</label>
+                              <label htmlFor="onboard-sex" className="block text-sm font-medium text-gray-700 mb-1.5">Sex</label>
                               <select
+                                id="onboard-sex"
                                 value={formData.sex}
                                 onChange={(e) => setFormData({ ...formData, sex: e.target.value as any })}
                                 className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base bg-white hover:border-gray-400 transition-colors"
@@ -638,8 +646,9 @@ export default function PublicOnboardingClient() {
                               </select>
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">Civil Status</label>
+                              <label htmlFor="onboard-civil-status" className="block text-sm font-medium text-gray-700 mb-1.5">Civil Status</label>
                               <input
+                                id="onboard-civil-status"
                                 type="text"
                                 value={formData.civilStatus}
                                 onChange={(e) => setFormData({ ...formData, civilStatus: e.target.value })}
@@ -648,8 +657,9 @@ export default function PublicOnboardingClient() {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">Nationality</label>
+                              <label htmlFor="onboard-nationality" className="block text-sm font-medium text-gray-700 mb-1.5">Nationality</label>
                               <input
+                                id="onboard-nationality"
                                 type="text"
                                 value={formData.nationality}
                                 onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
@@ -658,8 +668,9 @@ export default function PublicOnboardingClient() {
                               />
                             </div>
                             <div className="sm:col-span-2">
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">Occupation</label>
+                              <label htmlFor="onboard-occupation" className="block text-sm font-medium text-gray-700 mb-1.5">Occupation</label>
                               <input
+                                id="onboard-occupation"
                                 type="text"
                                 value={formData.occupation}
                                 onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
@@ -684,10 +695,11 @@ export default function PublicOnboardingClient() {
                         <div className="md:col-span-2">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                              <label htmlFor="onboard-email" className="block text-sm font-medium text-gray-700 mb-1.5">
                                 Email <span className="text-gray-500 text-xs">(Optional)</span>
                               </label>
                               <input
+                                id="onboard-email"
                                 type="email"
                                 value={formData.email}
                                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -696,10 +708,11 @@ export default function PublicOnboardingClient() {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                              <label htmlFor="onboard-phone" className="block text-sm font-medium text-gray-700 mb-1.5">
                                 Phone <span className="text-red-500">*</span>
                               </label>
                               <input
+                                id="onboard-phone"
                                 type="tel"
                                 required
                                 value={formData.phone}
@@ -720,10 +733,11 @@ export default function PublicOnboardingClient() {
                         <div className="md:col-span-2">
                           <div className="space-y-4">
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                              <label htmlFor="onboard-street" className="block text-sm font-medium text-gray-700 mb-1.5">
                                 Street Address <span className="text-red-500">*</span>
                               </label>
                               <input
+                                id="onboard-street"
                                 type="text"
                                 required
                                 value={formData.address.street}
@@ -739,10 +753,11 @@ export default function PublicOnboardingClient() {
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                               <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                <label htmlFor="onboard-city" className="block text-sm font-medium text-gray-700 mb-1.5">
                                   City <span className="text-red-500">*</span>
                                 </label>
                                 <input
+                                  id="onboard-city"
                                   type="text"
                                   required
                                   value={formData.address.city}
@@ -757,10 +772,11 @@ export default function PublicOnboardingClient() {
                                 />
                               </div>
                               <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                <label htmlFor="onboard-province" className="block text-sm font-medium text-gray-700 mb-1.5">
                                   Province <span className="text-red-500">*</span>
                                 </label>
                                 <input
+                                  id="onboard-province"
                                   type="text"
                                   required
                                   value={formData.address.state}
@@ -775,10 +791,11 @@ export default function PublicOnboardingClient() {
                                 />
                               </div>
                               <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                <label htmlFor="onboard-zip" className="block text-sm font-medium text-gray-700 mb-1.5">
                                   Zip Code <span className="text-red-500">*</span>
                                 </label>
                                 <input
+                                  id="onboard-zip"
                                   type="text"
                                   required
                                   value={formData.address.zipCode}
@@ -810,10 +827,11 @@ export default function PublicOnboardingClient() {
                         <div className="md:col-span-2">
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                              <label htmlFor="onboard-emergency-name" className="block text-sm font-medium text-gray-700 mb-1.5">
                                 Name <span className="text-red-500">*</span>
                               </label>
                               <input
+                                id="onboard-emergency-name"
                                 type="text"
                                 required
                                 value={formData.emergencyContact.name}
@@ -828,10 +846,11 @@ export default function PublicOnboardingClient() {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                              <label htmlFor="onboard-emergency-phone" className="block text-sm font-medium text-gray-700 mb-1.5">
                                 Phone <span className="text-red-500">*</span>
                               </label>
                               <input
+                                id="onboard-emergency-phone"
                                 type="tel"
                                 required
                                 value={formData.emergencyContact.phone}
@@ -846,10 +865,11 @@ export default function PublicOnboardingClient() {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                              <label htmlFor="onboard-emergency-relationship" className="block text-sm font-medium text-gray-700 mb-1.5">
                                 Relationship <span className="text-red-500">*</span>
                               </label>
                               <input
+                                id="onboard-emergency-relationship"
                                 type="text"
                                 required
                                 value={formData.emergencyContact.relationship}
@@ -878,8 +898,9 @@ export default function PublicOnboardingClient() {
                         <div className="md:col-span-2">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">PhilHealth ID</label>
+                              <label htmlFor="onboard-philhealth" className="block text-sm font-medium text-gray-700 mb-1.5">PhilHealth ID</label>
                               <input
+                                id="onboard-philhealth"
                                 type="text"
                                 value={formData.identifiers?.philHealth || ''}
                                 onChange={(e) =>
@@ -893,8 +914,9 @@ export default function PublicOnboardingClient() {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1.5">Government ID</label>
+                              <label htmlFor="onboard-gov-id" className="block text-sm font-medium text-gray-700 mb-1.5">Government ID</label>
                               <input
+                                id="onboard-gov-id"
                                 type="text"
                                 value={formData.identifiers?.govId || ''}
                                 onChange={(e) =>
@@ -923,6 +945,7 @@ export default function PublicOnboardingClient() {
                         </div>
                         <div className="md:col-span-2">
                           <textarea
+                            aria-label="Medical history"
                             value={formData.medicalHistory}
                             onChange={(e) => setFormData({ ...formData, medicalHistory: e.target.value })}
                             rows={4}
@@ -958,8 +981,9 @@ export default function PublicOnboardingClient() {
                                 <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                     <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1">Substance</label>
+                                      <label htmlFor={`onboard-allergy-${index}-substance`} className="block text-xs font-medium text-gray-700 mb-1">Substance</label>
                                       <input
+                                        id={`onboard-allergy-${index}-substance`}
                                         type="text"
                                         value={allergy.substance}
                                         onChange={(e) => updateAllergy(index, 'substance', e.target.value)}
@@ -968,8 +992,9 @@ export default function PublicOnboardingClient() {
                                       />
                                     </div>
                                     <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1">Reaction</label>
+                                      <label htmlFor={`onboard-allergy-${index}-reaction`} className="block text-xs font-medium text-gray-700 mb-1">Reaction</label>
                                       <input
+                                        id={`onboard-allergy-${index}-reaction`}
                                         type="text"
                                         value={allergy.reaction}
                                         onChange={(e) => updateAllergy(index, 'reaction', e.target.value)}
@@ -979,8 +1004,9 @@ export default function PublicOnboardingClient() {
                                     </div>
                                     <div className="flex gap-2">
                                       <div className="flex-1">
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">Severity</label>
+                                        <label htmlFor={`onboard-allergy-${index}-severity`} className="block text-xs font-medium text-gray-700 mb-1">Severity</label>
                                         <select
+                                          id={`onboard-allergy-${index}-severity`}
                                           value={allergy.severity}
                                           onChange={(e) => updateAllergy(index, 'severity', e.target.value)}
                                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-sm bg-white"
@@ -1034,8 +1060,9 @@ export default function PublicOnboardingClient() {
                                 <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                                     <div className="sm:col-span-2">
-                                      <label className="block text-xs font-medium text-gray-700 mb-1">Condition</label>
+                                      <label htmlFor={`onboard-condition-${index}-name`} className="block text-xs font-medium text-gray-700 mb-1">Condition</label>
                                       <input
+                                        id={`onboard-condition-${index}-name`}
                                         type="text"
                                         value={condition.condition}
                                         onChange={(e) => updateCondition(index, 'condition', e.target.value)}
@@ -1044,8 +1071,9 @@ export default function PublicOnboardingClient() {
                                       />
                                     </div>
                                     <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
+                                      <label htmlFor={`onboard-condition-${index}-status`} className="block text-xs font-medium text-gray-700 mb-1">Status</label>
                                       <select
+                                        id={`onboard-condition-${index}-status`}
                                         value={condition.status}
                                         onChange={(e) => updateCondition(index, 'status', e.target.value)}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-sm bg-white"
@@ -1057,8 +1085,9 @@ export default function PublicOnboardingClient() {
                                     </div>
                                     <div className="flex gap-2">
                                       <div className="flex-1">
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
+                                        <label htmlFor={`onboard-condition-${index}-date`} className="block text-xs font-medium text-gray-700 mb-1">Date</label>
                                         <input
+                                          id={`onboard-condition-${index}-date`}
                                           type="date"
                                           value={condition.diagnosisDate || ''}
                                           onChange={(e) => updateCondition(index, 'diagnosisDate', e.target.value)}

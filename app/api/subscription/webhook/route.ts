@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
+import PaypalOrder from '@/models/PaypalOrder';
 import { verifyPayPalWebhook } from '@/lib/paypal';
+import { activateSubscriptionFromOrder } from '@/lib/subscription';
 
 /**
  * PayPal webhook handler for subscription events
@@ -10,10 +12,15 @@ import { verifyPayPalWebhook } from '@/lib/paypal';
 export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.text();
-    const body = JSON.parse(rawBody);
+    let body: any;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
 
-    const headers = Object.fromEntries(
-      Object.entries(request.headers).map(([key, value]) => [key.toLowerCase(), value])
+    const headers: Record<string, string> = Object.fromEntries(
+      Array.from(request.headers.entries()).map(([key, value]) => [key.toLowerCase(), value])
     );
 
     // Verify webhook signature using PayPal's API
@@ -50,125 +57,80 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let tenantIdForStamp: unknown;
+
     switch (eventType) {
       case 'PAYMENT.CAPTURE.COMPLETED': {
-        // Extract the PayPal order ID from the capture resource
-        const orderId =
-          resource?.supplementary_data?.related_ids?.order_id ||
-          resource?.id;
-
+        // resource is the capture object
+        const orderId: string | undefined = resource?.supplementary_data?.related_ids?.order_id;
         if (!orderId) {
           console.warn('PAYMENT.CAPTURE.COMPLETED: no orderId found in webhook payload');
           break;
         }
 
-        // Find the tenant that initiated this payment
-        const tenant = await Tenant.findOne({
-          $or: [
-            { 'subscription.paypalOrderId': orderId },
-            { 'subscription.paymentHistory.orderId': orderId },
-          ],
+        const result = await activateSubscriptionFromOrder(orderId, {
+          transactionId: resource?.id,
+          amount: resource?.amount?.value != null ? parseFloat(resource.amount.value) : undefined,
+          currency: resource?.amount?.currency_code,
         });
-
-        if (!tenant) {
-          // Possibly capture-order route hasn't run yet — try to parse tenantId from reference_id
-          const referenceId: string | undefined =
-            resource?.purchase_units?.[0]?.reference_id ||
-            body?.resource?.supplementary_data?.related_ids?.capture_id;
-          // reference_id format: subscription-{tenantId}-{timestamp}
-          const match = typeof referenceId === 'string'
-            ? referenceId.match(/^subscription-(.+)-\d+$/)
-            : null;
-          if (match) {
-            const tenantFromRef = await Tenant.findById(match[1]);
-            if (tenantFromRef) {
-              console.log(`PAYMENT.CAPTURE.COMPLETED: tenant found via reference_id for order ${orderId}`);
-              // capture-order route is the primary activation path; webhook is a safety net
-              // Only act if subscription is not yet active for this order
-              if (
-                tenantFromRef.subscription?.status !== 'active' ||
-                tenantFromRef.subscription?.paypalOrderId !== orderId
-              ) {
-                console.warn(
-                  `PAYMENT.CAPTURE.COMPLETED: subscription not yet activated for tenant ${match[1]} — capture-order route should handle this`
-                );
-              }
-            }
-          } else {
-            console.warn(`PAYMENT.CAPTURE.COMPLETED: no tenant found for orderId ${orderId}`);
+        if (!result.ok) {
+          console.warn(`PAYMENT.CAPTURE.COMPLETED: order ${orderId} not applied: ${result.error}`);
+          // 409 = transient contention; let PayPal redeliver.
+          if (result.status === 409) {
+            return NextResponse.json({ error: 'Retry later' }, { status: 503 });
           }
           break;
         }
-
-        // If subscription is already active for this order, skip to avoid double-processing
-        if (
-          tenant.subscription?.status === 'active' &&
-          tenant.subscription?.paypalOrderId === orderId
-        ) {
-          console.log(`PAYMENT.CAPTURE.COMPLETED: already processed for tenant ${tenant._id}`);
-          break;
-        }
-
-        // Mark subscription active (safety net if capture-order route failed)
-        tenant.subscription = tenant.subscription || ({} as any);
-        tenant.subscription.status = 'active';
-        tenant.subscription.paypalOrderId = orderId;
-
-        // Update corresponding payment history entry if present
-        const histEntry = tenant.subscription.paymentHistory?.find(
-          (p: any) => p.orderId === orderId
-        );
-        if (histEntry) {
-          histEntry.status = 'completed';
-        }
-
-        // Stamp the transmissionId so this event is never processed twice
-        if (transmissionId) {
-          tenant.subscription.processedWebhookIds = [
-            ...(tenant.subscription.processedWebhookIds || []),
-            transmissionId,
-          ].slice(-50); // keep last 50 to bound array size
-        }
-        await tenant.save();
-        console.log(`PAYMENT.CAPTURE.COMPLETED: subscription activated for tenant ${tenant._id}`);
+        tenantIdForStamp = (await PaypalOrder.findOne({ orderId }).select('tenantId').lean<any>())?.tenantId;
+        console.log(`PAYMENT.CAPTURE.COMPLETED: order ${orderId} ${result.alreadyApplied ? 'already applied' : 'activated'}`);
         break;
       }
 
       case 'PAYMENT.CAPTURE.REFUNDED': {
-        // resource is the refund object; get the original capture/order id
-        const relatedOrderId =
-          resource?.supplementary_data?.related_ids?.order_id ||
-          resource?.links?.find((l: any) => l.rel === 'up')?.href?.split('/')?.pop();
+        // resource is the refund object; its `up` link points at the refunded capture.
+        const upHref: string | undefined = resource?.links?.find((l: any) => l.rel === 'up')?.href;
+        const captureId = upHref?.match(/\/captures\/([^/?#]+)/)?.[1];
+        const relatedOrderId: string | undefined = resource?.supplementary_data?.related_ids?.order_id;
 
-        if (!relatedOrderId) {
-          console.warn('PAYMENT.CAPTURE.REFUNDED: no orderId found in webhook payload');
+        if (!captureId && !relatedOrderId) {
+          console.warn('PAYMENT.CAPTURE.REFUNDED: no capture/order id found in webhook payload');
           break;
         }
 
-        const tenant = await Tenant.findOne({
-          $or: [
-            { 'subscription.paypalOrderId': relatedOrderId },
-            { 'subscription.paymentHistory.orderId': relatedOrderId },
-          ],
-        });
-
-        if (!tenant) {
-          console.warn(`PAYMENT.CAPTURE.REFUNDED: no tenant found for orderId ${relatedOrderId}`);
-          break;
-        }
-
-        tenant.subscription.status = 'cancelled';
-
-        // Mark the payment record as refunded
-        const payment = tenant.subscription.paymentHistory?.find(
-          (p: any) => p.orderId === relatedOrderId
+        const tenant = await Tenant.findOne(
+          captureId
+            ? { 'subscription.paymentHistory.transactionId': captureId }
+            : { 'subscription.paymentHistory.orderId': relatedOrderId }
         );
-        if (payment) {
-          payment.status = 'refunded';
+        if (!tenant || !tenant.subscription) {
+          console.warn(`PAYMENT.CAPTURE.REFUNDED: no tenant found for capture ${captureId || relatedOrderId}`);
+          break;
+        }
+        tenantIdForStamp = tenant._id;
+
+        const payment = tenant.subscription.paymentHistory?.find((p: any) =>
+          captureId ? p.transactionId === captureId : p.orderId === relatedOrderId
+        );
+        if (!payment) break;
+
+        const refunded = parseFloat(
+          resource?.seller_payable_breakdown?.total_refunded_amount?.value ??
+          resource?.amount?.value ??
+          '0'
+        );
+        const isFullRefund = refunded + 0.005 >= Number(payment.amount);
+        if (!isFullRefund) {
+          console.log(`PAYMENT.CAPTURE.REFUNDED: partial refund (${refunded}/${payment.amount}) for tenant ${tenant._id} — subscription unchanged`);
+          break;
         }
 
+        payment.status = 'refunded';
+        // Only a full refund of the payment that funds the current period cancels the subscription.
+        if (payment.orderId === tenant.subscription.paypalOrderId) {
+          tenant.subscription.status = 'cancelled';
+        }
         await tenant.save();
-        console.log(`PAYMENT.CAPTURE.REFUNDED: subscription cancelled for tenant ${tenant._id}`);
+        console.log(`PAYMENT.CAPTURE.REFUNDED: payment ${payment.transactionId} refunded for tenant ${tenant._id}`);
         break;
       }
 
@@ -178,6 +140,7 @@ export async function POST(request: NextRequest) {
           const tenant = await Tenant.findOne({
             'subscription.paypalOrderId': deniedOrderId,
           });
+          if (tenant) tenantIdForStamp = tenant._id;
           if (tenant && tenant.subscription?.status === 'active') {
             tenant.subscription.status = 'cancelled';
             await tenant.save();
@@ -190,6 +153,13 @@ export async function POST(request: NextRequest) {
       default:
         // Acknowledge unhandled event types without error
         break;
+    }
+
+    if (transmissionId && tenantIdForStamp) {
+      await Tenant.updateOne(
+        { _id: tenantIdForStamp },
+        { $push: { 'subscription.processedWebhookIds': { $each: [transmissionId], $slice: -50 } } }
+      );
     }
 
     return NextResponse.json({ received: true });

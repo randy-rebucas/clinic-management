@@ -14,25 +14,32 @@ const KEY_LENGTH = 32; // 256 bits
  * Get encryption key from environment variable or generate one
  * In production, use a secure key stored in environment variables
  */
+let devKey: Buffer | null = null;
+
 function getEncryptionKey(): Buffer {
   const key = process.env.ENCRYPTION_KEY;
 
-  if (!key) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('ENCRYPTION_KEY environment variable is required in production');
-    }
-    console.warn('ENCRYPTION_KEY not set. Using default key (NOT SECURE FOR PRODUCTION)');
-    // Insecure default — development only
-    return crypto.scryptSync('default-key-change-in-production', 'salt', KEY_LENGTH);
-  }
-  
-  // If key is provided as hex string, convert it
-  if (key.length === 64) {
+  if (key && /^[0-9a-fA-F]{64}$/.test(key)) {
     return Buffer.from(key, 'hex');
   }
-  
-  // Otherwise, derive key from string
-  return crypto.scryptSync(key, 'encryption-salt', KEY_LENGTH);
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('ENCRYPTION_KEY must be set to 64 hex characters (32 bytes) in production');
+  }
+
+  if (!devKey) {
+    console.warn('ENCRYPTION_KEY is missing or not 64 hex chars. Using a key derived from SESSION_SECRET (development only).');
+    const seed = key || process.env.SESSION_SECRET || 'dev-only-encryption-seed';
+    devKey = crypto.createHash('sha256').update(`encryption-key:${seed}`).digest();
+  }
+  return devKey;
+}
+
+const ENCRYPTED_FORMAT = /^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]*$/i;
+
+/** True when the value looks like output of encryptData (iv:tag:ciphertext, hex). */
+export function isEncrypted(value: string): boolean {
+  return ENCRYPTED_FORMAT.test(value);
 }
 
 /**
@@ -100,8 +107,9 @@ export function hashData(data: string, salt?: string): { hash: string; salt: str
  * Verify hashed data
  */
 export function verifyHash(data: string, hash: string, salt: string): boolean {
-  const newHash = crypto.pbkdf2Sync(data, salt, 10000, KEY_LENGTH, 'sha512').toString('hex');
-  return newHash === hash;
+  const newHash = Buffer.from(crypto.pbkdf2Sync(data, salt, 10000, KEY_LENGTH, 'sha512').toString('hex'));
+  const expected = Buffer.from(hash);
+  return newHash.length === expected.length && crypto.timingSafeEqual(newHash, expected);
 }
 
 /**

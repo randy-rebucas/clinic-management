@@ -1,50 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import { verifyInsuranceForUpcomingAppointments } from '@/lib/automations/insurance-verification';
-import { getTenantContext } from '@/lib/tenant';
+
+export const maxDuration = 300;
 
 /**
- * Cron job to verify insurance for upcoming appointments
- * Runs daily at 8:00 AM
+ * Verifies insurance for the next two days' appointments for every active tenant.
+ * Schedule: see vercel.json. Auth: Authorization: Bearer $CRON_SECRET.
  */
 export async function GET(request: NextRequest) {
-  // Authenticate request
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-  }
+  const denied = requireCron(request);
+  if (denied) return denied;
 
   try {
-    const tenantContext = await getTenantContext();
-    const tenantId = tenantContext.tenantId;
-
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'No tenant context found' },
-        { status: 400 }
-      );
-    }
-
-    const result = await verifyInsuranceForUpcomingAppointments(tenantId.toString());
-
+    const result = await verifyInsuranceForUpcomingAppointments();
     return NextResponse.json({
-      success: true,
+      success: result.success,
       message: 'Insurance verification processed',
       data: result,
     });
-  } catch (error: any) {
-    console.error('Error in insurance verification cron:', error);
-    return NextResponse.json(
-      { success: false, error: error.message || 'Failed to process insurance verification' },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('[Cron] insurance-verification error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to process insurance-verification' }, { status: 500 });
   }
 }
-

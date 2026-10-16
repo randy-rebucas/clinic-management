@@ -1,49 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import { processPatientReengagement } from '@/lib/automations/patient-reengagement';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+
+export const maxDuration = 300;
 
 /**
- * Patient Re-engagement Cron Job
- *
- * Identifies patients who have not had a visit or confirmed appointment
- * in the past 6 months and sends a friendly re-engagement message.
- *
- * Schedule: 0 10 * * 1  →  10:00 UTC every Monday = 18:00 PHT Monday.
- * Weekly cadence prevents spamming inactive patients.
+ * Weekly outreach to patients inactive for 6+ months (once per 180 days).
+ * Schedule: see vercel.json. Auth: Authorization: Bearer $CRON_SECRET.
  */
 export async function GET(request: NextRequest) {
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  const denied = requireCron(request);
+  if (denied) return denied;
 
   try {
-    let tenantId: Types.ObjectId | undefined;
-    try {
-      const tenantContext = await getTenantContext();
-      if (tenantContext.tenantId) {
-        tenantId = new Types.ObjectId(tenantContext.tenantId as string);
-      }
-    } catch {
-      // single-tenant mode
-    }
-
-    const result = await processPatientReengagement(tenantId);
-
+    const result = await processPatientReengagement();
     return NextResponse.json({
       success: result.errors.length === 0,
       message: 'Patient re-engagement processed',
       data: result,
     });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Cron] patient-reengagement error:', msg);
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+  } catch (error) {
+    console.error('[Cron] patient-reengagement error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to process patient-reengagement' }, { status: 500 });
   }
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, MapPin, Calendar, Clock, Trash2, Edit2 } from 'lucide-react';
+import { useModalA11y } from './hooks/useModalA11y';
 
 interface Visit {
   _id: string;
@@ -49,6 +50,9 @@ export default function MedicalRepresentativeVisitsClient() {
     status: 'scheduled',
     notes: '',
   });
+
+  const closeForm = () => setShowForm(false);
+  const formModalRef = useModalA11y<HTMLDivElement>(showForm, closeForm);
 
   // Fetch visits
   useEffect(() => {
@@ -184,7 +188,7 @@ export default function MedicalRepresentativeVisitsClient() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'scheduled':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-brand-teal-light text-brand-teal-deep';
       case 'completed':
         return 'bg-green-100 text-green-800';
       case 'cancelled':
@@ -196,14 +200,14 @@ export default function MedicalRepresentativeVisitsClient() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-brand-teal-light/60 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-teal-dark"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-8 px-4">
+    <div className="min-h-screen bg-brand-teal-light/60 py-8 px-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between gap-4 mb-8">
@@ -213,13 +217,13 @@ export default function MedicalRepresentativeVisitsClient() {
               className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
               aria-label="Go back"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
+              <ArrowLeft aria-hidden="true" className="w-5 h-5 text-gray-600" />
             </button>
             <h1 className="text-3xl font-bold text-gray-900">Track Visits</h1>
           </div>
           <button
             onClick={handleAddVisit}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-brand-teal-dark hover:bg-brand-teal-deep text-white font-medium rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             Add Visit
@@ -241,16 +245,24 @@ export default function MedicalRepresentativeVisitsClient() {
         {/* Form Modal */}
         {showForm && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div
+              ref={formModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="visit-form-title"
+              className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            >
               <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-900">
+                <h2 id="visit-form-title" className="text-2xl font-bold text-gray-900">
                   {editingId ? 'Edit Visit' : 'Add New Visit'}
                 </h2>
                 <button
-                  onClick={() => setShowForm(false)}
+                  type="button"
+                  onClick={closeForm}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
+                  aria-label="Close visit form"
                 >
-                  ×
+                  <span aria-hidden="true">×</span>
                 </button>
               </div>
 
@@ -268,7 +280,7 @@ export default function MedicalRepresentativeVisitsClient() {
                       value={formData.clinicName}
                       onChange={handleInputChange}
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                     />
                   </div>
                   <div>
@@ -282,7 +294,7 @@ export default function MedicalRepresentativeVisitsClient() {
                       value={formData.clinicLocation}
                       onChange={handleInputChange}
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                     />
                   </div>
                 </div>
@@ -300,7 +312,7 @@ export default function MedicalRepresentativeVisitsClient() {
                     onChange={handleInputChange}
                     required
                     placeholder="e.g., Product presentation, Follow-up meeting"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                   />
                 </div>
 
@@ -317,7 +329,7 @@ export default function MedicalRepresentativeVisitsClient() {
                       value={formData.date}
                       onChange={handleInputChange}
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                     />
                   </div>
                   <div>
@@ -331,7 +343,7 @@ export default function MedicalRepresentativeVisitsClient() {
                       value={formData.time}
                       onChange={handleInputChange}
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                     />
                   </div>
                   <div>
@@ -347,7 +359,7 @@ export default function MedicalRepresentativeVisitsClient() {
                       required
                       min="15"
                       step="15"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                     />
                   </div>
                 </div>
@@ -362,7 +374,7 @@ export default function MedicalRepresentativeVisitsClient() {
                     name="status"
                     value={formData.status}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                   >
                     <option value="scheduled">Scheduled</option>
                     <option value="completed">Completed</option>
@@ -382,7 +394,7 @@ export default function MedicalRepresentativeVisitsClient() {
                     onChange={handleInputChange}
                     placeholder="Add any additional notes about the visit..."
                     rows={4}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal resize-none"
                   />
                 </div>
 
@@ -398,7 +410,7 @@ export default function MedicalRepresentativeVisitsClient() {
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
+                    className="flex-1 px-4 py-2 bg-brand-teal-dark hover:bg-brand-teal-deep disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
                   >
                     {isSaving ? 'Saving...' : 'Save Visit'}
                   </button>
@@ -414,9 +426,10 @@ export default function MedicalRepresentativeVisitsClient() {
             <button
               key={status}
               onClick={() => setFilterStatus(status)}
+              aria-pressed={filterStatus === status}
               className={`px-4 py-2 rounded-lg font-medium transition-colors capitalize ${
                 filterStatus === status
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-brand-teal-dark text-white'
                   : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
               }`}
             >
@@ -427,13 +440,13 @@ export default function MedicalRepresentativeVisitsClient() {
 
         {/* Visits List */}
         {filteredVisits.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+          <div className="bg-white rounded-lg shadow-sm p-8 text-center">
             <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No visits yet</h3>
             <p className="text-gray-600 mb-6">Start tracking your clinic visits and interactions</p>
             <button
               onClick={handleAddVisit}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-brand-teal-dark hover:bg-brand-teal-deep text-white font-medium rounded-lg transition-colors"
             >
               <Plus className="w-4 h-4" />
               Add Your First Visit
@@ -442,7 +455,7 @@ export default function MedicalRepresentativeVisitsClient() {
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {filteredVisits.map(visit => (
-              <div key={visit._id} className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow">
+              <div key={visit._id} className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
                 <div className="flex items-start justify-between gap-4 mb-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
@@ -473,17 +486,17 @@ export default function MedicalRepresentativeVisitsClient() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleEditVisit(visit)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      aria-label="Edit visit"
+                      className="p-2 text-brand-teal-dark hover:bg-brand-teal-light/60 rounded-lg transition-colors"
+                      aria-label={`Edit visit to ${visit.clinicName}`}
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 aria-hidden="true" className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteVisit(visit._id)}
                       className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      aria-label="Delete visit"
+                      aria-label={`Delete visit to ${visit.clinicName}`}
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 aria-hidden="true" className="w-4 h-4" />
                     </button>
                   </div>
                 </div>

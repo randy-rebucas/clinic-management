@@ -75,7 +75,7 @@ export default function SubscriptionSuccessClient({ user, tenant, token, plan: p
       <div className="bg-white rounded-lg shadow-md p-8 text-center">
         {status === 'processing' && (
           <>
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-brand-teal-dark mx-auto mb-4"></div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Processing Payment</h1>
             <p className="text-gray-600">{message}</p>
           </>
@@ -105,7 +105,7 @@ export default function SubscriptionSuccessClient({ user, tenant, token, plan: p
             <p className="text-gray-600 mb-4">{message}</p>
             <button
               onClick={() => router.push('/subscription')}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              className="bg-brand-teal-dark text-white px-6 py-2 rounded-lg hover:bg-brand-teal-deep transition-colors"
             >
               Return to Subscription Page
             </button>

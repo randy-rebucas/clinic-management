@@ -222,10 +222,11 @@ export default function MedicalRepresentativeOnboardingClient() {
                 <h2 className="text-2xl font-bold text-gray-800 mb-6">Your Personal Information</h2>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="mr-onboard-first-name" className="block text-sm font-medium text-gray-700 mb-1">
                       First Name <span className="text-red-500">*</span>
                     </label>
                     <input
+                      id="mr-onboard-first-name"
                       type="text"
                       required
                       value={formData.firstName}
@@ -235,10 +236,11 @@ export default function MedicalRepresentativeOnboardingClient() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="mr-onboard-last-name" className="block text-sm font-medium text-gray-700 mb-1">
                       Last Name <span className="text-red-500">*</span>
                     </label>
                     <input
+                      id="mr-onboard-last-name"
                       type="text"
                       required
                       value={formData.lastName}
@@ -249,10 +251,11 @@ export default function MedicalRepresentativeOnboardingClient() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="mr-onboard-email" className="block text-sm font-medium text-gray-700 mb-1">
                     Email Address <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="mr-onboard-email"
                     type="email"
                     required
                     value={formData.email}
@@ -262,10 +265,11 @@ export default function MedicalRepresentativeOnboardingClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="mr-onboard-phone" className="block text-sm font-medium text-gray-700 mb-1">
                     Phone Number <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="mr-onboard-phone"
                     type="tel"
                     required
                     value={formData.phone}
@@ -276,8 +280,9 @@ export default function MedicalRepresentativeOnboardingClient() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Title (Optional)</label>
+                    <label htmlFor="mr-onboard-title" className="block text-sm font-medium text-gray-700 mb-1">Title (Optional)</label>
                     <input
+                      id="mr-onboard-title"
                       type="text"
                       value={formData.title}
                       onChange={(e) => handleInputChange('title', e.target.value)}
@@ -286,8 +291,9 @@ export default function MedicalRepresentativeOnboardingClient() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Territory (Optional)</label>
+                    <label htmlFor="mr-onboard-personal-territory" className="block text-sm font-medium text-gray-700 mb-1">Territory (Optional)</label>
                     <input
+                      id="mr-onboard-personal-territory"
                       type="text"
                       value={formData.territory}
                       onChange={(e) => handleInputChange('territory', e.target.value)}
@@ -297,8 +303,9 @@ export default function MedicalRepresentativeOnboardingClient() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Bio (Optional)</label>
+                  <label htmlFor="mr-onboard-bio" className="block text-sm font-medium text-gray-700 mb-1">Bio (Optional)</label>
                   <textarea
+                    id="mr-onboard-bio"
                     value={formData.bio}
                     onChange={(e) => handleInputChange('bio', e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -314,10 +321,11 @@ export default function MedicalRepresentativeOnboardingClient() {
               <div className="space-y-6">
                 <h2 className="text-2xl font-bold text-gray-800 mb-6">Company Information</h2>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="mr-onboard-company" className="block text-sm font-medium text-gray-700 mb-1">
                     Company Name <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="mr-onboard-company"
                     type="text"
                     required
                     value={formData.company}
@@ -327,10 +335,11 @@ export default function MedicalRepresentativeOnboardingClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="mr-onboard-territory" className="block text-sm font-medium text-gray-700 mb-1">
                     Territory <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="mr-onboard-territory"
                     type="text"
                     required
                     value={formData.territory}
@@ -340,8 +349,9 @@ export default function MedicalRepresentativeOnboardingClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Products Represented (comma-separated)</label>
+                  <label htmlFor="mr-onboard-products" className="block text-sm font-medium text-gray-700 mb-1">Products Represented (comma-separated)</label>
                   <textarea
+                    id="mr-onboard-products"
                     value={formData.products}
                     onChange={(e) => handleInputChange('products', e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -363,10 +373,11 @@ export default function MedicalRepresentativeOnboardingClient() {
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="mr-onboard-fee" className="block text-sm font-medium text-gray-700 mb-1">
                     Registration Fee (PHP) <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="mr-onboard-fee"
                     type="number"
                     required
                     min="0"
@@ -378,10 +389,11 @@ export default function MedicalRepresentativeOnboardingClient() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="mr-onboard-payment-method" className="block text-sm font-medium text-gray-700 mb-1">
                     Payment Method <span className="text-red-500">*</span>
                   </label>
                   <select
+                    id="mr-onboard-payment-method"
                     required
                     value={formData.paymentMethod}
                     onChange={(e) => handleInputChange('paymentMethod', e.target.value)}
@@ -396,10 +408,11 @@ export default function MedicalRepresentativeOnboardingClient() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="mr-onboard-payment-reference" className="block text-sm font-medium text-gray-700 mb-1">
                     Payment Reference/Receipt Number <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="mr-onboard-payment-reference"
                     type="text"
                     required
                     value={formData.paymentReference}

@@ -10,6 +10,7 @@ import Admin from '@/models/Admin';
 import bcrypt from 'bcryptjs';
 import { DEFAULT_ROLE_PERMISSIONS } from '@/lib/permissions';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { validatePasswordPolicy } from '@/lib/user-invite';
 
 const RESERVED_WORDS = [
   'www',
@@ -80,6 +81,32 @@ export async function POST(request: NextRequest) {
       settings,
       admin,
     } = body;
+
+    const isStr = (v: unknown): v is string => typeof v === 'string';
+    if (
+      (name !== undefined && !isStr(name)) ||
+      (subdomain !== undefined && !isStr(subdomain)) ||
+      (displayName !== undefined && displayName !== null && !isStr(displayName)) ||
+      (email !== undefined && email !== null && !isStr(email)) ||
+      (phone !== undefined && phone !== null && !isStr(phone)) ||
+      (admin !== undefined && (typeof admin !== 'object' || admin === null)) ||
+      (admin && ((admin.name !== undefined && !isStr(admin.name)) ||
+        (admin.email !== undefined && !isStr(admin.email)) ||
+        (admin.password !== undefined && !isStr(admin.password)) ||
+        (admin.phone !== undefined && admin.phone !== null && !isStr(admin.phone))))
+    ) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid request body.', errors: { general: ['Invalid request format. Please try again.'] } },
+        { status: 400 }
+      );
+    }
+    if (address !== undefined && address !== null && (typeof address !== 'object' ||
+      ['street', 'city', 'state', 'zipCode', 'country'].some((k) => address[k] !== undefined && address[k] !== null && !isStr(address[k])))) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid address.', errors: { general: ['Invalid address.'] } },
+        { status: 400 }
+      );
+    }
 
     // Validate required fields
     if (!name || !subdomain || !admin?.name || !admin?.email || !admin?.password) {
@@ -162,12 +189,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if admin email already exists (within any tenant)
-    const existingUser = await User.findOne({
-      email: admin.email.toLowerCase().trim(),
-    });
-    if (existingUser) {
-      return NextResponse.json(
+    const adminEmail = admin.email.toLowerCase().trim();
+    const emailInUse = () =>
+      NextResponse.json(
         {
           success: false,
           message: 'Email already in use',
@@ -175,8 +199,12 @@ export async function POST(request: NextRequest) {
             adminEmail: ['This email is already registered. Please use a different email.'],
           },
         },
-        { status: 400 }
+        { status: 409 }
       );
+
+    // Fast path; the authoritative check is the atomic insert below
+    if (await User.exists({ email: adminEmail })) {
+      return emailInUse();
     }
 
     // Validate admin email format
@@ -187,10 +215,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate admin password length
-    if (!admin.password || admin.password.length < 8) {
+    const passwordErrors = validatePasswordPolicy(admin.password, { email: admin.email });
+    if (passwordErrors.length > 0) {
       return NextResponse.json(
-        { success: false, message: 'Admin password must be at least 8 characters.', errors: { adminPassword: ['Password must be at least 8 characters'] } },
+        { success: false, message: passwordErrors[0], errors: { adminPassword: passwordErrors } },
         { status: 400 }
       );
     }
@@ -302,81 +330,28 @@ export async function POST(request: NextRequest) {
       }
     ];
 
+    // Every tenant gets its own role documents. Shared/global roles are never re-assigned
+    // to a tenant, which would silently move other tenants' users into this one.
     const createdRoles: any[] = [];
     for (const roleData of rolesToCreate) {
       let role;
       try {
-        // First, try to find existing role with tenantId
-        role = await Role.findOne({ name: roleData.name, tenantId });
-
-        if (!role) {
-          // If not found, check for role without tenantId (backward compatibility)
-          const existingRoleWithoutTenant = await Role.findOne({
-            name: roleData.name,
-            $or: [{ tenantId: { $exists: false } }, { tenantId: null }]
-          });
-
-          if (existingRoleWithoutTenant) {
-            // Update existing role to include tenantId
-            existingRoleWithoutTenant.tenantId = tenantId;
-            existingRoleWithoutTenant.displayName = roleData.displayName;
-            existingRoleWithoutTenant.description = roleData.description;
-            existingRoleWithoutTenant.level = roleData.level;
-            existingRoleWithoutTenant.isActive = true;
-            existingRoleWithoutTenant.defaultPermissions = roleData.defaultPermissions;
-            await existingRoleWithoutTenant.save();
-            role = existingRoleWithoutTenant;
-          } else {
-            // Create new role
-            role = await Role.create({
-              name: roleData.name,
-              tenantId,
-              displayName: roleData.displayName,
-              description: roleData.description,
-              level: roleData.level,
-              isActive: true,
-              defaultPermissions: roleData.defaultPermissions,
-            });
-          }
-        } else {
-          // Update existing role
-          role.displayName = roleData.displayName;
-          role.description = roleData.description;
-          role.level = roleData.level;
-          role.isActive = true;
-          role.defaultPermissions = roleData.defaultPermissions;
-          await role.save();
-        }
+        role = await Role.create({
+          name: roleData.name,
+          tenantId,
+          displayName: roleData.displayName,
+          description: roleData.description,
+          level: roleData.level,
+          isActive: true,
+          defaultPermissions: roleData.defaultPermissions,
+        });
       } catch (error: any) {
-        // Handle duplicate key errors
         if (error.code === 11000 || error.message?.includes('duplicate key')) {
-          console.warn(`Duplicate key error for role ${roleData.name}, attempting to find existing role...`);
-          // Try to find the existing role
           role = await Role.findOne({ name: roleData.name, tenantId });
           if (!role) {
-            // Try without tenantId
-            role = await Role.findOne({
-              name: roleData.name,
-              $or: [{ tenantId: { $exists: false } }, { tenantId: null }]
-            });
-            if (role) {
-              // Update to include tenantId
-              role.tenantId = tenantId;
-              await role.save();
-            }
+            // A legacy unique index on `name` alone prevents tenant-scoped roles
+            throw new Error(`Failed to create role ${roleData.name} for tenant (duplicate key on a non-tenant index)`);
           }
-
-          if (!role) {
-            throw new Error(`Failed to create or find role ${roleData.name}: ${error.message}`);
-          }
-
-          // Update role properties
-          role.displayName = roleData.displayName;
-          role.description = roleData.description;
-          role.level = roleData.level;
-          role.isActive = true;
-          role.defaultPermissions = roleData.defaultPermissions;
-          await role.save();
         } else {
           throw error;
         }
@@ -418,83 +393,65 @@ export async function POST(request: NextRequest) {
     const firstName = nameParts[0] || 'Admin';
     const lastName = nameParts.slice(1).join(' ') || 'User';
 
-    // Check if Admin already exists (from Tenant post-save hook)
-    let adminProfile = await Admin.findOne({
-      tenantId: tenant._id,
-      email: admin.email.toLowerCase().trim(),
-    });
+    const rollbackTenant = async () => {
+      await Promise.allSettled([
+        Permission.deleteMany({ tenantId }),
+        Role.deleteMany({ tenantId }),
+        Admin.deleteMany({ tenantId }),
+        Tenant.deleteOne({ _id: tenantId }),
+      ]);
+    };
 
-    if (!adminProfile) {
-      // Create Admin profile first
-      try {
-        adminProfile = await Admin.create({
-          tenantId: tenant._id,
-          firstName: firstName,
-          lastName: lastName,
-          email: admin.email.toLowerCase().trim(),
-          phone: admin.phone || undefined,
-          department: 'Administration',
-          accessLevel: 'full',
-          status: 'active',
-        });
-      } catch (adminError: any) {
-        console.error('❌ Error creating Admin profile:', adminError);
-        throw new Error(`Failed to create Admin profile: ${adminError.message}`);
-      }
-    }
-
-    // Check if User already exists (might have been created by Admin post-save hook)
-    let adminUser = await User.findOne({
-      email: admin.email.toLowerCase().trim(),
-    });
-
-    if (!adminUser) {
-      // Create User manually with the provided password
-      try {
-        const hashedPassword = await bcrypt.hash(admin.password, 12);
-
-        adminUser = await User.create({
+    // Create the admin user only if no user with this email exists. $setOnInsert never
+    // touches an existing document, so a concurrent signup or pre-existing account
+    // can't have its password, role or tenant overwritten.
+    const hashedPassword = await bcrypt.hash(admin.password, 12);
+    const upsert = await User.findOneAndUpdate(
+      { email: adminEmail },
+      {
+        $setOnInsert: {
           name: admin.name.trim(),
-          email: admin.email.toLowerCase().trim(),
+          email: adminEmail,
           password: hashedPassword,
           role: adminRole._id,
           tenantId: tenant._id,
-          adminProfile: adminProfile._id,
           status: 'active',
-        });
-      } catch (userError: any) {
-        console.error('❌ Error creating User:', userError);
-        console.error('Error details:', {
-          message: userError.message,
-          name: userError.name,
-          code: userError.code,
-          keyPattern: userError.keyPattern,
-          keyValue: userError.keyValue,
-        });
+          sessionVersion: 0,
+        },
+      },
+      { upsert: true, new: true, includeResultMetadata: true, runValidators: true, setDefaultsOnInsert: true }
+    );
+    const insertedUser = upsert.lastErrorObject?.updatedExisting === false ? upsert.value : null;
+    if (!insertedUser) {
+      await rollbackTenant();
+      return emailInUse();
+    }
+    const adminUser = insertedUser;
 
-        // If it's a duplicate key error, provide a better message
-        if (userError.code === 11000) {
-          const field = Object.keys(userError.keyPattern || {})[0] || 'field';
-          throw new Error(`User with this ${field} already exists`);
-        }
-
-        throw new Error(`Failed to create User: ${userError.message}`);
-      }
-    } else {
-      // User exists, update password and link to admin profile if needed
-      const hashedPassword = await bcrypt.hash(admin.password, 12);
-      adminUser.password = hashedPassword;
-      adminUser.role = adminRole._id;
-      adminUser.tenantId = tenant._id;
-      adminUser.adminProfile = adminProfile._id;
-      adminUser.status = 'active';
-      await adminUser.save();
+    // The Admin post-save hook links to the existing user by email instead of creating one
+    let adminProfile;
+    try {
+      adminProfile = await Admin.create({
+        tenantId: tenant._id,
+        firstName: firstName,
+        lastName: lastName,
+        email: adminEmail,
+        phone: admin.phone || undefined,
+        department: 'Administration',
+        accessLevel: 'full',
+        status: 'active',
+      });
+    } catch (adminError: any) {
+      console.error('Error creating Admin profile:', adminError);
+      await User.deleteOne({ _id: adminUser._id });
+      await rollbackTenant();
+      throw new Error('Failed to create Admin profile');
     }
 
-    // Verify user was created/updated
-    if (!adminUser || !adminUser._id) {
-      throw new Error('User creation/update failed - user object is invalid');
-    }
+    await User.updateOne(
+      { _id: adminUser._id, tenantId: tenant._id },
+      { $set: { adminProfile: adminProfile._id } }
+    );
 
     // Verify user can be retrieved
     const verifyUser = await User.findById(adminUser._id)

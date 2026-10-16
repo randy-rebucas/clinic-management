@@ -3,12 +3,23 @@
 
 import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
-import Patient from '@/models/Patient';
+import Queue from '@/models/Queue';
+import Visit from '@/models/Visit';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
+import { combineDateAndTimeInTz, dayRangeInTz, dayRangeOffsetInTz } from '@/lib/tz';
 import { Types } from 'mongoose';
+import {
+  forEachTenant,
+  automationEnabled,
+  getTenantTimezone,
+  displayDate,
+  displayTime,
+  errorMessage,
+  BATCH_LIMIT,
+  type AutomationTenant,
+} from './shared';
 
 export interface NoShowHandlingOptions {
   appointmentId: string | Types.ObjectId;
@@ -19,8 +30,11 @@ export interface NoShowHandlingOptions {
   sendSMS?: boolean;
 }
 
+/** Minutes after the start time before an unattended appointment counts as a no-show. */
+const GRACE_MINUTES = 60;
+
 /**
- * Handle no-show appointment
+ * Handle no-show appointment (sends the patient a rescheduling offer)
  */
 export async function handleNoShow(options: NoShowHandlingOptions): Promise<{
   success: boolean;
@@ -31,18 +45,17 @@ export async function handleNoShow(options: NoShowHandlingOptions): Promise<{
   try {
     await connectDB();
 
-    const settings = await getSettings();
-    const autoNoShowHandling = (settings.automationSettings as any)?.autoNoShowHandling !== false;
+    if (!options.tenantId) {
+      return { success: false, handled: false, error: 'Tenant is required' };
+    }
+    const tenantId = new Types.ObjectId(String(options.tenantId));
 
-    if (!autoNoShowHandling) {
+    const settings = await getSettings(tenantId.toString());
+    if (!automationEnabled(settings, 'autoNoShowHandling')) {
       return { success: true, handled: false };
     }
 
-    const appointmentId = typeof options.appointmentId === 'string' 
-      ? new Types.ObjectId(options.appointmentId) 
-      : options.appointmentId;
-
-    const appointment = await Appointment.findById(appointmentId)
+    const appointment = await Appointment.findOne({ _id: options.appointmentId, tenantId })
       .populate('patient', 'firstName lastName email phone')
       .populate('doctor', 'firstName lastName');
 
@@ -50,7 +63,6 @@ export async function handleNoShow(options: NoShowHandlingOptions): Promise<{
       return { success: false, handled: false, error: 'Appointment not found' };
     }
 
-    // Only handle if status is no-show
     if (appointment.status !== 'no-show') {
       return { success: true, handled: false };
     }
@@ -60,180 +72,138 @@ export async function handleNoShow(options: NoShowHandlingOptions): Promise<{
       return { success: false, handled: false, error: 'Patient not found' };
     }
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : appointment.tenantId;
+    const tz = await getTenantTimezone(tenantId);
+    const message = generateNoShowMessage(appointment, tz);
+    const emailContent = generateNoShowEmail(appointment, settings, tz);
 
-    const rescheduled = false;
-
-    // Send apology and rescheduling offer
-    const message = generateNoShowMessage(appointment);
-    const emailContent = generateNoShowEmail(appointment, settings);
-
-    // Send SMS
+    // Patients have no User account, so no in-app notification is created here.
     if (options.sendSMS !== false && patient.phone) {
       try {
-        let phoneNumber = patient.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-        }
-
-        await sendSMS({
-          to: phoneNumber,
-          message,
-        });
+        await sendSMS({ to: patient.phone, message });
       } catch (error) {
         console.error('Error sending no-show SMS:', error);
       }
     }
 
-    // Send email
     if (options.sendEmail !== false && patient.email) {
       try {
-        await sendEmail({
-          to: patient.email,
-          subject: emailContent.subject,
-          html: emailContent.html,
-        });
+        await sendEmail({ to: patient.email, subject: emailContent.subject, html: emailContent.html });
       } catch (error) {
         console.error('Error sending no-show email:', error);
       }
     }
 
-    // Send notification
-    if (options.sendNotification !== false && patient._id) {
-      try {
-        await createNotification({
-          userId: patient._id,
-          tenantId,
-          type: 'appointment',
-          priority: 'normal',
-          title: 'Missed Appointment',
-          message: 'We noticed you missed your appointment. Would you like to reschedule?',
-          relatedEntity: {
-            type: 'appointment',
-            id: appointment._id,
-          },
-          actionUrl: `/appointments?reschedule=${appointment._id}`,
-        });
-      } catch (error) {
-        console.error('Error creating no-show notification:', error);
-      }
-    }
-
-    return { success: true, handled: true, rescheduled };
+    return { success: true, handled: true, rescheduled: false };
   } catch (error: any) {
     console.error('Error handling no-show:', error);
-    return { 
-      success: false, 
+    return {
+      success: false,
       handled: false,
-      error: error.message || 'Failed to handle no-show' 
+      error: 'Failed to handle no-show',
     };
   }
 }
 
-/**
- * Process all no-show appointments and handle them
- * This should be called by a cron job
- */
-export async function processNoShows(tenantId?: string | Types.ObjectId): Promise<{
+type NoShowResult = {
   success: boolean;
   processed: number;
   handled: number;
   errors: number;
   results: Array<{ appointmentId: string; success: boolean; error?: string }>;
-}> {
-  try {
-    await connectDB();
+};
 
-    const settings = await getSettings();
-    const autoNoShowHandling = (settings.automationSettings as any)?.autoNoShowHandling !== false;
+async function processTenant(tenant: AutomationTenant): Promise<NoShowResult> {
+  const out: NoShowResult = { success: true, processed: 0, handled: 0, errors: 0, results: [] };
 
-    if (!autoNoShowHandling) {
-      return { success: true, processed: 0, handled: 0, errors: 0, results: [] };
-    }
+  const settings = await getSettings(tenant.tenantId);
+  if (!automationEnabled(settings, 'autoNoShowHandling')) return out;
 
-    // Find appointments that should be marked as no-show
-    // (appointment time has passed, status is still scheduled/confirmed)
-    const now = new Date();
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+  const now = new Date();
+  const tz = tenant.timezone;
+  // Only yesterday and today: older open appointments are left to end-of-day cleanup,
+  // so patients are never messaged about long-past appointments.
+  const windowStart = dayRangeOffsetInTz(-1, now, tz).start;
 
-    const query: any = {
-      status: { $in: ['scheduled', 'confirmed'] },
-      $or: [
-        { 
-          scheduledAt: { $lt: oneHourAgo }
-        },
-        {
-          appointmentDate: { $lt: now },
-          appointmentTime: { $exists: true }
-        }
-      ],
-    };
+  const appointments = await Appointment.find({
+    tenantId: tenant.tenantObjectId,
+    status: { $in: ['scheduled', 'confirmed'] },
+    $or: [
+      { scheduledAt: { $gte: windowStart, $lt: now } },
+      { appointmentDate: { $gte: windowStart, $lt: now }, appointmentTime: { $exists: true, $ne: '' } },
+    ],
+  })
+    .select('_id patient scheduledAt appointmentDate appointmentTime duration')
+    .limit(BATCH_LIMIT);
 
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
-
-    const appointments = await Appointment.find(query)
-      .populate('patient', 'firstName lastName email phone');
-
-    const results: Array<{ appointmentId: string; success: boolean; error?: string }> = [];
-    let handled = 0;
-    let errors = 0;
-
-    for (const appointment of appointments) {
-      // Check if appointment time has actually passed
-      let appointmentDateTime: Date | null = null;
-      
-      if (appointment.scheduledAt) {
-        appointmentDateTime = new Date(appointment.scheduledAt);
-      } else if (appointment.appointmentDate && appointment.appointmentTime) {
-        const [hours, minutes] = appointment.appointmentTime.split(':').map(Number);
-        appointmentDateTime = new Date(appointment.appointmentDate);
-        appointmentDateTime.setHours(hours, minutes, 0, 0);
+  for (const appointment of appointments) {
+    try {
+      const startsAt: Date = appointment.scheduledAt
+        ? new Date(appointment.scheduledAt)
+        : combineDateAndTimeInTz(appointment.appointmentDate!, appointment.appointmentTime, tz);
+      const graceMs = Math.max(GRACE_MINUTES, appointment.duration || 0) * 60 * 1000;
+      if (startsAt.getTime() + graceMs > now.getTime()) {
+        continue;
       }
+      out.processed++;
 
-      if (!appointmentDateTime || appointmentDateTime > now) {
-        continue; // Appointment hasn't passed yet
-      }
+      // A patient who checked in or was seen is not a no-show, even if staff never updated the appointment.
+      const { start, end } = dayRangeInTz(startsAt, tz);
+      const [inQueue, visit] = await Promise.all([
+        Queue.exists({
+          tenantId: tenant.tenantObjectId,
+          status: { $nin: ['cancelled', 'no-show'] },
+          $or: [{ appointment: appointment._id }, { patient: appointment.patient, queuedAt: { $gte: start, $lte: end } }],
+        }),
+        Visit.exists({ tenantId: tenant.tenantObjectId, patient: appointment.patient, date: { $gte: start, $lte: end } }),
+      ]);
+      if (inQueue || visit) continue;
 
-      // Mark as no-show
-      appointment.status = 'no-show';
-      await appointment.save();
+      const marked = await Appointment.updateOne(
+        { _id: appointment._id, tenantId: tenant.tenantObjectId, status: { $in: ['scheduled', 'confirmed'] } },
+        { $set: { status: 'no-show' } }
+      );
+      if (marked.modifiedCount === 0) continue;
 
-      // Handle no-show
       const result = await handleNoShow({
         appointmentId: appointment._id,
-        tenantId: appointment.tenantId,
-        autoReschedule: false, // Don't auto-reschedule, just offer
-        sendNotification: true,
+        tenantId: tenant.tenantObjectId,
+        autoReschedule: false,
         sendEmail: true,
         sendSMS: true,
       });
 
-      results.push({
-        appointmentId: appointment._id.toString(),
-        success: result.success,
-        error: result.error,
-      });
-
-      if (result.success && result.handled) {
-        handled++;
-      } else if (!result.success) {
-        errors++;
-      }
+      out.results.push({ appointmentId: String(appointment._id), success: result.success, error: result.error });
+      if (result.success && result.handled) out.handled++;
+      else if (!result.success) out.errors++;
+    } catch (error) {
+      out.errors++;
+      out.results.push({ appointmentId: String(appointment._id), success: false, error: errorMessage(error) });
     }
+  }
 
-    return {
-      success: true,
-      processed: appointments.length,
-      handled,
-      errors,
-      results,
-    };
+  return out;
+}
+
+/**
+ * Mark unattended appointments as no-show and notify the patients.
+ * Without a tenantId every active tenant is processed.
+ */
+export async function processNoShows(tenantId?: string | Types.ObjectId): Promise<NoShowResult> {
+  try {
+    await connectDB();
+    const runs = await forEachTenant(tenantId, processTenant);
+    const total: NoShowResult = { success: runs.every((r) => r.success), processed: 0, handled: 0, errors: 0, results: [] };
+    for (const run of runs) {
+      if (!run.result) {
+        total.errors++;
+        continue;
+      }
+      total.processed += run.result.processed;
+      total.handled += run.result.handled;
+      total.errors += run.result.errors;
+      total.results.push(...run.result.results);
+    }
+    return total;
   } catch (error: any) {
     console.error('Error processing no-shows:', error);
     return {
@@ -241,31 +211,24 @@ export async function processNoShows(tenantId?: string | Types.ObjectId): Promis
       processed: 0,
       handled: 0,
       errors: 1,
-      results: [{ appointmentId: 'unknown', success: false, error: error.message }],
+      results: [],
     };
   }
 }
 
-/**
- * Generate no-show message
- */
-function generateNoShowMessage(appointment: any): string {
-  const patient = appointment.patient as any;
+function generateNoShowMessage(appointment: any, tz: string): string {
   const doctor = appointment.doctor as any;
-  const appointmentDate = new Date(appointment.appointmentDate).toLocaleDateString();
+  const appointmentDate = displayDate(appointment.appointmentDate || appointment.scheduledAt, tz);
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
   const rescheduleUrl = `${baseUrl}/book?reschedule=${appointment._id}`;
 
-  return `We noticed you missed your appointment on ${appointmentDate}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. We understand things come up. Would you like to reschedule? Visit ${rescheduleUrl} or reply RESCHEDULE.`;
+  return `We noticed you missed your appointment on ${appointmentDate}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. We understand things come up. Would you like to reschedule? Visit ${rescheduleUrl} or contact the clinic.`;
 }
 
-/**
- * Generate no-show email
- */
-function generateNoShowEmail(appointment: any, settings: any): { subject: string; html: string } {
+function generateNoShowEmail(appointment: any, settings: any, tz: string): { subject: string; html: string } {
   const patient = appointment.patient as any;
   const doctor = appointment.doctor as any;
-  const appointmentDate = new Date(appointment.appointmentDate).toLocaleDateString();
+  const appointmentDate = displayDate(appointment.appointmentDate || appointment.scheduledAt, tz);
   const clinicName = settings.clinicName || 'Clinic';
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
   const rescheduleUrl = `${baseUrl}/book?reschedule=${appointment._id}`;
@@ -292,17 +255,17 @@ function generateNoShowEmail(appointment: any, settings: any): { subject: string
           <h1>Missed Appointment</h1>
         </div>
         <div class="content">
-          <p>Dear ${patient.firstName} ${patient.lastName},</p>
-          <p>We noticed you missed your appointment scheduled for ${appointmentDate}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}.</p>
+          <p>Dear ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)},</p>
+          <p>We noticed you missed your appointment scheduled for ${escapeHtml(appointmentDate)}${doctor ? ` with Dr. ${escapeHtml(doctor.firstName)} ${escapeHtml(doctor.lastName)}` : ''}.</p>
           <p>We understand that things come up, and we're here to help you reschedule.</p>
           <div class="info-box">
             <p><strong>Original Appointment:</strong></p>
-            <p>Date: ${appointmentDate}</p>
-            <p>Time: ${appointment.appointmentTime || 'TBD'}</p>
-            <p>Appointment Code: ${appointment.appointmentCode}</p>
+            <p>Date: ${escapeHtml(appointmentDate)}</p>
+            <p>Time: ${escapeHtml(displayTime(appointment.appointmentTime))}</p>
+            ${appointment.appointmentCode ? `<p>Appointment Code: ${escapeHtml(appointment.appointmentCode)}</p>` : ''}
           </div>
           <p style="text-align: center;">
-            <a href="${rescheduleUrl}" class="button">Reschedule Appointment</a>
+            <a href="${escapeHtml(rescheduleUrl)}" class="button">Reschedule Appointment</a>
           </p>
           <p>If you have any questions or concerns, please don't hesitate to contact us.</p>
         </div>
@@ -316,4 +279,3 @@ function generateNoShowEmail(appointment: any, settings: any): { subject: string
 
   return { subject, html };
 }
-

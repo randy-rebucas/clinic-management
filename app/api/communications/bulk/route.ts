@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { isAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, patientTenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
+import { escapeHtml } from '@/lib/document-protection';
 import { sendSMS } from '@/lib/sms';
 import { sendEmail } from '@/lib/email';
 import { Types } from 'mongoose';
@@ -21,64 +23,57 @@ interface BulkCommunicationLog {
   createdAt: Date;
 }
 
+const bulkSchema = z.object({
+  type: z.enum(['sms', 'email']),
+  recipientIds: z.array(zObjectId).min(1).max(1000),
+  template: z.string().trim().min(1).max(5000),
+  variables: z
+    .record(z.string().regex(/^\w{1,50}$/), z.string().max(1000))
+    .refine((v) => Object.keys(v).length <= 50, 'Too many variables')
+    .optional(),
+  testMode: z.boolean().optional(),
+});
+
+function fillTemplate(text: string, variables: Record<string, string>, escape: (s: string) => string) {
+  let out = text;
+  for (const [key, value] of Object.entries(variables)) {
+    out = out.split(`{{${key}}}`).join(escape(value));
+  }
+  return out;
+}
+
 /**
  * POST /api/communications/bulk
  *
- * Send bulk SMS/Email to filtered patient groups
+ * Send bulk SMS/Email to selected patients of the caller's clinic. Admin only.
  *
  * Request body:
  * {
  *   type: 'sms' | 'email',
  *   recipientIds: string[],
- *   template: string, // template name or custom message
- *   variables?: Record<string, string>, // for template substitution
+ *   template: string, // custom message with {{variable}} placeholders
+ *   variables?: Record<string, string>,
  *   testMode?: boolean // if true, only log, don't actually send
  * }
  */
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
-  if (!session) return unauthorizedResponse();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  const permissionCheck = await requirePermission(session, 'patients', 'write');
-  if (permissionCheck) return permissionCheck;
+  if (!isAdmin(ctx.session)) {
+    return forbiddenResponse('Admin access required to send bulk communications');
+  }
+
+  const parsed = await parseBody(request, bulkSchema);
+  if (isValidationError(parsed)) return parsed;
+  const { type, recipientIds, template, variables = {}, testMode = false } = parsed.data;
 
   try {
     await connectDB();
 
-    const body = await request.json();
-    const { type, recipientIds = [], template, variables = {}, testMode = false } = body;
-
-    if (!['sms', 'email'].includes(type)) {
-      return NextResponse.json(
-        { success: false, error: 'Type must be sms or email' },
-        { status: 400 }
-      );
-    }
-
-    if (!Array.isArray(recipientIds) || recipientIds.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'recipientIds must be a non-empty array' },
-        { status: 400 }
-      );
-    }
-
-    if (!template || typeof template !== 'string') {
-      return NextResponse.json({ success: false, error: 'Template is required' }, { status: 400 });
-    }
-
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    // Fetch patients
-    const query: any = {
-      _id: { $in: recipientIds.map((id) => new Types.ObjectId(id)) },
-    };
-
-    if (tenantId) {
-      query.tenantIds = tenantId;
-    }
-
-    const patients = await Patient.find(query).select('_id phone email firstName').lean();
+    const patients = await Patient.find(patientTenantFilter(ctx.tenantId, { _id: { $in: recipientIds } }))
+      .select('_id phone email firstName')
+      .lean<{ _id: Types.ObjectId; phone?: string; email?: string; firstName?: string }[]>();
 
     if (patients.length === 0) {
       return NextResponse.json(
@@ -87,7 +82,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Prepare communication logs
     const logs: BulkCommunicationLog[] = [];
     const results = {
       queued: 0,
@@ -95,74 +89,55 @@ export async function POST(request: NextRequest) {
       failed: 0,
     };
 
-    // Process sends
-    for (const patient of patients) {
-      try {
-        let status: 'queued' | 'sent' | 'failed' = 'sent';
-        let error: string | undefined;
+    const smsMessage = fillTemplate(template, variables, (s) => s);
+    const emailHtml = fillTemplate(escapeHtml(template), variables, escapeHtml).replace(/\n/g, '<br>');
 
+    for (const patient of patients) {
+      let status: 'queued' | 'sent' | 'failed' = 'sent';
+      let error: string | undefined;
+
+      try {
         if (!testMode) {
           if (type === 'sms' && patient.phone) {
-            try {
-              // Substitute variables in message
-              let message = template;
-              for (const [key, value] of Object.entries(variables)) {
-                message = message.replace(`{{${key}}}`, String(value));
-              }
-              await sendSMS({ to: patient.phone, message });
-            } catch (err) {
+            const smsResult = await sendSMS({ to: patient.phone, message: smsMessage });
+            if (!smsResult.success) {
+              console.error('Bulk SMS failed', { patientId: String(patient._id), error: smsResult.error });
               status = 'failed';
-              error = String(err);
+              error = 'Delivery failed';
             }
           } else if (type === 'email' && patient.email) {
-            try {
-              // Substitute variables
-              let subject = 'Clinic Communication';
-              let body = template;
-              for (const [key, value] of Object.entries(variables)) {
-                subject = subject.replace(`{{${key}}}`, String(value));
-                body = body.replace(`{{${key}}}`, String(value));
-              }
-              await sendEmail({
-                to: patient.email,
-                subject,
-                html: body,
-              });
-            } catch (err) {
+            const emailResult = await sendEmail({
+              to: patient.email,
+              subject: 'Clinic Communication',
+              html: emailHtml,
+            });
+            if (!emailResult.success) {
+              console.error('Bulk email failed', { patientId: String(patient._id), error: emailResult.error });
               status = 'failed';
-              error = String(err);
+              error = 'Delivery failed';
             }
           }
         }
-
-        logs.push({
-          recipientId: patient._id as Types.ObjectId,
-          recipientPhone: patient.phone,
-          recipientEmail: patient.email,
-          type,
-          templateId: template,
-          variables,
-          status,
-          sentAt: status === 'sent' ? new Date() : undefined,
-          error,
-          createdAt: new Date(),
-        });
-
-        results[status]++;
       } catch (err) {
-        logs.push({
-          recipientId: patient._id as Types.ObjectId,
-          recipientPhone: patient.phone,
-          recipientEmail: patient.email,
-          type,
-          templateId: template,
-          variables,
-          status: 'failed',
-          error: String(err),
-          createdAt: new Date(),
-        });
-        results.failed++;
+        console.error('Bulk communication error', { patientId: String(patient._id), err });
+        status = 'failed';
+        error = 'Delivery failed';
       }
+
+      logs.push({
+        recipientId: patient._id,
+        recipientPhone: patient.phone,
+        recipientEmail: patient.email,
+        type,
+        templateId: template,
+        variables,
+        status,
+        sentAt: status === 'sent' ? new Date() : undefined,
+        error,
+        createdAt: new Date(),
+      });
+
+      results[status]++;
     }
 
     // TODO: Persist logs to database (create CommunicationLog model)
@@ -174,7 +149,7 @@ export async function POST(request: NextRequest) {
           totalRecipients: patients.length,
           results,
           testMode,
-          logs: testMode ? logs : [], // Include logs for test mode
+          logs: testMode ? logs : [],
         },
       },
       { status: testMode ? 200 : 201 }

@@ -1,49 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import { processReferralFollowUps } from '@/lib/automations/referral-followup';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+
+export const maxDuration = 300;
 
 /**
- * Referral Follow-Up Cron Job
- *
- * - Sends reminders to patients for referrals whose follow-up date is
- *   within the next 3 days.
- * - Escalates urgent/stat referrals that have been pending 7+ days.
- *
- * Schedule: 0 9 * * *  →  09:00 UTC = 17:00 PHT daily.
+ * Referral follow-up reminders and stale-referral escalations for every active tenant.
+ * Schedule: see vercel.json. Auth: Authorization: Bearer $CRON_SECRET.
  */
 export async function GET(request: NextRequest) {
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  const denied = requireCron(request);
+  if (denied) return denied;
 
   try {
-    let tenantId: Types.ObjectId | undefined;
-    try {
-      const tenantContext = await getTenantContext();
-      if (tenantContext.tenantId) {
-        tenantId = new Types.ObjectId(tenantContext.tenantId as string);
-      }
-    } catch {
-      // single-tenant mode
-    }
-
-    const result = await processReferralFollowUps(tenantId);
-
+    const result = await processReferralFollowUps();
     return NextResponse.json({
       success: result.errors.length === 0,
-      message: 'Referral follow-up processed',
+      message: 'Referral follow-ups processed',
       data: result,
     });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Cron] referral-followup error:', msg);
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+  } catch (error) {
+    console.error('[Cron] referral-followup error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to process referral-followup' }, { status: 500 });
   }
 }

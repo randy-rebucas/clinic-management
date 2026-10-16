@@ -1,26 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Specialization from '@/models/Specialization';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { isAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zShortText, escapeRegex } from '@/lib/api/validate';
 import { sanitizeSearch } from '@/lib/utils';
+
+const specializationCreateSchema = z.object({
+  name: zShortText.min(1),
+  description: z.string().trim().max(2000).optional(),
+  category: zShortText.optional(),
+  active: z.boolean().optional(),
+});
 
 /**
  * GET /api/specializations
- * 
+ *
  * Fetch all active medical specializations.
  * Specializations are global and shared across all tenants.
- * 
+ *
  * Query Parameters:
  * - category: Filter by category (optional)
  * - search: Search by name (optional)
  */
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
   try {
     await connectDB();
@@ -29,13 +35,13 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const search = searchParams.get('search');
 
-    // Build query - specializations are global (not tenant-scoped)
-    const query: any = { active: true };
-    
+    // Specializations are global (not tenant-scoped)
+    const query: Record<string, unknown> = { active: true };
+
     if (category) {
-      query.category = category;
+      query.category = category.slice(0, 200);
     }
-    
+
     if (search) {
       query.name = { $regex: sanitizeSearch(search), $options: 'i' };
     }
@@ -45,15 +51,15 @@ export async function GET(request: NextRequest) {
       .sort({ name: 1 })
       .lean();
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: specializations,
-      count: specializations.length 
+      count: specializations.length
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching specializations:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to fetch specializations' },
+      { success: false, error: 'Failed to fetch specializations' },
       { status: 500 }
     );
   }
@@ -61,40 +67,28 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/specializations
- * 
- * Create a new specialization.
- * Requires admin privileges.
+ *
+ * Create a new specialization. Requires admin privileges.
  */
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
+  if (!isAdmin(ctx.session)) {
+    return forbiddenResponse('Only admins can create specializations');
   }
 
-  // Check if user is admin
-  if (session.role !== 'admin') {
-    return NextResponse.json(
-      { success: false, error: 'Only admins can create specializations' },
-      { status: 403 }
-    );
-  }
+  const parsed = await parseBody(request, specializationCreateSchema);
+  if (isValidationError(parsed)) return parsed;
+  const { name, description, category, active = true } = parsed.data;
 
   try {
     await connectDB();
 
-    const body = await request.json();
-    const { name, description, category, active = true } = body;
-
-    if (!name) {
-      return NextResponse.json(
-        { success: false, error: 'Specialization name is required' },
-        { status: 400 }
-      );
-    }
-
-    // Check if specialization already exists (global check)
-    const existing = await Specialization.findOne({ name: name.trim() });
+    // Global, case-insensitive duplicate check
+    const existing = await Specialization.findOne({
+      name: { $regex: `^${escapeRegex(name)}$`, $options: 'i' },
+    }).select('_id').lean();
     if (existing) {
       return NextResponse.json(
         { success: false, error: 'Specialization already exists' },
@@ -102,12 +96,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const specialization = await Specialization.create({
-      name: name.trim(),
-      description: description?.trim(),
-      category: category?.trim(),
-      active,
-    });
+    const specialization = await Specialization.create({ name, description, category, active });
 
     return NextResponse.json(
       { success: true, data: specialization },
@@ -115,8 +104,14 @@ export async function POST(request: NextRequest) {
     );
   } catch (error: any) {
     console.error('Error creating specialization:', error);
+    if (error?.code === 11000) {
+      return NextResponse.json(
+        { success: false, error: 'Specialization already exists' },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to create specialization' },
+      { success: false, error: 'Failed to create specialization' },
       { status: 500 }
     );
   }

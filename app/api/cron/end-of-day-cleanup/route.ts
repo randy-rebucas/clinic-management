@@ -1,67 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireCron } from '@/lib/cron-auth';
 import { runEndOfDayCleanup } from '@/lib/automations/end-of-day-cleanup';
-import { getTenantContext } from '@/lib/tenant';
+import { combineDateAndTimeInTz } from '@/lib/tz';
+
+export const maxDuration = 300;
 
 /**
- * End-of-Day Cleanup Cron Job
+ * End-of-Day Cleanup Cron Job (every active tenant, clinic-local days)
  *
- * Marks all active queue entries (waiting / in-progress) and pending/scheduled
- * appointments for the current day as "completed".
- *
- * Schedule: 0 10 * * *  →  10:00 UTC = 18:00 PHT (UTC+8) every day.
+ * - In-progress queue entries → completed; waiting entries → cancelled.
+ * - Appointments whose time has passed and were never closed → completed if the patient
+ *   was seen (queue/visit), otherwise no-show. Later appointments are never touched.
  *
  * Manual trigger:
  *   GET /api/cron/end-of-day-cleanup
- *   GET /api/cron/end-of-day-cleanup?date=2025-03-15          (specific date)
- *   GET /api/cron/end-of-day-cleanup?queueStatus=cancelled    (override status)
- *   GET /api/cron/end-of-day-cleanup?appointmentStatus=cancelled
- *
- * Authentication:
- *   Vercel Cron sends the `x-vercel-cron: 1` header automatically.
- *   External callers must supply `Authorization: Bearer <CRON_SECRET>`.
+ *   GET /api/cron/end-of-day-cleanup?date=2025-03-15            (specific clinic-local date)
+ *   GET /api/cron/end-of-day-cleanup?queueStatus=completed       (waiting entries → completed)
+ *   GET /api/cron/end-of-day-cleanup?appointmentStatus=cancelled (unattended → cancelled)
  */
 export async function GET(request: NextRequest) {
-  // ── Auth ────────────────────────────────────────────────────────────────────
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && !isVercelCron) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-  }
+  const denied = requireCron(request);
+  if (denied) return denied;
 
   try {
     const searchParams = request.nextUrl.searchParams;
 
-    // Optional: override target date (ISO string, e.g. "2025-03-15")
     const dateParam = searchParams.get('date');
-    const targetDate = dateParam ? new Date(dateParam) : new Date();
-
-    // Optional: override completion status
-    const rawQueueStatus = searchParams.get('queueStatus');
-    const queueStatus =
-      rawQueueStatus === 'cancelled' ? 'cancelled' : 'completed';
-
-    const rawApptStatus = searchParams.get('appointmentStatus');
-    const appointmentStatus =
-      rawApptStatus === 'cancelled' ? 'cancelled' : 'completed';
-
-    // Resolve tenant (no-op for single-tenant deployments)
-    let tenantId: string | undefined;
-    try {
-      const tenantContext = await getTenantContext();
-      tenantId = tenantContext.tenantId?.toString();
-    } catch {
-      // Continue without tenant scoping (single-tenant mode)
+    if (dateParam && !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      return NextResponse.json({ success: false, error: 'date must be yyyy-MM-dd' }, { status: 400 });
     }
+    // Noon (Manila) on that date falls inside the same calendar day for any +/- 11h clinic zone.
+    const targetDate = dateParam ? combineDateAndTimeInTz(dateParam, '12:00') : undefined;
+
+    const queueStatus = searchParams.get('queueStatus') === 'completed' ? 'completed' : 'cancelled';
+    const rawApptStatus = searchParams.get('appointmentStatus');
+    const appointmentStatus = rawApptStatus === 'cancelled' ? 'cancelled' : 'no-show';
 
     const result = await runEndOfDayCleanup({
-      tenantId,
       targetDate,
       queueCompletionStatus: queueStatus,
       appointmentCompletionStatus: appointmentStatus,
@@ -76,7 +51,7 @@ export async function GET(request: NextRequest) {
           ? 'End-of-day cleanup completed with errors'
           : 'End-of-day cleanup completed successfully',
         data: {
-          targetDate: targetDate.toISOString().split('T')[0],
+          targetDate: dateParam || null,
           queues: {
             matched: result.queues.matched,
             updated: result.queues.updated,
@@ -93,12 +68,8 @@ export async function GET(request: NextRequest) {
       },
       { status: hasErrors ? 207 : 200 }
     );
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Cron] end-of-day-cleanup error:', msg);
-    return NextResponse.json(
-      { success: false, error: msg },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('[Cron] end-of-day-cleanup error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to run end-of-day cleanup' }, { status: 500 });
   }
 }

@@ -1,687 +1,618 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Modal } from './ui/Modal';
-import { useSetting } from './SettingsContext';
+import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import Link from 'next/link';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
+import { Panel } from './dashboards/shared';
+import { RankedBars, SERIES, TableTwin, TrendChart } from './dashboards/charts';
+import { FIELD, FOCUS_RING, ICON, Svg } from './appointments/shared';
+import { useMoney } from './invoices/shared';
+import { STOCK_STATE, categoryLabel, qty } from './inventory/shared';
+import { MAX_CUSTOM_DAYS, REPORTS, type ReportKey, type ReportPeriod } from '@/lib/reports';
+import type { StockStatus } from '@/lib/inventory';
 
-interface ReportData {
-  totalConsultations?: number;
-  totalIncome?: number;
-  totalPatients?: number;
-  [key: string]: any;
+// ---------------------------------------------------------------------------
+// Report shapes (as the /api/reports routes return them)
+// ---------------------------------------------------------------------------
+
+interface Ranged {
+  range: { start: string; end: string };
+  today: string;
+}
+interface Consultations extends Ranged {
+  total: number;
+  cancelled: number;
+  days: { date: string; visits: number }[];
+  byType: Record<string, number>;
+  byStatus: Record<string, number>;
+  byDoctor: Record<string, number>;
+}
+interface Income extends Ranged {
+  collected: number;
+  payments: number;
+  billed: number;
+  invoices: number;
+  stillOwed: number;
+  discounts: number;
+  tax: number;
+  professionalFees: number;
+  refunded: { count: number; amount: number };
+  days: { date: string; collected: number; billed: number }[];
+  byMethod: Record<string, number>;
+  byCategory: Record<string, number>;
+}
+interface Claims {
+  status: Record<'pending' | 'approved' | 'rejected' | 'paid', { count: number; amount: number }>;
+  claims: number;
+  avgDaysPending: number;
+  byInsurer: { insurer: string; claims: number; amount: number; open: number; paid: number; rejected: number }[];
+  oldest: { _id: string; invoiceNumber: string; createdAt: string; ageDays: number; claimStatus: string; claimAmount: number; provider: string; claimNumber?: string; patient?: { firstName: string; lastName: string } }[];
+}
+interface Patients extends Ranged {
+  total: number;
+  registered: number;
+  days: { date: string; registered: number }[];
+  ages: { label: string; count: number }[];
+  sex: Record<string, number>;
+  cities: { city: string; count: number }[];
+  onFile: { conditions: number; allergies: number; philHealth: number };
+  discounts: { senior: number; pwd: number; membership: number };
+}
+interface Stock {
+  range: { start: string; end: string };
+  items: number;
+  value: number;
+  byCategory: Record<string, number>;
+  status: Partial<Record<StockStatus, number>>;
+  topValue: { _id: string; name: string; quantity: number; unit: string; value: number }[];
+  mostUsed: { _id: string; name: string; unit: string; used: number; cost: number }[];
+  restocks: number;
+  lostMoves: number;
 }
 
-export default function ReportsPageClient() {
-  const [dashboardData, setDashboardData] = useState<ReportData>({});
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [selectedReport, setSelectedReport] = useState<string | null>(null);
-  const [reportData, setReportData] = useState<any>(null);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
-  const router = useRouter();
-  const currency = useSetting('billingSettings.currency', 'PHP');
+const PERIODS: { value: ReportPeriod; label: string }[] = [
+  { value: 'week', label: 'This week' },
+  { value: 'month', label: 'This month' },
+  { value: 'last-month', label: 'Last month' },
+  { value: 'custom', label: 'Dates…' },
+];
+const API_PERIOD: Record<Exclude<ReportPeriod, 'custom'>, string> = { week: 'weekly', month: 'monthly', 'last-month': 'last-month' };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 2,
-    }).format(amount);
+const DOWNLOAD = 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4';
+const fmtDay = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const count = (n: number) => n.toLocaleString('en-US');
+const words = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1).replace(/[-_]/g, ' ') : s);
+const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+type CsvRows = (string | number)[][];
+
+export default function ReportsPageClient({ allowed, initial }: { allowed: ReportKey[]; initial: ReportKey | null }) {
+  const { money, compact } = useMoney();
+  const [report, setReport] = useState<ReportKey | null>(initial);
+  const [period, setPeriod] = useState<ReportPeriod>('month');
+  const [from, setFrom] = useState(() => localKey(new Date(Date.now() - 29 * 86_400_000)));
+  const [to, setTo] = useState(() => localKey(new Date()));
+  const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const meta = REPORTS.find((r) => r.key === report) ?? null;
+  const span = Math.round((new Date(`${to}T12:00:00`).getTime() - new Date(`${from}T12:00:00`).getTime()) / 86_400_000) + 1;
+  const rangeProblem = period !== 'custom' ? null : !from || !to ? 'Choose both dates.' : span < 1 ? 'The start date is after the end date.' : span > MAX_CUSTOM_DAYS ? `Choose at most ${MAX_CUSTOM_DAYS} days (about three months).` : null;
+
+  const query = !meta?.ranged ? '' : period === 'custom' ? (rangeProblem ? null : `?startDate=${from}&endDate=${to}`) : `?period=${API_PERIOD[period]}`;
+  const url = meta && query !== null ? `/api/reports/${meta.path}${query}` : null;
+  const data = useKeyedFetch<unknown>(url);
+  // A different report's answer never renders under this tab while the new one loads.
+  const current = data.value && data.valueUrl?.startsWith(`/api/reports/${meta?.path}`) ? data.value : null;
+  const refreshing = data.loading && current !== null;
+
+  const onTabKey = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
+    const n = allowed.length;
+    const next = e.key === 'ArrowRight' ? (i + 1) % n : e.key === 'ArrowLeft' ? (i - 1 + n) % n : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : null;
+    if (next === null) return;
+    e.preventDefault();
+    setReport(allowed[next]);
+    tabs.current[next]?.focus();
   };
 
-  useEffect(() => {
-    fetchReports();
-  }, []);
-
-  const fetchReports = async (isRefresh = false) => {
-    try {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-      
-      const res = await fetch('/api/reports/dashboard');
-      
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      const contentType = res.headers.get('content-type');
-      let data;
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        console.error('API returned non-JSON response:', text.substring(0, 500));
-        data = { success: false, error: `API error: ${res.status} ${res.statusText}` };
-      }
-      
-      if (data.success) {
-        console.log('Dashboard data received:', data.data);
-        setDashboardData(data.data?.overview || {});
-      } else {
-        console.error('Failed to fetch reports:', data.error);
-      }
-    } catch (error) {
-      console.error('Failed to fetch reports:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  const fetchReport = async (reportType: string, reportPeriod?: 'daily' | 'weekly' | 'monthly') => {
-    setReportLoading(true);
-    setSelectedReport(reportType);
-    try {
-      const url = reportPeriod 
-        ? `/api/reports/${reportType}?period=${reportPeriod}`
-        : `/api/reports/${reportType}`;
-      
-      const res = await fetch(url);
-      
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      
-      const data = await res.json();
-      if (data.success) {
-        setReportData(data.data);
-      } else {
-        alert(data.error || 'Failed to fetch report');
-        setReportData(null);
-      }
-    } catch (error) {
-      console.error('Failed to fetch report:', error);
-      alert('Failed to fetch report. Please try again.');
-      setReportData(null);
-    } finally {
-      setReportLoading(false);
-    }
-  };
-
-  const renderReportDetails = (reportType: string, data: any) => {
-    switch (reportType) {
+  let body: { node: ReactNode; csv: CsvRows; range?: { start: string; end: string } } | null = null;
+  if (current && report) {
+    switch (report) {
       case 'consultations':
-        return (
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h4 className="text-lg font-bold text-gray-900">Consultations Summary</h4>
-            </div>
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-2">
-                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Total</p>
-              </div>
-              <p className="text-3xl font-bold text-gray-900">{data.summary?.totalConsultations || 0}</p>
-            </div>
-            {data.summary?.byType && (
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-indigo-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                    </svg>
-                  </div>
-                  <h5 className="text-sm font-bold text-gray-900 uppercase tracking-wider">By Type</h5>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {Object.entries(data.summary.byType).map(([type, count]: [string, any]) => (
-                    <div key={type} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm font-semibold text-gray-700 capitalize">{type}</p>
-                      <p className="text-sm font-bold text-gray-900">{count}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {data.summary?.byProvider && (
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-cyan-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                  </div>
-                  <h5 className="text-sm font-bold text-gray-900 uppercase tracking-wider">By Provider</h5>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {Object.entries(data.summary.byProvider).slice(0, 5).map(([provider, count]: [string, any]) => (
-                    <div key={provider} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm font-semibold text-gray-700">{provider}</p>
-                      <p className="text-sm font-bold text-gray-900">{count}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        );
+        body = consultationsReport(current as Consultations);
+        break;
       case 'income':
-        // Robust fallback for total paid
-        const paid =
-          data.summary?.totalPaid ||
-          data.summary?.totalRevenue ||
-          data.summary?.paid ||
-          data.summary?.revenue ||
-          data.totalPaid ||
-          data.totalRevenue ||
-          data.paid ||
-          data.revenue ||
-          0;
-        const billed = data.summary?.totalBilled || data.totalBilled || 0;
-        const outstanding = data.summary?.totalOutstanding || data.totalOutstanding || 0;
-        return (
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h4 className="text-lg font-bold text-gray-900">Income Summary</h4>
-            </div>
-            <div className="grid grid-cols-1 gap-4">
-              <div className="bg-gradient-to-br from-green-50 to-green-100/50 border border-green-200 rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Paid</p>
-                </div>
-                <p className="text-3xl font-bold text-green-700">
-                  {formatCurrency(paid)}
-                </p>
-                {paid === 0 && (
-                  <p className="text-xs text-yellow-600 mt-2">No paid value found in report data. Check API response and payment status mapping.</p>
-                )}
-              </div>
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Billed</p>
-                </div>
-                <p className="text-3xl font-bold text-gray-900">{formatCurrency(billed)}</p>
-              </div>
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100/50 border border-yellow-200 rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Outstanding</p>
-                </div>
-                <p className="text-3xl font-bold text-yellow-700">
-                  {formatCurrency(outstanding)}
-                </p>
-              </div>
-            </div>
-            {data.breakdowns?.byPaymentMethod && (
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-blue-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                    </svg>
-                  </div>
-                  <h5 className="text-sm font-bold text-gray-900 uppercase tracking-wider">By Payment Method</h5>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {Object.entries(data.breakdowns.byPaymentMethod).map(([method, amount]: [string, any]) => (
-                    <div key={method} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm font-semibold text-gray-700 capitalize">{method.replace('_', ' ')}</p>
-                      <p className="text-sm font-bold text-gray-900">{formatCurrency(amount)}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      case 'demographics':
-        return (
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <h4 className="text-lg font-bold text-gray-900">Demographics Summary</h4>
-            </div>
-            {data.demographics?.ageGroups && (
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-purple-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </div>
-                  <h5 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Age Groups</h5>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {Object.entries(data.demographics.ageGroups).map(([age, count]: [string, any]) => (
-                    <div key={age} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm font-semibold text-gray-700">{age}</p>
-                      <p className="text-sm font-bold text-gray-900">{count}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      case 'inventory':
-        return (
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-teal-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
-              </div>
-              <h4 className="text-lg font-bold text-gray-900">Inventory Summary</h4>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Items</p>
-                </div>
-                <p className="text-3xl font-bold text-gray-900">{data.summary?.totalItems || 0}</p>
-              </div>
-              <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-200 rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Low Stock</p>
-                </div>
-                <p className="text-3xl font-bold text-red-700">{data.summary?.lowStockCount || 0}</p>
-              </div>
-            </div>
-            {data.lowStockItems && data.lowStockItems.length > 0 && (
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-red-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  </div>
-                  <h5 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Low Stock Items</h5>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {data.lowStockItems.slice(0, 5).map((item: any) => (
-                    <div key={item._id} className="flex justify-between items-center py-2 px-3 bg-red-50 rounded-lg border border-red-100">
-                      <p className="text-sm font-semibold text-gray-700 truncate max-w-[200px]">
-                        {item.name}
-                      </p>
-                      <p className="text-sm font-bold text-red-700">
-                        {item.quantity} {item.unit}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        );
+        body = incomeReport(current as Income, money, compact);
+        break;
       case 'hmo-claims':
-        return (
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h4 className="text-lg font-bold text-gray-900">HMO Claims Summary</h4>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Claims</p>
-                </div>
-                <p className="text-3xl font-bold text-gray-900">{data.summary?.totalClaims || 0}</p>
-              </div>
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100/50 border border-yellow-200 rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Pending</p>
-                </div>
-                <p className="text-3xl font-bold text-yellow-700">{data.summary?.pendingClaims || 0}</p>
-              </div>
-            </div>
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-2">
-                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Backlog Amount</p>
-              </div>
-              <p className="text-3xl font-bold text-gray-900">{formatCurrency(data.summary?.backlogAmount || 0)}</p>
-            </div>
-          </div>
-        );
-      default:
-        return (
-          <div className="flex flex-col items-center gap-4 py-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </div>
-            <p className="text-sm font-semibold text-gray-600">Report data not available</p>
-          </div>
-        );
+        body = claimsReport(current as Claims, money);
+        break;
+      case 'patients':
+        body = patientsReport(current as Patients);
+        break;
+      case 'inventory':
+        body = stockReport(current as Stock, money);
+        break;
     }
+  }
+
+  const download = () => {
+    if (!body || !meta) return;
+    const csv = body.csv.map((row) => row.map((c) => (/[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : String(c))).join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    const suffix = body.range ? `${body.range.start.slice(0, 10)}-to-${body.range.end.slice(0, 10)}` : localKey(new Date());
+    a.href = URL.createObjectURL(blob);
+    a.download = `${meta.key}-${suffix}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
 
-  if (loading) {
+  if (allowed.length === 0 || !report) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-violet-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-violet-100 border-t-violet-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading reports...</p>
-          </div>
+      <Shell>
+        <Title />
+        <div className="rounded-lg border border-gray-200 bg-white px-6 py-14 text-center">
+          <p className="font-semibold text-gray-900">No reports are available to you</p>
+          <p className="mt-1 text-sm text-gray-500">Each report follows the module it covers. Ask a clinic admin if you need billing, patient or inventory figures.</p>
         </div>
-      </section>
+      </Shell>
     );
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-violet-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-violet-500 to-violet-600 rounded-lg shadow-md">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Reports & Analytics</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">View clinic performance metrics and reports</p>
-                </div>
-              </div>
+    <Shell>
+      <Title />
+
+      <div className="flex flex-col gap-4">
+        <div role="tablist" aria-label="Reports" className="flex gap-1 overflow-x-auto border-b border-gray-200">
+          {allowed.map((k, i) => {
+            const r = REPORTS.find((x) => x.key === k)!;
+            const on = k === report;
+            return (
               <button
-                onClick={() => {
-                  fetchReports(true);
-                  if (selectedReport) {
-                    fetchReport(selectedReport, selectedReport === 'consultations' || selectedReport === 'income' ? period : undefined);
-                  }
+                key={k}
+                ref={(el) => {
+                  tabs.current[i] = el;
                 }}
-                disabled={refreshing || loading}
-                className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all flex items-center gap-2 text-sm font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Refresh reports"
+                id={`rpt-tab-${k}`}
+                role="tab"
+                type="button"
+                aria-selected={on}
+                aria-controls="rpt-panel"
+                tabIndex={on ? 0 : -1}
+                onClick={() => setReport(k)}
+                onKeyDown={(e) => onTabKey(e, i)}
+                className={`-mb-px whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal ${on ? 'border-brand-teal-dark text-brand-teal-deep' : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900'}`}
               >
-                <svg className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Refresh
+                {r.label}
               </button>
-            </div>
-          </div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-b border-blue-200 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="p-2 bg-blue-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Consultations</p>
-                </div>
-              </div>
-              <div className="p-5">
-                <p className="text-3xl font-bold text-gray-900">
-                  {dashboardData.periodVisits || dashboardData.totalConsultations || 0}
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-b border-emerald-200 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="p-2 bg-emerald-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Income</p>
-                </div>
-              </div>
-              <div className="p-5">
-                <p className="text-3xl font-bold text-emerald-600">
-                  {formatCurrency(dashboardData.periodRevenue || dashboardData.totalIncome || 0)}
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-b border-purple-200 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="p-2 bg-purple-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Patients</p>
-                </div>
-              </div>
-              <div className="p-5">
-                <p className="text-3xl font-bold text-gray-900">
-                  {dashboardData.totalPatients || 0}
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-br from-violet-50 to-violet-100/50 border-b border-violet-200 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="p-2 bg-violet-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Reports</p>
-                </div>
-              </div>
-              <div className="p-5">
-                <p className="text-3xl font-bold text-violet-600">6</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Available Reports */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-violet-500 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900">Available Reports</h3>
-                  </div>
-                  {(selectedReport === 'consultations' || selectedReport === 'income') && (
-                    <select
-                      value={period}
-                      onChange={(e) => {
-                        setPeriod(e.target.value as 'daily' | 'weekly' | 'monthly');
-                        if (selectedReport) {
-                          fetchReport(selectedReport, e.target.value as 'daily' | 'weekly' | 'monthly');
-                        }
-                      }}
-                      className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all text-sm bg-white font-semibold"
-                    >
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
-                    </select>
-                  )}
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="flex flex-col gap-3">
-                  <button
-                    onClick={() => fetchReport('consultations', period)}
-                    className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
-                      selectedReport === 'consultations'
-                        ? 'border-violet-500 bg-violet-50'
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${
-                        selectedReport === 'consultations' ? 'bg-violet-500' : 'bg-blue-100'
-                      }`}>
-                        <svg className={`w-5 h-5 ${selectedReport === 'consultations' ? 'text-white' : 'text-blue-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-bold text-gray-900">Consultations Report</p>
-                        <p className="text-xs text-gray-600 mt-0.5">View consultation statistics</p>
-                      </div>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => fetchReport('income', period)}
-                    className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
-                      selectedReport === 'income'
-                        ? 'border-violet-500 bg-violet-50'
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${
-                        selectedReport === 'income' ? 'bg-violet-500' : 'bg-emerald-100'
-                      }`}>
-                        <svg className={`w-5 h-5 ${selectedReport === 'income' ? 'text-white' : 'text-emerald-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-bold text-gray-900">Income Report</p>
-                        <p className="text-xs text-gray-600 mt-0.5">Financial performance analysis</p>
-                      </div>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => fetchReport('demographics')}
-                    className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
-                      selectedReport === 'demographics'
-                        ? 'border-violet-500 bg-violet-50'
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${
-                        selectedReport === 'demographics' ? 'bg-violet-500' : 'bg-purple-100'
-                      }`}>
-                        <svg className={`w-5 h-5 ${selectedReport === 'demographics' ? 'text-white' : 'text-purple-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-bold text-gray-900">Demographics Report</p>
-                        <p className="text-xs text-gray-600 mt-0.5">Patient demographics analysis</p>
-                      </div>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => fetchReport('inventory')}
-                    className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
-                      selectedReport === 'inventory'
-                        ? 'border-violet-500 bg-violet-50'
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${
-                        selectedReport === 'inventory' ? 'bg-violet-500' : 'bg-teal-100'
-                      }`}>
-                        <svg className={`w-5 h-5 ${selectedReport === 'inventory' ? 'text-white' : 'text-teal-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-bold text-gray-900">Inventory Report</p>
-                        <p className="text-xs text-gray-600 mt-0.5">Inventory status and usage</p>
-                      </div>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => fetchReport('hmo-claims')}
-                    className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
-                      selectedReport === 'hmo-claims'
-                        ? 'border-violet-500 bg-violet-50'
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${
-                        selectedReport === 'hmo-claims' ? 'bg-violet-500' : 'bg-amber-100'
-                      }`}>
-                        <svg className={`w-5 h-5 ${selectedReport === 'hmo-claims' ? 'text-white' : 'text-amber-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-bold text-gray-900">HMO Claims Report</p>
-                        <p className="text-xs text-gray-600 mt-0.5">HMO claims and reimbursements</p>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Report Details */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="p-5 border-b border-gray-200 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-violet-500 rounded-lg">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900">Report Details</h3>
-                </div>
-              </div>
-              <div className="p-6">
-                {reportLoading ? (
-                  <div className="flex flex-col items-center gap-4 min-h-[200px] justify-center">
-                    <div className="relative">
-                      <div className="animate-spin rounded-full h-16 w-16 border-4 border-violet-100 border-t-violet-600"></div>
-                    </div>
-                    <p className="text-sm text-gray-600 font-medium">Loading report...</p>
-                  </div>
-                ) : reportData ? (
-                  <div className="max-h-[500px] overflow-y-auto">
-                    {renderReportDetails(selectedReport!, reportData)}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-4 min-h-[200px] justify-center">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <p className="text-sm font-semibold text-gray-600">Select a report to view details</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+            );
+          })}
         </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          {meta?.ranged ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <div role="group" aria-label="Period" className="inline-flex flex-wrap gap-1 rounded-md border border-gray-200 bg-white p-1">
+                {PERIODS.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    aria-pressed={period === p.value}
+                    onClick={() => setPeriod(p.value)}
+                    className={`rounded px-3.5 py-1.5 text-sm font-semibold transition-colors ${FOCUS_RING} ${period === p.value ? 'bg-brand-teal-dark text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              {period === 'custom' && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <label htmlFor="rpt-from" className="sr-only">
+                    From
+                  </label>
+                  <input id="rpt-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className={`${FIELD} w-auto font-mono`} />
+                  <span className="text-sm text-gray-500">to</span>
+                  <label htmlFor="rpt-to" className="sr-only">
+                    To
+                  </label>
+                  <input id="rpt-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className={`${FIELD} w-auto font-mono`} />
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-600">As things stand now; the period doesn’t apply to this report.</p>
+          )}
+          <button
+            type="button"
+            onClick={download}
+            disabled={!body || data.loading}
+            className={`inline-flex w-fit items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
+          >
+            <Svg d={DOWNLOAD} />
+            Download CSV
+          </button>
+        </div>
+        {rangeProblem && (
+          <p role="alert" className="text-sm font-medium text-red-700">
+            {rangeProblem}
+          </p>
+        )}
       </div>
+
+      <div id="rpt-panel" role="tabpanel" aria-labelledby={`rpt-tab-${report}`} aria-busy={data.loading} className="flex flex-col gap-6">
+        {data.error && !data.loading ? (
+          <div role="alert" className="flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 p-4">
+            <p className="text-sm font-medium text-red-800">This report didn&apos;t load ({data.error}).</p>
+            <button type="button" onClick={data.reload} className={`inline-flex shrink-0 items-center gap-1.5 rounded text-sm font-semibold text-red-800 hover:text-red-900 ${FOCUS_RING}`}>
+              <Svg d={ICON.refresh} />
+              Try again
+            </button>
+          </div>
+        ) : body ? (
+          <div className={`flex flex-col gap-6 transition-opacity duration-200 ${refreshing ? 'opacity-60' : ''}`}>
+            {body.range && (
+              <p className="text-sm text-gray-600">
+                <span className="font-mono text-gray-900">{fmtDay(body.range.start)}</span> to <span className="font-mono text-gray-900">{fmtDay(body.range.end)}</span>
+              </p>
+            )}
+            {body.node}
+          </div>
+        ) : rangeProblem ? null : (
+          <div className="animate-pulse space-y-6" aria-hidden="true">
+            <div className="h-28 rounded-lg border border-gray-200 bg-white" />
+            <div className="h-72 rounded-lg border border-gray-200 bg-white" />
+          </div>
+        )}
+      </div>
+    </Shell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reports
+// ---------------------------------------------------------------------------
+
+function consultationsReport(d: Consultations) {
+  const days = d.days.length;
+  const doctors = Object.keys(d.byDoctor).length;
+  const node = (
+    <>
+      <Figures
+        items={[
+          { label: 'Visits', value: count(d.total), sub: d.cancelled ? `${count(d.cancelled)} cancelled, not counted` : 'none cancelled' },
+          { label: 'A day on average', value: (d.total / Math.max(1, days)).toFixed(1), sub: `over ${days} ${days === 1 ? 'day' : 'days'}` },
+          { label: 'Still open', value: count(d.byStatus.open ?? 0), sub: d.byStatus.draft ? `${count(d.byStatus.draft)} notes still drafts` : 'no drafts', attention: (d.byStatus.draft ?? 0) > 0 },
+          { label: 'Doctors seeing patients', value: count(doctors), sub: 'with at least one visit' },
+        ]}
+      />
+      <Panel title="Visits per day">
+        <TrendChart days={d.days} today={d.today} series={[{ key: 'visits', label: 'Visits', color: SERIES.teal, kind: 'column' }]} format={count} caption="Visits per day" />
+      </Panel>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel title="By doctor">
+          <RankedBars values={d.byDoctor} format={count} empty="No visits in this period." label={(k) => k} />
+        </Panel>
+        <Panel title="By kind of visit">
+          <RankedBars values={d.byType} format={count} empty="No visits in this period." label={words} />
+        </Panel>
+      </div>
+    </>
+  );
+  const csv: CsvRows = [['Day', 'Visits'], ...d.days.map((x) => [x.date, x.visits]), [], ['Doctor', 'Visits'], ...Object.entries(d.byDoctor), [], ['Kind of visit', 'Visits'], ...Object.entries(d.byType).map(([k, v]) => [words(k), v])];
+  return { node, csv, range: d.range };
+}
+
+function incomeReport(d: Income, money: (v: number) => string, compact: (v: number) => string) {
+  const node = (
+    <>
+      <Figures
+        items={[
+          { label: 'Collected', value: money(d.collected), sub: `${count(d.payments)} ${d.payments === 1 ? 'payment' : 'payments'} received` },
+          { label: 'Billed', value: money(d.billed), sub: `on ${count(d.invoices)} ${d.invoices === 1 ? 'invoice' : 'invoices'} raised` },
+          { label: 'Still owed on those', value: money(d.stillOwed), sub: d.billed > 0 ? `${Math.round((d.stillOwed / d.billed) * 100)}% of what was billed` : 'nothing billed', attention: d.stillOwed > 0 },
+          { label: 'Discounts given', value: money(d.discounts), sub: d.refunded.count ? `${count(d.refunded.count)} refunded (${money(d.refunded.amount)}) left out` : 'no refunds' },
+        ]}
+      />
+      <Panel title="Collected and billed per day" subtitle="Payments count on the day received, including payments on older invoices.">
+        <TrendChart
+          days={d.days}
+          today={d.today}
+          series={[
+            { key: 'collected', label: 'Collected', color: SERIES.teal, kind: 'column' },
+            { key: 'billed', label: 'Billed', color: SERIES.blue, kind: 'line' },
+          ]}
+          format={money}
+          formatTick={compact}
+          caption="Money collected and billed per day"
+        />
+      </Panel>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel title="Collected, by payment method">
+          <RankedBars values={d.byMethod} format={money} />
+        </Panel>
+        <Panel title="Billed, by kind of service" subtitle={d.professionalFees > 0 ? `Plus ${money(d.professionalFees)} in doctors’ professional fees.` : undefined}>
+          <RankedBars values={d.byCategory} format={money} empty="No services billed in this period." label={words} />
+        </Panel>
+      </div>
+      <p className="text-sm text-gray-500">
+        Tax billed: <span className="font-mono text-gray-900">{money(d.tax)}</span>.{' '}
+        <Link href="/invoices?status=open" className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+          See what is still to collect
+        </Link>
+      </p>
+    </>
+  );
+  const csv: CsvRows = [
+    ['Day', 'Collected', 'Billed'],
+    ...d.days.map((x) => [x.date, x.collected, x.billed]),
+    [],
+    ['Payment method', 'Collected'],
+    ...Object.entries(d.byMethod),
+    [],
+    ['Kind of service', 'Billed'],
+    ...Object.entries(d.byCategory),
+    [],
+    ['Total collected', d.collected],
+    ['Total billed', d.billed],
+    ['Still owed on invoices raised', d.stillOwed],
+    ['Discounts', d.discounts],
+    ['Tax', d.tax],
+    ['Professional fees', d.professionalFees],
+  ];
+  return { node, csv, range: d.range };
+}
+
+function claimsReport(d: Claims, money: (v: number) => string) {
+  const open = d.status.pending.amount + d.status.approved.amount;
+  const node = (
+    <>
+      <Figures
+        items={[
+          { label: 'Waiting on insurers', value: money(open), sub: `${count(d.status.pending.count + d.status.approved.count)} claims pending or approved, not yet paid`, attention: open > 0 },
+          { label: 'Pending, on average', value: `${d.avgDaysPending} days`, sub: `${count(d.status.pending.count)} still pending` },
+          { label: 'Paid by insurers', value: money(d.status.paid.amount), sub: `${count(d.status.paid.count)} claims` },
+          { label: 'Rejected', value: count(d.status.rejected.count), sub: money(d.status.rejected.amount), attention: d.status.rejected.count > 0 },
+        ]}
+      />
+      <Panel title="By insurer" subtitle={`${count(d.claims)} claims to date, refunded invoices left out.`}>
+        {d.byInsurer.length === 0 ? (
+          <p className="px-5 py-10 text-center text-sm text-gray-500">No invoices are billed to an insurer or HMO yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50/60 text-left text-gray-500">
+                  <th scope="col" className="px-5 py-2.5 font-medium">Insurer</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Claims</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Waiting</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Paid</th>
+                  <th scope="col" className="px-5 py-2.5 text-right font-medium">Rejected</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {d.byInsurer.map((r) => (
+                  <tr key={r.insurer}>
+                    <th scope="row" className="px-5 py-2.5 text-left font-semibold text-gray-900">{r.insurer}</th>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums text-gray-900">{count(r.claims)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums text-gray-900">{money(r.open)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums text-gray-900">{money(r.paid)}</td>
+                    <td className={`px-5 py-2.5 text-right font-mono tabular-nums ${r.rejected ? 'font-semibold text-red-700' : 'text-gray-500'}`}>{count(r.rejected)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+      {d.oldest.length > 0 && (
+        <Panel title="Waiting longest" subtitle="Pending or approved and not yet paid, oldest first.">
+          <ol className="divide-y divide-gray-100">
+            {d.oldest.map((c, i) => (
+              <li key={c._id} className="motion-row-in grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 px-5 py-3 text-sm" style={{ animationDelay: `${Math.min(i * 25, 240)}ms` }}>
+                <div className="min-w-0">
+                  <Link href={`/invoices/${c._id}`} className={`rounded font-semibold text-gray-900 hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                    {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : 'Patient record unavailable'}
+                  </Link>
+                  <p className="mt-0.5 truncate text-gray-500">
+                    {c.provider} · <span className="font-mono text-xs">{c.invoiceNumber}</span>
+                    {c.claimNumber && <span className="font-mono text-xs"> · claim {c.claimNumber}</span>} · {words(c.claimStatus)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-mono font-semibold tabular-nums text-gray-900">{money(c.claimAmount)}</p>
+                  <p className={`font-mono text-xs tabular-nums ${c.ageDays > 60 ? 'font-semibold text-red-700' : c.ageDays > 30 ? 'font-semibold text-amber-800' : 'text-gray-500'}`}>{c.ageDays} days</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </Panel>
+      )}
+    </>
+  );
+  const csv: CsvRows = [
+    ['Insurer', 'Claims', 'Amount claimed', 'Waiting', 'Paid', 'Rejected'],
+    ...d.byInsurer.map((r) => [r.insurer, r.claims, r.amount, r.open, r.paid, r.rejected]),
+    [],
+    ['Oldest open claims'],
+    ['Invoice', 'Patient', 'Insurer', 'Claim number', 'Status', 'Amount', 'Days'],
+    ...d.oldest.map((c) => [c.invoiceNumber, c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : '', c.provider, c.claimNumber ?? '', c.claimStatus, c.claimAmount, c.ageDays]),
+  ];
+  return { node, csv };
+}
+
+function patientsReport(d: Patients) {
+  const pct = (n: number) => (d.total ? `${Math.round((n / d.total) * 100)}% of patients` : '');
+  const sexLabel: Record<string, string> = { male: 'Male', female: 'Female', other: 'Other', unspecified: 'Not recorded' };
+  const node = (
+    <>
+      <Figures
+        items={[
+          { label: 'Registered in this period', value: count(d.registered), sub: `${count(d.total)} patients in all` },
+          { label: 'Senior citizens', value: count(d.discounts.senior), sub: `by ID or by age 60+ · ${pct(d.discounts.senior)}` },
+          { label: 'PWD', value: count(d.discounts.pwd), sub: pct(d.discounts.pwd) || 'none' },
+          { label: 'PhilHealth on file', value: count(d.onFile.philHealth), sub: pct(d.onFile.philHealth) || 'none' },
+        ]}
+      />
+      <Panel title="New patients per day">
+        <TrendChart days={d.days} today={d.today} series={[{ key: 'registered', label: 'Registered', color: SERIES.teal, kind: 'column' }]} format={count} caption="Patients registered per day" />
+      </Panel>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Panel title="Age" subtitle="All patients with a birth date, as of today.">
+          <RankedBars values={Object.fromEntries(d.ages.map((a) => [a.label, a.count]))} format={count} empty="No birth dates on file." label={(k) => k} />
+        </Panel>
+        <Panel title="Home city" subtitle="The eight most common.">
+          <RankedBars values={Object.fromEntries(d.cities.map((c) => [c.city, c.count]))} format={count} empty="No addresses on file." label={(k) => k} />
+        </Panel>
+        <Panel title="On file">
+          <dl className="divide-y divide-gray-100 text-sm">
+            {[
+              ['Sex: ' + Object.entries(d.sex).map(([k, v]) => `${sexLabel[k] ?? k} ${count(v)}`).join(', '), null],
+              ['Medical conditions recorded', d.onFile.conditions],
+              ['Allergies recorded', d.onFile.allergies],
+              ['Membership discount', d.discounts.membership],
+            ].map(([label, v], i) => (
+              <div key={i} className="flex items-baseline justify-between gap-3 px-5 py-2.5">
+                <dt className="text-gray-700">{label}</dt>
+                {v !== null && <dd className="font-mono tabular-nums text-gray-900">{count(v as number)}</dd>}
+              </div>
+            ))}
+          </dl>
+        </Panel>
+      </div>
+    </>
+  );
+  const csv: CsvRows = [
+    ['Day', 'Registered'],
+    ...d.days.map((x) => [x.date, x.registered]),
+    [],
+    ['Age', 'Patients'],
+    ...d.ages.map((a) => [a.label, a.count]),
+    [],
+    ['Sex', 'Patients'],
+    ...Object.entries(d.sex).map(([k, v]) => [sexLabel[k] ?? k, v]),
+    [],
+    ['Home city', 'Patients'],
+    ...d.cities.map((c) => [c.city, c.count]),
+    [],
+    ['Senior citizens', d.discounts.senior],
+    ['PWD', d.discounts.pwd],
+    ['Membership', d.discounts.membership],
+    ['PhilHealth on file', d.onFile.philHealth],
+    ['Conditions recorded', d.onFile.conditions],
+    ['Allergies recorded', d.onFile.allergies],
+    ['All patients', d.total],
+  ];
+  return { node, csv, range: d.range };
+}
+
+function stockReport(d: Stock, money: (v: number) => string) {
+  const toReorder = (d.status['low-stock'] ?? 0) + (d.status['out-of-stock'] ?? 0);
+  const usedCost = d.mostUsed.reduce((s, r) => s + r.cost, 0);
+  const node = (
+    <>
+      <Figures
+        items={[
+          { label: 'Stock on hand, at cost', value: money(d.value), sub: `across ${count(d.items)} items, as of now` },
+          { label: 'Needs reordering', value: count(toReorder), sub: d.status['out-of-stock'] ? `${count(d.status['out-of-stock'])} out of stock` : 'none out of stock', attention: (d.status['out-of-stock'] ?? 0) > 0 },
+          { label: 'Restocks in this period', value: count(d.restocks), sub: 'deliveries recorded' },
+          { label: 'Thrown away in this period', value: count(d.lostMoves), sub: 'damaged or expired stock taken off', attention: d.lostMoves > 0 },
+        ]}
+      />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel title="Used most in this period" subtitle={d.mostUsed.length ? `Dispensed or used in the clinic · about ${money(usedCost)} at cost` : 'Dispensed or used in the clinic.'}>
+          {d.mostUsed.length === 0 ? (
+            <p className="px-5 py-10 text-center text-sm text-gray-500">No use recorded in this period. Use is counted from dispensing and “used in the clinic” adjustments.</p>
+          ) : (
+            <ol className="divide-y divide-gray-100">
+              {d.mostUsed.map((r, i) => (
+                <li key={r._id} className="flex items-baseline justify-between gap-3 px-5 py-2.5 text-sm">
+                  <Link href={`/inventory/${r._id}`} className={`min-w-0 truncate rounded text-gray-900 hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                    <span className="mr-2 font-mono text-xs text-gray-400">{i + 1}</span>
+                    {r.name}
+                  </Link>
+                  <span className="shrink-0 font-mono tabular-nums text-gray-900">
+                    {qty(r.used)} <span className="font-sans text-gray-500">{r.unit}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </Panel>
+        <Panel title="Stock value, by kind" subtitle="At cost, as of now.">
+          <RankedBars values={d.byCategory} format={money} empty="No stock recorded." label={categoryLabel} />
+          {d.topValue.length > 0 && (
+            <div className="border-t border-gray-100 px-5 py-3">
+              <p className="mb-1.5 text-xs font-medium text-gray-500">Most valuable items</p>
+              <ul className="space-y-1 text-sm">
+                {d.topValue.slice(0, 5).map((r) => (
+                  <li key={r._id} className="flex items-baseline justify-between gap-3">
+                    <Link href={`/inventory/${r._id}`} className={`min-w-0 truncate rounded text-gray-700 hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                      {r.name}
+                    </Link>
+                    <span className="shrink-0 font-mono tabular-nums text-gray-900">{money(r.value)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Panel>
+      </div>
+      <TableTwin
+        caption="Items by status"
+        head={['Status', 'Items']}
+        rows={(Object.keys(STOCK_STATE) as StockStatus[]).map((k) => [STOCK_STATE[k].label, count(d.status[k] ?? 0)])}
+      />
+    </>
+  );
+  const csv: CsvRows = [
+    ['Used most', 'Quantity', 'Unit', 'Cost'],
+    ...d.mostUsed.map((r) => [r.name, r.used, r.unit, r.cost]),
+    [],
+    ['Kind', 'Value at cost'],
+    ...Object.entries(d.byCategory).map(([k, v]) => [categoryLabel(k), v]),
+    [],
+    ['Most valuable item', 'On hand', 'Unit', 'Value at cost'],
+    ...d.topValue.map((r) => [r.name, r.quantity, r.unit, r.value]),
+    [],
+    ['Status', 'Items'],
+    ...(Object.keys(STOCK_STATE) as StockStatus[]).map((k) => [STOCK_STATE[k].label, d.status[k] ?? 0]),
+  ];
+  return { node, csv, range: d.range };
+}
+
+// ---------------------------------------------------------------------------
+// Pieces
+// ---------------------------------------------------------------------------
+
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-7xl mx-auto flex flex-col gap-6">{children}</div>
     </section>
   );
 }
 
+function Title() {
+  return (
+    <header>
+      <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Reports</h1>
+      <p className="mt-1 text-sm sm:text-base text-gray-600">How the clinic is doing, for any period, ready to download.</p>
+    </header>
+  );
+}
+
+/** A ruled row of headline figures. A figure turns its note red only when it needs attention. */
+function Figures({ items }: { items: { label: string; value: string; sub: string; attention?: boolean }[] }) {
+  return (
+    <dl className="grid overflow-hidden rounded-lg border border-gray-200 bg-white sm:grid-cols-2 lg:grid-cols-4">
+      {items.map((f, i) => (
+        <div key={f.label} className="motion-panel-in -mb-px -mr-px border-b border-r border-gray-200 p-5" style={{ animationDelay: `${i * 40}ms` }}>
+          <dt className="text-sm text-gray-600">{f.label}</dt>
+          <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums text-gray-900 sm:text-3xl">{f.value}</dd>
+          <dd className={`mt-1 text-sm ${f.attention ? 'font-medium text-red-700' : 'text-gray-500'}`}>{f.sub}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}

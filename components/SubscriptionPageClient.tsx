@@ -106,11 +106,11 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-100 border-t-blue-600"></div>
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-brand-teal/20 border-t-brand-teal-dark"></div>
             </div>
             <p className="text-gray-600 font-medium">Loading subscription status...</p>
           </div>
@@ -172,20 +172,20 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
       };
     }
     return {
-      container: 'bg-blue-50 border border-blue-200',
-      icon: 'text-blue-600',
-      title: 'text-blue-800',
-      text: 'text-blue-700',
+      container: 'bg-brand-teal-light/60 border border-brand-teal/30',
+      icon: 'text-brand-teal-dark',
+      title: 'text-brand-teal-deep',
+      text: 'text-brand-teal-deep',
     };
   };
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
+    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6">
           {/* Error Message */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-red-500 rounded-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -198,16 +198,16 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
           )}
 
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-md">
+                <div className="p-2 bg-brand-teal-dark rounded-lg shadow-md">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-6 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Subscription Management</h1>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Subscription Management</h1>
                   <p className="text-sm sm:text-base text-gray-600 mt-1">Manage your clinic subscription and billing</p>
                 </div>
               </div>
@@ -215,9 +215,9 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
           </div>
 
           {/* Current Subscription Status */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-blue-500 rounded-lg">
+              <div className="p-2 bg-brand-teal-dark rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -226,9 +226,9 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-blue-500 rounded-lg">
+                  <div className="p-2 bg-brand-teal-dark rounded-lg">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
@@ -240,7 +240,7 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
                 </div>
               </div>
               
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
                 <div className="flex items-center gap-3 mb-2">
                   <div className={`p-2 rounded-lg ${
                     status.isActive && !status.isExpired ? 'bg-green-500' :
@@ -261,7 +261,7 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
               </div>
 
               {status.expiresAt && (
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="p-2 bg-purple-500 rounded-lg">
                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -277,7 +277,7 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
               )}
               
               {status.daysRemaining !== null && (
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
                   <div className="flex items-center gap-3 mb-2">
                     <div className={`p-2 rounded-lg ${
                       status.daysRemaining <= 3 ? 'bg-red-500' :
@@ -303,12 +303,12 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
             const isUrgent = status.isExpired || (status.daysRemaining !== null && status.daysRemaining <= 3);
             
             return (
-              <div className={`rounded-xl p-6 ${alertClasses.container} shadow-sm`}>
+              <div className={`rounded-lg p-6 ${alertClasses.container} shadow-sm`}>
                 <div className="flex items-start gap-3">
                   <div className="flex-shrink-0">
                     <div className={`p-2 rounded-lg ${
                       isUrgent ? 'bg-red-500' : 
-                      status.daysRemaining !== null && status.daysRemaining <= 7 ? 'bg-yellow-500' : 'bg-blue-500'
+                      status.daysRemaining !== null && status.daysRemaining <= 7 ? 'bg-yellow-500' : 'bg-brand-teal-dark'
                     }`}>
                       {isUrgent ? (
                         <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -348,9 +348,9 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
           })()}
 
           {/* Subscription Plans */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-blue-500 rounded-lg">
+              <div className="p-2 bg-brand-teal-dark rounded-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -360,13 +360,13 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Basic Plan */}
-              <div className={`rounded-xl p-6 transition-all relative ${
+              <div className={`rounded-lg p-6 transition-all relative ${
                 status.isActive && !status.isExpired && status.plan === 'basic'
                   ? 'border-2 border-green-500 shadow-md bg-green-50/30'
-                  : 'border border-gray-200 hover:border-blue-500 hover:shadow-md'
+                  : 'border border-gray-200 hover:border-brand-teal hover:shadow-md'
               }`}>
                 {status.isActive && !status.isExpired && status.plan === 'basic' && (
-                  <div className="absolute top-0 left-0 bg-green-500 text-white px-3 py-1 rounded-br-xl rounded-tl-lg text-xs font-semibold flex items-center gap-1">
+                  <div className="absolute top-0 left-0 bg-green-500 text-white px-3 py-1 rounded-br-lg rounded-tl-lg text-xs font-semibold flex items-center gap-1">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
@@ -408,20 +408,20 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
               </div>
 
               {/* Professional Plan */}
-              <div className={`rounded-xl p-6 relative shadow-md ${
+              <div className={`rounded-lg p-6 relative shadow-md ${
                 status.isActive && !status.isExpired && status.plan === 'professional'
                   ? 'border-2 border-green-500 bg-green-50/30'
-                  : 'border-2 border-blue-500'
+                  : 'border-2 border-brand-teal'
               }`}>
                 {status.isActive && !status.isExpired && status.plan === 'professional' ? (
-                  <div className="absolute top-0 right-0 bg-green-500 text-white px-3 py-1 rounded-bl-xl rounded-tr-lg text-xs font-semibold flex items-center gap-1">
+                  <div className="absolute top-0 right-0 bg-green-500 text-white px-3 py-1 rounded-bl-lg rounded-tr-lg text-xs font-semibold flex items-center gap-1">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                     CURRENT PLAN
                   </div>
                 ) : (
-                  <div className="absolute top-0 right-0 bg-blue-500 text-white px-3 py-1 rounded-bl-xl text-xs font-semibold">
+                  <div className="absolute top-0 right-0 bg-brand-teal-dark text-white px-3 py-1 rounded-bl-lg text-xs font-semibold">
                     POPULAR
                   </div>
                 )}
@@ -456,7 +456,7 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
                   className={`w-full px-5 py-2.5 rounded-lg font-semibold transition-all shadow-md disabled:cursor-not-allowed ${
                     status.isActive && !status.isExpired && status.plan === 'professional'
                       ? 'bg-green-100 text-green-700 border border-green-300'
-                      : 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 disabled:opacity-50'
+                      : 'bg-brand-teal-dark text-white hover:bg-brand-teal-deep disabled:opacity-50'
                   }`}
                 >
                   {status.isActive && !status.isExpired && status.plan === 'professional'
@@ -466,13 +466,13 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
               </div>
 
               {/* Enterprise Plan */}
-              <div className={`rounded-xl p-6 transition-all relative ${
+              <div className={`rounded-lg p-6 transition-all relative ${
                 status.isActive && !status.isExpired && status.plan === 'enterprise'
                   ? 'border-2 border-green-500 shadow-md bg-green-50/30'
-                  : 'border border-gray-200 hover:border-blue-500 hover:shadow-md'
+                  : 'border border-gray-200 hover:border-brand-teal hover:shadow-md'
               }`}>
                 {status.isActive && !status.isExpired && status.plan === 'enterprise' && (
-                  <div className="absolute top-0 left-0 bg-green-500 text-white px-3 py-1 rounded-br-xl rounded-tl-lg text-xs font-semibold flex items-center gap-1">
+                  <div className="absolute top-0 left-0 bg-green-500 text-white px-3 py-1 rounded-br-lg rounded-tl-lg text-xs font-semibold flex items-center gap-1">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
@@ -523,7 +523,7 @@ export default function SubscriptionPageClient({ user, tenant }: SubscriptionPag
 
           {/* Action Buttons */}
           {status.isExpired && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="text-center">
                 <p className="text-gray-700 mb-4 font-medium">
                   Your subscription has expired. Please select a plan above to continue using the service.

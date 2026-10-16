@@ -2,137 +2,170 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { SignupFormSchema, LoginFormSchema, SignupFormState, LoginFormState } from '@/app/lib/definitions';
-import { createSession, deleteSession, verifySession } from '@/app/lib/dal';
-import { sanitizeEmail, checkRateLimit, resetRateLimit } from '@/app/lib/security';
+import { headers } from 'next/headers';
+import bcrypt from 'bcryptjs';
+import { LoginFormSchema, LoginFormState } from '@/app/lib/definitions';
+import {
+  createSession,
+  deleteSession,
+  createPending2fa,
+  readPending2fa,
+  clearPending2fa,
+  revokeUserSessions,
+  type StaffRole,
+} from '@/app/lib/dal';
+import { hashInviteToken, isInviteTokenFormat, validatePasswordPolicy, verifyInviteToken } from '@/lib/user-invite';
+import { sanitizeEmail } from '@/app/lib/security';
 import { getTenantContext } from '@/lib/tenant';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Role from '@/models/Role';
-import bcrypt from 'bcryptjs';
+import { consumeRateLimit, resetRateLimit, getClientIp, rateLimiters } from '@/lib/middleware/rate-limit';
+import { verifyUserTotp } from '@/app/api/auth/2fa/totp';
 
-export async function signup(
-  state: SignupFormState,
-  formData: FormData
-): Promise<SignupFormState> {
-  // Require an authenticated admin or owner session
-  const callerSession = await verifySession();
-  if (!callerSession || !['admin', 'owner'].includes(callerSession.role)) {
-    return { message: 'Unauthorized. Only admins can create staff accounts.' };
-  }
+const INVALID_CREDENTIALS = 'Invalid email or password.';
+const SET_PASSWORD_FIRST = 'Check your email to set your password.';
+const INVALID_INVITE = 'This link is invalid or has expired. Ask your administrator to send a new one.';
 
-  // Rate limit by caller userId to prevent spam
-  const rateLimitCheck = checkRateLimit(`signup:${callerSession.userId}`);
-  if (!rateLimitCheck.allowed) {
-    return {
-      message: `Too many signup attempts. Please try again in ${rateLimitCheck.remainingTime} minute(s).`,
-    };
-  }
+// Generous per-IP cap: a whole clinic may share one public IP
+const STAFF_LOGIN_IP_LIMIT = { name: 'staff-login-ip', windowMs: 15 * 60 * 1000, maxRequests: 50 };
+const SET_PASSWORD_IP_LIMIT = { name: 'set-password-ip', windowMs: 15 * 60 * 1000, maxRequests: 20 };
+const SET_PASSWORD_TOKEN_LIMIT = { name: 'set-password-token', windowMs: 15 * 60 * 1000, maxRequests: 5 };
 
-  // Validate form fields
-  const validatedFields = SignupFormSchema.safeParse({
-    name: formData.get('name'),
-    email: formData.get('email'),
-    password: formData.get('password'),
-    role: formData.get('role') || 'receptionist',
-  });
+let dummyHash: string | null = null;
+/** bcrypt hash used to keep response time constant when the account does not exist. */
+function getDummyHash(): string {
+  if (!dummyHash) dummyHash = bcrypt.hashSync('timing-equalizer-not-a-password', 12);
+  return dummyHash;
+}
 
-  // If any form fields are invalid, return early
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-    };
-  }
-
-  const { name, email, password, role } = validatedFields.data;
-  const sanitizedEmail = sanitizeEmail(email);
-
+async function clientIp(): Promise<string> {
   try {
-    await connectDB();
-
-    // Get tenant context for multi-tenant support
-    const tenantContext = await getTenantContext();
-    const tenantId = tenantContext.tenantId;
-
-    // Check if user already exists (case-insensitive, within tenant scope if tenant exists)
-    const userQuery: any = { email: sanitizedEmail };
-    if (tenantId) {
-      userQuery.tenantId = tenantId;
-    } else {
-      // If no tenant, check for users without tenantId (backward compatibility)
-      userQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const existingUser = await User.findOne(userQuery);
-    if (existingUser) {
-      return {
-        errors: {
-          email: ['An account with this email already exists.'],
-        },
-      };
-    }
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 12);
-
-    // Get or create default role if role is provided as string
-    let roleDoc;
-    
-    if (role) {
-      roleDoc = await Role.findOne({ name: role });
-      if (!roleDoc) {
-        // Create default role if it doesn't exist
-        const roleName = role as string;
-        roleDoc = await Role.create({
-          name: roleName,
-          displayName: roleName.charAt(0).toUpperCase() + roleName.slice(1),
-          isActive: true,
-        });
-      }
-    } else {
-      // Default to receptionist role if not specified
-      roleDoc = await Role.findOne({ name: 'receptionist' });
-      if (!roleDoc) {
-        roleDoc = await Role.create({
-          name: 'receptionist',
-          displayName: 'Receptionist',
-          isActive: true,
-        });
-      }
-    }
-
-    // Create user (normalize email to lowercase)
-    const userData: any = {
-      name,
-      email: sanitizedEmail,
-      password: hashedPassword,
-      role: roleDoc._id,
-    };
-    
-    // Add tenantId if tenant exists
-    if (tenantId) {
-      userData.tenantId = tenantId;
-    }
-    
-    const user = await User.create(userData);
-
-    // Create session with role name, roleId, and tenantId
-    await createSession(
-      user._id.toString(), 
-      user.email, 
-      roleDoc.name as 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative',
-      roleDoc._id.toString(),
-      tenantId || undefined
-    );
-
-    revalidatePath('/dashboard');
-    redirect('/dashboard');
-  } catch (error) {
-    console.error('Signup error:', error);
-    return {
-      message: 'An error occurred during signup. Please try again.',
-    };
+    return getClientIp(await headers());
+  } catch {
+    return 'unknown';
   }
+}
+
+/**
+ * Count one attempt for this account. Limits apply per (account + IP) and, more loosely,
+ * per account across all IPs, so one client cannot quickly lock the real user out.
+ * Returns the wait in minutes when blocked.
+ */
+async function checkLoginLimits(ip: string, account: string): Promise<number | null> {
+  const checks = [
+    await consumeRateLimit(STAFF_LOGIN_IP_LIMIT, ip),
+    await consumeRateLimit(rateLimiters.authAccount.config, ip, account),
+    await consumeRateLimit(rateLimiters.authAccountGlobal.config, ip, account),
+  ];
+  const blocked = checks.find((c) => !c.allowed);
+  return blocked ? Math.max(1, Math.ceil(blocked.retryAfter / 60)) : null;
+}
+
+type ResolvedRole = { roleName: StaffRole; roleId?: string };
+
+async function resolveRole(user: any, tenantId: string | null): Promise<ResolvedRole> {
+  // Helper function to find role by name with tenant context
+  const findRoleByName = async (name: string): Promise<any> => {
+    if (tenantId) {
+      // First try tenant-scoped role
+      const tenantRole = await Role.findOne({ name, tenantId });
+      if (tenantRole) return tenantRole;
+      // If not found, try global role
+      return await Role.findOne({
+        name,
+        $or: [{ tenantId: { $exists: false } }, { tenantId: null }]
+      });
+    }
+    // No tenant, look for global role
+    return await Role.findOne({ name });
+  };
+
+  // Helper function to determine role from user profile fields
+  const determineRoleFromProfile = (u: any): string | null => {
+    if (u.adminProfile) return 'admin';
+    if (u.doctorProfile) return 'doctor';
+    if (u.nurseProfile) return 'nurse';
+    if (u.receptionistProfile) return 'receptionist';
+    if (u.accountantProfile) return 'accountant';
+    if (u.medicalRepresentativeProfile) return 'medical-representative';
+    return null;
+  };
+
+  let roleName: StaffRole = 'receptionist';
+  let roleId: string | undefined;
+
+  const fallback = async () => {
+    // Try to determine role from profile fields
+    const profileRole = determineRoleFromProfile(user);
+    if (profileRole) {
+      const fallbackRole = await findRoleByName(profileRole);
+      if (fallbackRole) {
+        roleName = fallbackRole.name as StaffRole;
+        roleId = fallbackRole._id.toString();
+      }
+    }
+    // If still no roleId, try receptionist as last resort
+    if (!roleId) {
+      const fallbackRole = await findRoleByName('receptionist');
+      if (fallbackRole) {
+        roleId = fallbackRole._id.toString();
+        console.warn('Using receptionist role as fallback', { userId: user._id });
+      }
+    }
+  };
+
+  if (user.role) {
+    if (typeof user.role === 'object' && 'name' in user.role) {
+      roleName = (user.role as any).name as StaffRole;
+      roleId = (user.role as any)._id?.toString();
+    } else {
+      // Role is ObjectId, fetch it (consider tenant context if applicable)
+      let roleDoc;
+      if (tenantId) {
+        roleDoc = await Role.findOne({ _id: user.role, tenantId });
+        if (!roleDoc) {
+          roleDoc = await Role.findOne({
+            _id: user.role,
+            $or: [{ tenantId: { $exists: false } }, { tenantId: null }]
+          });
+        }
+      } else {
+        roleDoc = await Role.findById(user.role);
+      }
+
+      if (roleDoc) {
+        roleName = roleDoc.name as StaffRole;
+        roleId = roleDoc._id.toString();
+      } else {
+        console.error('Login error: Role not found by ID', { roleId: user.role, userId: user._id, tenantId });
+        await fallback();
+      }
+    }
+  } else {
+    console.error('Login error: User has no role assigned', { userId: user._id });
+    await fallback();
+  }
+
+  return { roleName, roleId };
+}
+
+async function auditLogin(user: any, roleName: string, ip: string, tenantId: string | null) {
+  try {
+    const { logLogin } = await import('@/lib/audit');
+    const userAgent = (await headers()).get('user-agent') ?? undefined;
+    await logLogin(user._id.toString(), user.email, roleName, ip, userAgent, tenantId ?? undefined);
+  } catch (error) {
+    // Don't fail login if audit logging fails
+    console.error('Error logging login:', error);
+  }
+}
+
+function tenantUserQuery(email: string, tenantId: string | null): Record<string, unknown> {
+  // Find user by email within tenant scope if tenant exists
+  return tenantId
+    ? { email, tenantId }
+    : { email, $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
 }
 
 export async function login(
@@ -154,56 +187,40 @@ export async function login(
 
   const { email, password } = validatedFields.data;
   const sanitizedEmail = sanitizeEmail(email);
+  let destination: string;
 
   try {
-    // Rate limiting check
-    const rateLimitCheck = checkRateLimit(sanitizedEmail);
-    if (!rateLimitCheck.allowed) {
+    const ip = await clientIp();
+
+    // Get tenant context for multi-tenant support
+    const tenantContext = await getTenantContext();
+    const tenantId = tenantContext.tenantId;
+    const accountKey = `staff:${tenantId ?? 'global'}:${sanitizedEmail}`;
+
+    const waitMinutes = await checkLoginLimits(ip, accountKey);
+    if (waitMinutes) {
       return {
         errors: {
-          email: [
-            `Too many login attempts. Please try again in ${rateLimitCheck.remainingTime} minute(s).`,
-          ],
+          email: [`Too many login attempts. Please try again in ${waitMinutes} minute(s).`],
         },
       };
     }
 
     await connectDB();
 
-    // Get tenant context for multi-tenant support
-    const tenantContext = await getTenantContext();
-    const tenantId = tenantContext.tenantId;
-    // Find user by email (case-insensitive, within tenant scope if tenant exists) with role populated
-    const userQuery: any = { email: sanitizedEmail };
-    if (tenantId) {
-      userQuery.tenantId = tenantId;
-    } else {
-      // If no tenant, check for users without tenantId (backward compatibility)
-      userQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const user = await User.findOne(userQuery)
+    const user = await User.findOne(tenantUserQuery(sanitizedEmail, tenantId))
       .populate('role', 'name displayName');
-    if (!user) {
-      // Use generic error message to prevent user enumeration
-      return {
-        errors: {
-          email: ['Invalid email or password.'],
-        },
-      };
+
+    // Always run bcrypt so response time does not reveal whether the account exists
+    const passwordMatch = await bcrypt.compare(password, user?.password || getDummyHash());
+    if (!user || !user.password || !passwordMatch) {
+      return { errors: { email: [INVALID_CREDENTIALS] } };
     }
 
-    // Check if user has a password
-    if (!user.password) {
-      console.error('Login error: User has no password set', { userId: user._id, email: user.email });
-      return {
-        errors: {
-          email: ['Invalid email or password.'],
-        },
-      };
+    // Password is correct, so it is safe to say why access is refused
+    if (user.mustSetPassword) {
+      return { errors: { email: [SET_PASSWORD_FIRST] } };
     }
-
-    // Check if user is active
     if (user.status !== 'active') {
       return {
         errors: {
@@ -212,153 +229,25 @@ export async function login(
       };
     }
 
-    // Verify password
-    const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!passwordMatch) {
-      // Use generic error message to prevent user enumeration
-      return {
-        errors: {
-          email: ['Invalid email or password.'],
-        },
-      };
-    }
+    await resetRateLimit(rateLimiters.authAccount.config, ip, accountKey);
 
-    // Reset rate limit on successful login
-    resetRateLimit(sanitizedEmail);
-
-    // Helper function to find role by name with tenant context
-    const findRoleByName = async (name: string): Promise<any> => {
-      if (tenantId) {
-        // First try tenant-scoped role
-        const tenantRole = await Role.findOne({ name, tenantId });
-        if (tenantRole) return tenantRole;
-        // If not found, try global role
-        return await Role.findOne({ 
-          name,
-          $or: [{ tenantId: { $exists: false } }, { tenantId: null }]
-        });
-      } else {
-        // No tenant, look for global role
-        return await Role.findOne({ name });
-      }
-    };
-
-    // Helper function to determine role from user profile fields
-    const determineRoleFromProfile = (user: any): string | null => {
-      if (user.adminProfile) return 'admin';
-      if (user.doctorProfile) return 'doctor';
-      if (user.nurseProfile) return 'nurse';
-      if (user.receptionistProfile) return 'receptionist';
-      if (user.accountantProfile) return 'accountant';
-      if (user.medicalRepresentativeProfile) return 'medical-representative';
-      return null;
-    };
-
-    // Get role name from populated role or fallback
-    let roleName: 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative' = 'receptionist';
-    let roleId: string | undefined;
-    
-    if (user.role) {
-      if (typeof user.role === 'object' && 'name' in user.role) {
-        roleName = (user.role as any).name as 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
-        roleId = (user.role as any)._id?.toString();
-      } else {
-        // Role is ObjectId, fetch it (consider tenant context if applicable)
-        let roleDoc;
-        if (tenantId) {
-          // First try tenant-scoped role
-          roleDoc = await Role.findOne({ _id: user.role, tenantId });
-          // If not found, try global role
-          if (!roleDoc) {
-            roleDoc = await Role.findOne({ 
-              _id: user.role,
-              $or: [{ tenantId: { $exists: false } }, { tenantId: null }]
-            });
-          }
-        } else {
-          // No tenant, look for global role or any role with this ID
-          roleDoc = await Role.findById(user.role);
-        }
-        
-        if (roleDoc) {
-          roleName = roleDoc.name as 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
-          roleId = roleDoc._id.toString();
-        } else {
-          console.error('Login error: Role not found by ID', { 
-            roleId: user.role, 
-            userId: user._id, 
-            email: user.email,
-            tenantId 
-          });
-          // Try to determine role from profile fields
-          const profileRole = determineRoleFromProfile(user);
-          if (profileRole) {
-            const fallbackRole = await findRoleByName(profileRole);
-            if (fallbackRole) {
-              roleName = fallbackRole.name as 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
-              roleId = fallbackRole._id.toString();
-            }
-          }
-          // If still no roleId, try receptionist as last resort
-          if (!roleId) {
-            const fallbackRole = await findRoleByName('receptionist');
-            if (fallbackRole) {
-              roleId = fallbackRole._id.toString();
-              console.warn(`⚠️  Using receptionist role as fallback`, { userId: user._id, email: user.email });
-            }
-          }
-        }
-      }
+    if (user.totpEnabled) {
+      await createPending2fa(user._id.toString(), tenantId ?? undefined);
+      destination = '/login/2fa';
     } else {
-      console.error('Login error: User has no role assigned', { 
-        userId: user._id, 
-        email: user.email 
-      });
-      // Try to determine role from profile fields
-      const profileRole = determineRoleFromProfile(user);
-      if (profileRole) {
-        const fallbackRole = await findRoleByName(profileRole);
-        if (fallbackRole) {
-          roleName = fallbackRole.name as 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
-          roleId = fallbackRole._id.toString();
-        }
-      }
-      // If still no roleId, try receptionist as last resort
-      if (!roleId) {
-        const fallbackRole = await findRoleByName('receptionist');
-        if (fallbackRole) {
-          roleId = fallbackRole._id.toString();
-          console.warn(`⚠️  Using receptionist role as fallback`, { userId: user._id, email: user.email });
-        }
-      }
-    }
-
-    // Create session with role name, roleId, and tenantId
-    await createSession(
-      user._id.toString(), 
-      user.email, 
-      roleName, 
-      roleId,
-      tenantId || undefined
-    );
-
-    // Log login for audit trail
-    try {
-      const { logLogin } = await import('@/lib/audit');
-      await logLogin(
+      const { roleName, roleId } = await resolveRole(user, tenantId);
+      await createSession(
         user._id.toString(),
         user.email,
-        user.role,
-        undefined, // IP address would need to be passed from request
-        undefined // User agent would need to be passed from request
+        roleName,
+        roleId,
+        tenantId || undefined,
+        user.sessionVersion ?? 0
       );
-    } catch (error) {
-      // Don't fail login if audit logging fails
-      console.error('Error logging login:', error);
+      await auditLogin(user, roleName, ip, tenantId);
+      revalidatePath('/dashboard');
+      destination = '/dashboard';
     }
-
-    revalidatePath('/dashboard');
-    redirect('/dashboard');
   } catch (error: any) {
     // Log full details server-side only — never expose error internals to the client
     console.error('Login error:', {
@@ -369,6 +258,186 @@ export async function login(
     return {
       message: 'An error occurred during login. Please try again.',
     };
+  }
+
+  redirect(destination);
+}
+
+export type TwoFactorFormState =
+  | {
+      errors?: { code?: string[] };
+      message?: string;
+    }
+  | undefined;
+
+/**
+ * Second step of login for accounts with 2FA: verify the authenticator code against the
+ * short-lived pending-2fa cookie, then issue the real session.
+ */
+export async function verifyLoginTotp(
+  state: TwoFactorFormState,
+  formData: FormData
+): Promise<TwoFactorFormState> {
+  const code = formData.get('code');
+  if (typeof code !== 'string' || !/^\d{6}$/.test(code.replace(/\s+/g, ''))) {
+    return { errors: { code: ['Enter the 6-digit code from your authenticator app.'] } };
+  }
+
+  let destination: string;
+  try {
+    const pending = await readPending2fa();
+    if (!pending) {
+      return { message: 'Your sign-in attempt expired. Please sign in again.' };
+    }
+
+    const tenantContext = await getTenantContext();
+    const tenantId = tenantContext.tenantId;
+    if ((pending.tenantId ?? null) !== (tenantId ?? null)) {
+      await clearPending2fa();
+      return { message: 'Your sign-in attempt expired. Please sign in again.' };
+    }
+
+    const ip = await clientIp();
+    const accountKey = `2fa:${pending.userId}`;
+    const waitMinutes = await checkLoginLimits(ip, accountKey);
+    if (waitMinutes) {
+      return { message: `Too many attempts. Please try again in ${waitMinutes} minute(s).` };
+    }
+
+    await connectDB();
+    const user = await User.findById(pending.userId).populate('role', 'name displayName');
+    if (!user || user.status !== 'active' || !user.totpEnabled) {
+      await clearPending2fa();
+      return { message: 'Your sign-in attempt expired. Please sign in again.' };
+    }
+
+    if (!(await verifyUserTotp(user._id.toString(), code))) {
+      return { errors: { code: ['Invalid or already used code. Please try again.'] } };
+    }
+
+    await resetRateLimit(rateLimiters.authAccount.config, ip, accountKey);
+    await clearPending2fa();
+
+    const { roleName, roleId } = await resolveRole(user, tenantId);
+    await createSession(
+      user._id.toString(),
+      user.email,
+      roleName,
+      roleId,
+      tenantId || undefined,
+      user.sessionVersion ?? 0
+    );
+    await auditLogin(user, roleName, ip, tenantId);
+    revalidatePath('/dashboard');
+    destination = '/dashboard';
+  } catch (error: any) {
+    console.error('2FA login error:', { message: error?.message, name: error?.name });
+    return { message: 'An error occurred during sign-in. Please try again.' };
+  }
+
+  redirect(destination);
+}
+
+export type SetPasswordFormState =
+  | {
+      errors?: { password?: string[]; confirmPassword?: string[] };
+      message?: string;
+      success?: boolean;
+      loginPath?: string;
+    }
+  | undefined;
+
+/**
+ * Complete an invite or admin-triggered reset: validate the single-use token, store the
+ * new password, clear the token and sign out every existing session.
+ */
+export async function setPasswordWithToken(
+  state: SetPasswordFormState,
+  formData: FormData
+): Promise<SetPasswordFormState> {
+  const token = formData.get('token');
+  const password = formData.get('password');
+  const confirmPassword = formData.get('confirmPassword');
+
+  if (!isInviteTokenFormat(token)) {
+    return { message: INVALID_INVITE };
+  }
+
+  try {
+    const ip = await clientIp();
+    const limits = [
+      await consumeRateLimit(SET_PASSWORD_IP_LIMIT, ip),
+      await consumeRateLimit(SET_PASSWORD_TOKEN_LIMIT, ip, token),
+    ];
+    const blocked = limits.find((c) => !c.allowed);
+    if (blocked) {
+      return { message: `Too many attempts. Please try again in ${Math.max(1, Math.ceil(blocked.retryAfter / 60))} minute(s).` };
+    }
+
+    await connectDB();
+    const tokenHash = hashInviteToken(token);
+    const user = await User.findOne({ inviteTokenHash: tokenHash })
+      .select('+inviteTokenHash +inviteExpiresAt email tenantId medicalRepresentativeProfile')
+      .lean<{
+        _id: { toString(): string };
+        email: string;
+        tenantId?: { toString(): string };
+        inviteTokenHash?: string;
+        inviteExpiresAt?: Date;
+        medicalRepresentativeProfile?: unknown;
+      } | null>();
+    if (!user || !verifyInviteToken(token, user)) {
+      return { message: INVALID_INVITE };
+    }
+
+    const policyErrors = validatePasswordPolicy(password, { email: user.email });
+    if (policyErrors.length) {
+      return { errors: { password: policyErrors } };
+    }
+    if (password !== confirmPassword) {
+      return { errors: { confirmPassword: ['Passwords do not match.'] } };
+    }
+
+    const passwordHash = await bcrypt.hash(password as string, 12);
+    // Conditional on the same token so two concurrent submissions cannot both succeed.
+    const updated = await User.findOneAndUpdate(
+      { _id: user._id, inviteTokenHash: tokenHash, inviteExpiresAt: { $gt: new Date() } },
+      {
+        $set: { password: passwordHash, mustSetPassword: false },
+        $unset: { inviteTokenHash: 1, inviteExpiresAt: 1 },
+      },
+      { new: false, projection: { _id: 1 } }
+    ).lean();
+    if (!updated) {
+      return { message: INVALID_INVITE };
+    }
+
+    const userId = user._id.toString();
+    await revokeUserSessions(userId);
+
+    try {
+      const { createAuditLog } = await import('@/lib/audit');
+      await createAuditLog({
+        userId,
+        userEmail: user.email,
+        tenantId: user.tenantId?.toString(),
+        action: 'password_change',
+        resource: 'user',
+        resourceId: userId,
+        description: 'Password set via invite/reset link',
+        ipAddress: ip,
+      });
+    } catch (auditError) {
+      console.error('Error logging password setup:', auditError);
+    }
+
+    return {
+      success: true,
+      loginPath: user.medicalRepresentativeProfile ? '/medical-representatives/login' : '/login',
+    };
+  } catch (error: any) {
+    console.error('Set password error:', { message: error?.message, name: error?.name });
+    return { message: 'An error occurred. Please try again.' };
   }
 }
 
@@ -385,10 +454,10 @@ export async function loginMedicalRep() {
 export async function logout() {
   try {
     await deleteSession();
+    await clearPending2fa();
     revalidatePath('/');
   } catch (error) {
     console.error('Error during logout:', error);
   }
   redirect('/login');
 }
-

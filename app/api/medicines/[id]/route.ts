@@ -1,46 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Medicine from '@/models/Medicine';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
+import { pickFields, MEDICINE_FIELDS } from '@/lib/pick-fields';
+
+const isAdminRole = (role?: string) => role === 'admin' || role === 'owner';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
   try {
     await connectDB();
     const { id } = await params;
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const medicine = await Medicine.findOne(query);
-    
-    if (!medicine) {
-      return NextResponse.json(
-        { success: false, error: 'Medicine not found' },
-        { status: 404 }
-      );
-    }
-    
+    if (!isValidId(id)) return notFound('Medicine');
+
+    const medicine = await Medicine.findOne(tenantFilter(ctx.tenantId, { _id: id })).lean();
+    if (!medicine) return notFound('Medicine');
+
     return NextResponse.json({ success: true, data: medicine });
   } catch (error: any) {
     console.error('Error fetching medicine:', error);
@@ -55,13 +35,10 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  if (session.role !== 'admin') {
+  if (!isAdminRole(ctx.session.role)) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized' },
       { status: 403 }
@@ -71,42 +48,31 @@ export async function PUT(
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
+    if (!isValidId(id)) return notFound('Medicine');
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    const body = await request.json().catch(() => null);
+    const { data, rejected } = pickFields(body, MEDICINE_FIELDS);
+    if (rejected.length) {
+      return NextResponse.json({ success: false, error: 'Invalid medicine data' }, { status: 400 });
     }
 
-    const medicine = await Medicine.findOneAndUpdate(query, body, {
+    const medicine = await Medicine.findOneAndUpdate(tenantFilter(ctx.tenantId, { _id: id }), { $set: data }, {
       new: true,
       runValidators: true,
     });
 
-    if (!medicine) {
-      return NextResponse.json(
-        { success: false, error: 'Medicine not found' },
-        { status: 404 }
-      );
-    }
+    if (!medicine) return notFound('Medicine');
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: medicine,
       message: 'Medicine updated successfully'
     });
   } catch (error: any) {
     console.error('Error updating medicine:', error);
-    if (error.name === 'ValidationError') {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid medicine data' },
         { status: 400 }
       );
     }
@@ -121,13 +87,10 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  if (session.role !== 'admin') {
+  if (!isAdminRole(ctx.session.role)) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized' },
       { status: 403 }
@@ -137,29 +100,13 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
+    if (!isValidId(id)) return notFound('Medicine');
 
-    const medicine = await Medicine.findOneAndDelete(query);
+    const medicine = await Medicine.findOneAndDelete(tenantFilter(ctx.tenantId, { _id: id }));
+    if (!medicine) return notFound('Medicine');
 
-    if (!medicine) {
-      return NextResponse.json(
-        { success: false, error: 'Medicine not found' },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: medicine,
       message: 'Medicine deleted successfully'
     });
@@ -171,4 +118,3 @@ export async function DELETE(
     );
   }
 }
-

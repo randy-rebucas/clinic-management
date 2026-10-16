@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/app/lib/dal';
+import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 
@@ -12,14 +12,8 @@ const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2 MB
  */
 export async function PUT(request: NextRequest) {
   try {
-    const session = await verifySession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (session.role !== 'medical-representative') {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
-    }
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
 
     let body: Record<string, unknown>;
     try {
@@ -55,12 +49,23 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    const tooLong = (val: unknown, max: number) => typeof val === 'string' && val.length > max;
+    if (
+      tooLong(body.firstName, 100) || tooLong(body.lastName, 100) || tooLong(body.phone, 30) ||
+      tooLong(body.company, 200) || tooLong(body.territory, 200) || tooLong(body.title, 20) ||
+      tooLong(body.bio, 2000)
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'One or more fields exceed the maximum allowed length.' },
+        { status: 400 }
+      );
+    }
+
     await connectDB();
 
-    const medicalRep = await MedicalRepresentative.findOne({
-      userId: session.userId,
-      tenantIds: session.tenantId,
-    });
+    const repFilter: Record<string, unknown> = { userId: rep.userObjectId };
+    if (rep.ownerFilter.tenantId) repFilter.tenantIds = rep.ownerFilter.tenantId;
+    const medicalRep = await MedicalRepresentative.findOne(repFilter);
 
     if (!medicalRep) {
       return NextResponse.json({ success: false, error: 'Medical representative not found' }, { status: 404 });

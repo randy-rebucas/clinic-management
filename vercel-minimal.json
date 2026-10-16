@@ -1,16 +1,16 @@
 {
-  "comment": "MINIMAL CONFIG - For Vercel Hobby Plan (2 crons max)",
+  "comment": "MINIMAL CONFIG - For Vercel Hobby Plan (2 daily crons max). Schedules are UTC; Asia/Manila = UTC+8.",
   "crons": [
     {
       "path": "/api/cron/reminders",
-      "schedule": "0 9 * * *",
-      "comment": "Daily appointment reminders - MOST CRITICAL for reducing no-shows"
+      "schedule": "0 1 * * *",
+      "comment": "Day-before appointment reminders at 09:00 Manila - MOST CRITICAL for reducing no-shows"
     },
     {
-      "path": "/api/cron/backup",
-      "schedule": "0 2 * * *",
-      "comment": "Daily backup - CRITICAL for data protection"
+      "path": "/api/cron/end-of-day-cleanup",
+      "schedule": "0 15 * * *",
+      "comment": "Closes the clinic day at 23:00 Manila (queue entries, unattended appointments)"
     }
   ],
-  "note": "For additional automation, use external services like n8n or GitHub Actions"
+  "note": "Backups are not a cron job: use MongoDB Atlas snapshots or scripts/backup/backup.sh. For additional automation, use external schedulers (n8n, GitHub Actions) calling /api/cron/* with Authorization: Bearer $CRON_SECRET."
 }

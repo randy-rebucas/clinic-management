@@ -1,26 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
-import { getTenantContext } from '@/lib/tenant';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { formatInTz } from '@/lib/tz';
 import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
 import {
   escapeHtml as e,
   sealedDocumentParts,
   PROTECTED_DOCUMENT_HEADERS,
+  withScriptNonce,
 } from '@/lib/document-protection';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   const permissionCheck = await requirePermission(session, 'prescriptions', 'read');
   if (permissionCheck) {
@@ -33,10 +33,7 @@ export async function GET(
     const searchParams = request.nextUrl.searchParams;
     const copyType = searchParams.get('copy') === 'clinic' ? 'clinic' : 'patient';
 
-    // Get tenant context and settings
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    const settingInfo = await getSettings(tenantId);
+    const [settingInfo, tz] = await Promise.all([getSettings(tenantId), getTenantTimezone(tenantId)]);
 
     // Digital signature toggle: use tenant setting if present, else fallback to query param
     let showSignature = true;
@@ -46,21 +43,26 @@ export async function GET(
       showSignature = searchParams.get('showSignature') !== '0';
     }
 
-    const paperSize: PaperSize = settingInfo.prescriptionPaperSize === 'A4' ? 'A4' : 'A5';
+    // Only an explicit A5 choice prints A5; unset/legacy settings keep the original A4 layout.
+    const paperSize: PaperSize = settingInfo.prescriptionPaperSize === 'A5' ? 'A5' : 'A4';
 
     const query = tenantScopedQuery(id, tenantId);
     const prescription = query
       ? await Prescription.findOne(query)
-          .populate('patient', 'firstName lastName patientCode email phone dateOfBirth address gender')
+          .populate({
+            path: 'patient',
+            select: 'firstName lastName patientCode email phone dateOfBirth address gender',
+            match: { tenantIds: query.tenantId },
+          })
           .populate({
             path: 'prescribedBy',
             select: 'name email doctorProfile licenseNumber',
             populate: {
               path: 'doctorProfile',
-              select: 'licenseNumber'
-            }
+              select: 'licenseNumber ptrNumber ptr s2Number',
+            },
           })
-          .populate('visit', 'visitCode date followUpDate')
+          .populate({ path: 'visit', select: 'visitCode date followUpDate', match: { tenantId: query.tenantId } })
       : null;
 
     if (!prescription) {
@@ -108,9 +110,9 @@ export async function GET(
     });
 
     // Generate HTML for printable prescription
-    const html = generatePrescriptionHTML(prescription, copyType, showSignature, settingInfo, seal, paperSize);
+    const html = generatePrescriptionHTML(prescription, copyType, showSignature, settingInfo, seal, paperSize, tz);
 
-    return new NextResponse(html, { headers: PROTECTED_DOCUMENT_HEADERS });
+    return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {
     console.error('Error generating prescription:', error);
     return NextResponse.json(
@@ -147,13 +149,14 @@ function generatePrescriptionHTML(
   showSignature: boolean,
   settingInfo: any,
   seal: IssuedSeal,
-  paperSize: PaperSize
+  paperSize: PaperSize,
+  tz: string
 ): string {
   const isA5 = paperSize === 'A5';
 
   const patient = prescription.patient || {};
   const provider = prescription.prescribedBy;
-  const date = new Date(prescription.issuedAt).toLocaleDateString();
+  const date = formatInTz(prescription.issuedAt || new Date(), 'MM/dd/yyyy', tz);
   const isPatientCopy = copyType === 'patient';
   const clinicName = settingInfo?.clinicName || 'Clinic Name';
   const protection = sealedDocumentParts({
@@ -276,7 +279,7 @@ function generatePrescriptionHTML(
         <div style="text-align: right;">
           <h2 style="margin: 0; color: #000000;">PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h2>
           <strong>Code:</strong> ${e(prescription.prescriptionCode)}<br>
-          ${!isPatientCopy ? `<small style="color: #000000;">Archived: ${new Date().toLocaleString()}</small>` : ''}
+          ${!isPatientCopy ? `<small style="color: #000000;">Archived: ${formatInTz(new Date(), 'MM/dd/yyyy h:mm a', tz)}</small>` : ''}
         </div>
       </div>
     </div>
@@ -292,7 +295,7 @@ function generatePrescriptionHTML(
           ${patient.dateOfBirth ? `
           <div class="info-row">
             <div class="info-label">Date of Birth:</div>
-            <div>${new Date(patient.dateOfBirth).toLocaleDateString()}</div>
+            <div>${formatInTz(patient.dateOfBirth, 'MM/dd/yyyy', tz)}</div>
           </div>
           ` : ''}
           ${patient.gender ? `
@@ -335,13 +338,19 @@ function generatePrescriptionHTML(
       </div>
 
       <div class="medications">
-        ${[...prescription.medications].reverse().map((med: any, index: number) => `
+        ${(prescription.medications || []).map((med: any, index: number) => `
           <div class="medication-item">
             <div class="medication-name" style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
               <span>${index + 1}. ${e(med.name)}</span>
               ${med.genericName ? `<span>(${e(med.genericName)})</span>` : ''}
+              ${med.strength ? `<span>${e(med.strength)}</span>` : ''}
+              ${med.form ? `<span>${e(med.form)}</span>` : ''}
             </div>
             <div class="medication-details" style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between;">
+              ${med.dose ? `<span><strong>Dose:</strong> ${e(med.dose)}</span>` : ''}
+              ${med.route ? `<span><strong>Route:</strong> ${e(med.route)}</span>` : ''}
+              ${med.frequency ? `<span><strong>Freq:</strong> ${e(med.frequency)}</span>` : ''}
+              ${med.durationDays ? `<span><strong>For:</strong> ${e(med.durationDays)} day(s)</span>` : ''}
               ${med.instructions ? `<span><strong>Sig:</strong> <b>${e(med.instructions)}</b></span>` : ''}
               ${med.quantity ? `<span><strong>#</strong> ${e(med.quantity)}</span>` : ''}
             </div>
@@ -358,7 +367,7 @@ function generatePrescriptionHTML(
       // Use followUpDate from visit if available
       let followUpDate = '';
       if (prescription.visit && prescription.visit.followUpDate) {
-        followUpDate = new Date(prescription.visit.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        followUpDate = formatInTz(prescription.visit.followUpDate, 'MMM d, yyyy', tz);
       }
       return (prescription.notes || followUpDate) ? `
         <div style="margin-top: 10px; line-height: 1.2; text-align: left;">
@@ -376,10 +385,13 @@ function generatePrescriptionHTML(
           <div>${provider ? e(provider.name) : 'Provider'}</div>
           <div style="font-size: 12px; margin-top: 5px;">
             ${(() => {
-      const licenseLine = settingInfo?.licenseNumber
-        ? `License No: ${e(settingInfo.licenseNumber)}`
+      // The prescribing doctor's own credentials; clinic settings are only a fallback.
+      const doctor = provider?.doctorProfile && typeof provider.doctorProfile === 'object' ? provider.doctorProfile : null;
+      const licenseValue = doctor?.licenseNumber || provider?.licenseNumber || settingInfo?.licenseNumber;
+      const licenseLine = licenseValue
+        ? `License No: ${e(licenseValue)}`
         : 'License No: ____________';
-      const ptrValue = settingInfo?.ptr || settingInfo?.PTR;
+      const ptrValue = doctor?.ptrNumber || doctor?.ptr || settingInfo?.ptr || settingInfo?.PTR;
       const ptrLine = ptrValue
         ? `<br>PTR No: ${e(ptrValue)}`
         : '<br>PTR No: ____________';

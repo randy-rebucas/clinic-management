@@ -2,8 +2,9 @@ import { Types } from 'mongoose';
 import Prescription from '@/models/Prescription';
 import Visit from '@/models/Visit';
 import { createAuditLog } from '@/lib/audit';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
+import { nextPrescriptionCode } from '@/lib/clinical-codes';
+import { getTenantTimezone, displayDate } from './shared';
 
 interface CreatePrescriptionFromVisitParams {
   visitId: Types.ObjectId | string;
@@ -29,9 +30,13 @@ export async function createPrescriptionFromVisit(params: CreatePrescriptionFrom
   const { visitId, tenantId, createdBy, shouldSendNotification = true } = params;
 
   try {
+    if (!tenantId) {
+      throw new Error('Tenant is required');
+    }
+
     // Fetch the visit with populated patient data
-    const visit = await Visit.findById(visitId).populate('patient', 'firstName lastName email phone');
-    
+    const visit = await Visit.findOne({ _id: visitId, tenantId }).populate('patient', 'firstName lastName email phone');
+
     if (!visit) {
       throw new Error('Visit not found');
     }
@@ -42,32 +47,13 @@ export async function createPrescriptionFromVisit(params: CreatePrescriptionFrom
     }
 
     // Check if prescription already exists for this visit
-    const existingPrescription = await Prescription.findOne({ visit: visitId });
+    const existingPrescription = await Prescription.findOne({ visit: visitId, tenantId });
     if (existingPrescription) {
       return existingPrescription;
     }
 
-    // Auto-generate prescription code (tenant-scoped)
-    const codeQuery: any = { prescriptionCode: { $exists: true, $ne: null } };
-    if (tenantId) {
-      codeQuery.tenantId = tenantId;
-    } else {
-      codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const lastPrescription = await Prescription.findOne(codeQuery)
-      .sort({ prescriptionCode: -1 })
-      .exec();
-    
-    let nextNumber = 1;
-    if (lastPrescription?.prescriptionCode) {
-      const match = lastPrescription.prescriptionCode.match(/(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
-      }
-    }
-    
-    const prescriptionCode = `RX-${String(nextNumber).padStart(6, '0')}`;
+    // Shared 'prescription' counter (lib/clinical-codes) so manual and automatic codes never collide.
+    const prescriptionCode = await nextPrescriptionCode(tenantId);
 
     // Convert visit medications to prescription medications format
     const medications = visit.treatmentPlan.medications.map((med: MedicationFromTreatmentPlan) => {
@@ -146,33 +132,21 @@ export async function createPrescriptionFromVisit(params: CreatePrescriptionFrom
     });
 
     // Send notifications if enabled
-    if (shouldSendNotification && visit.patient) {
-      // Queue notification (fire and forget)
-      createNotification({
-        userId: visit.patient._id.toString(),
-        type: 'prescription',
-        title: 'New Prescription Available',
-        message: `Your prescription from ${visit.visitType} visit is now available.`,
-        metadata: {
-          prescriptionId: prescription._id.toString(),
-          visitId: visitId.toString(),
-        },
-      }).catch((error: unknown) => {
-        console.error('Error sending prescription notification:', error);
-      });
-
-      // Send email notification (fire and forget)
-      if (visit.patient.email) {
+    // Patients have no User account, so only email is sent (no in-app notification).
+    const patient = visit.patient as any;
+    if (shouldSendNotification && patient) {
+      if (patient.email) {
+        const tz = await getTenantTimezone(tenantId);
         sendEmail({
-          to: visit.patient.email,
+          to: patient.email,
           subject: 'New Prescription Available',
-          html: `<p>Dear ${visit.patient.firstName} ${visit.patient.lastName},</p>
+          html: `<p>Dear ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)},</p>
                 <p>Your prescription from your visit is now available.</p>
-                <p><strong>Prescription Code:</strong> ${prescriptionCode}</p>
-                <p><strong>Visit Code:</strong> ${visit.visitCode}</p>
-                <p><strong>Visit Date:</strong> ${visit.date.toLocaleDateString()}</p>
+                <p><strong>Prescription Code:</strong> ${escapeHtml(prescriptionCode)}</p>
+                <p><strong>Visit Code:</strong> ${escapeHtml(visit.visitCode)}</p>
+                <p><strong>Visit Date:</strong> ${escapeHtml(displayDate(visit.date, tz))}</p>
                 <p><strong>Medications:</strong></p>
-                <ul>${medications.map((m: { name: string; instructions: string }) => `<li>${m.name} - ${m.instructions}</li>`).join('')}</ul>`,
+                <ul>${medications.map((m: { name: string; instructions: string }) => `<li>${escapeHtml(m.name)} - ${escapeHtml(m.instructions)}</li>`).join('')}</ul>`,
         }).catch((error: unknown) => {
           console.error('Error sending prescription email:', error);
         });
@@ -193,19 +167,26 @@ export async function updatePrescriptionFromVisit(params: CreatePrescriptionFrom
   const { visitId, tenantId, createdBy } = params;
 
   try {
-    // Fetch the visit
-    const visit = await Visit.findById(visitId);
-    
+    if (!tenantId) {
+      throw new Error('Tenant is required');
+    }
+
+    const visit = await Visit.findOne({ _id: visitId, tenantId });
+
     if (!visit) {
       throw new Error('Visit not found');
     }
 
-    // Find existing prescription
-    const prescription = await Prescription.findOne({ visit: visitId });
-    
+    const prescription = await Prescription.findOne({ visit: visitId, tenantId });
+
     if (!prescription) {
       // No existing prescription, create new one
       return await createPrescriptionFromVisit(params);
+    }
+
+    // A dispensed or closed prescription is a record of what was given; don't rewrite it.
+    if (prescription.status !== 'active') {
+      return prescription;
     }
 
     // Check if visit has medications

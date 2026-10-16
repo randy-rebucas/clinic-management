@@ -7,7 +7,17 @@ vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
 vi.mock('@/lib/settings', () => ({
   getSettings: vi.fn().mockResolvedValue({ clinicName: 'Sunrise Clinic', billingSettings: { currency: 'PHP' } }),
 }));
-vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,AAAA') } }));
+vi.mock('@/lib/clinic-timezone', () => ({ getTenantTimezone: vi.fn().mockResolvedValue('Asia/Manila') }));
+const counters = new Map<string, number>();
+vi.mock('@/lib/counters', () => ({
+  nextSequence: vi.fn(async (tenantId: unknown, key: string, seed?: () => Promise<number>) => {
+    const k = `${String(tenantId)}:${key}`;
+    const next = (counters.has(k) ? counters.get(k)! : seed ? await seed() : 0) + 1;
+    counters.set(k, next);
+    return next;
+  }),
+}));
+vi.mock('qrcode',() => ({ default: { toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,AAAA') } }));
 
 // In-memory seal store
 const seals: any[] = [];
@@ -74,6 +84,7 @@ async function issue(copyType: 'patient' | 'clinic' = 'patient') {
 describe('document seals', () => {
   beforeEach(() => {
     seals.length = 0;
+    counters.clear();
     process.env.DOCUMENT_SEAL_SECRET = 'test-seal-secret-that-is-at-least-32-chars';
     currentRx = makePrescription();
   });

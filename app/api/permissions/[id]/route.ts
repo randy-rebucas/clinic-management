@@ -1,38 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Permission from '@/models/Permission';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError } from '@/lib/api/validate';
+
+// The owning user/role (and tenant) of a permission are fixed; only its content can change.
+const updatePermissionSchema = z.object({
+  resource: z.string().trim().min(1).max(100).optional(),
+  actions: z.array(z.string().trim().min(1).max(50)).max(20).optional(),
+});
 
 // GET single permission - admin only
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-  
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (session.role !== 'admin') {
+  if (!isAdmin(session)) {
     return forbiddenResponse('Admin access required');
   }
 
   try {
     await connectDB();
     const { id } = await params;
-    const permission = await Permission.findById(id)
+    if (!isValidId(id)) return notFound('Permission');
+
+    const permission = await Permission.findOne(tenantFilter(tenantId, { _id: id }))
       .populate('user', 'name email')
       .populate('role', 'name displayName')
       .lean();
 
-    if (!permission) {
-      return NextResponse.json(
-        { success: false, error: 'Permission not found' },
-        { status: 404 }
-      );
-    }
+    if (!permission) return notFound('Permission');
 
     return NextResponse.json({ success: true, data: permission });
   } catch (error: any) {
@@ -49,41 +52,38 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-  
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (session.role !== 'admin') {
+  if (!isAdmin(session)) {
     return forbiddenResponse('Admin access required');
   }
 
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
+    if (!isValidId(id)) return notFound('Permission');
 
-    const permission = await Permission.findByIdAndUpdate(id, body, {
-      new: true,
-      runValidators: true,
-    })
+    const parsed = await parseBody(request, updatePermissionSchema);
+    if (isValidationError(parsed)) return parsed;
+
+    const permission = await Permission.findOneAndUpdate(
+      tenantFilter(tenantId, { _id: id }),
+      { $set: parsed.data },
+      { new: true, runValidators: true }
+    )
       .populate('user', 'name email')
       .populate('role', 'name displayName');
 
-    if (!permission) {
-      return NextResponse.json(
-        { success: false, error: 'Permission not found' },
-        { status: 404 }
-      );
-    }
+    if (!permission) return notFound('Permission');
 
     return NextResponse.json({ success: true, data: permission });
   } catch (error: any) {
     console.error('Error updating permission:', error);
     if (error.name === 'ValidationError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid permission data' },
         { status: 400 }
       );
     }
@@ -99,44 +99,37 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-  
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (session.role !== 'admin') {
+  if (!isAdmin(session)) {
     return forbiddenResponse('Admin access required');
   }
 
   try {
     await connectDB();
     const { id } = await params;
-    
-    const permission = await Permission.findById(id);
-    if (!permission) {
-      return NextResponse.json(
-        { success: false, error: 'Permission not found' },
-        { status: 404 }
-      );
-    }
+    if (!isValidId(id)) return notFound('Permission');
 
-    // Remove permission from user or role
+    const permission = await Permission.findOne(tenantFilter(tenantId, { _id: id }));
+    if (!permission) return notFound('Permission');
+
     if (permission.user) {
       const User = (await import('@/models/User')).default;
-      await User.findByIdAndUpdate(permission.user, {
-        $pull: { permissions: id }
+      await User.updateOne(tenantFilter(tenantId, { _id: permission.user }), {
+        $pull: { permissions: permission._id },
       });
     }
 
     if (permission.role) {
       const Role = (await import('@/models/Role')).default;
-      await Role.findByIdAndUpdate(permission.role, {
-        $pull: { permissions: id }
+      await Role.updateOne(tenantFilter(tenantId, { _id: permission.role }), {
+        $pull: { permissions: permission._id },
       });
     }
 
-    await Permission.findByIdAndDelete(id);
+    await Permission.deleteOne(tenantFilter(tenantId, { _id: id }));
 
     return NextResponse.json({ success: true, data: {} });
   } catch (error: any) {
@@ -147,4 +140,3 @@ export async function DELETE(
     );
   }
 }
-

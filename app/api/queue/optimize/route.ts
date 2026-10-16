@@ -1,23 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { requirePermission } from '@/app/lib/auth-helpers';
 import { optimizeQueue, optimizeQueueScheduling } from '@/lib/automations/queue-optimization';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 
 /**
  * Optimize queue manually
  * POST /api/queue/optimize
  */
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
   // Only admins or queue managers can optimize
-  const permissionCheck = await requirePermission(session, 'queue', 'write');
+  const permissionCheck = await requirePermission(ctx.session, 'queue', 'write');
   if (permissionCheck) {
     return permissionCheck;
   }
@@ -25,18 +21,8 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
 
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'Tenant not found' },
-        { status: 404 }
-      );
-    }
-
-    const result = await optimizeQueue(tenantId);
-    const schedulingRecommendations = await optimizeQueueScheduling(tenantId);
+    const result = await optimizeQueue(ctx.tenantId);
+    const schedulingRecommendations = await optimizeQueueScheduling(ctx.tenantId);
 
     return NextResponse.json({
       success: result.optimized,
@@ -59,26 +45,18 @@ export async function POST(request: NextRequest) {
  * GET /api/queue/optimize
  */
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
+  const permissionCheck = await requirePermission(ctx.session, 'queue', 'read');
+  if (permissionCheck) {
+    return permissionCheck;
   }
 
   try {
     await connectDB();
 
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'Tenant not found' },
-        { status: 404 }
-      );
-    }
-
-    const recommendations = await optimizeQueueScheduling(tenantId);
+    const recommendations = await optimizeQueueScheduling(ctx.tenantId);
 
     return NextResponse.json({
       success: true,
@@ -92,4 +70,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

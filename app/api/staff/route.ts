@@ -1,74 +1,76 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import { Nurse, Receptionist, Accountant, User } from '@/models';
-import { verifySession } from '@/app/lib/dal';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { isAdmin } from '@/app/lib/auth-helpers';
 import { sanitizeSearch } from '@/lib/utils';
+import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, zEmail, zPhone, zShortText } from '@/lib/api/validate';
+import { checkSubscriptionLimit } from '@/lib/subscription-limits';
+
+const STAFF_STATUSES = ['active', 'inactive', 'on-leave'] as const;
+
+const optionalText = z.preprocess((v) => (v === '' || v === null ? undefined : v), zShortText.optional());
+const optionalDate = z.preprocess(
+  (v) => (v === '' || v === null ? undefined : v),
+  z.coerce.date().optional()
+);
+
+const createStaffSchema = z.object({
+  staffType: z.enum(['nurse', 'receptionist', 'accountant']),
+  firstName: zShortText.min(1),
+  lastName: zShortText.min(1),
+  email: zEmail,
+  phone: zPhone,
+  employeeId: optionalText,
+  department: optionalText,
+  specialization: optionalText,
+  licenseNumber: optionalText,
+  certification: optionalText,
+  title: optionalText,
+  address: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.string().trim().max(500).optional()),
+  bio: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.string().max(5000).optional()),
+  hireDate: optionalDate,
+  status: z.enum(STAFF_STATUSES).optional(),
+});
 
 // GET /api/staff - Get all staff members (nurses, receptionists, accountants)
 export async function GET(request: NextRequest) {
   try {
-    const session = await verifySession();
-    if (!session?.userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const ctx = await requireTenantSession();
+    if (isTenantSessionError(ctx)) return ctx;
+    const { tenantId } = ctx;
 
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
 
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type'); // 'nurse', 'receptionist', 'accountant', or 'all'
     const status = searchParams.get('status');
     const search = searchParams.get('search');
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '20')));
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
+    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '20') || 20));
     const skip = (page - 1) * limit;
 
-    // Build query filters with tenant filter
-    const buildQuery = (baseQuery: any) => {
-      // Add tenant filter
-      if (tenantId) {
-        baseQuery.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        baseQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      if (status) baseQuery.status = status;
+    const buildQuery = () => {
+      const extra: Record<string, unknown> = {};
+      if (status && (STAFF_STATUSES as readonly string[]).includes(status)) extra.status = status;
       if (search) {
         const safeSearch = sanitizeSearch(search);
-        const searchConditions = [
+        extra.$or = [
           { firstName: { $regex: safeSearch, $options: 'i' } },
           { lastName: { $regex: safeSearch, $options: 'i' } },
           { email: { $regex: safeSearch, $options: 'i' } },
           { employeeId: { $regex: safeSearch, $options: 'i' } },
         ];
-        
-        // Combine tenant filter with search conditions
-        const tenantFilter: any = {};
-        if (tenantId) {
-          tenantFilter.tenantId = new Types.ObjectId(tenantId);
-        } else {
-          tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-        }
-        
-        baseQuery.$and = [
-          tenantFilter,
-          { $or: searchConditions }
-        ];
       }
-      return baseQuery;
+      return tenantFilter(tenantId, extra);
     };
 
     const results: any = { nurses: [], receptionists: [], accountants: [] };
     let totalCount = 0;
 
-    // Fetch based on type filter
     if (!type || type === 'all' || type === 'nurse') {
-      const nurseQuery = buildQuery({});
+      const nurseQuery = buildQuery();
       const [nurses, nurseCount] = await Promise.all([
         Nurse.find(nurseQuery).sort({ createdAt: -1 }).skip(type === 'nurse' ? skip : 0).limit(type === 'nurse' ? limit : 100).lean(),
         Nurse.countDocuments(nurseQuery),
@@ -78,7 +80,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!type || type === 'all' || type === 'receptionist') {
-      const receptionistQuery = buildQuery({});
+      const receptionistQuery = buildQuery();
       const [receptionists, receptionistCount] = await Promise.all([
         Receptionist.find(receptionistQuery).sort({ createdAt: -1 }).skip(type === 'receptionist' ? skip : 0).limit(type === 'receptionist' ? limit : 100).lean(),
         Receptionist.countDocuments(receptionistQuery),
@@ -88,7 +90,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!type || type === 'all' || type === 'accountant') {
-      const accountantQuery = buildQuery({});
+      const accountantQuery = buildQuery();
       const [accountants, accountantCount] = await Promise.all([
         Accountant.find(accountantQuery).sort({ createdAt: -1 }).skip(type === 'accountant' ? skip : 0).limit(type === 'accountant' ? limit : 100).lean(),
         Accountant.countDocuments(accountantQuery),
@@ -97,17 +99,16 @@ export async function GET(request: NextRequest) {
       if (type === 'accountant') totalCount = accountantCount;
     }
 
-    // If type is 'all', combine and sort all staff
     if (!type || type === 'all') {
       const allStaff = [
         ...results.nurses,
         ...results.receptionists,
         ...results.accountants,
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      
+
       totalCount = allStaff.length;
       const paginatedStaff = allStaff.slice(skip, skip + limit);
-      
+
       return NextResponse.json({
         staff: paginatedStaff,
         pagination: {
@@ -124,9 +125,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Return specific type
-    const staffList = type === 'nurse' ? results.nurses : 
-                      type === 'receptionist' ? results.receptionists : 
+    const staffList = type === 'nurse' ? results.nurses :
+                      type === 'receptionist' ? results.receptionists :
                       results.accountants;
 
     return NextResponse.json({
@@ -140,65 +140,67 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Error fetching staff:', error);
-    return NextResponse.json({ error: error.message || 'Failed to fetch staff' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch staff' }, { status: 500 });
   }
 }
 
 // POST /api/staff - Create a new staff member
 export async function POST(request: NextRequest) {
   try {
-    const session = await verifySession();
-    if (!session?.userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const ctx = await requireTenantSession();
+    if (isTenantSessionError(ctx)) return ctx;
+    const { session, tenantId, tenantObjectId } = ctx;
 
-    // Check if user is admin
-    if (session.role !== 'admin') {
+    if (!isAdmin(session)) {
       return NextResponse.json({ error: 'Only admins can create staff' }, { status: 403 });
     }
 
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
 
-    const body = await request.json();
-    const { staffType, ...staffData } = body;
+    const parsed = await parseBody(request, createStaffSchema);
+    if (isValidationError(parsed)) return parsed;
+    const { staffType, ...staffData } = parsed.data;
 
-    if (!staffType || !['nurse', 'receptionist', 'accountant'].includes(staffType)) {
-      return NextResponse.json({ error: 'Invalid staff type. Must be nurse, receptionist, or accountant' }, { status: 400 });
+    const limitCheck = await checkSubscriptionLimit(tenantId, 'createUser');
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: limitCheck.reason || 'Subscription limit exceeded',
+          limit: limitCheck.limit,
+          current: limitCheck.current,
+          remaining: limitCheck.remaining,
+        },
+        { status: 403 }
+      );
     }
 
-    // Required fields validation
-    if (!staffData.firstName || !staffData.lastName || !staffData.email || !staffData.phone) {
-      return NextResponse.json({ error: 'First name, last name, email, and phone are required' }, { status: 400 });
+    // The model's post-save hook links an existing User by email; never let that reach
+    // an account that belongs to another clinic.
+    const existingUser = await User.findOne({ email: staffData.email }).select('tenantId').lean<{ tenantId?: unknown } | null>();
+    if (existingUser && String(existingUser.tenantId ?? '') !== tenantId) {
+      return NextResponse.json({ error: 'A user with this email already exists' }, { status: 400 });
     }
 
-    // Ensure staff is created with tenantId
-    if (tenantId && !staffData.tenantId) {
-      staffData.tenantId = new Types.ObjectId(tenantId);
-    }
-
+    const doc = { ...staffData, tenantId: tenantObjectId };
     let staff;
     switch (staffType) {
       case 'nurse':
-        staff = await Nurse.create(staffData);
+        staff = await Nurse.create(doc);
         break;
       case 'receptionist':
-        staff = await Receptionist.create(staffData);
+        staff = await Receptionist.create(doc);
         break;
       case 'accountant':
-        staff = await Accountant.create(staffData);
+        staff = await Accountant.create(doc);
         break;
     }
 
-    // The post-save hook will automatically create a User account
-    // Wait a bit for the hook to complete and fetch the created user
+    // The post-save hook creates the User account; give it a moment before reading it back.
     await new Promise(resolve => setTimeout(resolve, 500));
-    
+
     const profileField = `${staffType}Profile`;
-    const user = await User.findOne({ [profileField]: staff._id }).lean();
+    const user = await User.findOne(tenantFilter(tenantId, { [profileField]: staff._id })).lean();
 
     return NextResponse.json({
       message: `${staffType.charAt(0).toUpperCase() + staffType.slice(1)} created successfully`,
@@ -210,6 +212,9 @@ export async function POST(request: NextRequest) {
     if (error.code === 11000) {
       return NextResponse.json({ error: 'A staff member with this email already exists' }, { status: 400 });
     }
-    return NextResponse.json({ error: error.message || 'Failed to create staff' }, { status: 500 });
+    if (error.name === 'ValidationError') {
+      return NextResponse.json({ error: 'Invalid staff data' }, { status: 400 });
+    }
+    return NextResponse.json({ error: 'Failed to create staff' }, { status: 500 });
   }
 }

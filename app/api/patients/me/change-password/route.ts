@@ -4,6 +4,8 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { rotatePatientSessionAfterPasswordChange } from '../../auth/shared';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -22,6 +24,9 @@ export async function POST(request: NextRequest) {
       { status: 401 }
     );
   }
+
+  const limited = await applyRateLimit(request, rateLimiters.authAccount, `patient-pw:${session.patientId}`);
+  if (limited) return limited;
 
   try {
     await connectDB();
@@ -86,12 +91,16 @@ export async function POST(request: NextRequest) {
     const hashed = await bcrypt.hash(newPassword, 12);
     await Patient.updateOne({ _id: patient._id }, { $set: { password: hashed } });
 
+    // Sign out every other device; the caller gets a fresh token
+    const rotated = await rotatePatientSessionAfterPasswordChange(request, session.patientId);
+
     logger.info('Patient changed password', { patientId: session.patientId });
 
-    return NextResponse.json({
+    return rotated.apply(NextResponse.json({
       success: true,
       message: 'Password updated successfully',
-    });
+      ...(rotated.token ? { token: rotated.token } : {}),
+    }));
   } catch (error: any) {
     logger.error('Error changing patient password', error as Error);
     return NextResponse.json(

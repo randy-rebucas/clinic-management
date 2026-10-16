@@ -31,6 +31,10 @@ export default function MedicalRepresentativeLoginClient() {
             });
 
             const data = await res.json();
+            if (data?.requires2fa) {
+                router.push(typeof data.redirectTo === 'string' && data.redirectTo.startsWith('/') && !data.redirectTo.startsWith('//') ? data.redirectTo : '/login/2fa');
+                return;
+            }
             if (!res.ok || data?.error || data?.errors) {
                 const errorMsg = data?.error
                     || data?.errors?.email?.[0]

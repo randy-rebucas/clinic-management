@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId, patientTenantFilter } from '@/lib/api/tenant-session';
 import { logDataExport } from '@/lib/audit';
 import { Types } from 'mongoose';
+
+const MAX_EXPORT = 1000;
+
+const SENSITIVE_FIELDS_PROJECTION =
+  '-password -otp -otpExpiry -otpAttempts -sessionVersion -loginQrTokenHash -loginQrTokenExpiry -readNotificationIds -attachments';
+
+const EXPORTABLE_COLUMNS = new Set([
+  'patientCode', 'firstName', 'middleName', 'lastName', 'suffix', 'dateOfBirth', 'sex', 'civilStatus',
+  'nationality', 'occupation', 'email', 'phone', 'address.street', 'address.city', 'address.state',
+  'address.zipCode', 'emergencyContact.name', 'emergencyContact.phone', 'emergencyContact.relationship',
+  'identifiers.philHealth', 'identifiers.govId', 'nationalId', 'philHealth', 'medicalHistory', 'allergies',
+  'preExistingConditions', 'active', 'tags', 'createdAt', 'updatedAt',
+]);
 
 /**
  * POST /api/patients/export
@@ -26,8 +38,9 @@ import { Types } from 'mongoose';
  * Requires staff authentication + patients:read permission.
  */
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
-  if (!session) return unauthorizedResponse();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   const permissionCheck = await requirePermission(session, 'patients', 'read');
   if (permissionCheck) return permissionCheck;
@@ -35,12 +48,15 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
 
-    const body = await request.json();
-    const { patientIds = [], format = 'csv', columns } = body;
+    const body = await request.json().catch(() => null);
+    const { patientIds = [], format = 'csv' } = body ?? {};
+    const columns: string[] | undefined = Array.isArray(body?.columns)
+      ? body.columns.filter((c: unknown): c is string => typeof c === 'string' && EXPORTABLE_COLUMNS.has(c))
+      : undefined;
 
-    if (!Array.isArray(patientIds) || patientIds.length === 0) {
+    if (!Array.isArray(patientIds) || patientIds.length === 0 || patientIds.length > MAX_EXPORT) {
       return NextResponse.json(
-        { success: false, error: 'patientIds must be a non-empty array' },
+        { success: false, error: `patientIds must be a non-empty array of at most ${MAX_EXPORT} ids` },
         { status: 400 }
       );
     }
@@ -53,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate patient IDs
-    const validIds = patientIds.filter((id) => Types.ObjectId.isValid(id));
+    const validIds = patientIds.filter((id: unknown): id is string => isValidId(id));
     if (validIds.length !== patientIds.length) {
       return NextResponse.json(
         { success: false, error: 'Some patient IDs are invalid' },
@@ -61,16 +77,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-
-    // Build query
-    const query: any = { _id: { $in: validIds.map((id) => new Types.ObjectId(id)) } };
-    if (tenantId) {
-      query.tenantIds = tenantId;
-    }
-
-    const patients = await Patient.find(query).lean();
+    const patients = await Patient.find(
+      patientTenantFilter(tenantId, { _id: { $in: validIds.map((id) => new Types.ObjectId(id)) } })
+    )
+      .select(SENSITIVE_FIELDS_PROJECTION)
+      .lean();
 
     if (patients.length === 0) {
       return NextResponse.json(
@@ -163,22 +174,23 @@ function convertToCSV(patients: any[], columns?: string[]): string {
       value = value?.[part];
     }
 
-    // Handle arrays and objects
+    if (value instanceof Date) {
+      return value.toISOString().split('T')[0];
+    }
     if (Array.isArray(value)) {
       return value.map((v) => (typeof v === 'object' ? JSON.stringify(v) : v)).join('; ');
     }
     if (typeof value === 'object' && value !== null) {
       return JSON.stringify(value);
     }
-    if (value instanceof Date) {
-      return value.toISOString().split('T')[0];
-    }
     return value === null || value === undefined ? '' : String(value);
   };
 
   // CSV escape function
-  const escapeCSV = (value: string): string => {
-    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+  const escapeCSV = (raw: string): string => {
+    // Neutralise spreadsheet formulas (CSV injection).
+    const value = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+    if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
       return `"${value.replace(/"/g, '""')}"`;
     }
     return value;

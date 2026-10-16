@@ -1,21 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
-import Invoice from '@/models/Invoice';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, requirePermission } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
+import { z } from 'zod';
 import { Types } from 'mongoose';
+import Invoice from '@/models/Invoice';
+import Service from '@/models/Service';
+import Visit from '@/models/Visit';
+import Doctor from '@/models/Doctor';
+import User from '@/models/User';
+import { OPEN_STATUSES } from '@/lib/invoices';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { getSettings } from '@/lib/settings';
+import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, roundMoney } from '@/lib/api/validate';
+import { invoiceEditableSchema, computeInvoiceTotals, deriveStatus } from '../_lib/totals';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   // Check permission to read invoices
   const permissionCheck = await requirePermission(session, 'invoices', 'read');
@@ -26,110 +31,85 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    
-    if (!id || id === 'undefined') {
+
+    if (!isValidId(id)) {
       return NextResponse.json(
         { success: false, error: 'Invalid invoice ID' },
         { status: 400 }
       );
     }
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    const invoiceData: any = await Invoice.findOne(tenantFilter(tenantId, { _id: new Types.ObjectId(id) }))
+      .populate({
+        path: 'patient',
+        select: 'firstName lastName patientCode phone dateOfBirth',
+        match: patientTenantFilter(tenantId),
+      })
+      .populate({ path: 'visit', select: 'visitCode date visitType', match: tenantFilter(tenantId) })
+      .populate({ path: 'professionalFeeDoctor', select: 'firstName lastName', match: tenantFilter(tenantId) })
+      .populate({ path: 'createdBy', select: 'name', model: User })
+      .populate({ path: 'payments.processedBy', select: 'name', model: User })
+      .lean();
+
+    if (!invoiceData) {
+      return notFound('Invoice');
     }
 
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
-      path: 'patient',
-      select: 'firstName lastName patientCode email phone dateOfBirth address',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
+    // What else this patient still owes, so the cashier can collect it in the same visit.
+    if (invoiceData.patient?._id) {
+      const [other] = await Invoice.aggregate([
+        {
+          $match: tenantFilter(tenantId, {
+            patient: invoiceData.patient._id,
+            _id: { $ne: invoiceData._id },
+            status: { $in: OPEN_STATUSES },
+          }),
+        },
+        { $group: { _id: null, amount: { $sum: { $ifNull: ['$outstandingBalance', 0] } }, count: { $sum: 1 } } },
+      ]);
+      invoiceData.patientOtherOpen = { amount: Math.round((other?.amount || 0) * 100) / 100, count: other?.count || 0 };
     }
 
-    const invoice = await Invoice.findOne(query)
-      .populate(patientPopulateOptions)
-      .populate('visit', 'visitCode date visitType')
-      .populate('professionalFeeDoctor', 'firstName lastName')
-      .populate('createdBy', 'name email');
-
-    if (!invoice) {
-      return NextResponse.json(
-        { success: false, error: 'Invoice not found' },
-        { status: 404 }
-      );
-    }
-
-    // Manually populate items.serviceId if needed (convert to plain object first)
-    const invoiceData = invoice.toObject ? invoice.toObject() : invoice;
-    
-    // Populate serviceId for each item if it exists
-    if (invoiceData.items && Array.isArray(invoiceData.items)) {
-      const Service = mongoose.models.Service;
-      if (Service) {
-        const populatedItems = await Promise.all(
-          invoiceData.items.map(async (item: any) => {
-            if (item.serviceId && typeof item.serviceId === 'object' && item.serviceId._id) {
-              // Already populated
-              return item;
-            }
-            if (item.serviceId && typeof item.serviceId === 'string') {
-              try {
-                const service = await Service.findById(item.serviceId)
-                  .select('name code category unitPrice')
-                  .lean();
-                if (service) {
-                  item.serviceId = service;
-                }
-              } catch (err) {
-                // Silently skip if service not found
-              }
-            }
-            return item;
-          })
+    // Populate items.serviceId from this clinic's catalog only
+    if (Array.isArray(invoiceData.items)) {
+      const serviceIds = invoiceData.items
+        .map((item: any) => item.serviceId)
+        .filter((sid: unknown) => sid && Types.ObjectId.isValid(String(sid)));
+      if (serviceIds.length) {
+        const services = await Service.find(tenantFilter(tenantId, { _id: { $in: serviceIds } }))
+          .select('name code category unitPrice')
+          .lean();
+        const byId = new Map(services.map((s: any) => [String(s._id), s]));
+        invoiceData.items = invoiceData.items.map((item: any) =>
+          item.serviceId && byId.has(String(item.serviceId))
+            ? { ...item, serviceId: byId.get(String(item.serviceId)) }
+            : item
         );
-        invoiceData.items = populatedItems;
       }
     }
 
     return NextResponse.json({ success: true, data: invoiceData });
   } catch (error: any) {
     console.error('Error fetching invoice:', error);
-    console.error('Error details:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name,
-    });
     return NextResponse.json(
-      { 
-        success: false, 
-        error: error.message || 'Failed to fetch invoice',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
-      },
+      { success: false, error: 'Failed to fetch invoice' },
       { status: 500 }
     );
   }
 }
 
+const updateInvoiceSchema = invoiceEditableSchema.partial().extend({
+  // Status is derived from payments; the only manual transition is marking an invoice refunded.
+  status: z.enum(['unpaid', 'partial', 'paid', 'refunded']).optional(),
+});
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   // Check permission to update invoices
   const permissionCheck = await requirePermission(session, 'invoices', 'update');
@@ -140,91 +120,139 @@ export async function PUT(
   try {
     await connectDB();
     const { id } = await params;
-    const body = await request.json();
+    if (!isValidId(id)) {
+      return NextResponse.json({ success: false, error: 'Invalid invoice ID' }, { status: 400 });
+    }
 
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
-    // Build query with tenant filter
-    const query: any = { _id: id };
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
+    const parsed = await parseBody(request, updateInvoiceSchema);
+    if (isValidationError(parsed)) return parsed;
+    const body = parsed.data;
+
+    const query = tenantFilter(tenantId, { _id: new Types.ObjectId(id) });
+    const current: any = await Invoice.findOne(query).lean();
+    if (!current) {
+      return notFound('Invoice');
+    }
+
+    if (current.status === 'refunded') {
+      return NextResponse.json({ success: false, error: 'Refunded invoices cannot be modified' }, { status: 409 });
+    }
+
+    if (
+      body.visit &&
+      !(await Visit.exists(tenantFilter(tenantId, { _id: new Types.ObjectId(body.visit), patient: current.patient })))
+    ) {
+      return NextResponse.json({ success: false, error: 'That visit is not one of this patient’s visits.' }, { status: 400 });
+    }
+    if (
+      body.professionalFeeDoctor &&
+      !(await Doctor.exists(tenantFilter(tenantId, { _id: new Types.ObjectId(body.professionalFeeDoctor) })))
+    ) {
+      return NextResponse.json({ success: false, error: 'Invalid doctor selected' }, { status: 400 });
+    }
+
+    const $set: Record<string, unknown> = {};
+    const $unset: Record<string, 1> = {};
+    for (const key of ['professionalFeeType', 'professionalFeeNotes', 'insurance'] as const) {
+      if (body[key] !== undefined) $set[key] = body[key];
+    }
+    for (const key of ['visit', 'professionalFeeDoctor'] as const) {
+      if (body[key] === null) $unset[key] = 1;
+      else if (body[key] !== undefined) $set[key] = body[key];
+    }
+
+    const totalPaid = roundMoney(
+      (current.payments || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
+    );
+    let total = Number(current.total) || 0;
+
+    const moneyChanged =
+      body.items !== undefined ||
+      body.discounts !== undefined ||
+      body.professionalFee !== undefined ||
+      body.tax !== undefined;
+
+    if (moneyChanged) {
+      const settings = await getSettings(tenantId);
+      const totals = computeInvoiceTotals({
+        items: body.items ?? (current.items || []).map((i: any) => ({
+          serviceId: i.serviceId ? String(i.serviceId) : undefined,
+          code: i.code,
+          description: i.description,
+          category: i.category,
+          quantity: Number(i.quantity) || 1,
+          unitPrice: Math.max(0, Number(i.unitPrice) || 0),
+        })),
+        discounts: body.discounts ?? (current.discounts || []).map((d: any) => ({
+          type: d.type,
+          reason: d.reason,
+          percentage: d.percentage,
+          amount: d.amount,
+        })),
+        professionalFee: body.professionalFee ?? current.professionalFee ?? 0,
+        tax: body.tax ?? current.tax ?? 0,
+        taxRate: settings.billingSettings?.taxRate,
+        appliedBy: session.userId,
+      });
+      total = totals.total;
+      Object.assign($set, {
+        items: totals.items,
+        discounts: totals.discounts,
+        subtotal: totals.subtotal,
+        professionalFee: totals.professionalFee,
+        tax: totals.tax,
+        total: totals.total,
+      });
+    }
+
+    const derived = deriveStatus(total, totalPaid);
+    if (body.status === 'refunded') {
+      $set.status = 'refunded';
     } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    // Recalculate totals if items or discounts changed
-    if (body.items || body.discounts || body.professionalFee !== undefined) {
-      const currentInvoice = await Invoice.findOne(query);
-      const items = body.items || currentInvoice?.items || [];
-      const discounts = body.discounts || currentInvoice?.discounts || [];
-      const professionalFee = body.professionalFee !== undefined ? body.professionalFee : (currentInvoice?.professionalFee || 0);
-
-      const subtotal = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
-      const discountTotal = discounts.reduce((sum: number, disc: any) => sum + (disc.amount || 0), 0);
-      const afterDiscount = subtotal - discountTotal;
-      const tax = body.tax || currentInvoice?.tax || 0;
-      const total = afterDiscount + professionalFee + tax;
-
-      body.subtotal = subtotal;
-      body.total = total;
-
-      // Recalculate outstanding balance
-      const totalPaid = currentInvoice?.payments?.reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
-      body.outstandingBalance = total - totalPaid;
-      body.totalPaid = totalPaid;
-
-      // Update status based on payments
-      if (body.outstandingBalance <= 0) {
-        body.status = 'paid';
-      } else if (totalPaid > 0) {
-        body.status = 'partial';
-      } else {
-        body.status = 'unpaid';
+      if (body.status && body.status !== derived) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Invoice status is determined by its payments. Record a payment to change it.',
+          },
+          { status: 400 }
+        );
       }
+      $set.status = derived;
     }
+    $set.totalPaid = totalPaid;
+    $set.outstandingBalance = roundMoney(total - totalPaid);
 
-    const invoice = await Invoice.findOneAndUpdate(query, body, {
-      new: true,
-      runValidators: true,
-    });
-    
+    // Optimistic concurrency: fail if a payment or edit landed since we read the invoice.
+    const update: Record<string, unknown> = { $set };
+    if (Object.keys($unset).length) update.$unset = $unset;
+    const invoice = await Invoice.findOneAndUpdate(
+      { ...query, updatedAt: current.updatedAt },
+      update,
+      { new: true, runValidators: true }
+    );
+
     if (!invoice) {
       return NextResponse.json(
-        { success: false, error: 'Invoice not found' },
-        { status: 404 }
+        { success: false, error: 'Invoice was modified by someone else. Please reload and try again.' },
+        { status: 409 }
       );
     }
-    
-    // Build populate options with tenant filter
-    const patientPopulateOptions: any = {
+
+    await invoice.populate({
       path: 'patient',
       select: 'firstName lastName patientCode email phone',
-    };
-    if (tenantId) {
-      patientPopulateOptions.match = { tenantIds: new Types.ObjectId(tenantId) };
-    } else {
-      patientPopulateOptions.match = { $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }] };
-    }
-    
-    await invoice.populate(patientPopulateOptions);
+      match: patientTenantFilter(tenantId),
+    });
     await invoice.populate('visit', 'visitCode date');
     await invoice.populate('createdBy', 'name email');
-
-    if (!invoice) {
-      return NextResponse.json(
-        { success: false, error: 'Invoice not found' },
-        { status: 404 }
-      );
-    }
 
     return NextResponse.json({ success: true, data: invoice });
   } catch (error: any) {
     console.error('Error updating invoice:', error);
     if (error.name === 'ValidationError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid invoice data' },
         { status: 400 }
       );
     }
@@ -234,4 +262,3 @@ export async function PUT(
     );
   }
 }
-

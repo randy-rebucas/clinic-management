@@ -24,6 +24,8 @@
   --brand-teal: #0ea5a4;
   --brand-teal-dark: #0a7f7e;
   --brand-teal-light: #e3f6f5;
+  /* Pressed/hover fill for text-bearing teal controls, and text on teal-light tints (AA at 14px) */
+  --brand-teal-deep: #086362;
   --brand-blue: #2563eb;
   --brand-navy: #0b2136;
 }
@@ -36,6 +38,7 @@
   --color-brand-teal: var(--brand-teal);
   --color-brand-teal-dark: var(--brand-teal-dark);
   --color-brand-teal-light: var(--brand-teal-light);
+  --color-brand-teal-deep: var(--brand-teal-deep);
   --color-brand-blue: var(--brand-blue);
   --color-brand-navy: var(--brand-navy);
 }
@@ -50,6 +53,11 @@ body {
   font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--brand-teal-light);
+  color: var(--brand-navy);
 }
 
 /* Smooth scrolling */
@@ -90,4 +98,78 @@ html {
 
 .animate-fade-up-in {
   animation: fade-up-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/*
+ * Dashboard motion. One authored moment: the clinic day's elapsed wash and now-line
+ * sweep from opening time to the present, and the day's bookings arrive in time order
+ * as the sweep passes them. Everything else is quiet: marks grow from their baseline.
+ * Every keyframe animates only *from* a start state, so the resting style is the truth.
+ */
+@keyframes cd-sweep {
+  from { transform: translateX(0); }
+}
+@keyframes cd-wash {
+  from { clip-path: inset(0 100% 0 0); }
+}
+@keyframes mark-in {
+  from { opacity: 0; }
+}
+@keyframes col-grow {
+  from { transform: scaleY(0); }
+}
+@keyframes bar-grow {
+  from { transform: scaleX(0); }
+}
+
+.motion-cd-sweep { animation: cd-sweep 0.8s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.motion-cd-wash { animation: cd-wash 0.8s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.motion-cd-mark { animation: mark-in 0.32s ease-out backwards; }
+.motion-col-grow {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: col-grow 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+.motion-line-in { animation: mark-in 0.4s ease-out 0.2s backwards; }
+.motion-bar-grow,
+.motion-seg-grow {
+  transform-origin: left;
+  animation: bar-grow 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* Lists and trays. Rows settle in with a short, capped stagger; the selection tray rises
+   from below because it is a new layer of action, not new content. */
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+@keyframes tray-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+.motion-row-in { animation: row-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.motion-tray-in { animation: tray-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.motion-panel-in { animation: panel-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.motion-chip-in { animation: mark-in 0.18s ease-out backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-row-in,
+  .motion-tray-in,
+  .motion-panel-in {
+    animation: mark-in 0.15s ease-out backwards;
+  }
+  .motion-row-in { animation-delay: 0s !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No travel: positions are simply there. Opacity fades stay, they carry no movement. */
+  .motion-cd-sweep,
+  .motion-cd-wash,
+  .motion-col-grow,
+  .motion-bar-grow,
+  .motion-seg-grow {
+    animation: mark-in 0.2s ease-out both;
+  }
+  .motion-cd-mark { animation-delay: 0s !important; }
 }

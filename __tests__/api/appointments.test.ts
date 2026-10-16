@@ -44,6 +44,19 @@ vi.mock('@/models/Patient', () => ({
   },
 }));
 
+const leanChain = (value: unknown) => ({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(value) }) });
+
+vi.mock('@/lib/clinic-timezone', () => ({
+  getTenantTimezone: vi.fn().mockResolvedValue('Asia/Manila'),
+}));
+
+vi.mock('@/lib/appointment-booking', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/appointment-booking')>()),
+  findDoctorConflict: vi.fn().mockResolvedValue(null),
+  nextAppointmentCode: vi.fn().mockResolvedValue('APT-000001'),
+  nextWalkInNumber: vi.fn().mockResolvedValue(1),
+}));
+
 vi.mock('@/lib/subscription-limits', () => ({
   checkSubscriptionLimit: vi.fn().mockResolvedValue({ allowed: true }),
 }));
@@ -102,12 +115,14 @@ describe('Appointments API', () => {
         tenantId: VALID_TENANT_ID,
       } as any);
 
-      vi.mocked(Doctor.findOne).mockResolvedValue({ _id: VALID_DOCTOR_ID } as any);
-      vi.mocked(Patient.findOne).mockResolvedValue({ _id: VALID_PATIENT_ID } as any);
+      vi.mocked(Doctor.findOne).mockReturnValue(leanChain({ _id: VALID_DOCTOR_ID }) as any);
+      vi.mocked(Patient.findOne).mockReturnValue(leanChain({ _id: VALID_PATIENT_ID }) as any);
 
       const mockAppointment = {
         _id: VALID_APPT_ID,
-        populate: vi.fn().mockResolvedValue(true),
+        patient: VALID_PATIENT_ID,
+        doctor: VALID_DOCTOR_ID,
+        populate: vi.fn().mockResolvedValue(undefined),
       };
 
       vi.mocked(Appointment.create).mockResolvedValue(mockAppointment as any);
@@ -117,8 +132,10 @@ describe('Appointments API', () => {
         body: JSON.stringify({
           patient: VALID_PATIENT_ID,
           doctor: VALID_DOCTOR_ID,
-          date: new Date().toISOString(),
+          appointmentDate: '2026-10-20',
+          appointmentTime: '09:00',
           status: 'scheduled',
+          tenantId: '507f1f77bcf86cd7994390ff',
         }),
       });
 
@@ -128,6 +145,11 @@ describe('Appointments API', () => {
       expect(response.status).toBe(201);
       expect(data.success).toBe(true);
       expect(Appointment.create).toHaveBeenCalled();
+      const created = vi.mocked(Appointment.create).mock.calls[0][0] as any;
+      expect(String(created.tenantId)).toBe(VALID_TENANT_ID);
+      expect(created.appointmentCode).toBe('APT-000001');
+      const patientFilter = vi.mocked(Patient.findOne).mock.calls[0][0] as any;
+      expect(String(patientFilter.tenantIds)).toBe(VALID_TENANT_ID);
     });
 
     it('should trigger insurance verification if enabled', async () => {
@@ -144,13 +166,14 @@ describe('Appointments API', () => {
         tenantId: VALID_TENANT_ID,
       } as any);
 
-      vi.mocked(Doctor.findOne).mockResolvedValue({ _id: VALID_DOCTOR_ID } as any);
-      vi.mocked(Patient.findOne).mockResolvedValue({ _id: VALID_PATIENT_ID } as any);
+      vi.mocked(Doctor.findOne).mockReturnValue(leanChain({ _id: VALID_DOCTOR_ID }) as any);
+      vi.mocked(Patient.findOne).mockReturnValue(leanChain({ _id: VALID_PATIENT_ID }) as any);
 
       const mockAppointment = {
         _id: VALID_APPT_ID,
         patient: VALID_PATIENT_ID,
-        populate: vi.fn().mockResolvedValue(true),
+        doctor: VALID_DOCTOR_ID,
+        populate: vi.fn().mockResolvedValue(undefined),
       };
 
       vi.mocked(Appointment.create).mockResolvedValue(mockAppointment as any);
@@ -160,7 +183,8 @@ describe('Appointments API', () => {
         body: JSON.stringify({
           patient: VALID_PATIENT_ID,
           doctor: VALID_DOCTOR_ID,
-          date: new Date().toISOString(),
+          appointmentDate: '2026-10-20',
+          appointmentTime: '09:00',
           status: 'scheduled',
         }),
       });

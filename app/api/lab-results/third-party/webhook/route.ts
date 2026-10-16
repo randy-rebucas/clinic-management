@@ -30,21 +30,17 @@ export async function POST(request: NextRequest) {
     await connectDB();
     const rawBody = await request.text();
 
-    // Enforce signature verification when LAB_WEBHOOK_SECRET is configured.
-    // In production this variable MUST be set; all requests without a valid
-    // signature are rejected.
-    if (process.env.LAB_WEBHOOK_SECRET) {
-      const signature = request.headers.get('x-webhook-signature');
-      if (!verifyWebhookSignature(rawBody, signature)) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid webhook signature' },
-          { status: 401 }
-        );
-      }
-    } else if (process.env.NODE_ENV === 'production') {
+    // The webhook writes clinical results, so a valid signature is always required.
+    if (!process.env.LAB_WEBHOOK_SECRET) {
       return NextResponse.json(
         { success: false, error: 'Lab webhook is not configured' },
         { status: 503 }
+      );
+    }
+    if (!verifyWebhookSignature(rawBody, request.headers.get('x-webhook-signature'))) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid webhook signature' },
+        { status: 401 }
       );
     }
 
@@ -71,10 +67,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find lab result by external request ID
-    const labResult = await LabResult.findOne({
+    if (typeof resultPayload.externalRequestId !== 'string' || !resultPayload.externalRequestId) {
+      return NextResponse.json({ success: false, error: 'Invalid webhook payload' }, { status: 400 });
+    }
+
+    // Only requests this system actually sent; when the lab echoes our request code,
+    // it must match too. An id shared by several clinics' requests is rejected.
+    const filter: Record<string, unknown> = {
       'thirdPartyLab.externalRequestId': resultPayload.externalRequestId,
-    });
+      'thirdPartyLab.status': { $in: ['sent', 'received'] },
+    };
+    if (typeof body.requestCode === 'string' && body.requestCode) {
+      filter.requestCode = body.requestCode;
+    }
+    const matches = await LabResult.find(filter).limit(2);
+    if (matches.length > 1) {
+      return NextResponse.json(
+        { success: false, error: 'Ambiguous request id; include requestCode' },
+        { status: 409 }
+      );
+    }
+    const labResult = matches[0];
 
     if (!labResult) {
       return NextResponse.json(

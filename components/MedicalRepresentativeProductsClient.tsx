@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Package, Edit2, Trash2, X, Check } from 'lucide-react';
+import { useModalA11y } from './hooks/useModalA11y';
 
 interface Product {
   _id: string;
@@ -55,6 +56,9 @@ export default function MedicalRepresentativeProductsClient() {
     expiryDate: '',
     status: 'active',
   });
+
+  const closeForm = () => setShowForm(false);
+  const formModalRef = useModalA11y<HTMLDivElement>(showForm, closeForm);
 
   // Fetch products
   useEffect(() => {
@@ -222,14 +226,14 @@ export default function MedicalRepresentativeProductsClient() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-brand-teal-light/60 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-teal-dark"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-8 px-4">
+    <div className="min-h-screen bg-brand-teal-light/60 py-8 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between gap-4 mb-8">
@@ -239,13 +243,13 @@ export default function MedicalRepresentativeProductsClient() {
               className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
               aria-label="Go back"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
+              <ArrowLeft aria-hidden="true" className="w-5 h-5 text-gray-600" />
             </button>
             <h1 className="text-3xl font-bold text-gray-900">Products Portfolio</h1>
           </div>
           <button
             onClick={handleAddProduct}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-brand-teal-dark hover:bg-brand-teal-deep text-white font-medium rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             Add Product
@@ -269,16 +273,24 @@ export default function MedicalRepresentativeProductsClient() {
         {/* Form Modal */}
         {showForm && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div
+              ref={formModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="product-form-title"
+              className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            >
               <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-900">
+                <h2 id="product-form-title" className="text-2xl font-bold text-gray-900">
                   {editingId ? 'Edit Product' : 'Add New Product'}
                 </h2>
                 <button
-                  onClick={() => setShowForm(false)}
+                  type="button"
+                  onClick={closeForm}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
+                  aria-label="Close product form"
                 >
-                  ×
+                  <span aria-hidden="true">×</span>
                 </button>
               </div>
 
@@ -296,7 +308,7 @@ export default function MedicalRepresentativeProductsClient() {
                     onChange={handleInputChange}
                     required
                     placeholder="e.g., Aspirin 500mg"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                   />
                 </div>
 
@@ -314,7 +326,7 @@ export default function MedicalRepresentativeProductsClient() {
                       onChange={handleInputChange}
                       required
                       placeholder="e.g., Pain Relief"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                     />
                   </div>
                   <div>
@@ -329,7 +341,7 @@ export default function MedicalRepresentativeProductsClient() {
                       onChange={handleInputChange}
                       required
                       placeholder="e.g., Pharma Corp"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                     />
                   </div>
                 </div>
@@ -347,7 +359,7 @@ export default function MedicalRepresentativeProductsClient() {
                     required
                     placeholder="Product description and benefits..."
                     rows={3}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal resize-none"
                   />
                 </div>
 
@@ -364,7 +376,7 @@ export default function MedicalRepresentativeProductsClient() {
                       value={formData.dosage}
                       onChange={handleInputChange}
                       placeholder="e.g., 1 tablet, 2 capsules"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                     />
                   </div>
                   <div>
@@ -378,7 +390,7 @@ export default function MedicalRepresentativeProductsClient() {
                       value={formData.strength}
                       onChange={handleInputChange}
                       placeholder="e.g., 500mg"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                     />
                   </div>
                 </div>
@@ -397,7 +409,7 @@ export default function MedicalRepresentativeProductsClient() {
                       onChange={handleInputChange}
                       required
                       placeholder="e.g., Blister pack of 10"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                     />
                   </div>
                   <div>
@@ -411,7 +423,7 @@ export default function MedicalRepresentativeProductsClient() {
                       value={formData.expiryDate}
                       onChange={handleInputChange}
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                     />
                   </div>
                 </div>
@@ -426,7 +438,7 @@ export default function MedicalRepresentativeProductsClient() {
                     name="status"
                     value={formData.status}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                   >
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
@@ -446,7 +458,7 @@ export default function MedicalRepresentativeProductsClient() {
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
+                    className="flex-1 px-4 py-2 bg-brand-teal-dark hover:bg-brand-teal-deep disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
                   >
                     {isSaving ? 'Saving...' : 'Save Product'}
                   </button>
@@ -457,7 +469,7 @@ export default function MedicalRepresentativeProductsClient() {
         )}
 
         {/* Search & Filter */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="space-y-4">
             <div>
               <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
@@ -469,7 +481,7 @@ export default function MedicalRepresentativeProductsClient() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by name, manufacturer..."
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
               />
             </div>
 
@@ -482,7 +494,7 @@ export default function MedicalRepresentativeProductsClient() {
                   id="category-filter"
                   value={filterCategory}
                   onChange={(e) => setFilterCategory(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                 >
                   {categories.map(cat => (
                     <option key={cat} value={cat}>
@@ -500,7 +512,7 @@ export default function MedicalRepresentativeProductsClient() {
                   id="status-filter"
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value as any)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
                 >
                   <option value="all">All Status</option>
                   <option value="active">Active</option>
@@ -514,7 +526,7 @@ export default function MedicalRepresentativeProductsClient() {
 
         {/* Products List */}
         {filteredProducts.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+          <div className="bg-white rounded-lg shadow-sm p-8 text-center">
             <Package className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No products found</h3>
             <p className="text-gray-600 mb-6">
@@ -525,7 +537,7 @@ export default function MedicalRepresentativeProductsClient() {
             {!(searchQuery || filterCategory !== 'all' || filterStatus !== 'all') && (
               <button
                 onClick={handleAddProduct}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-brand-teal-dark hover:bg-brand-teal-deep text-white font-medium rounded-lg transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 Add Your First Product
@@ -535,7 +547,7 @@ export default function MedicalRepresentativeProductsClient() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.map(product => (
-              <div key={product._id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+              <div key={product._id} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden">
                 <div className="p-6">
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div className="flex-1">
@@ -575,7 +587,7 @@ export default function MedicalRepresentativeProductsClient() {
                   <div className="flex gap-2 pt-4 border-t border-gray-200">
                     <button
                       onClick={() => handleEditProduct(product)}
-                      className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-medium text-sm"
+                      className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-brand-teal-dark hover:bg-brand-teal-light/60 rounded-lg transition-colors font-medium text-sm"
                     >
                       <Edit2 className="w-4 h-4" />
                       Edit

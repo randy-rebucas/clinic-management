@@ -8,7 +8,12 @@ export type NotificationType =
   | 'invoice' 
   | 'reminder' 
   | 'system' 
-  | 'broadcast';
+  | 'broadcast'
+  | 'visit_followup_reminder'
+  | 'membership_expiry_reminder'
+  | 'referral_followup_reminder'
+  | 'referral_escalation'
+  | 'patient_reengagement';
 
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
 
@@ -53,7 +58,21 @@ const NotificationSchema: Schema = new Schema(
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     type: {
       type: String,
-      enum: ['appointment', 'visit', 'prescription', 'lab_result', 'invoice', 'reminder', 'system', 'broadcast'],
+      enum: [
+        'appointment',
+        'visit',
+        'prescription',
+        'lab_result',
+        'invoice',
+        'reminder',
+        'system',
+        'broadcast',
+        'visit_followup_reminder',
+        'membership_expiry_reminder',
+        'referral_followup_reminder',
+        'referral_escalation',
+        'patient_reengagement',
+      ],
       required: true,
       index: true,
     },
@@ -84,7 +103,9 @@ const NotificationSchema: Schema = new Schema(
 // Indexes for efficient queries (tenant-scoped)
 NotificationSchema.index({ tenantId: 1, user: 1, read: 1, createdAt: -1 });
 NotificationSchema.index({ tenantId: 1, user: 1, type: 1, read: 1 });
-NotificationSchema.index({ tenantId: 1, expiresAt: 1 }, { expireAfterSeconds: 0 }); // Auto-delete expired notifications
+// Auto-delete expired notifications. TTL must be a single-field index: MongoDB ignores
+// expireAfterSeconds on compound indexes. Deletion lags up to a minute, so reads also filter on it.
+NotificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export default mongoose.models.Notification || mongoose.model<INotification>('Notification', NotificationSchema);
 

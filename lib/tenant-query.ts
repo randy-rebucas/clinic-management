@@ -6,71 +6,30 @@
 import { getTenantId } from './tenant';
 import { Types } from 'mongoose';
 
+export class MissingTenantError extends Error {
+  constructor() {
+    super('Tenant context is required for this query');
+    this.name = 'MissingTenantError';
+  }
+}
+
 /**
- * Add tenant filter to a query object
- * This ensures all queries are scoped to the current tenant
+ * Add the current tenant to a query. The tenant always overrides any tenantId in the query,
+ * and there is no tenant-less fallback: without a tenant the query is refused.
  */
 export async function addTenantFilter(query: any = {}): Promise<any> {
   const tenantId = await getTenantId();
-  
-  if (tenantId) {
-    return {
-      ...query,
-      tenantId: new Types.ObjectId(tenantId),
-    };
-  }
-  
-  // If no tenant, return query for null tenantId (backward compatibility)
-  // Wrap existing $or if it exists
-  if (query.$or) {
-    return {
-      ...query,
-      $or: [
-        { tenantId: { $exists: false } },
-        { tenantId: null },
-        ...query.$or,
-      ],
-    };
-  }
-  
-  return {
-    ...query,
-    $or: [
-      { tenantId: { $exists: false } },
-      { tenantId: null },
-    ],
-  };
+  return createTenantQuery(tenantId, query);
 }
 
 /**
  * Create a tenant-scoped query for a specific tenant
  */
 export function createTenantQuery(tenantId: string | null, baseQuery: any = {}): any {
-  if (tenantId) {
-    return {
-      ...baseQuery,
-      tenantId: new Types.ObjectId(tenantId),
-    };
-  }
-  
-  // If no tenant, return query for null tenantId (backward compatibility)
-  if (baseQuery.$or) {
-    return {
-      ...baseQuery,
-      $or: [
-        { tenantId: { $exists: false } },
-        { tenantId: null },
-        ...baseQuery.$or,
-      ],
-    };
-  }
-  
+  if (!tenantId) throw new MissingTenantError();
   return {
     ...baseQuery,
-    $or: [
-      { tenantId: { $exists: false } },
-      { tenantId: null },
-    ],
+    tenantId: new Types.ObjectId(tenantId),
   };
 }
 
@@ -80,14 +39,9 @@ export function createTenantQuery(tenantId: string | null, baseQuery: any = {}):
  */
 export async function ensureTenantId(data: any): Promise<any> {
   const tenantId = await getTenantId();
-  
-  if (tenantId && !data.tenantId) {
-    return {
-      ...data,
-      tenantId: new Types.ObjectId(tenantId),
-    };
-  }
-  
-  return data;
+  if (!tenantId) throw new MissingTenantError();
+  return {
+    ...data,
+    tenantId: new Types.ObjectId(tenantId),
+  };
 }
-

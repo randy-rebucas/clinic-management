@@ -3,12 +3,21 @@
 
 import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
-import Patient from '@/models/Patient';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
 import { Types } from 'mongoose';
+import {
+  forEachTenant,
+  automationEnabled,
+  getTenantTimezone,
+  delivered,
+  pendingThreshold,
+  daysUntilInTz,
+  errorMessage,
+  BATCH_LIMIT,
+  type AutomationTenant,
+} from './shared';
 
 export interface PrescriptionRefillOptions {
   prescriptionId: string | Types.ObjectId;
@@ -18,6 +27,9 @@ export interface PrescriptionRefillOptions {
   sendNotification?: boolean;
 }
 
+/** Days before the refill date at which a reminder is sent (each once). */
+const REFILL_THRESHOLDS = [3, 1, 0];
+
 /**
  * Calculate refill date for a prescription
  */
@@ -26,25 +38,17 @@ export function calculateRefillDate(prescription: any): Date | null {
     return null;
   }
 
-  const issuedDate = new Date(prescription.issuedAt);
   let daysToAdd = 0;
-
-  // Calculate based on medication duration
   for (const medication of prescription.medications || []) {
     if (medication.durationDays) {
       daysToAdd = Math.max(daysToAdd, medication.durationDays);
     }
   }
-
-  // If no duration specified, default to 30 days
   if (daysToAdd === 0) {
     daysToAdd = 30;
   }
 
-  const refillDate = new Date(issuedDate);
-  refillDate.setDate(issuedDate.getDate() + daysToAdd);
-  
-  return refillDate;
+  return new Date(new Date(prescription.issuedAt).getTime() + daysToAdd * 24 * 60 * 60 * 1000);
 }
 
 /**
@@ -58,26 +62,22 @@ export async function sendRefillReminder(options: PrescriptionRefillOptions): Pr
   try {
     await connectDB();
 
-    const settings = await getSettings();
-    const autoPrescriptionRefills = (settings.automationSettings as any)?.autoPrescriptionRefills !== false;
+    if (!options.tenantId) {
+      return { success: false, sent: false, error: 'Tenant is required' };
+    }
+    const tenantId = new Types.ObjectId(String(options.tenantId));
 
-    if (!autoPrescriptionRefills) {
+    const settings = await getSettings(tenantId.toString());
+    if (!automationEnabled(settings, 'autoPrescriptionRefills')) {
       return { success: true, sent: false };
     }
 
-    const prescriptionId = typeof options.prescriptionId === 'string' 
-      ? new Types.ObjectId(options.prescriptionId) 
-      : options.prescriptionId;
-
-    const prescription = await Prescription.findById(prescriptionId)
-      .populate('patient', 'firstName lastName email phone')
-      .populate('prescribedBy', 'name');
+    const prescription = await Prescription.findOne({ _id: options.prescriptionId, tenantId })
+      .populate('patient', 'firstName lastName email phone');
 
     if (!prescription) {
       return { success: false, sent: false, error: 'Prescription not found' };
     }
-
-    // Only send reminders for active prescriptions
     if (prescription.status !== 'active') {
       return { success: true, sent: false };
     }
@@ -92,175 +92,129 @@ export async function sendRefillReminder(options: PrescriptionRefillOptions): Pr
       return { success: false, sent: false, error: 'Cannot calculate refill date' };
     }
 
-    const today = new Date();
-    const daysUntilRefill = Math.floor((refillDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-    // Only send reminder if within 3 days of refill date
-    if (daysUntilRefill > 3 || daysUntilRefill < 0) {
+    const tz = await getTenantTimezone(tenantId);
+    const daysUntilRefill = Math.max(0, daysUntilInTz(refillDate, tz));
+    if (daysUntilRefill > 3) {
       return { success: true, sent: false };
     }
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : prescription.tenantId;
-
-    const reminderMessage = generateRefillMessage(prescription, daysUntilRefill);
-    const emailContent = generateRefillEmail(prescription, daysUntilRefill);
-
     let sent = false;
 
-    // Send SMS if enabled and phone available
     if (options.sendSMS !== false && patient.phone) {
       try {
-        let phoneNumber = patient.phone.trim();
-        if (!phoneNumber.startsWith('+')) {
-          phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-        }
-
-        const smsResult = await sendSMS({
-          to: phoneNumber,
-          message: reminderMessage,
-        });
-
-        if (smsResult.success) {
-          sent = true;
-        }
+        const smsResult = await sendSMS({ to: patient.phone, message: generateRefillMessage(prescription, daysUntilRefill) });
+        if (delivered(smsResult)) sent = true;
       } catch (error) {
         console.error('Error sending refill reminder SMS:', error);
       }
     }
 
-    // Send email if enabled and email available
     if (options.sendEmail !== false && patient.email) {
       try {
-        const emailResult = await sendEmail({
-          to: patient.email,
-          subject: emailContent.subject,
-          html: emailContent.html,
-        });
-
-        if (emailResult.success) {
-          sent = true;
-        }
+        const emailContent = generateRefillEmail(prescription, daysUntilRefill);
+        const emailResult = await sendEmail({ to: patient.email, subject: emailContent.subject, html: emailContent.html });
+        if (delivered(emailResult)) sent = true;
       } catch (error) {
         console.error('Error sending refill reminder email:', error);
       }
     }
 
-    // Send in-app notification
-    if (options.sendNotification !== false && patient._id) {
-      try {
-        await createNotification({
-          userId: patient._id,
-          tenantId,
-          type: 'prescription',
-          priority: daysUntilRefill <= 1 ? 'high' : 'normal',
-          title: 'Prescription Refill Reminder',
-          message: reminderMessage,
-          relatedEntity: {
-            type: 'prescription',
-            id: prescription._id,
-          },
-          actionUrl: `/prescriptions/${prescription._id}`,
-        });
-        sent = true;
-      } catch (error) {
-        console.error('Error creating refill reminder notification:', error);
-      }
-    }
-
+    // Patients have no User account, so no in-app notification is created here.
     return { success: true, sent };
   } catch (error: any) {
     console.error('Error sending refill reminder:', error);
-    return { 
+    return {
       success: false,
       sent: false,
-      error: error.message || 'Failed to send refill reminder' 
+      error: 'Failed to send refill reminder',
     };
   }
 }
 
-/**
- * Process all prescriptions and send refill reminders
- * This should be called by a cron job
- */
-export async function processRefillReminders(tenantId?: string | Types.ObjectId): Promise<{
+type RefillResult = {
   success: boolean;
   processed: number;
   remindersSent: number;
   errors: number;
   results: Array<{ prescriptionId: string; daysUntilRefill: number; success: boolean; error?: string }>;
-}> {
+};
+
+async function processTenant(tenant: AutomationTenant): Promise<RefillResult> {
+  const out: RefillResult = { success: true, processed: 0, remindersSent: 0, errors: 0, results: [] };
+
+  const settings = await getSettings(tenant.tenantId);
+  if (!automationEnabled(settings, 'autoPrescriptionRefills')) return out;
+
+  const now = new Date();
+  const prescriptions = await Prescription.find({
+    tenantId: tenant.tenantObjectId,
+    status: 'active',
+    issuedAt: { $gte: new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000) },
+  })
+    .select('_id issuedAt medications refillRemindersSent')
+    .sort({ issuedAt: -1 })
+    .limit(BATCH_LIMIT * 4)
+    .lean();
+
+  for (const prescription of prescriptions as any[]) {
+    const refillDate = calculateRefillDate(prescription);
+    if (!refillDate) continue;
+
+    const daysUntilRefill = daysUntilInTz(refillDate, tenant.timezone, now);
+    // A missed run still catches up, but only for refills that are at most a day overdue.
+    if (daysUntilRefill < -1) continue;
+
+    const due = pendingThreshold(Math.max(0, daysUntilRefill), REFILL_THRESHOLDS, prescription.refillRemindersSent);
+    if (!due) continue;
+
+    out.processed++;
+    try {
+      const result = await sendRefillReminder({
+        prescriptionId: prescription._id,
+        tenantId: tenant.tenantObjectId,
+        sendSMS: true,
+        sendEmail: true,
+      });
+      out.results.push({ prescriptionId: String(prescription._id), daysUntilRefill, success: result.success, error: result.error });
+
+      if (result.success && result.sent) {
+        out.remindersSent++;
+        await Prescription.updateOne(
+          { _id: prescription._id, tenantId: tenant.tenantObjectId },
+          { $addToSet: { refillRemindersSent: { $each: due.crossed } } }
+        );
+      } else if (!result.success) {
+        out.errors++;
+      }
+    } catch (error) {
+      out.errors++;
+      out.results.push({ prescriptionId: String(prescription._id), daysUntilRefill, success: false, error: errorMessage(error) });
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Process prescriptions and send refill reminders (3 days, 1 day and on the day; each once).
+ * Without a tenantId every active tenant is processed.
+ */
+export async function processRefillReminders(tenantId?: string | Types.ObjectId): Promise<RefillResult> {
   try {
     await connectDB();
-
-    const settings = await getSettings();
-    const autoPrescriptionRefills = (settings.automationSettings as any)?.autoPrescriptionRefills !== false;
-
-    if (!autoPrescriptionRefills) {
-      return { success: true, processed: 0, remindersSent: 0, errors: 0, results: [] };
-    }
-
-    // Get all active prescriptions
-    const query: any = {
-      status: 'active',
-    };
-
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string' 
-        ? new Types.ObjectId(tenantId) 
-        : tenantId;
-    }
-
-    const prescriptions = await Prescription.find(query)
-      .populate('patient', 'firstName lastName email phone');
-
-    const results: Array<{ prescriptionId: string; daysUntilRefill: number; success: boolean; error?: string }> = [];
-    let remindersSent = 0;
-    let errors = 0;
-
-    const today = new Date();
-
-    for (const prescription of prescriptions) {
-      const refillDate = calculateRefillDate(prescription);
-      if (!refillDate) continue;
-
-      const daysUntilRefill = Math.floor((refillDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-      // Send reminders at 3 days and 1 day before refill date, and on refill date
-      const shouldRemind = daysUntilRefill === 3 || daysUntilRefill === 1 || daysUntilRefill === 0;
-
-      if (shouldRemind) {
-        const result = await sendRefillReminder({
-          prescriptionId: prescription._id,
-          tenantId: prescription.tenantId,
-          sendSMS: true,
-          sendEmail: true,
-          sendNotification: true,
-        });
-
-        results.push({
-          prescriptionId: prescription._id.toString(),
-          daysUntilRefill,
-          success: result.success,
-          error: result.error,
-        });
-
-        if (result.success && result.sent) {
-          remindersSent++;
-        } else if (!result.success) {
-          errors++;
-        }
+    const runs = await forEachTenant(tenantId, processTenant);
+    const total: RefillResult = { success: runs.every((r) => r.success), processed: 0, remindersSent: 0, errors: 0, results: [] };
+    for (const run of runs) {
+      if (!run.result) {
+        total.errors++;
+        continue;
       }
+      total.processed += run.result.processed;
+      total.remindersSent += run.result.remindersSent;
+      total.errors += run.result.errors;
+      total.results.push(...run.result.results);
     }
-
-    return {
-      success: true,
-      processed: prescriptions.length,
-      remindersSent,
-      errors,
-      results,
-    };
+    return total;
   } catch (error: any) {
     console.error('Error processing refill reminders:', error);
     return {
@@ -268,37 +222,25 @@ export async function processRefillReminders(tenantId?: string | Types.ObjectId)
       processed: 0,
       remindersSent: 0,
       errors: 1,
-      results: [{ prescriptionId: 'unknown', daysUntilRefill: 0, success: false, error: error.message }],
+      results: [],
     };
   }
 }
 
-/**
- * Generate refill reminder message
- */
 function generateRefillMessage(prescription: any, daysUntilRefill: number): string {
-  const patient = prescription.patient as any;
-  const medicationNames = prescription.medications
-    ?.map((med: any) => med.name)
-    .join(', ') || 'your medications';
+  const medicationNames = prescription.medications?.map((med: any) => med.name).join(', ') || 'your medications';
 
   if (daysUntilRefill === 0) {
     return `URGENT: Your prescription for ${medicationNames} needs to be refilled today. Please contact the clinic to refill. Prescription Code: ${prescription.prescriptionCode}.`;
   } else if (daysUntilRefill === 1) {
     return `Reminder: Your prescription for ${medicationNames} needs to be refilled tomorrow. Please contact the clinic. Prescription Code: ${prescription.prescriptionCode}.`;
-  } else {
-    return `Reminder: Your prescription for ${medicationNames} will need to be refilled in ${daysUntilRefill} days. Please contact the clinic to refill. Prescription Code: ${prescription.prescriptionCode}.`;
   }
+  return `Reminder: Your prescription for ${medicationNames} will need to be refilled in ${daysUntilRefill} days. Please contact the clinic to refill. Prescription Code: ${prescription.prescriptionCode}.`;
 }
 
-/**
- * Generate refill reminder email
- */
 function generateRefillEmail(prescription: any, daysUntilRefill: number): { subject: string; html: string } {
   const patient = prescription.patient as any;
-  const medicationNames = prescription.medications
-    ?.map((med: any) => med.name)
-    .join(', ') || 'your medications';
+  const medicationNames = prescription.medications?.map((med: any) => med.name).join(', ') || 'your medications';
 
   let subject = '';
   let urgencyColor = '#ff9800';
@@ -339,19 +281,19 @@ function generateRefillEmail(prescription: any, daysUntilRefill: number): { subj
           <h1>${urgencyText}</h1>
         </div>
         <div class="content">
-          <p>Dear ${patient.firstName} ${patient.lastName},</p>
-          ${daysUntilRefill === 0 
+          <p>Dear ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)},</p>
+          ${daysUntilRefill === 0
             ? '<p><strong>Your prescription needs to be refilled today.</strong></p>'
             : daysUntilRefill === 1
             ? '<p>Your prescription needs to be refilled tomorrow.</p>'
             : `<p>Your prescription will need to be refilled in ${daysUntilRefill} days.</p>`
           }
           <div class="info-box">
-            <p><strong>Prescription Code:</strong> ${prescription.prescriptionCode}</p>
+            <p><strong>Prescription Code:</strong> ${escapeHtml(prescription.prescriptionCode)}</p>
             <p><strong>Medications:</strong></p>
             <ul class="medications">
               ${prescription.medications?.map((med: any) => `
-                <li>${med.name}${med.strength ? ` (${med.strength})` : ''}${med.instructions ? ` - ${med.instructions}` : ''}</li>
+                <li>${escapeHtml(med.name)}${med.strength ? ` (${escapeHtml(med.strength)})` : ''}${med.instructions ? ` - ${escapeHtml(med.instructions)}` : ''}</li>
               `).join('') || '<li>No medications listed</li>'}
             </ul>
           </div>
@@ -367,4 +309,3 @@ function generateRefillEmail(prescription: any, daysUntilRefill: number): { subj
 
   return { subject, html };
 }
-

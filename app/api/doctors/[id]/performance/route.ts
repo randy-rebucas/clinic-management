@@ -2,81 +2,69 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
 import Appointment from '@/models/Appointment';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import {
+  requireTenantSession,
+  isTenantSessionError,
+  tenantFilter,
+  isValidId,
+  notFound,
+} from '@/lib/api/tenant-session';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { parseDateParam } from '@/app/api/reports/_lib/report-range';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(session, 'doctors', 'read');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
-    
+
     const { id } = await params;
+    if (!isValidId(id)) return notFound('Doctor');
     const searchParams = request.nextUrl.searchParams;
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
-
-    // Build query with tenant filter
-    const doctorQuery: any = { _id: id };
-    if (tenantId) {
-      doctorQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      doctorQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    const tz = await getTenantTimezone(tenantId);
+    const start = parseDateParam(startDate, tz, 'start');
+    const end = parseDateParam(endDate, tz, 'end');
+    if ((startDate && !start) || (endDate && !end)) {
+      return NextResponse.json({ success: false, error: 'Invalid date range' }, { status: 400 });
     }
 
-    const doctor = await Doctor.findOne(doctorQuery)
-      .populate('specializationId', 'name description category');
+    const doctor = await Doctor.findOne(tenantFilter(tenantId, { _id: id }))
+      .select('firstName lastName specializationId performanceMetrics')
+      .populate('specializationId', 'name description category')
+      .lean() as any;
     if (!doctor) {
-      return NextResponse.json(
-        { success: false, error: 'Doctor not found' },
-        { status: 404 }
-      );
+      return notFound('Doctor');
     }
 
-    // Build date range query
-    const dateQuery: any = {};
-    if (startDate || endDate) {
-      dateQuery.appointmentDate = {};
-      if (startDate) {
-        dateQuery.appointmentDate.$gte = new Date(startDate);
-      }
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        dateQuery.appointmentDate.$lte = end;
-      }
+    const appointmentMatch: Record<string, unknown> = tenantFilter(tenantId, { doctor: doctor._id });
+    if (start || end) {
+      appointmentMatch.appointmentDate = {
+        ...(start ? { $gte: start } : {}),
+        ...(end ? { $lte: end } : {}),
+      };
     }
 
-    // Get appointment statistics (tenant-scoped)
-    const appointmentQuery: any = {
-      doctor: id,
-      ...dateQuery,
-    };
-    if (tenantId) {
-      appointmentQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      appointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
-    const appointments = await Appointment.find(appointmentQuery);
+    const rows = await Appointment.aggregate([
+      { $match: appointmentMatch },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+    const countOf = (status: string) => rows.find((r: any) => r._id === status)?.count || 0;
 
-    const totalAppointments = appointments.length;
-    const completedAppointments = appointments.filter((apt) => apt.status === 'completed').length;
-    const cancelledAppointments = appointments.filter((apt) => apt.status === 'cancelled').length;
-    const noShowAppointments = appointments.filter((apt) => apt.status === 'no-show').length;
+    const totalAppointments = rows.reduce((sum: number, r: any) => sum + r.count, 0);
+    const completedAppointments = countOf('completed');
+    const cancelledAppointments = countOf('cancelled');
+    const noShowAppointments = countOf('no-show');
 
     // Calculate completion rate
     const completionRate = totalAppointments > 0 
@@ -94,15 +82,15 @@ export async function GET(
       : 0;
 
     // Update doctor's performance metrics
-    doctor.performanceMetrics = {
-      totalAppointments,
-      completedAppointments,
-      cancelledAppointments,
-      noShowAppointments,
-      averageRating: doctor.performanceMetrics?.averageRating,
-      lastUpdated: new Date(),
-    };
-    await doctor.save();
+    await Doctor.updateOne(tenantFilter(tenantId, { _id: doctor._id }), {
+      $set: {
+        'performanceMetrics.totalAppointments': totalAppointments,
+        'performanceMetrics.completedAppointments': completedAppointments,
+        'performanceMetrics.cancelledAppointments': cancelledAppointments,
+        'performanceMetrics.noShowAppointments': noShowAppointments,
+        'performanceMetrics.lastUpdated': new Date(),
+      },
+    });
 
     return NextResponse.json({
       success: true,
@@ -110,7 +98,7 @@ export async function GET(
         doctor: {
           _id: doctor._id,
           name: `${doctor.firstName} ${doctor.lastName}`,
-          specialization: (doctor.specializationId as any)?.name || 'Unknown',
+          specialization: doctor.specializationId?.name || 'Unknown',
         },
         metrics: {
           totalAppointments,

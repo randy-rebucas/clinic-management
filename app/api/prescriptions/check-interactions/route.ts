@@ -2,46 +2,35 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, isValidId, patientTenantFilter, tenantFilter } from '@/lib/api/tenant-session';
 import { checkDrugInteractionsAdvanced, checkInteractionsWithPatientMedications, getApiStats } from '@/lib/drug-interactions';
 
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { tenantId } = ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(ctx.session, 'prescriptions', 'read');
+  if (permissionCheck) return permissionCheck;
 
   try {
     await connectDB();
-    const body = await request.json();
-    const { medications, patientId, includePatientMedications } = body;
+    const body = await request.json().catch(() => null);
+    const { medications, patientId, includePatientMedications } = body ?? {};
 
-    if (!medications || !Array.isArray(medications)) {
+    if (!medications || !Array.isArray(medications) || medications.length > 100) {
       return NextResponse.json(
         { success: false, error: 'Medications array is required' },
         { status: 400 }
       );
     }
 
-    // Get tenant context from session or headers
-    const { getTenantContext } = await import('@/lib/tenant');
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    const { Types } = await import('mongoose');
-
     let interactions;
     if (includePatientMedications && patientId) {
-      // Get patient's current active prescriptions (tenant-scoped)
-      const patientQuery: any = { _id: patientId };
-      if (tenantId) {
-        patientQuery.tenantIds = new Types.ObjectId(tenantId);
-      } else {
-        patientQuery.$or = [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }];
-      }
-      
-      const patient = await Patient.findOne(patientQuery);
+      const patient = isValidId(patientId)
+        ? await Patient.exists(patientTenantFilter(tenantId, { _id: patientId }))
+        : null;
       if (!patient) {
         return NextResponse.json(
           { success: false, error: 'Patient not found' },
@@ -49,18 +38,10 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Get active prescriptions for this patient (tenant-scoped)
-      const prescriptionQuery: any = {
-        patient: patientId,
+      const activePrescriptions = await Prescription.find(tenantFilter(tenantId, {
+        patient: patient._id,
         status: { $in: ['active', 'partially-dispensed'] },
-      };
-      if (tenantId) {
-        prescriptionQuery.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        prescriptionQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const activePrescriptions = await Prescription.find(prescriptionQuery);
+      }));
 
       const currentMedications = activePrescriptions.flatMap((prescription) =>
         prescription.medications.map((med: any) => ({
@@ -75,7 +56,7 @@ export async function POST(request: NextRequest) {
       interactions = await checkDrugInteractionsAdvanced(medications);
     }
 
-    const apiStats = getApiStats();
+    getApiStats();
 
     return NextResponse.json({
       success: true,
@@ -98,4 +79,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

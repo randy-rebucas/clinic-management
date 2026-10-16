@@ -1,677 +1,392 @@
 'use client';
 
-import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
+import { useEffect, useId, useMemo, useState, type DragEvent, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
+import { FIELD, FOCUS_RING, ICON, Svg } from './appointments/shared';
+import { FieldError, Label, NoteArea, Section } from './visits/form/parts';
+import PatientSearch, { type PatientOption } from './patients/PatientSearch';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
+import { useUnsavedChanges } from './hooks/useUnsavedChanges';
+import { formatApiError } from './utils/apiError';
+import { DETAIL_FIELDS, DetailFields, HAS_EXPIRY, detailsPayload } from './documents/fields';
+import { CATEGORY_LABEL, DOCUMENT_CATEGORY_KEYS, fileSize, type DocumentCategory } from '@/lib/documents';
 
-interface Patient {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  patientCode?: string;
-}
+const ACCEPT = '.pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx';
+const ACCEPTED_TYPES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
 
-interface Visit {
+interface VisitOption {
   _id: string;
   visitCode: string;
   date: string;
   visitType?: string;
 }
 
-interface DocumentUploadFormProps {
-  initialData?: {
-    patient?: string;
-    visit?: string;
-  };
-  patients: Patient[];
-  visits: Visit[];
-  onSubmit: (formData: FormData) => void;
-  onCancel?: () => void;
+/** A filename's guess at its kind, as the server would infer it, so the form starts right. */
+function guessCategory(name: string): DocumentCategory | '' {
+  const n = name.toLowerCase();
+  if (/refer/.test(n)) return 'referral';
+  if (/\blab|cbc|urinalysis|fbs|lipid/.test(n)) return 'laboratory_result';
+  if (/x-?ray|ultrasound|\bct\b|mri|imaging/.test(n)) return 'imaging';
+  if (/cert/.test(n)) return 'medical_certificate';
+  if (/philhealth|hmo|insurance|maxicare|intellicare/.test(n)) return 'insurance';
+  if (/receipt|invoice|bill/.test(n)) return 'invoice';
+  return '';
 }
 
-const DOCUMENT_CATEGORIES = [
-  { value: 'referral', label: 'Referral' },
-  { value: 'laboratory_result', label: 'Laboratory Result' },
-  { value: 'imaging', label: 'Imaging' },
-  { value: 'medical_certificate', label: 'Medical Certificate' },
-  { value: 'prescription', label: 'Prescription' },
-  { value: 'invoice', label: 'Invoice' },
-  { value: 'id', label: 'ID' },
-  { value: 'insurance', label: 'Insurance' },
-  { value: 'other', label: 'Other' },
-] as const;
+const titleFrom = (name: string) => name.replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[_-]+/g, ' ').trim();
 
-export default function DocumentUploadForm({
-  initialData,
-  patients,
-  visits,
-  onSubmit,
-  onCancel,
-}: DocumentUploadFormProps) {
-  const [formData, setFormData] = useState({
-    file: null as File | null,
-    title: '',
-    description: '',
-    category: '' as string,
-    patient: initialData?.patient || '',
-    visit: initialData?.visit || '',
-    tags: '',
-    notes: '',
-    scanned: false,
-    // Referral specific
-    referringDoctor: '',
-    referringClinic: '',
-    referralDate: '',
-    referralReason: '',
-    // Imaging specific
-    modality: '',
-    bodyPart: '',
-    studyDate: '',
-    radiologist: '',
-    // Medical certificate specific
-    issueDate: '',
-    validUntil: '',
-    purpose: '',
-    restrictions: '',
-    // Lab result specific
-    testType: '',
-    testDate: '',
-    labName: '',
-  });
+/**
+ * Upload one document. File, then what it is (kind and its details), whose it is (a server-side
+ * patient search and that patient's visits), and who may see it: a patient's documents appear in
+ * their patient portal unless marked staff only, and the form says so before saving.
+ */
+export default function DocumentUploadForm({ maxBytes, initialPatient, initialVisitId }: { maxBytes: number; initialPatient: PatientOption | null; initialVisitId?: string }) {
+  const ids = useId();
+  const router = useRouter();
+  const [file, setFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [title, setTitle] = useState('');
+  const [titleTouched, setTitleTouched] = useState(false);
+  const [category, setCategory] = useState<DocumentCategory | ''>('');
+  const [details, setDetails] = useState<Record<string, string>>({});
+  const [expiry, setExpiry] = useState('');
+  const [patient, setPatient] = useState<PatientOption | null>(initialPatient);
+  const [visitId, setVisitId] = useState(initialVisitId ?? '');
+  const [staffOnly, setStaffOnly] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [tags, setTags] = useState('');
+  const [scanned, setScanned] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
 
-  const [patientSearch, setPatientSearch] = useState('');
-  const [showPatientSearch, setShowPatientSearch] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const visits = useKeyedFetch<VisitOption[]>(patient ? `/api/visits?patientId=${patient._id}&limit=20` : null);
+  const patientVisits = visits.valueUrl?.includes(patient?._id ?? '#') ? (visits.value ?? []) : [];
 
-  useEffect(() => {
-    if (formData.patient) {
-      const patient = patients.find((p) => p._id === formData.patient);
-      if (patient) {
-        // Use setTimeout to avoid synchronous setState in effect
-        setTimeout(() => {
-          setSelectedPatient(patient);
-          setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-        }, 0);
-      } else {
-        setTimeout(() => {
-          setSelectedPatient(null);
-        }, 0);
-      }
-    }
-  }, [formData.patient, patients]);
+  const preview = useMemo(() => (file && file.type.startsWith('image/') ? URL.createObjectURL(file) : null), [file]);
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview);
+  }, [preview]);
 
-  useEffect(() => {
-    if (formData.file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFilePreview(reader.result as string);
-      };
-      if (formData.file.type.startsWith('image/')) {
-        reader.readAsDataURL(formData.file);
-      } else {
-        setTimeout(() => {
-          setFilePreview(null);
-        }, 0);
-      }
-    } else {
-      setTimeout(() => {
-        setFilePreview(null);
-      }, 0);
-    }
-  }, [formData.file]);
+  const dirty = Boolean(file) || title.trim() !== '' || notes.trim() !== '';
+  useUnsavedChanges(dirty && !busy, 'This document is not uploaded yet. Leave anyway?');
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.patient-search-container')) {
-        setShowPatientSearch(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setFormData({ ...formData, file, title: formData.title || file.name });
-    }
+  const take = (f: File | undefined | null) => {
+    if (!f) return;
+    setFile(f);
+    setFailure(null);
+    if (!titleTouched || !title.trim()) setTitle(titleFrom(f.name));
+    if (!category) setCategory(guessCategory(f.name));
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  // --- Problems ------------------------------------------------------------------
+
+  const fileProblem = !file
+    ? 'Choose the file to upload.'
+    : file.size > maxBytes
+      ? `This file is ${fileSize(file.size)}; the limit is ${fileSize(maxBytes)}. Scan at a lower resolution or split it.`
+      : file.type && !ACCEPTED_TYPES.has(file.type)
+        ? 'Only PDF, JPG, PNG, GIF, WebP, Word and Excel files can be uploaded.'
+        : null;
+  const problems = {
+    file: fileProblem,
+    title: title.trim() ? null : 'Give the document a title.',
+    category: category ? null : 'Choose what kind of document this is.',
+  };
+  const problemCount = Object.values(problems).filter(Boolean).length;
+  const err = (k: keyof typeof problems) => (attempted ? problems[k] : null);
+
+  // --- Submit --------------------------------------------------------------------------
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!formData.file) {
-      alert('Please select a file to upload');
+    if (busy) return;
+    setAttempted(true);
+    if (problemCount) {
+      requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-upload-form] [aria-invalid="true"]')?.focus());
       return;
     }
-    if (!formData.title) {
-      alert('Please enter a title');
-      return;
-    }
-    if (!formData.category) {
-      alert('Please select a category');
-      return;
-    }
+    setBusy(true);
+    setFailure(null);
+    const body = new FormData();
+    body.append('file', file!);
+    body.append('title', title.trim());
+    body.append('category', category);
+    if (patient) body.append('patientId', patient._id);
+    if (patient && visitId) body.append('visitId', visitId);
+    if (notes.trim()) body.append('notes', notes.trim());
+    if (tags.trim()) body.append('tags', tags.trim());
+    body.append('scanned', String(scanned));
+    body.append('confidential', String(staffOnly));
+    if (HAS_EXPIRY.has(category as DocumentCategory) && expiry) body.append('expiryDate', expiry);
+    const extra = detailsPayload(category as DocumentCategory, details);
+    if (extra) body.append(DETAIL_FIELDS[category as DocumentCategory]!.formKey, JSON.stringify(extra));
 
-    const submitFormData = new FormData();
-    submitFormData.append('file', formData.file);
-    submitFormData.append('title', formData.title);
-    if (formData.description) submitFormData.append('description', formData.description);
-    submitFormData.append('category', formData.category);
-    if (formData.patient) submitFormData.append('patientId', formData.patient);
-    if (formData.visit) submitFormData.append('visitId', formData.visit);
-    if (formData.tags) submitFormData.append('tags', formData.tags);
-    if (formData.notes) submitFormData.append('notes', formData.notes);
-    submitFormData.append('scanned', formData.scanned.toString());
-
-    // Category-specific data
-    if (formData.category === 'referral') {
-      const referralData: any = {};
-      if (formData.referringDoctor) referralData.referringDoctor = formData.referringDoctor;
-      if (formData.referringClinic) referralData.referringClinic = formData.referringClinic;
-      if (formData.referralDate) referralData.referralDate = formData.referralDate;
-      if (formData.referralReason) referralData.reason = formData.referralReason;
-      if (Object.keys(referralData).length > 0) {
-        submitFormData.append('referralData', JSON.stringify(referralData));
+    try {
+      const res = await fetch('/api/documents', { method: 'POST', body });
+      if (res.status === 401) {
+        router.push('/login');
+        return;
       }
-    }
-
-    if (formData.category === 'imaging') {
-      const imagingData: any = {};
-      if (formData.modality) imagingData.modality = formData.modality;
-      if (formData.bodyPart) imagingData.bodyPart = formData.bodyPart;
-      if (formData.studyDate) imagingData.studyDate = formData.studyDate;
-      if (formData.radiologist) imagingData.radiologist = formData.radiologist;
-      if (Object.keys(imagingData).length > 0) {
-        submitFormData.append('imagingData', JSON.stringify(imagingData));
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        setFailure(formatApiError(json, 'The document could not be uploaded'));
+        setBusy(false);
+        return;
       }
+      router.push(`/documents/${json.data._id}?saved=uploaded`);
+    } catch {
+      setFailure('The server couldn’t be reached. Nothing was uploaded; try again.');
+      setBusy(false);
     }
-
-    if (formData.category === 'medical_certificate') {
-      const medicalCertificateData: any = {};
-      if (formData.issueDate) medicalCertificateData.issueDate = formData.issueDate;
-      if (formData.validUntil) medicalCertificateData.validUntil = formData.validUntil;
-      if (formData.purpose) medicalCertificateData.purpose = formData.purpose;
-      if (formData.restrictions) medicalCertificateData.restrictions = formData.restrictions;
-      if (Object.keys(medicalCertificateData).length > 0) {
-        submitFormData.append('medicalCertificateData', JSON.stringify(medicalCertificateData));
-      }
-    }
-
-    if (formData.category === 'laboratory_result') {
-      const labResultData: any = {};
-      if (formData.testType) labResultData.testType = formData.testType;
-      if (formData.testDate) labResultData.testDate = formData.testDate;
-      if (formData.labName) labResultData.labName = formData.labName;
-      if (Object.keys(labResultData).length > 0) {
-        submitFormData.append('labResultData', JSON.stringify(labResultData));
-      }
-    }
-
-    onSubmit(submitFormData);
   };
 
-  const filteredPatients = patients.filter((patient) => {
-    const searchLower = patientSearch.toLowerCase();
-    const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
-    const patientCode = (patient.patientCode || '').toLowerCase();
-    return fullName.includes(searchLower) || patientCode.includes(searchLower);
-  });
+  const name = patient ? `${patient.firstName} ${patient.lastName}` : null;
+  const status = busy
+    ? `Uploading ${file ? fileSize(file.size) : ''}…`
+    : attempted && problemCount
+      ? `${problemCount === 1 ? 'One thing needs' : `${problemCount} things need`} fixing.`
+      : !file
+        ? 'Choose a file to upload.'
+        : name
+          ? staffOnly
+            ? `Files it to ${name}’s record, for staff only.`
+            : `Files it to ${name}’s record. ${patient!.firstName} can see it in the patient portal.`
+          : 'Uploads it without a patient; it waits under “Not filed to a patient”.';
 
-  const selectPatient = (patient: Patient) => {
-    setFormData({ ...formData, patient: patient._id });
-    setSelectedPatient(patient);
-    setPatientSearch(`${patient.firstName} ${patient.lastName}`);
-    setShowPatientSearch(false);
+  const onDrop = (e: DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    setDragging(false);
+    take(e.dataTransfer.files?.[0]);
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div className="max-h-[80vh] overflow-y-auto">
-        <div className="flex flex-col gap-6 p-4 sm:p-6">
-          {/* File Upload */}
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-purple-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-              </div>
-              <label className="block text-sm font-bold text-gray-900">
-                File <span className="text-red-600">*</span>
-              </label>
-            </div>
+    <form data-upload-form onSubmit={submit} noValidate autoComplete="off" className="flex flex-col gap-6">
+      {failure && (
+        <div role="alert" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          <p>{failure}</p>
+          <button type="button" onClick={() => setFailure(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 text-red-700 hover:text-red-900 ${FOCUS_RING}`}>
+            <Svg d={ICON.x} />
+          </button>
+        </div>
+      )}
+
+      <Section id={`${ids}-file`} title="File" hint={`PDF, image, Word or Excel, up to ${fileSize(maxBytes)}.`}>
+        <div className="px-5 py-4">
+          <label
+            htmlFor={`${ids}-input`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 text-center transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-teal has-[:focus-visible]:ring-offset-2 ${
+              dragging ? 'border-brand-teal-dark bg-brand-teal-light/50' : err('file') ? 'border-red-400 bg-red-50/40' : 'border-gray-300 hover:border-brand-teal-dark hover:bg-brand-teal-light/30'
+            }`}
+          >
             <input
+              id={`${ids}-input`}
               type="file"
-              onChange={handleFileChange}
-              required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+              accept={ACCEPT}
+              onChange={(e) => take(e.target.files?.[0])}
+              aria-invalid={Boolean(err('file'))}
+              aria-describedby={err('file') ? `${ids}-file-err` : undefined}
+              className="sr-only"
             />
-            {filePreview && (
-              <div className="mt-4 p-3 bg-white border border-purple-200 rounded-lg">
-                <img
-                  src={filePreview}
-                  alt="Preview"
-                  className="max-w-full h-40 object-contain mx-auto"
-                />
-              </div>
+            {file ? (
+              <>
+                {preview ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- a local object URL preview
+                  <img src={preview} alt="" className="max-h-40 rounded-md object-contain ring-1 ring-gray-200" />
+                ) : (
+                  <span className="flex h-11 w-11 items-center justify-center rounded-md bg-gray-100 text-gray-500">
+                    <Svg d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" className="h-5 w-5" />
+                  </span>
+                )}
+                <span className="max-w-full truncate text-sm font-semibold text-gray-900">{file.name}</span>
+                <span className="font-mono text-xs text-gray-500">{fileSize(file.size)}</span>
+                <span className="text-sm font-semibold text-brand-teal-dark">Choose a different file</span>
+              </>
+            ) : (
+              <>
+                <span className="flex h-11 w-11 items-center justify-center rounded-md bg-brand-teal-light text-brand-teal-deep">
+                  <Svg d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" className="h-5 w-5" />
+                </span>
+                <span className="text-sm font-semibold text-gray-900">Drop the file here, or choose one</span>
+                <span className="text-xs text-gray-500">A phone photo of a paper result works too.</span>
+              </>
             )}
-            {formData.file && !filePreview && (
-              <div className="mt-4 p-3 bg-white border border-purple-200 rounded-lg">
-                <p className="text-sm font-medium text-gray-900">
-                  Selected: <span className="font-bold">{formData.file.name}</span> ({(formData.file.size / 1024).toFixed(2)} KB)
-                </p>
-              </div>
-            )}
+          </label>
+          {err('file') && <FieldError id={`${ids}-file-err`}>{err('file')}</FieldError>}
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={scanned} onChange={(e) => setScanned(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-teal-dark focus:ring-brand-teal" />
+            It is a scan or photo of a paper document
+          </label>
+        </div>
+      </Section>
+
+      <Section id={`${ids}-what`} title="What it is">
+        <div className="space-y-4 px-5 py-4">
+          <div>
+            <Label htmlFor={`${ids}-title`}>Title</Label>
+            <input
+              id={`${ids}-title`}
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setTitleTouched(true);
+              }}
+              maxLength={300}
+              placeholder="e.g. Chest X-ray result, St. Luke’s"
+              aria-invalid={Boolean(err('title'))}
+              className={`${FIELD} ${err('title') ? 'border-red-400' : ''}`}
+            />
+            {err('title') ? <FieldError id={`${ids}-title-err`}>{err('title')}</FieldError> : <p className="mt-1.5 text-xs text-gray-500">How it reads in lists and on the patient’s record.</p>}
           </div>
-
-          {/* Basic Information */}
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-blue-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Basic Information</h3>
-            </div>
-            <div className="flex flex-col gap-4">
-              {/* Title */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
-                  Title <span className="text-red-600">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  required
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
-                />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Description</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={2}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y transition-all text-sm"
-                />
-              </div>
-
-              {/* Category */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
-                  Category <span className="text-red-600">*</span>
-                </label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  required
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm bg-white"
+          <fieldset>
+            <legend className="mb-1.5 block text-sm font-medium text-gray-700">Kind</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {DOCUMENT_CATEGORY_KEYS.map((c, i) => (
+                <label
+                  key={c}
+                  className="cursor-pointer rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:border-gray-900 has-[:checked]:border-brand-teal-dark has-[:checked]:bg-brand-teal-dark has-[:checked]:text-white has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-teal has-[:focus-visible]:ring-offset-1"
                 >
-                  <option value="">Select category...</option>
-                  {DOCUMENT_CATEGORIES.map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Patient & Visit Selection */}
-          <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 border border-cyan-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-cyan-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Patient & Visit</h3>
-            </div>
-            <div className="flex flex-col gap-4">
-              {/* Patient Selection */}
-              <div className="patient-search-container relative">
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Patient (Optional)</label>
-                <div className="relative">
                   <input
-                    type="text"
-                    value={patientSearch}
-                    onChange={(e) => {
-                      setPatientSearch(e.target.value);
-                      setShowPatientSearch(true);
-                      if (!e.target.value) {
-                        setFormData({ ...formData, patient: '' });
-                        setSelectedPatient(null);
-                      }
-                    }}
-                    onFocus={() => setShowPatientSearch(true)}
-                    placeholder="Type to search patients..."
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none transition-all text-sm"
+                    type="radio"
+                    name={`${ids}-cat`}
+                    value={c}
+                    checked={category === c}
+                    onChange={() => setCategory(c)}
+                    aria-invalid={i === 0 && Boolean(err('category')) ? true : undefined}
+                    aria-describedby={err('category') ? `${ids}-cat-err` : undefined}
+                    className="sr-only"
                   />
-                  {showPatientSearch && (
-                    <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                      {filteredPatients.length > 0 ? (
-                        <div className="flex flex-col">
-                          {filteredPatients.map((patient) => (
-                            <button
-                              key={patient._id}
-                              type="button"
-                              onClick={() => {
-                                selectPatient(patient);
-                                setShowPatientSearch(false);
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-cyan-50 transition-colors flex flex-col items-start rounded"
-                            >
-                              <span className="font-semibold text-sm text-gray-900">{patient.firstName} {patient.lastName}</span>
-                              {patient.patientCode && (
-                                <span className="text-xs text-gray-600">{patient.patientCode}</span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      ) : patientSearch ? (
-                        <div className="p-2">
-                          <p className="text-xs text-gray-600">No patients found</p>
-                        </div>
-                      ) : (
-                        <div className="p-2">
-                          <p className="text-xs text-gray-600">Start typing to search...</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Visit Selection */}
-              {formData.patient && visits.length > 0 && (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Visit (Optional)</label>
-                  <select
-                    value={formData.visit}
-                    onChange={(e) => setFormData({ ...formData, visit: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none transition-all text-sm bg-white"
-                  >
-                    <option value="">Select a visit...</option>
-                    {visits.map((visit) => (
-                      <option key={visit._id} value={visit._id}>
-                        {visit.visitCode} - {new Date(visit.date).toLocaleDateString()}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Additional Information */}
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200 rounded-xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-gray-500 rounded-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Additional Information</h3>
-            </div>
-            <div className="flex flex-col gap-4">
-              {/* Tags */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Tags (comma-separated)</label>
-                <input
-                  type="text"
-                  value={formData.tags}
-                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                  placeholder="e.g., urgent, follow-up, important"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all text-sm"
-                />
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Notes</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows={2}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none resize-y transition-all text-sm"
-                />
-              </div>
-
-              {/* Scanned */}
-              <div className="flex items-center gap-3 p-3 bg-white/50 rounded-lg border border-gray-200">
-                <input
-                  type="checkbox"
-                  id="scanned"
-                  checked={formData.scanned}
-                  onChange={(e) => setFormData({ ...formData, scanned: e.target.checked })}
-                  className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                />
-                <label htmlFor="scanned" className="text-sm font-semibold text-gray-700 cursor-pointer">
-                  This is a scanned document
+                  {CATEGORY_LABEL[c]}
                 </label>
-              </div>
+              ))}
             </div>
+            {err('category') && <FieldError id={`${ids}-cat-err`}>{err('category')}</FieldError>}
+          </fieldset>
+          {category && DETAIL_FIELDS[category] && (
+            <div className="motion-panel-in border-t border-gray-100 pt-4">
+              <DetailFields category={category} values={details} onChange={(k, v) => setDetails((d) => ({ ...d, [k]: v }))} idPrefix={ids} />
+              {category === 'medical_certificate' && <p className="mt-2 text-xs text-gray-500">“Valid until” sets the expiry: the clinic is reminded before it runs out.</p>}
+            </div>
+          )}
+          {category && HAS_EXPIRY.has(category) && (
+            <div className="motion-panel-in max-w-xs border-t border-gray-100 pt-4">
+              <Label htmlFor={`${ids}-exp`} optional>
+                Valid until
+              </Label>
+              <input id={`${ids}-exp`} type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className={`${FIELD} font-mono`} />
+              <p className="mt-1.5 text-xs text-gray-500">The clinic is reminded before it runs out.</p>
+            </div>
+          )}
+        </div>
+      </Section>
+
+      <Section id={`${ids}-whose`} title="Whose it is" hint="File it to the patient it is about. A visit links it to that consultation too.">
+        <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
+          <PatientSearch
+            optional
+            value={patient}
+            onChange={(p) => {
+              setPatient(p);
+              setVisitId('');
+            }}
+          />
+          <div>
+            <Label htmlFor={`${ids}-visit`} optional>
+              Visit
+            </Label>
+            <select id={`${ids}-visit`} value={visitId} onChange={(e) => setVisitId(e.target.value)} disabled={!patient || patientVisits.length === 0} className={FIELD}>
+              <option value="">{!patient ? 'Choose the patient first' : visits.loading ? 'Loading visits…' : patientVisits.length === 0 ? 'No visits on file' : 'Not about a visit'}</option>
+              {patientVisits.map((v) => (
+                <option key={v._id} value={v._id}>
+                  {v.visitCode} · {new Date(v.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  {v.visitType ? ` · ${v.visitType.replace(/-/g, ' ')}` : ''}
+                </option>
+              ))}
+            </select>
           </div>
+        </div>
+      </Section>
 
-          {/* Category-specific fields */}
-          {formData.category === 'referral' && (
-            <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border border-amber-200 rounded-xl p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-amber-500 rounded-lg">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Referral Information</h3>
-              </div>
-              <div className="flex flex-col gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referring Doctor</label>
-                  <input
-                    type="text"
-                    value={formData.referringDoctor}
-                    onChange={(e) => setFormData({ ...formData, referringDoctor: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referring Clinic</label>
-                  <input
-                    type="text"
-                    value={formData.referringClinic}
-                    onChange={(e) => setFormData({ ...formData, referringClinic: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Referral Date</label>
-                  <input
-                    type="date"
-                    value={formData.referralDate}
-                    onChange={(e) => setFormData({ ...formData, referralDate: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Reason</label>
-                  <textarea
-                    value={formData.referralReason}
-                    onChange={(e) => setFormData({ ...formData, referralReason: e.target.value })}
-                    rows={2}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none resize-y transition-all text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+      <Section id={`${ids}-who`} title="Who can see it">
+        <div className="space-y-3 px-5 py-4">
+          <label className="flex cursor-pointer items-start gap-3 text-sm">
+            <input type="checkbox" checked={staffOnly} onChange={(e) => setStaffOnly(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-teal-dark focus:ring-brand-teal" />
+            <span>
+              <span className="font-medium text-gray-900">Staff only</span>
+              <span className="block text-gray-500">Keep it out of the patient’s portal. Use it for internal letters and anything not meant for the patient.</span>
+            </span>
+          </label>
+          <p className={`text-sm ${patient && !staffOnly ? 'text-brand-teal-deep' : 'text-gray-500'}`}>
+            {patient
+              ? staffOnly
+                ? `${patient.firstName} won’t see it. Staff who may read documents will.`
+                : `${patient.firstName} will see it in the patient portal, with its title.`
+              : 'Without a patient, only staff see it.'}
+          </p>
+        </div>
+      </Section>
 
-          {formData.category === 'imaging' && (
-            <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 rounded-xl p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-indigo-500 rounded-lg">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Imaging Information</h3>
-              </div>
-              <div className="flex flex-col gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Modality</label>
-                  <input
-                    type="text"
-                    value={formData.modality}
-                    onChange={(e) => setFormData({ ...formData, modality: e.target.value })}
-                    placeholder="X-ray, CT, MRI, Ultrasound, etc."
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Body Part</label>
-                  <input
-                    type="text"
-                    value={formData.bodyPart}
-                    onChange={(e) => setFormData({ ...formData, bodyPart: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Study Date</label>
-                  <input
-                    type="date"
-                    value={formData.studyDate}
-                    onChange={(e) => setFormData({ ...formData, studyDate: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Radiologist</label>
-                  <input
-                    type="text"
-                    value={formData.radiologist}
-                    onChange={(e) => setFormData({ ...formData, radiologist: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {formData.category === 'medical_certificate' && (
-            <div className="bg-gradient-to-br from-teal-50 to-teal-100/50 border border-teal-200 rounded-xl p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-teal-500 rounded-lg">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Medical Certificate Information</h3>
-              </div>
-              <div className="flex flex-col gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Issue Date</label>
-                  <input
-                    type="date"
-                    value={formData.issueDate}
-                    onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Valid Until</label>
-                  <input
-                    type="date"
-                    value={formData.validUntil}
-                    onChange={(e) => setFormData({ ...formData, validUntil: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Purpose</label>
-                  <input
-                    type="text"
-                    value={formData.purpose}
-                    onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-                    placeholder="Work, School, Travel, etc."
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Restrictions</label>
-                  <textarea
-                    value={formData.restrictions}
-                    onChange={(e) => setFormData({ ...formData, restrictions: e.target.value })}
-                    rows={2}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none resize-y transition-all text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {formData.category === 'laboratory_result' && (
-            <div className="bg-gradient-to-br from-rose-50 to-rose-100/50 border border-rose-200 rounded-xl p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-rose-500 rounded-lg">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Laboratory Result Information</h3>
-              </div>
-              <div className="flex flex-col gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Test Type</label>
-                  <input
-                    type="text"
-                    value={formData.testType}
-                    onChange={(e) => setFormData({ ...formData, testType: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Test Date</label>
-                  <input
-                    type="date"
-                    value={formData.testDate}
-                    onChange={(e) => setFormData({ ...formData, testDate: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Lab Name</label>
-                  <input
-                    type="text"
-                    value={formData.labName}
-                    onChange={(e) => setFormData({ ...formData, labName: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none transition-all text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Form Actions */}
-          <hr className="border-gray-200" />
-          <div className="flex justify-end gap-3 pt-2">
-            {onCancel && (
-              <button type="button" onClick={onCancel} className="px-4 py-2.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-semibold border border-gray-200">
-                Cancel
-              </button>
-            )}
-            <button type="submit" className="px-4 py-2.5 text-sm bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all font-semibold shadow-md">
-              Upload Document
-            </button>
+      <Section id={`${ids}-notes`} title="Notes">
+        <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Label htmlFor={`${ids}-n`} optional>
+              Notes for staff
+            </Label>
+            <NoteArea id={`${ids}-n`} rows={2} value={notes} onChange={setNotes} />
           </div>
+          <div>
+            <Label htmlFor={`${ids}-tags`} optional>
+              Tags
+            </Label>
+            <input id={`${ids}-tags`} value={tags} onChange={(e) => setTags(e.target.value)} maxLength={500} placeholder="e.g. follow-up, pre-employment" className={FIELD} />
+            <p className="mt-1.5 text-xs text-gray-500">Separate with commas. Search finds documents by tag.</p>
+          </div>
+        </div>
+      </Section>
+
+      <div className="motion-tray-in sticky bottom-4 z-20 flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-[0_8px_30px_rgb(15,23,42,0.1)] sm:flex-row sm:items-center sm:justify-between">
+        <p className={`text-sm ${attempted && problemCount && !busy ? 'font-medium text-red-700' : 'text-gray-600'}`} aria-live="polite">
+          {status}
+        </p>
+        <div className="flex shrink-0 justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (dirty && !window.confirm('Discard this upload?')) return;
+              router.push(initialPatient ? `/patients/${initialPatient._id}` : '/documents');
+            }}
+            disabled={busy}
+            className={`rounded-md px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:text-gray-900 ${FOCUS_RING}`}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={busy}
+            aria-busy={busy}
+            className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+          >
+            <Svg d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            {busy ? 'Uploading…' : 'Upload'}
+          </button>
         </div>
       </div>
     </form>
   );
 }
-

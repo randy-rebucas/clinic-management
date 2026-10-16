@@ -1,853 +1,848 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { Modal, AlertDialog } from './ui/Modal';
+import { useRouter } from 'next/navigation';
+import { AlertDialog } from './ui/Modal';
+import { formatApiError } from './utils/apiError';
+import { useKeyedFetch } from './hooks/useKeyedFetch';
+import { FOCUS_RING, ICON, Svg } from './appointments/shared';
+import { SERIES, TrendChart } from './dashboards/charts';
+import { useMoney } from './invoices/shared';
+import { NoteArea, REMOVE_BUTTON } from './visits/form/parts';
+import { HoursDialog, TimeOffDialog, removeTimeOff } from './doctors/ScheduleDialogs';
+import { DOCTOR_STATE, doctorName, specialtyOf, statusOf, type DoctorRow } from './doctors/shared';
+import {
+  WEEKDAY_KEYS,
+  WEEKDAY_LONG,
+  WEEK_ORDER,
+  dayHours,
+  hoursRange,
+  timeOffDate,
+  toMin,
+  weekdayOf,
+  type BusinessDay,
+  type TimeOff,
+} from '@/lib/doctors';
+import type { DoctorPermissions } from '@/lib/doctors-page';
 
-interface Doctor {
+interface Note {
   _id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  specialization?: string;
-  specializationId?: { _id: string; name: string };
-  licenseNumber: string;
-  ptr?: string;
-  title?: string;
-  department?: string;
-  status?: 'active' | 'inactive' | 'on-leave';
-  bio?: string;
-  qualifications?: string[];
-  schedule?: Array<{
-    dayOfWeek: number;
-    startTime: string;
-    endTime: string;
-    isAvailable: boolean;
-  }>;
-  availabilityOverrides?: Array<{
-    date: string;
-    isAvailable: boolean;
-    startTime?: string;
-    endTime?: string;
-    reason?: string;
-  }>;
-  internalNotes?: Array<{
-    note: string;
-    createdBy: {
-      _id: string;
-      name: string;
-    };
-    createdAt: string;
-    isImportant: boolean;
-  }>;
-  performanceMetrics?: {
-    totalAppointments: number;
-    completedAppointments: number;
-    cancelledAppointments: number;
-    noShowAppointments: number;
-    averageRating?: number;
-    lastUpdated: string;
-  };
+  note: string;
+  createdBy?: { _id: string; name: string } | null;
+  createdAt: string;
+  isImportant?: boolean;
 }
 
-export default function DoctorDetailClient({ doctorId }: { doctorId: string }) {
-  const [doctor, setDoctor] = useState<Doctor | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [deleteNoteDialogOpen, setDeleteNoteDialogOpen] = useState(false);
-  const [noteToDelete, setNoteToDelete] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'profile' | 'schedule' | 'notes' | 'performance'>('profile');
-  const [showScheduleForm, setShowScheduleForm] = useState(false);
-  const [showNoteForm, setShowNoteForm] = useState(false);
-  const [newNote, setNewNote] = useState({ note: '', isImportant: false });
-  const [success, setSuccess] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [scheduleForm, setScheduleForm] = useState({
-    dayOfWeek: 0,
-    startTime: '09:00',
-    endTime: '17:00',
-    isAvailable: true,
-  });
+interface Detail extends DoctorRow {
+  internalNotes?: Note[];
+}
+
+interface Overview {
+  today: string;
+  now: string;
+  businessHours: BusinessDay[];
+  ahead: { date: string; booked: number }[] | null;
+  activity: { days: { date: string; booked: number; seen: number; noShow: number }[]; visits: number; prescriptions: number; collected: number; billed: number } | null;
+}
+
+type Dialog = { kind: 'hours' } | { kind: 'time-off' } | { kind: 'remove-time-off'; key: string } | { kind: 'delete' } | { kind: 'delete-note'; note: Note } | null;
+
+const ICONS = {
+  ...ICON,
+  edit: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
+  trash: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+  plus: 'M12 4v16m8-8H4',
+  user: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
+};
+
+const longDay = (key: string) => new Date(`${key}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+export default function DoctorDetailClient({ doctorId, permissions, saved }: { doctorId: string; permissions: DoctorPermissions; saved: 'created' | 'edited' | null }) {
   const router = useRouter();
+  const { money } = useMoney();
+  const res = useKeyedFetch<Detail>(`/api/doctors/${doctorId}`);
+  const ov = useKeyedFetch<Overview>(`/api/doctors/${doctorId}/overview`);
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [notice, setNotice] = useState<string | null>(saved === 'created' ? 'Doctor added. Set their usual hours below if you haven’t yet.' : saved === 'edited' ? 'Profile saved.' : null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notes, setNotes] = useState<{ forUrl: string; list: Note[] } | null>(null);
+  const d = res.value;
 
   useEffect(() => {
-    fetchDoctor();
-  }, [doctorId]);
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 7000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
-  const fetchDoctor = async () => {
+  const mine = permissions.myDoctorId === doctorId;
+  const canEditHours = permissions.canEdit || mine;
+
+  // --- Not loaded ---------------------------------------------------------------------
+
+  if (!d && res.error) {
+    const missing = /not found/i.test(res.error);
+    return (
+      <Shell>
+        <BackLink />
+        <div role="alert" className="rounded-lg border border-gray-200 bg-white px-6 py-14 text-center">
+          <div className={`mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md ${missing ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-600'}`}>
+            <Svg d={missing ? ICONS.user : ICONS.alert} className="h-5 w-5" />
+          </div>
+          <p className="font-semibold text-gray-900">{missing ? 'Doctor not found' : 'This profile didn’t load'}</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">{missing ? 'It may have been deleted, or it belongs to another clinic.' : `${res.error}. Check your connection and try again.`}</p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link href="/doctors" className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              All doctors
+            </Link>
+            {!missing && (
+              <button type="button" onClick={res.reload} className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+                Try again
+              </button>
+            )}
+          </div>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (!d) {
+    return (
+      <Shell>
+        <BackLink />
+        <div className="animate-pulse space-y-6" aria-hidden="true">
+          <div className="space-y-2">
+            <div className="h-8 w-64 rounded bg-gray-200" />
+            <div className="h-4 w-80 max-w-full rounded bg-gray-100" />
+          </div>
+          <div className="h-24 rounded-lg border border-gray-200 bg-white" />
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <div className="h-72 rounded-lg border border-gray-200 bg-white" />
+            <div className="h-56 rounded-lg border border-gray-200 bg-white" />
+          </div>
+        </div>
+        <span className="sr-only" role="status">
+          Loading the profile…
+        </span>
+      </Shell>
+    );
+  }
+
+  // --- Loaded ---------------------------------------------------------------------------
+
+  const name = doctorName(d);
+  const st = statusOf(d);
+  const spec = specialtyOf(d);
+  const o = ov.value;
+  const today = o?.today ?? null;
+  const overrides = d.availabilityOverrides ?? [];
+  const noteList = notes && notes.forUrl === res.valueUrl ? notes.list : (d.internalNotes ?? []);
+  const subtitle = [spec || 'No specialty set', d.department && d.department !== 'No Department' ? d.department : null].filter(Boolean).join(' · ');
+
+  const done = (message: string) => {
+    setDialog(null);
+    setNotice(message);
+    setActionError(null);
+    res.reload();
+  };
+
+  const remove = async () => {
+    setDialog(null);
+    setBusy(true);
+    setActionError(null);
     try {
-      const res = await fetch(`/api/doctors/${doctorId}`);
-      if (res.status === 401) {
+      const r = await fetch(`/api/doctors/${doctorId}`, { method: 'DELETE' });
+      if (r.status === 401) {
         router.push('/login');
         return;
       }
-      const data = await res.json();
-      if (data.success) {
-        setDoctor(data.data);
+      const json = await r.json().catch(() => null);
+      if (!r.ok || !json?.success) {
+        setActionError(formatApiError(json, 'The profile could not be deleted'));
+        setBusy(false);
+        return;
       }
-    } catch (error) {
-      console.error('Failed to fetch doctor:', error);
+      router.push('/doctors');
+    } catch {
+      setActionError('The server couldn’t be reached. Nothing changed; try again.');
+      setBusy(false);
+    }
+  };
+
+  const dropTimeOff = async (key: string) => {
+    setDialog(null);
+    setBusy(true);
+    try {
+      await removeTimeOff(doctorId, overrides, key);
+      done('Time off removed.');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'The time off could not be removed');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
-  const handleAddNote = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const deleteNote = async (note: Note) => {
+    setDialog(null);
+    setBusy(true);
     try {
-      const res = await fetch(`/api/doctors/${doctorId}/notes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newNote),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setDoctor(data.data);
-          setNewNote({ note: '', isImportant: false });
-          setShowNoteForm(false);
-          setSuccess('Note added successfully!');
-          setTimeout(() => setSuccess(null), 3000);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to add note:', error);
-      setError('Failed to add note');
-      setTimeout(() => setError(null), 5000);
+      const r = await fetch(`/api/doctors/${doctorId}/notes?noteId=${note._id}`, { method: 'DELETE' });
+      const json = await r.json().catch(() => null);
+      if (!r.ok || !json?.success) throw new Error(formatApiError(json, 'The note could not be deleted'));
+      setNotes({ forUrl: res.valueUrl ?? '', list: json.data?.internalNotes ?? [] });
+      setNotice('Note deleted.');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'The note could not be deleted');
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleDeleteNoteClick = (index: number) => {
-    setNoteToDelete(index);
-    setDeleteNoteDialogOpen(true);
-  };
-
-  const handleDeleteNote = async () => {
-    if (noteToDelete === null) return;
-
-    try {
-      const res = await fetch(`/api/doctors/${doctorId}/notes?index=${noteToDelete}`, {
-        method: 'DELETE',
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setDoctor(data.data);
-          setSuccess('Note deleted successfully!');
-          setTimeout(() => setSuccess(null), 3000);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to delete note:', error);
-      setError('Failed to delete note');
-      setTimeout(() => setError(null), 5000);
-    }
-  };
-
-  const handleUpdateSchedule = async () => {
-    if (!doctor) return;
-
-    try {
-      const updatedSchedule = [...(doctor.schedule || [])];
-      const existingIndex = updatedSchedule.findIndex((s) => s.dayOfWeek === scheduleForm.dayOfWeek);
-      
-      if (existingIndex >= 0) {
-        updatedSchedule[existingIndex] = scheduleForm;
-      } else {
-        updatedSchedule.push(scheduleForm);
-      }
-
-      const res = await fetch(`/api/doctors/${doctorId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schedule: updatedSchedule }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setDoctor(data.data);
-          setShowScheduleForm(false);
-          setSuccess('Schedule updated successfully!');
-          setTimeout(() => setSuccess(null), 3000);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to update schedule:', error);
-      setError('Failed to update schedule');
-      setTimeout(() => setError(null), 5000);
-    }
-  };
-
-  const handleRefreshPerformance = async () => {
-    try {
-      const res = await fetch(`/api/doctors/${doctorId}/performance`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          // Update doctor's performance metrics
-          fetchDoctor();
-        }
-      }
-    } catch (error) {
-      console.error('Failed to refresh performance:', error);
-    }
-  };
-
-  const getDayName = (dayOfWeek: number) => {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    return days[dayOfWeek];
-  };
-
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
-  if (loading) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: '400px' }}>
-            <div className="relative">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div>
-            </div>
-            <p className="text-gray-600 font-medium">Loading doctor...</p>
-          </div>
-        </div>
-      </section>
+  // Summary cells, each only for roles that may see it.
+  const cells: ReactNode[] = [];
+  if (today) cells.push(<TodayCell key="today" doctor={d} today={today} bookedToday={o?.ahead?.[0]?.booked ?? null} />);
+  if (o?.ahead) cells.push(<AheadCell key="ahead" ahead={o.ahead} />);
+  if (o?.activity) {
+    const a = o.activity;
+    const seen = a.days.reduce((s, x) => s + x.seen, 0);
+    const noShow = a.days.reduce((s, x) => s + x.noShow, 0);
+    const booked = a.days.reduce((s, x) => s + x.booked, 0);
+    cells.push(
+      <Cell key="seen" label="Seen, last 30 days">
+        <p className="font-mono text-2xl font-semibold tabular-nums text-gray-900">{seen}</p>
+        <p className="mt-1 text-sm text-gray-500">
+          of <span className="font-mono">{booked}</span> booked
+          {noShow > 0 && (
+            <>
+              {' · '}
+              <span className="font-mono">{noShow}</span> {noShow === 1 ? 'no-show' : 'no-shows'}
+            </>
+          )}
+        </p>
+      </Cell>,
+      <Cell key="money" label="Collected, last 30 days">
+        <p className="font-mono text-2xl font-semibold tabular-nums text-gray-900">{money(a.collected)}</p>
+        <p className="mt-1 text-sm text-gray-500">
+          on <span className="font-mono">{a.visits}</span> {a.visits === 1 ? 'visit' : 'visits'}, <span className="font-mono">{a.prescriptions}</span> {a.prescriptions === 1 ? 'prescription' : 'prescriptions'}
+        </p>
+      </Cell>
     );
   }
-
-  if (!doctor) {
-    return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: '400px' }}>
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-4">
-              <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Doctor not found</h2>
-            <Link 
-              href="/doctors"
-              className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
-            >
-              Back to Doctors
-            </Link>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  const fullName = `${doctor.title || 'Dr.'} ${doctor.firstName} ${doctor.lastName}`;
-  const specializationName = (typeof doctor.specializationId === 'object' && doctor.specializationId?.name)
-    ? doctor.specializationId.name
-    : doctor.specialization || '';
-  const metrics = doctor.performanceMetrics;
-  const total = metrics?.totalAppointments || 0;
-  const completed = metrics?.completedAppointments || 0;
-  const cancelled = metrics?.cancelledAppointments || 0;
-  const noShow = metrics?.noShowAppointments || 0;
-  const completionRate = total > 0 ? (completed / total) * 100 : 0;
+  const stripCols = ['', 'sm:grid-cols-1', 'sm:grid-cols-2', 'sm:grid-cols-3', 'sm:grid-cols-2 lg:grid-cols-4'][cells.length];
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-blue-50/30 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6">
-          {/* Notifications */}
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm font-medium text-red-800">{error}</p>
-              </div>
-            </div>
-          )}
-          {success && (
-            <div className="bg-green-50 border-l-4 border-green-500 rounded-lg p-4 shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm font-medium text-green-800">{success}</p>
-              </div>
-            </div>
-          )}
+    <Shell>
+      <BackLink />
 
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <div className="flex items-start gap-4">
-              <Link 
-                href="/doctors"
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 mt-1"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </Link>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-4 flex-wrap">
-                  <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xl font-bold shadow-md flex-shrink-0">
-                    {doctor.firstName.charAt(0)}{doctor.lastName.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-1">{fullName}</h1>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <p className="text-base text-gray-600">{doctor.specializationId?.name}</p>
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
-                        doctor.status === 'active'
-                          ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                          : doctor.status === 'inactive'
-                          ? 'bg-gray-100 text-gray-700 border border-gray-200'
-                          : 'bg-amber-100 text-amber-700 border border-amber-200'
-                      }`}>
-                        {doctor.status || 'active'}
-                      </span>
-                    </div>
-                  </div>
-                  <Link
-                    href={`/doctors/${doctorId}/edit`}
-                    className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-flex items-center gap-2 flex-shrink-0"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    Edit
-                  </Link>
-                </div>
-              </div>
-            </div>
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">{name}</h1>
+            <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${DOCTOR_STATE[st].badge}`}>{DOCTOR_STATE[st].label}</span>
+            {d.licenseNumber && <span className="font-mono text-sm text-gray-500">PRC {d.licenseNumber}</span>}
           </div>
-
-          {/* Tabs */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="border-b border-gray-200 bg-gray-50/50 overflow-x-auto">
-              <nav className="flex -mb-px min-w-max">
-                {[
-                  { value: 'profile', label: 'Profile', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
-                  { value: 'schedule', label: 'Schedule & Availability', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
-                  { value: 'notes', label: `Internal Notes (${doctor.internalNotes?.length || 0})`, icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-                  { value: 'performance', label: 'Performance', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' }
-                ].map((tab) => (
-                  <button
-                    key={tab.value}
-                    onClick={() => {
-                      if (tab.value === 'performance') {
-                        handleRefreshPerformance();
-                      }
-                      setActiveTab(tab.value as any);
-                    }}
-                    className={`py-3 px-6 text-sm font-semibold border-b-2 transition-all duration-200 whitespace-nowrap relative ${
-                      activeTab === tab.value
-                        ? 'text-blue-600 bg-white'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    {activeTab === tab.value && (
-                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-blue-600"></span>
-                    )}
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
-                      </svg>
-                      {tab.label}
-                    </span>
-                  </button>
-                ))}
-              </nav>
-            </div>
-
-            <div className="p-6">
-              {activeTab === 'profile' && (
-                <div className="flex flex-col gap-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl border border-blue-200 p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-blue-500 rounded-lg">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-900">Basic Information</h3>
-                      </div>
-                      <div className="flex flex-col gap-4">
-                        <div>
-                          <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Full Name</p>
-                          <p className="text-sm font-medium text-gray-900">{fullName}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Specialization</p>
-                          <p className="text-sm font-medium text-gray-900">{specializationName}</p>
-                        </div>
-                        {doctor.department && doctor.department !== 'No Department' && (
-                          <div>
-                            <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Department</p>
-                            <p className="text-sm font-medium text-gray-900">{doctor.department}</p>
-                          </div>
-                        )}
-                        <div>
-                          <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">License Number</p>
-                          <p className="text-sm font-medium text-gray-900">{doctor.licenseNumber}</p>
-                        </div>
-                        {doctor.ptr && (
-                          <div>
-                            <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">PTR</p>
-                            <p className="text-sm font-medium text-gray-900">{doctor.ptr}</p>
-                          </div>
-                        )}
-                        <div>
-                          <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Status</p>
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold mt-1 ${
-                            doctor.status === 'active'
-                              ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                              : doctor.status === 'inactive'
-                              ? 'bg-gray-100 text-gray-700 border border-gray-200'
-                              : 'bg-amber-100 text-amber-700 border border-amber-200'
-                          }`}>
-                            {doctor.status || 'active'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-xl border border-purple-200 p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-purple-500 rounded-lg">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                          </svg>
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-900">Contact Information</h3>
-                      </div>
-                      <div className="flex flex-col gap-4">
-                        <div>
-                          <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Email</p>
-                          <div className="flex items-center gap-2">
-                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                            </svg>
-                            <p className="text-sm font-medium text-gray-900">{doctor.email}</p>
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Phone</p>
-                          <div className="flex items-center gap-2">
-                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                            </svg>
-                            <p className="text-sm font-medium text-gray-900">{doctor.phone}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  {doctor.qualifications && doctor.qualifications.length > 0 && (
-                    <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-xl border border-emerald-200 p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-emerald-500 rounded-lg">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-                          </svg>
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-900">Qualifications</h3>
-                      </div>
-                      <ul className="flex flex-col gap-3">
-                        {doctor.qualifications.map((qual, idx) => (
-                          <li key={idx} className="flex items-start gap-3">
-                            <svg className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <p className="text-sm font-medium text-gray-900">{qual}</p>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {doctor.bio && (
-                    <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 rounded-xl border border-amber-200 p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-amber-500 rounded-lg">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-900">Bio</h3>
-                      </div>
-                      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{doctor.bio}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'schedule' && (
-                <div className="flex flex-col gap-6">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900">Weekly Schedule</h3>
-                      <p className="text-sm text-gray-600 mt-1">Manage doctor availability throughout the week</p>
-                    </div>
-                    <button 
-                      onClick={() => setShowScheduleForm(true)}
-                      className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-flex items-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Add/Edit Schedule
-                    </button>
-                  </div>
-                  {doctor.schedule && doctor.schedule.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {[0, 1, 2, 3, 4, 5, 6].map((day) => {
-                        const schedule = doctor.schedule?.find((s) => s.dayOfWeek === day);
-                        return (
-                          <div key={day} className={`rounded-xl border p-4 transition-all ${
-                            schedule && schedule.isAvailable
-                              ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-200'
-                              : 'bg-gray-50 border-gray-200'
-                          }`}>
-                            <div className="flex justify-between items-start mb-2">
-                              <p className="text-sm font-bold text-gray-900">{getDayName(day)}</p>
-                              {schedule && schedule.isAvailable && (
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
-                                  Available
-                                </span>
-                              )}
-                            </div>
-                            {schedule && schedule.isAvailable ? (
-                              <div className="flex items-center gap-2">
-                                <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                <p className="text-sm font-semibold text-gray-900">
-                                  {formatTime(schedule.startTime)} - {formatTime(schedule.endTime)}
-                                </p>
-                              </div>
-                            ) : (
-                              <p className="text-sm text-gray-500">Not available</p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col justify-center items-center py-12 bg-gray-50 rounded-xl border border-gray-200">
-                      <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <p className="text-sm font-medium text-gray-900 mb-1">No schedule set</p>
-                      <p className="text-xs text-gray-600 text-center max-w-sm">Click &quot;Add/Edit Schedule&quot; to set availability for this doctor</p>
-                    </div>
-                  )}
-
-                  {/* Schedule Form Modal */}
-                  <Modal open={showScheduleForm} onOpenChange={setShowScheduleForm} className="max-w-md">
-                    <div className="p-6 sm:p-8">
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-blue-100 rounded-lg">
-                          <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        </div>
-                        <h2 className="text-2xl font-bold text-gray-900">Edit Schedule</h2>
-                      </div>
-                      <div className="flex flex-col gap-4">
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Day of Week</label>
-                          <select
-                            value={scheduleForm.dayOfWeek.toString()}
-                            onChange={(e) => setScheduleForm({ ...scheduleForm, dayOfWeek: parseInt(e.target.value) })}
-                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white transition-all"
-                          >
-                            {[0, 1, 2, 3, 4, 5, 6].map((day) => (
-                              <option key={day} value={day.toString()}>
-                                {getDayName(day)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">Start Time</label>
-                            <input
-                              type="time"
-                              value={scheduleForm.startTime}
-                              onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">End Time</label>
-                            <input
-                              type="time"
-                              value={scheduleForm.endTime}
-                              onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })}
-                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                            />
-                          </div>
-                        </div>
-                        <label className="flex items-center gap-3 cursor-pointer p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                          <input
-                            type="checkbox"
-                            checked={scheduleForm.isAvailable}
-                            onChange={(e) => setScheduleForm({ ...scheduleForm, isAvailable: e.target.checked })}
-                            className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                          />
-                          <span className="text-sm font-medium text-gray-700">Available on this day</span>
-                        </label>
-                        <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                          <button 
-                            onClick={() => setShowScheduleForm(false)}
-                            className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
-                          >
-                            Cancel
-                          </button>
-                          <button 
-                            onClick={handleUpdateSchedule}
-                            className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
-                          >
-                            Save Schedule
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </Modal>
-                </div>
-              )}
-
-              {activeTab === 'notes' && (
-                <div className="flex flex-col gap-6">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900">Internal Notes</h3>
-                      <p className="text-sm text-gray-600 mt-1">Private notes visible only to staff members</p>
-                    </div>
-                    <button 
-                      onClick={() => setShowNoteForm(true)}
-                      className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-flex items-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Add Note
-                    </button>
-                  </div>
-                  {doctor.internalNotes && doctor.internalNotes.length > 0 ? (
-                    <div className="flex flex-col gap-4">
-                      {doctor.internalNotes.map((note, index) => (
-                        <div
-                          key={index}
-                          className={`rounded-xl border p-5 transition-all ${
-                            note.isImportant 
-                              ? 'border-red-300 bg-gradient-to-br from-red-50 to-red-100/50' 
-                              : 'border-gray-200 bg-white'
-                          }`}
-                        >
-                          <div className="flex flex-col gap-3">
-                            <div className="flex justify-between items-start">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                {note.isImportant && (
-                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
-                                    <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                    </svg>
-                                    Important
-                                  </span>
-                                )}
-                                <p className="text-xs text-gray-600 font-medium">
-                                  {new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                </p>
-                              </div>
-                              <button
-                                onClick={() => handleDeleteNoteClick(index)}
-                                className="px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 rounded-lg transition-colors inline-flex items-center gap-1.5"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                                Delete
-                              </button>
-                            </div>
-                            <p className="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">{note.note}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col justify-center items-center py-12 bg-gray-50 rounded-xl border border-gray-200">
-                      <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <p className="text-sm font-medium text-gray-900 mb-1">No internal notes</p>
-                      <p className="text-xs text-gray-600 text-center max-w-sm">Click &quot;Add Note&quot; to create a private note for this doctor</p>
-                    </div>
-                  )}
-
-                  {/* Note Form Modal */}
-                  <Modal open={showNoteForm} onOpenChange={setShowNoteForm} className="max-w-md">
-                    <div className="p-6 sm:p-8">
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-blue-100 rounded-lg">
-                          <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                        <h2 className="text-2xl font-bold text-gray-900">Add Internal Note</h2>
-                      </div>
-                      <form onSubmit={handleAddNote}>
-                        <div className="flex flex-col gap-4">
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">Note</label>
-                            <textarea
-                              required
-                              value={newNote.note}
-                              onChange={(e) => setNewNote({ ...newNote, note: e.target.value })}
-                              rows={5}
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-y transition-all"
-                              placeholder="Enter your note here..."
-                            />
-                          </div>
-                          <label className="flex items-center gap-3 cursor-pointer p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                            <input
-                              type="checkbox"
-                              checked={newNote.isImportant}
-                              onChange={(e) => setNewNote({ ...newNote, isImportant: e.target.checked })}
-                              className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                            />
-                            <span className="text-sm font-medium text-gray-700">Mark as important</span>
-                          </label>
-                          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                            <button 
-                              type="button"
-                              onClick={() => setShowNoteForm(false)}
-                              className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
-                            >
-                              Cancel
-                            </button>
-                            <button 
-                              type="submit"
-                              className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md"
-                            >
-                              Add Note
-                            </button>
-                          </div>
-                        </div>
-                      </form>
-                    </div>
-                  </Modal>
-                </div>
-              )}
-
-              {activeTab === 'performance' && (
-                <div className="flex flex-col gap-6">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900">Performance Metrics</h3>
-                      <p className="text-sm text-gray-600 mt-1">Appointment statistics and completion rates</p>
-                    </div>
-                    <button 
-                      onClick={handleRefreshPerformance}
-                      className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all text-sm font-semibold shadow-md inline-flex items-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Refresh Data
-                    </button>
-                  </div>
-                  {metrics ? (
-                    <div className="flex flex-col gap-6">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                        <div className="p-6 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200">
-                          <p className="text-3xl sm:text-4xl font-bold text-blue-700 mb-2">{total}</p>
-                          <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total Appointments</p>
-                        </div>
-                        <div className="p-6 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200">
-                          <p className="text-3xl sm:text-4xl font-bold text-emerald-700 mb-2">{completed}</p>
-                          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">Completed</p>
-                          <p className="text-xs text-emerald-600 font-medium">{Math.round(completionRate)}% completion rate</p>
-                        </div>
-                        <div className="p-6 bg-gradient-to-br from-red-50 to-red-100 rounded-xl border border-red-200">
-                          <p className="text-3xl sm:text-4xl font-bold text-red-700 mb-2">{cancelled}</p>
-                          <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-1">Cancelled</p>
-                          <p className="text-xs text-red-600 font-medium">
-                            {total > 0 ? Math.round((cancelled / total) * 100) : 0}% cancellation rate
-                          </p>
-                        </div>
-                        <div className="p-6 bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200">
-                          <p className="text-3xl sm:text-4xl font-bold text-amber-700 mb-2">{noShow}</p>
-                          <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">No-Show</p>
-                          <p className="text-xs text-amber-600 font-medium">
-                            {total > 0 ? Math.round((noShow / total) * 100) : 0}% no-show rate
-                          </p>
-                        </div>
-                      </div>
-                      {metrics.lastUpdated && (
-                        <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 rounded-lg p-3 border border-gray-200">
-                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span className="font-medium">Last updated:</span>
-                          <span>{new Date(metrics.lastUpdated).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col justify-center items-center py-12 bg-gray-50 rounded-xl border border-gray-200">
-                      <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                      </div>
-                      <p className="text-sm font-medium text-gray-900 mb-1">No performance data available</p>
-                      <p className="text-xs text-gray-600 text-center max-w-sm">Click &quot;Refresh Data&quot; to calculate metrics from appointments</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Delete Note Alert Dialog */}
-          <AlertDialog 
-            open={deleteNoteDialogOpen} 
-            onOpenChange={setDeleteNoteDialogOpen}
-            title="Delete Note"
-            description="Are you sure you want to delete this note? This action cannot be undone."
-          >
-            <button
-              onClick={() => {
-                setDeleteNoteDialogOpen(false);
-                setNoteToDelete(null);
-              }}
-              className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleDeleteNote}
-              className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold shadow-md"
-            >
-              Delete
-            </button>
-          </AlertDialog>
+          <p className="mt-1 text-sm sm:text-base text-gray-600">
+            {subtitle}
+            {mine && <span className="text-gray-500"> · your profile</span>}
+          </p>
         </div>
+        <div className={`flex flex-wrap items-center gap-2 transition-opacity ${busy ? 'opacity-60' : ''}`}>
+          {permissions.canSeeBookings && (
+            <Link href={`/appointments?doctor=${d._id}`} className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}>
+              <Svg d={ICONS.calendar} />
+              Appointments
+            </Link>
+          )}
+          {permissions.canBook && st === 'active' && (
+            <Link
+              href={`/appointments/new?doctorId=${d._id}`}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-semibold transition-colors ${FOCUS_RING} ${permissions.canEdit ? 'border border-gray-300 bg-white text-gray-900 hover:border-gray-900' : 'bg-brand-teal-dark text-white hover:bg-brand-teal-deep'}`}
+            >
+              <Svg d={ICONS.plus} />
+              Book
+            </Link>
+          )}
+          {permissions.canEdit && (
+            <Link href={`/doctors/${d._id}/edit`} className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+              <Svg d={ICONS.edit} />
+              Edit profile
+            </Link>
+          )}
+          {permissions.canDelete && (
+            <button
+              type="button"
+              onClick={() => setDialog({ kind: 'delete' })}
+              disabled={busy}
+              aria-label={`Delete ${name}’s profile`}
+              title="Delete profile"
+              className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-40 ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.trash} />
+            </button>
+          )}
+        </div>
+      </header>
+
+      <p className="sr-only" aria-live="polite">
+        {notice ?? ''}
+      </p>
+      {notice && (
+        <div role="status" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+          <p>{notice}</p>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 opacity-80 hover:opacity-100 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
+        </div>
+      )}
+      {actionError && (
+        <div role="alert" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          <p>{actionError}</p>
+          <button type="button" onClick={() => setActionError(null)} aria-label="Dismiss error" className={`shrink-0 rounded p-0.5 text-red-700 hover:text-red-900 ${FOCUS_RING}`}>
+            <Svg d={ICONS.x} />
+          </button>
+        </div>
+      )}
+
+      {cells.length > 0 ? (
+        <section aria-label="Summary" className={`overflow-hidden rounded-lg border border-gray-200 bg-white transition-opacity ${ov.loading || res.loading ? 'opacity-60' : ''}`}>
+          <dl className={`grid -mr-px -mb-px grid-cols-1 ${stripCols}`}>{cells}</dl>
+        </section>
+      ) : ov.error ? (
+        <p className="rounded-lg border border-gray-200 bg-white px-5 py-3 text-sm text-gray-500">
+          Today’s figures didn&apos;t load ({ov.error}).{' '}
+          <button type="button" onClick={ov.reload} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+            Try again
+          </button>
+        </p>
+      ) : (
+        <div className="h-24 animate-pulse rounded-lg border border-gray-200 bg-white" aria-hidden="true" />
+      )}
+
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <WeeklyHoursPanel doctor={d} businessHours={o?.businessHours ?? []} today={today} onChange={canEditHours && st !== 'inactive' ? () => setDialog({ kind: 'hours' }) : undefined} />
+
+          {st !== 'inactive' && (
+            <TimeOffPanel
+              overrides={overrides}
+              doctor={d}
+              today={today}
+              ahead={o?.ahead ?? null}
+              onAdd={canEditHours && today ? () => setDialog({ kind: 'time-off' }) : undefined}
+              onRemove={canEditHours ? (key) => setDialog({ kind: 'remove-time-off', key }) : undefined}
+            />
+          )}
+
+          {o?.activity && (
+            <Panel id="doc-activity" title="Appointments, last 30 days" aside={<span className="text-sm text-gray-500">Seen against booked</span>}>
+              <TrendChart
+                days={o.activity.days}
+                today={o.today}
+                series={[
+                  { key: 'seen', label: 'Seen', color: SERIES.teal, kind: 'column' },
+                  { key: 'booked', label: 'Booked', color: SERIES.blue, kind: 'line' },
+                ]}
+                format={(v) => String(Math.round(v))}
+                caption={`${name}: appointments booked and seen per day, last 30 days`}
+              />
+            </Panel>
+          )}
+        </div>
+
+        <aside className="flex min-w-0 flex-col gap-6">
+          <Panel id="doc-contact" title="Contact">
+            <dl className="divide-y divide-gray-100">
+              <Field label="Email">
+                <a href={`mailto:${d.email}`} className={`rounded break-all text-gray-900 hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                  {d.email}
+                </a>
+              </Field>
+              <Field label="Phone">
+                {d.phone ? (
+                  <a href={`tel:${d.phone.replace(/[^+0-9]/g, '')}`} className={`rounded font-mono text-gray-900 hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                    {d.phone}
+                  </a>
+                ) : (
+                  <span className="text-gray-500">None on file</span>
+                )}
+              </Field>
+            </dl>
+          </Panel>
+
+          <Panel id="doc-creds" title="Licences and qualifications">
+            <dl className="divide-y divide-gray-100">
+              <Field label="PRC licence">
+                <span className="font-mono">{d.licenseNumber || '—'}</span>
+              </Field>
+              <Field label="PTR">{d.ptr ? <span className="font-mono">{d.ptr}</span> : <span className="text-gray-500">None on file</span>}</Field>
+              <Field label="Qualifications">
+                {d.qualifications && d.qualifications.length > 0 ? (
+                  <ul className="space-y-0.5">
+                    {d.qualifications.map((q) => (
+                      <li key={q}>{q}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span className="text-gray-500">None on file</span>
+                )}
+              </Field>
+            </dl>
+            <p className="border-t border-gray-100 px-5 py-3 text-xs text-gray-500">The licence and PTR print on this doctor’s prescriptions and certificates.</p>
+          </Panel>
+
+          {d.bio && (
+            <Panel id="doc-bio" title="About">
+              <p className="max-w-prose whitespace-pre-wrap px-5 py-4 text-sm leading-relaxed text-gray-700">{d.bio}</p>
+            </Panel>
+          )}
+
+          {permissions.canEdit && (
+            <NotesPanel
+              doctorId={doctorId}
+              notes={noteList}
+              onSaved={(list) => {
+                setNotes({ forUrl: res.valueUrl ?? '', list });
+                setNotice('Note added.');
+              }}
+              onDelete={(note) => setDialog({ kind: 'delete-note', note })}
+            />
+          )}
+        </aside>
       </div>
+
+      {dialog?.kind === 'hours' && <HoursDialog doctorId={doctorId} name={name} schedule={d.schedule ?? []} onClose={() => setDialog(null)} onDone={done} />}
+      {dialog?.kind === 'time-off' && today && (
+        <TimeOffDialog doctorId={doctorId} name={name} today={today} schedule={d.schedule ?? []} overrides={overrides} onClose={() => setDialog(null)} onDone={done} />
+      )}
+      {dialog?.kind === 'remove-time-off' &&
+        createPortal(
+          <AlertDialog open onOpenChange={(v) => !v && setDialog(null)} title={`Remove the time off on ${longDay(dialog.key)}?`} description="The doctor’s usual hours apply that day again, and they can be booked.">
+            <button type="button" onClick={() => setDialog(null)} className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              Keep it
+            </button>
+            <button type="button" onClick={() => dropTimeOff(dialog.key)} className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}>
+              Remove time off
+            </button>
+          </AlertDialog>,
+          document.body
+        )}
+      {dialog?.kind === 'delete-note' &&
+        createPortal(
+          <AlertDialog open onOpenChange={(v) => !v && setDialog(null)} title="Delete this note?" description="It is removed for everyone who manages doctors. This can’t be undone.">
+            <button type="button" onClick={() => setDialog(null)} className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              Keep note
+            </button>
+            <button type="button" onClick={() => deleteNote(dialog.note)} className={`rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 ${FOCUS_RING}`}>
+              Delete note
+            </button>
+          </AlertDialog>,
+          document.body
+        )}
+      {dialog?.kind === 'delete' &&
+        createPortal(
+          <AlertDialog
+            open
+            onOpenChange={(v) => !v && setDialog(null)}
+            title={`Delete ${name}’s profile?`}
+            description={
+              <>
+                <p>
+                  Only a profile with no appointments, visit notes or prescriptions can be deleted; one with records is refused, so their patients’ history keeps their name. {mine ? 'Your own login stays; it is only unlinked from this profile.' : 'Their doctor login is deleted too and they are signed out.'}
+                </p>
+                <p className="mt-2">To stop bookings and sign-ins but keep everything, edit the profile and mark them inactive instead.</p>
+              </>
+            }
+          >
+            <button type="button" onClick={() => setDialog(null)} className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              Keep profile
+            </button>
+            <button type="button" onClick={remove} className={`rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 ${FOCUS_RING}`}>
+              Delete profile
+            </button>
+          </AlertDialog>,
+          document.body
+        )}
+    </Shell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Summary cells
+// ---------------------------------------------------------------------------
+
+function TodayCell({ doctor, today, bookedToday }: { doctor: DoctorRow; today: string; bookedToday: number | null }) {
+  const h = dayHours(doctor, today);
+  return (
+    <Cell label="Today">
+      {h.kind === 'working' ? (
+        <>
+          <p className="font-mono text-2xl font-semibold tabular-nums text-gray-900">{hoursRange(h.start, h.end)}</p>
+          <p className={`mt-1 text-sm ${h.changed ? 'font-medium text-amber-800' : 'text-gray-500'}`}>
+            {h.changed ? `Changed hours${h.reason ? `: ${h.reason}` : ''}` : 'Usual hours'}
+            {bookedToday !== null && (
+              <span className="font-normal text-gray-500">
+                {' · '}
+                <span className="font-mono">{bookedToday}</span> booked
+              </span>
+            )}
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-2xl font-semibold tracking-tight text-gray-500">{h.kind === 'leave' ? 'On leave' : h.kind === 'inactive' ? 'Inactive' : h.timeOff ? 'Time off' : 'Not working'}</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {h.kind === 'off' && h.timeOff ? h.reason || 'Away all day' : h.kind === 'off' ? `No usual hours on ${WEEKDAY_LONG[weekdayOf(today)]}s` : h.kind === 'leave' ? 'Not taking bookings' : 'Off the roster'}
+            {bookedToday ? (
+              <span className="font-medium text-amber-800">
+                {' · '}
+                <span className="font-mono">{bookedToday}</span> still booked
+              </span>
+            ) : null}
+          </p>
+        </>
+      )}
+    </Cell>
+  );
+}
+
+function AheadCell({ ahead }: { ahead: { date: string; booked: number }[] }) {
+  const total = ahead.reduce((s, x) => s + x.booked, 0);
+  const max = Math.max(1, ...ahead.map((x) => x.booked));
+  const busiest = ahead.reduce((b, x) => (x.booked > b.booked ? x : b), ahead[0]);
+  return (
+    <Cell label="Booked, next 14 days">
+      <div className="flex items-end justify-between gap-4">
+        <p className="font-mono text-2xl font-semibold tabular-nums text-gray-900">{total}</p>
+        <span aria-hidden="true" className="flex h-8 items-end gap-0.5">
+          {ahead.map((x, i) => (
+            <span
+              key={x.date}
+              className={`motion-col-grow w-1.5 rounded-t-sm ${x.booked ? '' : 'bg-gray-200'}`}
+              style={{ height: x.booked ? `${Math.max(12, (x.booked / max) * 100)}%` : '3px', background: x.booked ? (i === 0 ? '#0A7F7E' : SERIES.teal) : undefined, animationDelay: `${Math.min(i * 15, 200)}ms` }}
+            />
+          ))}
+        </span>
+      </div>
+      <p className="mt-1 text-sm text-gray-500">
+        {total === 0 ? (
+          'Nothing booked yet.'
+        ) : (
+          <>
+            Busiest {longDay(busiest.date)}, <span className="font-mono">{busiest.booked}</span>
+          </>
+        )}
+      </p>
+    </Cell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Panels
+// ---------------------------------------------------------------------------
+
+function WeeklyHoursPanel({ doctor, businessHours, today, onChange }: { doctor: DoctorRow; businessHours: BusinessDay[]; today: string | null; onChange?: () => void }) {
+  const schedule = (doctor.schedule ?? []).filter((s) => s.isAvailable !== false);
+  const closed = new Set(businessHours.filter((h) => h.closed).map((h) => h.day));
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const h of businessHours) {
+    if (h.closed) continue;
+    lo = Math.min(lo, toMin(h.open) ?? lo);
+    hi = Math.max(hi, toMin(h.close) ?? hi);
+  }
+  for (const s of schedule) {
+    lo = Math.min(lo, toMin(s.startTime) ?? lo);
+    hi = Math.max(hi, toMin(s.endTime) ?? hi);
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) {
+    lo = 8 * 60;
+    hi = 17 * 60;
+  }
+  const todayWd = today ? weekdayOf(today) : null;
+  const minutes = schedule.reduce((sum, s) => sum + Math.max(0, (toMin(s.endTime) ?? 0) - (toMin(s.startTime) ?? 0)), 0);
+
+  return (
+    <Panel
+      id="doc-hours"
+      title="Usual hours"
+      aside={
+        onChange ? (
+          <button type="button" onClick={onChange} className={`rounded text-sm font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+            Change hours
+          </button>
+        ) : minutes > 0 ? (
+          <span className="text-sm text-gray-500">
+            <span className="font-mono text-gray-900">{Math.round((minutes / 60) * 10) / 10}</span> hours a week
+          </span>
+        ) : null
+      }
+    >
+      {schedule.length === 0 ? (
+        <p className="px-5 py-4 text-sm text-gray-500">No usual hours set.{onChange ? ' Set them so the roster and the front desk know when this doctor is in.' : ''}</p>
+      ) : (
+        <>
+          <ul className="divide-y divide-gray-100">
+            {WEEK_ORDER.map((day, i) => {
+              const s = schedule.find((x) => x.dayOfWeek === day);
+              const isToday = todayWd === day;
+              const a = s ? (toMin(s.startTime) ?? lo) : 0;
+              const b = s ? (toMin(s.endTime) ?? hi) : 0;
+              return (
+                <li key={day} className={`grid grid-cols-[6.5rem_9.5rem_minmax(0,1fr)] items-center gap-4 px-5 py-2.5 text-sm ${isToday ? 'bg-brand-teal-light/25' : ''}`}>
+                  <span className={isToday ? 'font-semibold text-gray-900' : 'text-gray-700'}>
+                    {WEEKDAY_LONG[day]}
+                    {isToday && <span className="sr-only"> (today)</span>}
+                  </span>
+                  {s ? <span className="font-mono tabular-nums text-gray-900">{hoursRange(s.startTime, s.endTime)}</span> : <span className="text-gray-400">Not working</span>}
+                  <span className="min-w-0">
+                    {s && (
+                      <span aria-hidden="true" className="block h-1.5 rounded-full bg-gray-100">
+                        <span
+                          className="motion-bar-grow block h-full rounded-full"
+                          style={{ marginLeft: `${((a - lo) / (hi - lo)) * 100}%`, width: `${Math.max(3, ((b - a) / (hi - lo)) * 100)}%`, background: SERIES.teal, animationDelay: `${i * 40}ms` }}
+                        />
+                      </span>
+                    )}
+                    {s && closed.has(WEEKDAY_KEYS[day]) && <span className="mt-1 block text-xs font-medium text-amber-800">The clinic is closed on {WEEKDAY_LONG[day]}s in Settings</span>}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="border-t border-gray-100 px-5 py-2.5 font-mono text-xs text-gray-500">
+            Bar scale: {hoursRange(`${String(Math.floor(lo / 60)).padStart(2, '0')}:${String(lo % 60).padStart(2, '0')}`, `${String(Math.floor(hi / 60)).padStart(2, '0')}:${String(hi % 60).padStart(2, '0')}`)}
+            <span className="font-sans">, the clinic’s day</span>
+          </p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function TimeOffPanel({
+  overrides,
+  doctor,
+  today,
+  ahead,
+  onAdd,
+  onRemove,
+}: {
+  overrides: TimeOff[];
+  doctor: DoctorRow;
+  today: string | null;
+  ahead: { date: string; booked: number }[] | null;
+  onAdd?: () => void;
+  onRemove?: (key: string) => void;
+}) {
+  const sorted = [...overrides].map((x) => ({ ...x, key: timeOffDate(x.date) })).sort((a, b) => a.key.localeCompare(b.key));
+  const upcoming = today ? sorted.filter((x) => x.key >= today) : sorted;
+  const earlier = sorted.length - upcoming.length;
+
+  return (
+    <Panel
+      id="doc-timeoff"
+      title="Time off and changed hours"
+      aside={
+        onAdd ? (
+          <button type="button" onClick={onAdd} className={`rounded text-sm font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+            Add time off
+          </button>
+        ) : null
+      }
+    >
+      {upcoming.length === 0 ? (
+        <p className="px-5 py-4 text-sm text-gray-500">
+          Nothing coming up.
+          {earlier > 0 && (
+            <>
+              {' '}
+              <span className="font-mono">{earlier}</span> earlier {earlier === 1 ? 'day' : 'days'} on file.
+            </>
+          )}
+        </p>
+      ) : (
+        <>
+          <ul className="divide-y divide-gray-100">
+            {upcoming.map((x, i) => {
+              const usual = (doctor.schedule ?? []).find((s) => s.dayOfWeek === weekdayOf(x.key) && s.isAvailable !== false);
+              const booked = ahead?.find((a) => a.date === x.key)?.booked ?? 0;
+              return (
+                <li key={x.key} className="motion-row-in grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 px-5 py-3 text-sm" style={{ animationDelay: `${Math.min(i * 25, 240)}ms` }}>
+                  <div className="min-w-0">
+                    <p className="text-gray-900">
+                      <span className="font-mono font-semibold">{longDay(x.key)}</span>
+                      {x.key === today && <span className="ml-1.5 text-xs font-semibold text-brand-teal-dark">today</span>}
+                    </p>
+                    <p className="mt-0.5 text-gray-600">
+                      {x.isAvailable && x.startTime && x.endTime ? (
+                        <>
+                          Working <span className="font-mono">{hoursRange(x.startTime, x.endTime)}</span>
+                          {usual && (
+                            <span className="text-gray-500">
+                              {' '}
+                              instead of <span className="font-mono">{hoursRange(usual.startTime, usual.endTime)}</span>
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        'Away all day'
+                      )}
+                      {x.reason && <span className="text-gray-500"> · {x.reason}</span>}
+                    </p>
+                    {!x.isAvailable && booked > 0 && (
+                      <p className="mt-0.5 font-medium text-amber-800">
+                        <span className="font-mono">{booked}</span> {booked === 1 ? 'appointment is' : 'appointments are'} still booked that day
+                      </p>
+                    )}
+                  </div>
+                  {onRemove && (
+                    <button type="button" onClick={() => onRemove(x.key)} aria-label={`Remove the time off on ${longDay(x.key)}`} className={REMOVE_BUTTON}>
+                      <Svg d={ICON.x} />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {earlier > 0 && (
+            <p className="border-t border-gray-100 px-5 py-2.5 text-xs text-gray-500">
+              <span className="font-mono">{earlier}</span> earlier {earlier === 1 ? 'day' : 'days'} on file.
+            </p>
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function NotesPanel({ doctorId, notes, onSaved, onDelete }: { doctorId: string; notes: Note[]; onSaved: (list: Note[]) => void; onDelete: (note: Note) => void }) {
+  const ids = useId();
+  const router = useRouter();
+  const [text, setText] = useState('');
+  const [important, setImportant] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const newest = [...notes].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await fetch(`/api/doctors/${doctorId}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note: text.trim(), isImportant: important }) });
+      if (r.status === 401) {
+        router.push('/login');
+        return;
+      }
+      const json = await r.json().catch(() => null);
+      if (!r.ok || !json?.success) throw new Error(formatApiError(json, 'The note could not be added'));
+      setText('');
+      setImportant(false);
+      onSaved(json.data?.internalNotes ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The note could not be added');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Panel id="doc-notes" title="Internal notes" aside={<span className="text-sm text-gray-500">Only for staff who manage doctors</span>}>
+      {newest.length === 0 ? (
+        <p className="px-5 py-4 text-sm text-gray-500">No notes yet.</p>
+      ) : (
+        <ul className="divide-y divide-gray-100">
+          {newest.map((n) => (
+            <li key={n._id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-5 py-3 text-sm">
+              <div className="min-w-0">
+                {n.isImportant && (
+                  <p className="mb-0.5 flex items-center gap-1 text-xs font-semibold text-red-700">
+                    <Svg d={ICON.alert} className="h-3.5 w-3.5" />
+                    Important
+                  </p>
+                )}
+                <p className="whitespace-pre-wrap text-gray-900">{n.note}</p>
+                <p className="mt-0.5 text-gray-500">
+                  {n.createdBy?.name ?? 'Someone'} · <span className="font-mono text-xs">{shortDate(n.createdAt)}</span>
+                </p>
+              </div>
+              <button type="button" onClick={() => onDelete(n)} aria-label="Delete note" className={REMOVE_BUTTON}>
+                <Svg d={ICON.x} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={submit} className="space-y-2 border-t border-gray-100 px-5 py-4">
+        <NoteArea id={`${ids}-note`} label="New note" rows={2} value={text} onChange={setText} placeholder="e.g. Covers for Dr. Santos on Saturdays" />
+        {error && <p className="text-sm font-medium text-red-700">{error}</p>}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={important} onChange={(e) => setImportant(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-teal-dark focus:ring-brand-teal" />
+            Mark as important
+          </label>
+          <button type="submit" disabled={!text.trim() || busy} className={`rounded-md border border-gray-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-gray-900 hover:border-gray-900 disabled:opacity-50 ${FOCUS_RING}`}>
+            {busy ? 'Adding…' : 'Add note'}
+          </button>
+        </div>
+      </form>
+    </Panel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Frame
+// ---------------------------------------------------------------------------
+
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-6xl mx-auto flex flex-col gap-6">{children}</div>
     </section>
   );
 }
 
+function BackLink() {
+  return (
+    <Link href="/doctors" className={`inline-flex w-fit items-center gap-1.5 rounded text-sm font-semibold text-gray-600 hover:text-gray-900 ${FOCUS_RING}`}>
+      <Svg d={ICON.chevL} />
+      All doctors
+    </Link>
+  );
+}
+
+function Panel({ id, title, aside, children }: { id: string; title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="motion-panel-in overflow-hidden rounded-lg border border-gray-200 bg-white" aria-labelledby={id}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-gray-200 px-5 py-4">
+        <h2 id={id} className="text-base font-bold tracking-tight text-gray-900">
+          {title}
+        </h2>
+        {aside}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Cell({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="border-r border-b border-gray-200 p-5">
+      <dt className="text-sm text-gray-600">{label}</dt>
+      <dd className="mt-2">{children}</dd>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-4 px-5 py-3 text-sm">
+      <dt className="text-gray-500">{label}</dt>
+      <dd className="min-w-0 break-words text-gray-900">{children}</dd>
+    </div>
+  );
+}

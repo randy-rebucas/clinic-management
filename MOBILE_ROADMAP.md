@@ -13,10 +13,7 @@ It is not, however, a mobile-ready backend yet. The API is built for browser ses
 
 **Correction to AUDIT.md item #1:** `proxy.ts` is not a wiring bug — Next.js 16 replaced `middleware.ts` with `proxy.ts` as the real edge-function file convention (confirmed against the installed `next@16.2.6` package internals). CSRF and cron protection in `proxy.ts` are active as written; no rename is needed, and none was made.
 
-**New finding (not in AUDIT.md), now fixed:** the Socket.IO auth path in `server.ts` verified a `JWT_SECRET`-signed token that `lib/hooks/useWebSocket.ts` read from `localStorage`/`sessionStorage` — but nothing in `app/` or `lib/` ever issued or wrote that token, so real-time features (queue, appointments, visits) were silently non-functional. Fixed by:
-- New `GET /api/auth/socket-token` — mints a 15-minute `jose`/`SESSION_SECRET`-signed token from the caller's existing HTTP-only session cookie (`app/api/auth/socket-token/route.ts`).
-- `server.ts` now verifies that token with `jose`/`SESSION_SECRET` instead of `jsonwebtoken`/`JWT_SECRET` — the dual-secret split (AUDIT.md item #3) is gone; `jsonwebtoken` and `JWT_SECRET` are no longer referenced anywhere in the codebase.
-- `lib/hooks/useWebSocket.ts` now fetches the token from that endpoint on connect instead of reading nonexistent storage keys.
+**Socket.IO removed (supersedes the earlier socket-auth fix):** the custom `server.ts` Socket.IO server could not run on Vercel and no API route ever emitted events, so the real-time channel was dead code. `server.ts`, `lib/websocket/` and `GET /api/auth/socket-token` have been deleted; the web app and the mobile app both rely on polling. AUDIT.md item #3 (dual JWT secrets) is moot — `jsonwebtoken`/`JWT_SECRET` are gone and only `SESSION_SECRET` remains.
 
 Recommendation: build a **dedicated patient-facing React Native (Expo) app** first, talking to a new versioned, token-based mobile API layer added alongside (not replacing) the existing cookie-based web app. Treat mobile auth, offline sync, and push as new subsystems to design deliberately — don't try to stretch the existing cookie session model onto a mobile client.
 
@@ -71,7 +68,7 @@ A working Expo/React Native app now exists at `C:\Users\corew\projects\clinic-ma
 
 **Two more backend gaps found and closed while building this:** there was no `/api/patients/me/appointments` or `/api/patients/me/queue` endpoint — every other patient resource (lab results, prescriptions, invoices, visits, vitals, documents) had one, but not these two, which the roadmap's own MVP list depends on. Added both, following the existing pagination/tenant-scoping pattern; `/me/queue` reuses the same position-calculation logic as `lib/automations/queue-notifications.ts`.
 
-**Why polling, not the web app's Socket.IO channel:** keeping a persistent socket alive correctly across iOS/Android background/foreground/kill states is a materially harder problem than a 15-second foreground poll, and the payoff is small until push-triggered refresh is added. Documented as a deliberate choice in `app/(app)/queue.tsx`, not an oversight.
+**Why polling:** the backend has no real-time channel (Socket.IO was removed — it cannot run on Vercel), and keeping a persistent socket alive across iOS/Android background/foreground/kill states is materially harder than a 15-second foreground poll. Push-triggered refresh is the natural next step. Documented in `app/(app)/queue.tsx`.
 
 **Not done / explicit non-goals for this pass:**
 - No refresh-token rotation — the app stores the same 30-day Bearer token the backend already issues; re-login on expiry.
@@ -113,7 +110,7 @@ Mapped directly to what already exists in the domain layer (`models/Patient.ts`,
 
 1. Login (mobile token auth) + biometric unlock (device-local, not a backend concern)
 2. Upcoming appointments — view, cancel, request reschedule
-3. Live queue position (reuse existing QR/queue model — likely via Socket.IO or polling; see §7 offline note)
+3. Live queue position (reuse existing QR/queue model — via polling; see §7 offline note)
 4. Lab results — read-only, PDF/document view via existing Cloudinary-backed `Document` model
 5. Prescriptions — view active/past e-prescriptions
 6. Invoices — view + pay (reuse existing PayPal integration, `lib/paypal.ts`)
@@ -128,7 +125,7 @@ Deliberately excluded from MVP: booking new appointments (needs conflict/room lo
 
 | Phase | Scope | Rough sequencing |
 |---|---|---|
-| 0. Pre-mobile hardening | ~~Fix `proxy.ts`→`middleware.ts` wiring~~ (not a bug — see correction above); **done:** hardened hardcoded `SESSION_SECRET` fallback to hard-fail in production in `app/lib/dal.ts` and `app/lib/auth-helpers.ts`; **done:** fixed dead Socket.IO auth (was verifying a token nothing ever issued) and unified it onto `SESSION_SECRET`, removing `jsonwebtoken`/`JWT_SECRET` entirely | done |
+| 0. Pre-mobile hardening | ~~Fix `proxy.ts`→`middleware.ts` wiring~~ (not a bug — see correction above); **done:** hardened hardcoded `SESSION_SECRET` fallback to hard-fail in production in `app/lib/dal.ts` and `app/lib/auth-helpers.ts`; **done:** removed the dead Socket.IO server (polling instead) and `jsonwebtoken`/`JWT_SECRET` entirely | done |
 | 1. Mobile API foundation | `/api/v1/mobile/*` route scaffold, mobile auth (access+refresh tokens), device/session registry, rate limiting on auth endpoints | 3–4 weeks |
 | 2. Expo app shell + auth | RN/Expo project, login/biometric, secure token storage (`expo-secure-store`), navigation shell | 2–3 weeks (parallel with Phase 1 backend) |
 | 3. Core patient features | Appointments, queue view, lab results, prescriptions (read paths first) | 4–6 weeks |

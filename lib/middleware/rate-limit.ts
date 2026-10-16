@@ -1,155 +1,274 @@
 /**
- * API Rate Limiting Middleware
- * Prevents abuse and ensures fair resource usage
+ * API Rate Limiting
+ *
+ * Counters live in Upstash Redis (REST API, plain fetch) when UPSTASH_REDIS_REST_URL and
+ * UPSTASH_REDIS_REST_TOKEN are set, so limits hold across serverless instances. Otherwise,
+ * or when Redis is unreachable, an in-memory fixed window is used (per instance only).
+ *
+ * Clients are keyed by a trusted IP (never the client-supplied leftmost X-Forwarded-For).
+ * Callers can pass an extra identifier (email, phone, user id) to apply per-account limits.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 
 interface RateLimitConfig {
-  windowMs: number; // Time window in milliseconds
-  maxRequests: number; // Maximum requests per window
+  /** Namespace for the counter; limiters with different names never share counts. */
+  name: string;
+  windowMs: number;
+  maxRequests: number;
   message?: string;
-  skipSuccessfulRequests?: boolean;
-  skipFailedRequests?: boolean;
+  /** When true, the IP is left out of the key (identifier-only limit, e.g. per phone number). */
+  identifierOnly?: boolean;
 }
 
-interface RateLimitStore {
-  [key: string]: {
-    count: number;
-    resetTime: number;
-  };
+export interface RateLimitResult {
+  allowed: boolean;
+  count: number;
+  limit: number;
+  resetTime: number;
+  retryAfter: number;
 }
 
-// In-memory store (for single-instance deployments)
-// For multi-instance deployments, use Redis or similar
-const store: RateLimitStore = {};
+type Limiter = ((request: NextRequest, identifier?: string) => Promise<NextResponse | null>) & {
+  config: RateLimitConfig;
+};
 
-// Cleanup old entries every 5 minutes
-setInterval(() => {
+const memoryStore = new Map<string, { count: number; resetTime: number }>();
+
+const cleanup = setInterval(() => {
   const now = Date.now();
-  Object.keys(store).forEach((key) => {
-    if (store[key].resetTime < now) {
-      delete store[key];
-    }
-  });
+  for (const [key, entry] of memoryStore) {
+    if (entry.resetTime < now) memoryStore.delete(key);
+  }
 }, 5 * 60 * 1000);
+// Don't keep the process alive just for cleanup
+(cleanup as unknown as { unref?: () => void }).unref?.();
 
 /**
- * Get client identifier for rate limiting
+ * Best-effort client IP that a client cannot choose freely.
+ * On Vercel the platform sets x-vercel-forwarded-for / x-real-ip. Elsewhere we take the
+ * RIGHTMOST X-Forwarded-For entry, which is the one appended by our own proxy.
  */
-function getClientIdentifier(request: NextRequest): string {
-  // Try to get IP from various headers (for proxy/load balancer scenarios)
-  const forwarded = request.headers.get('x-forwarded-for');
-  const realIp = request.headers.get('x-real-ip');
-  const cfConnectingIp = request.headers.get('cf-connecting-ip'); // Cloudflare
-  const ip = forwarded?.split(',')[0]?.trim() || realIp || cfConnectingIp || 'unknown';
-  
-  // Include user agent for additional identification
-  const userAgent = request.headers.get('user-agent') || 'unknown';
-  
-  // For authenticated users, use user ID for more accurate rate limiting
-  // This allows higher limits for authenticated users
-  const authHeader = request.headers.get('authorization');
-  const userId = authHeader ? 'auth:' + authHeader.substring(0, 20) : 'anon';
-  
-  return `${ip}:${userId}:${userAgent.substring(0, 50)}`;
+export function getClientIp(headers: Headers): string {
+  if (process.env.VERCEL) {
+    const vercelIp = headers.get('x-vercel-forwarded-for') || headers.get('x-real-ip');
+    if (vercelIp) return vercelIp.split(',')[0].trim();
+  }
+  const forwarded = headers.get('x-forwarded-for');
+  if (forwarded) {
+    const parts = forwarded.split(',').map((p) => p.trim()).filter(Boolean);
+    if (parts.length) return parts[parts.length - 1];
+  }
+  return headers.get('x-real-ip')?.trim() || 'unknown';
+}
+
+function hashIdentifier(identifier: string): string {
+  return createHash('sha256').update(identifier.toLowerCase().trim()).digest('hex').slice(0, 32);
+}
+
+function buildKey(config: RateLimitConfig, ip: string, identifier?: string): string {
+  const parts = ['rl', config.name];
+  if (!config.identifierOnly || !identifier) parts.push(ip);
+  if (identifier) parts.push(hashIdentifier(identifier));
+  return parts.join(':');
+}
+
+function hitMemory(key: string, windowMs: number): { count: number; resetTime: number } {
+  const now = Date.now();
+  let entry = memoryStore.get(key);
+  if (!entry || entry.resetTime < now) {
+    entry = { count: 0, resetTime: now + windowMs };
+    memoryStore.set(key, entry);
+  }
+  entry.count++;
+  return { count: entry.count, resetTime: entry.resetTime };
+}
+
+function upstashConfig(): { url: string; token: string } | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  return url && token ? { url: url.replace(/\/$/, ''), token } : null;
+}
+
+async function upstashPipeline(commands: (string | number)[][]): Promise<{ result?: unknown; error?: string }[] | null> {
+  const cfg = upstashConfig();
+  if (!cfg) return null;
+  try {
+    const res = await fetch(`${cfg.url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cfg.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(commands),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { result?: unknown; error?: string }[];
+  } catch {
+    return null;
+  }
+}
+
+async function hit(key: string, windowMs: number): Promise<{ count: number; resetTime: number }> {
+  const results = await upstashPipeline([
+    ['INCR', key],
+    ['PEXPIRE', key, windowMs, 'NX'],
+    ['PTTL', key],
+  ]);
+  if (results && typeof results[0]?.result === 'number') {
+    const count = results[0].result as number;
+    const ttl = typeof results[2]?.result === 'number' && (results[2].result as number) > 0
+      ? (results[2].result as number)
+      : windowMs;
+    return { count, resetTime: Date.now() + ttl };
+  }
+  return hitMemory(key, windowMs);
+}
+
+/** Count one attempt against `config` for (ip, identifier) and report whether it is allowed. */
+export async function consumeRateLimit(
+  config: RateLimitConfig,
+  ip: string,
+  identifier?: string
+): Promise<RateLimitResult> {
+  const { count, resetTime } = await hit(buildKey(config, ip, identifier), config.windowMs);
+  return {
+    allowed: count <= config.maxRequests,
+    count,
+    limit: config.maxRequests,
+    resetTime,
+    retryAfter: Math.max(1, Math.ceil((resetTime - Date.now()) / 1000)),
+  };
+}
+
+/** Clear the counter for (ip, identifier), e.g. after a successful login. */
+export async function resetRateLimit(config: RateLimitConfig, ip: string, identifier?: string): Promise<void> {
+  const key = buildKey(config, ip, identifier);
+  memoryStore.delete(key);
+  await upstashPipeline([['DEL', key]]);
+}
+
+function tooManyRequests(config: RateLimitConfig, result: RateLimitResult): NextResponse {
+  return NextResponse.json(
+    {
+      success: false,
+      error: config.message || 'Too many requests, please try again later',
+      retryAfter: result.retryAfter,
+    },
+    {
+      status: 429,
+      headers: {
+        'Retry-After': result.retryAfter.toString(),
+        'X-RateLimit-Limit': config.maxRequests.toString(),
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Reset': new Date(result.resetTime).toISOString(),
+      },
+    }
+  );
 }
 
 /**
- * Rate limit middleware
+ * Create a limiter. Calling it returns a 429 NextResponse when the limit is exceeded,
+ * otherwise null.
  */
-export function rateLimit(config: RateLimitConfig) {
-  return async (request: NextRequest): Promise<NextResponse | null> => {
-    const clientId = getClientIdentifier(request);
-    const now = Date.now();
-    
-    // Get or create rate limit entry
-    let entry = store[clientId];
-    
-    if (!entry || entry.resetTime < now) {
-      // Create new entry or reset expired entry
-      entry = {
-        count: 0,
-        resetTime: now + config.windowMs,
-      };
-      store[clientId] = entry;
-    }
-    
-    // Increment request count
-    entry.count++;
-    
-    // Check if limit exceeded
-    if (entry.count > config.maxRequests) {
-      const retryAfter = Math.ceil((entry.resetTime - now) / 1000);
-      
-      return NextResponse.json(
-        {
-          success: false,
-          error: config.message || 'Too many requests, please try again later',
-          retryAfter,
-        },
-        {
-          status: 429,
-          headers: {
-            'Retry-After': retryAfter.toString(),
-            'X-RateLimit-Limit': config.maxRequests.toString(),
-            'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': new Date(entry.resetTime).toISOString(),
-          },
-        }
-      );
-    }
-    
-    // Add rate limit headers to response
-    const remaining = Math.max(0, config.maxRequests - entry.count);
-    const response = NextResponse.next();
-    response.headers.set('X-RateLimit-Limit', config.maxRequests.toString());
-    response.headers.set('X-RateLimit-Remaining', remaining.toString());
-    response.headers.set('X-RateLimit-Reset', new Date(entry.resetTime).toISOString());
-    
-    return null; // null means continue to next middleware/handler
-  };
+export function rateLimit(config: RateLimitConfig): Limiter {
+  const limiter = (async (request: NextRequest, identifier?: string) => {
+    const result = await consumeRateLimit(config, getClientIp(request.headers), identifier);
+    return result.allowed ? null : tooManyRequests(config, result);
+  }) as Limiter;
+  limiter.config = config;
+  return limiter;
 }
 
 /**
  * Pre-configured rate limiters for different use cases
  */
 export const rateLimiters = {
-  // Strict rate limit for authentication endpoints
+  // Strict per-IP limit for authentication endpoints
   auth: rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 5, // 5 requests per 15 minutes
+    name: 'auth',
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 10,
     message: 'Too many authentication attempts, please try again later',
   }),
-  
+
+  // Per (account + IP): failed credential attempts for one account from one client
+  authAccount: rateLimit({
+    name: 'auth-account',
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 5,
+    message: 'Too many attempts for this account, please try again later',
+  }),
+
+  // Per account across all IPs: bounds distributed guessing without letting a single
+  // client lock the real user out quickly
+  authAccountGlobal: rateLimit({
+    name: 'auth-account-global',
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 30,
+    identifierOnly: true,
+    message: 'Too many attempts for this account, please try again later',
+  }),
+
+  // OTP delivery per destination (SMS bombing protection)
+  otpSend: rateLimit({
+    name: 'otp-send',
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 5,
+    identifierOnly: true,
+    message: 'Too many codes requested, please try again later',
+  }),
+
   // Standard API rate limit
   api: rateLimit({
-    windowMs: 60 * 1000, // 1 minute
-    maxRequests: 100, // 100 requests per minute
+    name: 'api',
+    windowMs: 60 * 1000,
+    maxRequests: 100,
     message: 'API rate limit exceeded, please slow down',
   }),
-  
+
   // Strict rate limit for public endpoints
   public: rateLimit({
-    windowMs: 60 * 1000, // 1 minute
-    maxRequests: 20, // 20 requests per minute
+    name: 'public',
+    windowMs: 60 * 1000,
+    maxRequests: 20,
     message: 'Rate limit exceeded, please try again later',
   }),
-  
+
   // Lenient rate limit for authenticated users
   authenticated: rateLimit({
-    windowMs: 60 * 1000, // 1 minute
-    maxRequests: 200, // 200 requests per minute
+    name: 'authenticated',
+    windowMs: 60 * 1000,
+    maxRequests: 200,
     message: 'Rate limit exceeded, please slow down',
   }),
 };
 
 /**
- * Helper to apply rate limiting in API routes
+ * Helper to apply rate limiting in API routes.
+ * Pass `identifier` (email, phone, user id) to scope the limit to an account as well.
  */
 export async function applyRateLimit(
   request: NextRequest,
-  limiter: (req: NextRequest) => Promise<NextResponse | null>
+  limiter: (req: NextRequest, identifier?: string) => Promise<NextResponse | null>,
+  identifier?: string
 ): Promise<NextResponse | null> {
-  return limiter(request);
+  return limiter(request, identifier);
+}
+
+/**
+ * Apply the per-IP auth limit plus per-account limits for a credential attempt.
+ * Returns a 429 response or null.
+ */
+export async function applyAuthRateLimits(
+  request: NextRequest,
+  account: string | null | undefined
+): Promise<NextResponse | null> {
+  const ipLimited = await rateLimiters.auth(request);
+  if (ipLimited) return ipLimited;
+  if (!account) return null;
+  return (
+    (await rateLimiters.authAccount(request, account)) ||
+    (await rateLimiters.authAccountGlobal(request, account))
+  );
 }

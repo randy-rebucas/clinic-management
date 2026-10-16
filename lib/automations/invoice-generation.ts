@@ -4,12 +4,13 @@
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
 import Visit from '@/models/Visit';
-import Patient from '@/models/Patient';
 import Service from '@/models/Service';
 import { getSettings } from '@/lib/settings';
 import { calculateDiscounts, DiscountEligibility } from '@/lib/discount-calculator';
-import { createNotification, createInvoiceNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { createNotification } from '@/lib/notifications';
+import { sendEmail, escapeHtml } from '@/lib/email';
+import { escapeRegex } from '@/lib/api/validate';
+import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
 import { Types } from 'mongoose';
 
 export interface AutoInvoiceOptions {
@@ -33,12 +34,14 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
   try {
     await connectDB();
 
-    const visitId = typeof options.visitId === 'string' 
-      ? new Types.ObjectId(options.visitId) 
-      : options.visitId;
+    if (!options.tenantId) {
+      return { success: false, error: 'Tenant is required' };
+    }
+    const tenantId = new Types.ObjectId(String(options.tenantId));
+    const visitId = new Types.ObjectId(String(options.visitId));
 
     // Get visit with populated data
-    const visit = await Visit.findById(visitId)
+    const visit = await Visit.findOne({ _id: visitId, tenantId })
       .populate('patient', 'firstName lastName patientCode email phone dateOfBirth discountEligibility')
       .populate('provider', 'name email');
 
@@ -56,10 +59,7 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
     }
 
     // Check if invoice already exists for this visit
-    const existingInvoice = await Invoice.findOne({ 
-      visit: visitId,
-      tenantId: options.tenantId ? new Types.ObjectId(options.tenantId as string) : undefined
-    });
+    const existingInvoice = await Invoice.findOne({ visit: visitId, tenantId });
 
     if (existingInvoice) {
       return { 
@@ -70,13 +70,10 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
       };
     }
 
-    const tenantId = options.tenantId 
-      ? (typeof options.tenantId === 'string' ? new Types.ObjectId(options.tenantId) : options.tenantId)
-      : visit.tenantId;
-
     // Get settings for invoice prefix and billing configuration
-    const settings = await getSettings();
-    const invoicePrefix = settings.billingSettings?.invoicePrefix || 'INV';
+    const settings = await getSettings(tenantId.toString());
+    const invoicePrefix =
+      String(settings.billingSettings?.invoicePrefix || 'INV').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 10) || 'INV';
     const autoInvoiceEnabled = (settings.automationSettings as any)?.autoInvoiceGeneration !== false; // Default to true
     const defaultConsultationFee = (settings.billingSettings as any)?.defaultConsultationFee || 500;
 
@@ -104,7 +101,7 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
       active: true,
       $or: [
         { type: visit.visitType },
-        { name: { $regex: visit.visitType, $options: 'i' } }
+        { name: { $regex: escapeRegex(String(visit.visitType || '')), $options: 'i' } }
       ]
     }).sort({ unitPrice: -1 }); // Get most expensive if multiple
 
@@ -170,27 +167,13 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
     const tax = afterDiscount * (taxRate / 100);
     const total = afterDiscount + tax;
 
-    // Generate invoice number
-    const codeQuery: any = { invoiceNumber: { $exists: true, $ne: null } };
-    if (tenantId) {
-      codeQuery.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-
-    const lastInvoice = await Invoice.findOne(codeQuery)
-      .sort({ invoiceNumber: -1 })
-      .exec();
-
-    let nextNumber = 1;
-    if (lastInvoice?.invoiceNumber) {
-      const match = lastInvoice.invoiceNumber.match(/(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
-      }
-    }
-
-    const invoiceNumber = `${invoicePrefix}-${String(nextNumber).padStart(6, '0')}`;
+    // Same counter key as app/api/invoices so both paths share one sequence.
+    const seq = await nextSequence(
+      tenantId,
+      'invoice',
+      maxCodeSeed(Invoice, 'invoiceNumber', { tenantId, invoiceNumber: { $exists: true, $ne: null } })
+    );
+    const invoiceNumber = formatCode(invoicePrefix, seq);
 
     // Create invoice
     const invoiceData: any = {
@@ -223,15 +206,11 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
 
     // Send notifications
     if (options.sendNotification !== false) {
-      // Notify patient
-      if (patient._id) {
-        await createInvoiceNotification(patient._id, invoice).catch(console.error);
-      }
-
-      // Notify provider if different from creator
-      if (visit.provider && visit.provider._id !== options.createdBy) {
+      // Patients have no User account; only the provider (a User) gets an in-app notification.
+      const providerId = (visit.provider as any)?._id;
+      if (providerId && String(providerId) !== String(options.createdBy || '')) {
         await createNotification({
-          userId: visit.provider._id,
+          userId: providerId,
           tenantId,
           type: 'invoice',
           priority: 'normal',
@@ -266,7 +245,7 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
     console.error('Error generating invoice for visit:', error);
     return { 
       success: false, 
-      error: error.message || 'Failed to generate invoice' 
+      error: 'Failed to generate invoice',
     };
   }
 }
@@ -301,12 +280,12 @@ export function generateInvoiceEmail(invoice: any): { subject: string; html: str
           <h1>Invoice ${invoice.invoiceNumber}</h1>
         </div>
         <div class="content">
-          <p>Dear ${patient.firstName} ${patient.lastName},</p>
+          <p>Dear ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)},</p>
           <p>Your invoice has been generated:</p>
           <div class="info-box">
             <p><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
             <p><strong>Date:</strong> ${new Date(invoice.createdAt).toLocaleDateString()}</p>
-            ${invoice.visit ? `<p><strong>Visit Code:</strong> ${(invoice.visit as any).visitCode}</p>` : ''}
+            ${invoice.visit ? `<p><strong>Visit Code:</strong> ${escapeHtml((invoice.visit as any).visitCode)}</p>` : ''}
           </div>
           <table class="items-table">
             <thead>
@@ -320,7 +299,7 @@ export function generateInvoiceEmail(invoice: any): { subject: string; html: str
             <tbody>
               ${invoice.items.map((item: any) => `
                 <tr>
-                  <td>${item.description || item.code}</td>
+                  <td>${escapeHtml(item.description || item.code)}</td>
                   <td>${item.quantity}</td>
                   <td>${item.unitPrice?.toFixed(2)}</td>
                   <td>${item.total?.toFixed(2)}</td>
@@ -332,7 +311,7 @@ export function generateInvoiceEmail(invoice: any): { subject: string; html: str
             <p><strong>Discounts:</strong></p>
             <ul>
               ${invoice.discounts.map((disc: any) => `
-                <li>${disc.reason}: ${disc.amount?.toFixed(2)}</li>
+                <li>${escapeHtml(disc.reason)}:${disc.amount?.toFixed(2)}</li>
               `).join('')}
             </ul>
           ` : ''}

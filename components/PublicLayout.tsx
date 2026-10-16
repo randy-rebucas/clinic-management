@@ -28,7 +28,7 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
               </Link>
 
               {/* Desktop Navigation */}
-              <nav className="hidden md:flex items-center gap-1 lg:gap-2">
+              <nav aria-label="Main" className="hidden md:flex items-center gap-1 lg:gap-2">
                 <Link
                   href="/features"
                   className="px-3.5 py-2 text-sm text-gray-600 hover:text-gray-900 font-medium transition-colors rounded-md hover:bg-gray-100"
@@ -59,9 +59,13 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="md:hidden p-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
-                aria-label="Toggle menu"
+                type="button"
+                aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+                aria-expanded={mobileMenuOpen}
+                aria-controls="public-mobile-menu"
               >
                 <svg
+                  aria-hidden="true"
                   className="w-6 h-6"
                   fill="none"
                   stroke="currentColor"
@@ -78,8 +82,8 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
 
             {/* Mobile Navigation */}
             {mobileMenuOpen && (
-              <div className="md:hidden py-4 border-t border-gray-200 animate-in slide-in-from-top-2">
-                <nav className="flex flex-col gap-2">
+              <div id="public-mobile-menu" className="md:hidden py-4 border-t border-gray-200 animate-in slide-in-from-top-2">
+                <nav aria-label="Mobile" className="flex flex-col gap-2">
                   <Link
                     href="/features"
                     onClick={() => setMobileMenuOpen(false)}

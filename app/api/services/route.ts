@@ -1,65 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Service from '@/models/Service';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { requirePermission } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
+import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
 import { sanitizeSearch } from '@/lib/utils';
+import { SERVICE_CATEGORIES, serviceCreateSchema } from './schema';
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     const searchParams = request.nextUrl.searchParams;
     const category = searchParams.get('category');
     const active = searchParams.get('active') !== 'false';
     const search = searchParams.get('search');
 
-    const query: any = {};
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-    }
-    
+    const query: Record<string, unknown> = tenantFilter(ctx.tenantId);
+
     if (active) {
       query.active = true;
     }
-    if (category) {
+    if (category && (SERVICE_CATEGORIES as readonly string[]).includes(category)) {
       query.category = category;
     }
     if (search) {
       const safeSearch = sanitizeSearch(search);
-      const searchConditions = [
+      query.$or = [
         { name: { $regex: safeSearch, $options: 'i' } },
         { code: { $regex: safeSearch, $options: 'i' } },
         { description: { $regex: safeSearch, $options: 'i' } },
-      ];
-      
-      // Combine tenant filter with search conditions
-      const tenantFilter: any = {};
-      if (tenantId) {
-        tenantFilter.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        tenantFilter.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      query.$and = [
-        tenantFilter,
-        { $or: searchConditions }
       ];
     }
 
@@ -68,7 +41,7 @@ export async function GET(request: NextRequest) {
       .limit(200);
 
     return NextResponse.json({ success: true, data: services });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching services:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch services' },
@@ -78,42 +51,28 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await verifySession();
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
 
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const permissionCheck = await requirePermission(ctx.session, 'services', 'write');
+  if (permissionCheck) return permissionCheck;
 
-  // Only admins can add services
-  if (session.role !== 'admin') {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    );
-  }
+  const parsed = await parseBody(request, serviceCreateSchema);
+  if (isValidationError(parsed)) return parsed;
+  const body = { ...parsed.data };
 
   try {
     await connectDB();
-    const body = await request.json();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
 
     // Auto-generate code if not provided (tenant-scoped)
     if (!body.code) {
-      const categoryPrefix = body.category?.toUpperCase().substring(0, 4) || 'SERV';
-      const codeQuery: any = { code: { $regex: `^${categoryPrefix}` } };
-      if (tenantId) {
-        codeQuery.tenantId = new Types.ObjectId(tenantId);
-      } else {
-        codeQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const lastService = await Service.findOne(codeQuery)
+      const categoryPrefix = body.category.toUpperCase().substring(0, 4);
+      const lastService = await Service.findOne(
+        tenantFilter(ctx.tenantId, { code: { $regex: `^${escapeRegex(categoryPrefix)}` } })
+      )
         .sort({ code: -1 })
         .exec();
-      
+
       let nextNumber = 1;
       if (lastService?.code) {
         const match = lastService.code.match(/(\d+)$/);
@@ -121,31 +80,25 @@ export async function POST(request: NextRequest) {
           nextNumber = parseInt(match[1], 10) + 1;
         }
       }
-      
+
       body.code = `${categoryPrefix}-${String(nextNumber).padStart(3, '0')}`;
     }
 
-    // Ensure service is created with tenantId
-    const serviceData: any = { ...body };
-    if (tenantId && !serviceData.tenantId) {
-      serviceData.tenantId = new Types.ObjectId(tenantId);
-    }
-
-    const service = await Service.create(serviceData);
-    return NextResponse.json({ 
-      success: true, 
+    const service = await Service.create({ ...body, tenantId: ctx.tenantObjectId });
+    return NextResponse.json({
+      success: true,
       data: service,
       message: 'Service created successfully'
     }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating service:', error);
-    if (error.name === 'ValidationError') {
+    if (error?.name === 'ValidationError') {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: 'Invalid service data' },
         { status: 400 }
       );
     }
-    if (error.code === 11000) {
+    if (error?.code === 11000) {
       return NextResponse.json(
         { success: false, error: 'Service with this code already exists' },
         { status: 409 }
@@ -157,4 +110,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

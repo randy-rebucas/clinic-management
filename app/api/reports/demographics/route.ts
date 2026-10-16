@@ -1,152 +1,102 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse } from '@/app/lib/auth-helpers';
+import { formatInTz } from '@/lib/tz';
+import { AGE_BANDS } from '@/lib/patient-age-bands';
+import { openReport, dayKeys } from '../_lib/report-range';
 
+/**
+ * GET /api/reports/demographics?period=|startDate=&endDate=
+ * The clinic's patients: registrations in the window (per day), and as of now their ages, sex,
+ * home cities, what is on file (conditions, allergies, PhilHealth) and discount eligibility
+ * (senior by flag or by age 60+, PWD, membership). Aggregations only; no records leave the DB.
+ */
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
-
-  // Only admin can view demographics reports
-  if (session.role !== 'admin') {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    );
-  }
+  const open = await openReport(request.nextUrl.searchParams, 'patients');
+  if (open instanceof NextResponse) return open;
+  const { tenantObjectId, tz, start, end } = open;
 
   try {
     await connectDB();
-    const patients = await Patient.find({}).lean();
-
-    // Age groups
-    const ageGroups: Record<string, number> = {
-      '0-12': 0,
-      '13-17': 0,
-      '18-25': 0,
-      '26-35': 0,
-      '36-45': 0,
-      '46-55': 0,
-      '56-65': 0,
-      '66+': 0,
-    };
-
+    const scope = { tenantIds: tenantObjectId };
     const now = new Date();
-    patients.forEach((patient: any) => {
-      if (patient.dateOfBirth) {
-        const birthDate = new Date(patient.dateOfBirth);
-        const age = now.getFullYear() - birthDate.getFullYear();
-        const monthDiff = now.getMonth() - birthDate.getMonth();
-        const actualAge = monthDiff < 0 || (monthDiff === 0 && now.getDate() < birthDate.getDate()) ? age - 1 : age;
+    const bornBy = (years: number) => new Date(now.getFullYear() - years, now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    // $bucket boundaries ascend: oldest birth dates first, so bands run 66+ down to 0–12.
+    const boundaries = [new Date(1800, 0, 1), ...[...AGE_BANDS].reverse().map((b) => new Date(bornBy(b.min).getTime() + 1))];
+    const nonEmpty = (field: string) => ({ $gt: [{ $size: { $ifNull: [field, []] } }, 0] });
+    const has = (field: string) => ({ $and: [{ $ne: [{ $ifNull: [field, ''] }, ''] }] });
 
-        if (actualAge <= 12) ageGroups['0-12']++;
-        else if (actualAge <= 17) ageGroups['13-17']++;
-        else if (actualAge <= 25) ageGroups['18-25']++;
-        else if (actualAge <= 35) ageGroups['26-35']++;
-        else if (actualAge <= 45) ageGroups['36-45']++;
-        else if (actualAge <= 55) ageGroups['46-55']++;
-        else if (actualAge <= 65) ageGroups['56-65']++;
-        else ageGroups['66+']++;
-      }
-    });
+    const [result] = await Patient.aggregate([
+      { $match: scope },
+      {
+        $facet: {
+          totals: [
+            {
+              $group: {
+                _id: null,
+                total: { $sum: 1 },
+                withConditions: { $sum: { $cond: [nonEmpty('$preExistingConditions'), 1, 0] } },
+                withAllergies: { $sum: { $cond: [nonEmpty('$allergies'), 1, 0] } },
+                withPhilHealth: { $sum: { $cond: [has('$identifiers.philHealth'), 1, 0] } },
+                senior: {
+                  $sum: {
+                    $cond: [{ $or: [{ $eq: ['$discountEligibility.senior.eligible', true] }, { $and: [{ $eq: [{ $type: '$dateOfBirth' }, 'date'] }, { $lte: ['$dateOfBirth', bornBy(60)] }] }] }, 1, 0],
+                  },
+                },
+                pwd: { $sum: { $cond: [{ $eq: ['$discountEligibility.pwd.eligible', true] }, 1, 0] } },
+                member: { $sum: { $cond: [{ $eq: ['$discountEligibility.membership.eligible', true] }, 1, 0] } },
+              },
+            },
+          ],
+          newByDay: [
+            { $match: { createdAt: { $gte: start, $lte: end } } },
+            { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: tz } }, n: { $sum: 1 } } },
+          ],
+          ages: [{ $match: { dateOfBirth: { $type: 'date' } } }, { $bucket: { groupBy: '$dateOfBirth', boundaries, default: 'unknown', output: { n: { $sum: 1 } } } }],
+          sex: [{ $group: { _id: { $ifNull: ['$sex', 'unspecified'] }, n: { $sum: 1 } } }],
+          cities: [
+            { $match: { 'address.city': { $nin: [null, ''] } } },
+            { $group: { _id: { $trim: { input: '$address.city' } }, n: { $sum: 1 } } },
+            { $sort: { n: -1, _id: 1 } },
+            { $limit: 8 },
+          ],
+        },
+      },
+    ]);
 
-    // Gender distribution
-    const byGender = patients.reduce((acc: any, patient: any) => {
-      const gender = patient.sex || 'unknown';
-      acc[gender] = (acc[gender] || 0) + 1;
-      return acc;
-    }, {});
-
-    // Civil status
-    const byCivilStatus = patients.reduce((acc: any, patient: any) => {
-      const status = patient.civilStatus || 'unknown';
-      acc[status] = (acc[status] || 0) + 1;
-      return acc;
-    }, {});
-
-    // Location (by city)
-    const byCity = patients.reduce((acc: any, patient: any) => {
-      const city = patient.address?.city || 'Unknown';
-      acc[city] = (acc[city] || 0) + 1;
-      return acc;
-    }, {});
-
-    // Nationality
-    const byNationality = patients.reduce((acc: any, patient: any) => {
-      const nationality = patient.nationality || 'Unknown';
-      acc[nationality] = (acc[nationality] || 0) + 1;
-      return acc;
-    }, {});
-
-    // Patients with pre-existing conditions
-    const withConditions = patients.filter((p: any) => 
-      p.preExistingConditions && p.preExistingConditions.length > 0
-    ).length;
-
-    // Patients with allergies
-    const withAllergies = patients.filter((p: any) => 
-      p.allergies && (Array.isArray(p.allergies) ? p.allergies.length > 0 : true)
-    ).length;
-
-    // Patients with insurance
-    const withInsurance = patients.filter((p: any) => 
-      p.identifiers?.philHealth || p.identifiers?.other
-    ).length;
-
-    // Discount eligibility
-    const discountEligibility = {
-      pwd: patients.filter((p: any) => p.discountEligibility?.pwd?.eligible).length,
-      senior: patients.filter((p: any) => {
-        if (p.discountEligibility?.senior?.eligible) return true;
-        if (p.dateOfBirth) {
-          const birthDate = new Date(p.dateOfBirth);
-          const age = now.getFullYear() - birthDate.getFullYear();
-          const monthDiff = now.getMonth() - birthDate.getMonth();
-          const actualAge = monthDiff < 0 || (monthDiff === 0 && now.getDate() < birthDate.getDate()) ? age - 1 : age;
-          return actualAge >= 60;
-        }
-        return false;
-      }).length,
-      membership: patients.filter((p: any) => p.discountEligibility?.membership?.eligible).length,
-    };
-
-    // Top cities
-    const topCities = Object.entries(byCity)
-      .map(([city, count]) => ({ city, count: count as number }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
+    const reversed = [...AGE_BANDS].reverse();
+    const ageMap = new Map<string, number>();
+    for (const row of result.ages as { _id: Date | string; n: number }[]) {
+      if (row._id === 'unknown') continue;
+      const band = reversed[boundaries.findIndex((b) => b.getTime() === new Date(row._id).getTime())];
+      if (band) ageMap.set(band.label, row.n);
+    }
+    const sex: Record<string, number> = {};
+    for (const r of result.sex as { _id: string; n: number }[]) {
+      const k = ['male', 'female', 'other'].includes(r._id) ? r._id : 'unspecified';
+      sex[k] = (sex[k] || 0) + r.n;
+    }
+    const perDay = new Map((result.newByDay as { _id: string; n: number }[]).map((r) => [r._id, r.n]));
+    const days = dayKeys(start, end, tz).map((date) => ({ date, registered: perDay.get(date) ?? 0 }));
+    const t = result.totals[0] ?? {};
 
     return NextResponse.json({
       success: true,
       data: {
-        summary: {
-          totalPatients: patients.length,
-          withConditions,
-          withAllergies,
-          withInsurance,
-        },
-        demographics: {
-          ageGroups,
-          byGender,
-          byCivilStatus,
-          byNationality,
-          byCity,
-        },
-        discountEligibility,
-        topCities,
-        generatedAt: new Date().toISOString(),
+        range: { start: start.toISOString(), end: end.toISOString() },
+        today: formatInTz(now, 'yyyy-MM-dd', tz),
+        total: t.total ?? 0,
+        registered: days.reduce((s, d) => s + d.registered, 0),
+        days,
+        ages: AGE_BANDS.map((b) => ({ label: b.label, count: ageMap.get(b.label) ?? 0 })),
+        sex,
+        cities: (result.cities as { _id: string; n: number }[]).map((c) => ({ city: c._id, count: c.n })),
+        onFile: { conditions: t.withConditions ?? 0, allergies: t.withAllergies ?? 0, philHealth: t.withPhilHealth ?? 0 },
+        discounts: { senior: t.senior ?? 0, pwd: t.pwd ?? 0, membership: t.member ?? 0 },
       },
     });
-  } catch (error: any) {
-    console.error('Error generating demographics report:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to generate demographics report' },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('Error generating patients report:', error);
+    return NextResponse.json({ success: false, error: 'Failed to generate the patients report' }, { status: 500 });
   }
 }
-

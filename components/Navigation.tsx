@@ -1,5 +1,5 @@
-import { getUser } from '@/app/lib/dal';
-import { hasPermission } from '@/app/lib/auth-helpers';
+import { getUser, verifySession } from '@/app/lib/dal';
+import { getPermissionChecker } from '@/app/lib/auth-helpers';
 import Sidebar from './Sidebar';
 
 // Navigation items - organized by category with permission requirements
@@ -65,12 +65,20 @@ const navItems = [
     category: 'Billing & Operations',
     requiresPermission: { resource: 'invoices', action: 'read' }
   },
-  { 
-    href: '/documents', 
+  {
+    href: '/memberships',
+    label: 'Memberships',
+    icon: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z',
+    category: 'Billing & Operations',
+    // Same rule as the page (lib/membership-access): billing readers; admins see every item.
+    requiresPermission: { resource: 'invoices', action: 'read' }
+  },
+  {
+    href: '/documents',
     label: 'Documents', 
     icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z',
     category: 'Billing & Operations',
-    requiresPermission: null // Documents - check if needed
+    requiresPermission: { resource: 'documents', action: 'read' }
   },
   { 
     href: '/referrals', 
@@ -84,7 +92,7 @@ const navItems = [
     label: 'Inventory', 
     icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
     category: 'Billing & Operations',
-    requiresPermission: null // Inventory - check if needed
+    requiresPermission: { resource: 'inventory', action: 'read' }
   },
   // Staff Management
   { 
@@ -128,40 +136,22 @@ export default async function Navigation() {
   
   try {
     if (user) {
-      // Create a session-like object for permission checking
-      const session = {
-        userId: user._id,
-        role: user.role as 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant',
-      };
-
       // Tenant owner (admin) has access to all menus
-      const isAdmin = user.role === 'admin';
+      const isAdmin = user.role === 'admin' || user.role === 'owner';
+      const session = await verifySession();
+      // One permission query for the whole menu instead of one per item
+      const canAccess = isAdmin
+        ? () => true
+        : await getPermissionChecker(
+            session
+              ? { userId: session.userId, role: user.role, roleId: session.roleId, tenantId: session.tenantId }
+              : null
+          );
 
       for (const item of navItems) {
-        // If user is admin, show all items
-        if (isAdmin) {
-          filteredNavItems.push(item);
+        if (item.requiresPermission && !canAccess(item.requiresPermission.resource, item.requiresPermission.action)) {
           continue;
         }
-        // Check permission requirements
-        if (item.requiresPermission) {
-          try {
-            const hasAccess = await hasPermission(
-              session,
-              item.requiresPermission.resource,
-              item.requiresPermission.action
-            );
-            if (!hasAccess) {
-              continue;
-            }
-          } catch (permError) {
-            console.error('Error checking permission:', permError);
-            // On permission check error, exclude the item for safety
-            continue;
-          }
-        }
-
-        // If no permission requirement or permission check passed, include the item
         filteredNavItems.push(item);
       }
     } else {

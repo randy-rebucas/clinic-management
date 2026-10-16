@@ -12,13 +12,18 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "coverage/**",
   ]),
   // Global rule overrides
   {
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": "warn",
-      "react-hooks/exhaustive-deps": "off",
+      "react-hooks/exhaustive-deps": "error",
+      // React Compiler rules from eslint-plugin-react-hooks 7 (eslint-config-next 16.x).
+      "react-hooks/immutability": "error",
+      "react-hooks/set-state-in-effect": "error",
+      "react-hooks/preserve-manual-memoization": "error",
       "@next/next/no-img-element": "warn",
       "jsx-a11y/alt-text": "warn",
     },

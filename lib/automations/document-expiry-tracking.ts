@@ -3,12 +3,23 @@
 
 import connectDB from '@/lib/mongodb';
 import Document from '@/models/Document';
-import Patient from '@/models/Patient';
 import { getSettings } from '@/lib/settings';
-import { createNotification } from '@/lib/notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
 import { Types } from 'mongoose';
+import {
+  forEachTenant,
+  automationEnabled,
+  getTenantStaff,
+  safeNotify,
+  delivered,
+  pendingThreshold,
+  daysUntilInTz,
+  displayDate,
+  errorMessage,
+  BATCH_LIMIT,
+  type AutomationTenant,
+} from './shared';
 
 export interface DocumentExpiryAlert {
   documentId: Types.ObjectId;
@@ -20,6 +31,19 @@ export interface DocumentExpiryAlert {
   documentType: string;
 }
 
+const CRITICAL = ['insurance', 'id'];
+
+function isCritical(documentType: string, category: string): boolean {
+  return CRITICAL.includes(category) || CRITICAL.includes(documentType);
+}
+
+/** Days-before-expiry at which an alert goes out (each sent once). */
+function alertThresholds(documentType: string, category: string): number[] {
+  if (isCritical(documentType, category)) return [60, 30, 7, 1];
+  if (category === 'medical_certificate') return [14, 7, 1];
+  return [30, 14, 1];
+}
+
 /**
  * Determine warning level based on document type and days until expiry
  */
@@ -28,31 +52,23 @@ function determineWarningLevel(
   documentType: string,
   category: string
 ): 'urgent' | 'warning' | 'reminder' {
-  // Insurance and ID documents are critical
-  const criticalTypes = ['insurance', 'id'];
-  
-  if (criticalTypes.includes(category) || criticalTypes.includes(documentType)) {
+  if (isCritical(documentType, category)) {
     if (daysUntilExpiry <= 30) return 'urgent';
     if (daysUntilExpiry <= 60) return 'warning';
-    if (daysUntilExpiry <= 90) return 'reminder';
+    return 'reminder';
   }
-  
-  // Medical certificates
+
   if (category === 'medical_certificate') {
     if (daysUntilExpiry <= 7) return 'urgent';
     if (daysUntilExpiry <= 14) return 'warning';
     return 'reminder';
   }
-  
-  // Other documents
+
   if (daysUntilExpiry <= 14) return 'urgent';
   if (daysUntilExpiry <= 30) return 'warning';
   return 'reminder';
 }
 
-/**
- * Get document display name
- */
 function getDocumentDisplayName(document: any): string {
   if (document.title) return document.title;
   if (document.category) {
@@ -77,268 +93,186 @@ function getDocumentDisplayName(document: any): string {
  */
 async function sendDocumentExpiryAlert(
   alert: DocumentExpiryAlert,
-  tenantId?: Types.ObjectId
+  tenant: AutomationTenant
 ): Promise<{ sent: boolean; error?: string }> {
   try {
     const document = alert.document;
     const documentName = getDocumentDisplayName(document);
     const documentCode = document.documentCode || 'N/A';
-    
+    const expiryText = displayDate(alert.expiryDate, tenant.timezone);
+
     let message = '';
     let subject = '';
-    
+
     if (alert.warningLevel === 'urgent') {
       subject = `URGENT: ${documentName} Expiring Soon`;
-      message = `URGENT: Your ${documentName} (${documentCode}) will expire in ${alert.daysUntilExpiry} day(s) on ${alert.expiryDate.toLocaleDateString()}. `;
+      message = `URGENT: Your ${documentName} (${documentCode}) will expire in ${alert.daysUntilExpiry} day(s) on ${expiryText}. `;
       message += `Please renew this document as soon as possible.`;
     } else if (alert.warningLevel === 'warning') {
       subject = `${documentName} Expiring Soon`;
-      message = `Your ${documentName} (${documentCode}) will expire in ${alert.daysUntilExpiry} day(s) on ${alert.expiryDate.toLocaleDateString()}. `;
+      message = `Your ${documentName} (${documentCode}) will expire in ${alert.daysUntilExpiry} day(s) on ${expiryText}. `;
       message += `Please arrange for renewal.`;
     } else {
       subject = `${documentName} Expiry Reminder`;
-      message = `Reminder: Your ${documentName} (${documentCode}) will expire in ${alert.daysUntilExpiry} day(s) on ${alert.expiryDate.toLocaleDateString()}.`;
+      message = `Reminder: Your ${documentName} (${documentCode}) will expire in ${alert.daysUntilExpiry} day(s) on ${expiryText}.`;
     }
-    
+
     let sent = false;
-    
-    // Send to patient if available
+
     if (alert.patient) {
       const patient = alert.patient;
-      
-      // Send SMS if available
+
       if (patient.phone) {
         try {
-          let phoneNumber = patient.phone.trim();
-          if (!phoneNumber.startsWith('+')) {
-            phoneNumber = `+1${phoneNumber.replace(/\D/g, '')}`;
-          }
-          
-          const smsResult = await sendSMS({
-            to: phoneNumber,
-            message,
-          });
-          
-          if (smsResult.success) {
-            sent = true;
-          }
+          const smsResult = await sendSMS({ to: patient.phone, message });
+          if (delivered(smsResult)) sent = true;
         } catch (error) {
           console.error('Error sending document expiry SMS:', error);
         }
       }
-      
-      // Send email if available
+
       if (patient.email) {
         try {
           const emailHtml = `
-            <h2>${subject}</h2>
-            <p>Dear ${patient.firstName} ${patient.lastName},</p>
-            <p>${message}</p>
-            <p><strong>Document:</strong> ${documentName}</p>
-            <p><strong>Document Code:</strong> ${documentCode}</p>
-            <p><strong>Expiry Date:</strong> ${alert.expiryDate.toLocaleDateString()}</p>
+            <h2>${escapeHtml(subject)}</h2>
+            <p>Dear ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)},</p>
+            <p>${escapeHtml(message)}</p>
+            <p><strong>Document:</strong> ${escapeHtml(documentName)}</p>
+            <p><strong>Document Code:</strong> ${escapeHtml(documentCode)}</p>
+            <p><strong>Expiry Date:</strong> ${escapeHtml(expiryText)}</p>
             <p><strong>Days Remaining:</strong> ${alert.daysUntilExpiry}</p>
             <p>Please contact the clinic to renew this document if needed.</p>
-            ${document.patient ? `<p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/documents/${document._id}">View Document</a></p>` : ''}
           `;
-          
-          const emailResult = await sendEmail({
-            to: patient.email,
-            subject,
-            html: emailHtml,
-          });
-          
-          if (emailResult.success) {
-            sent = true;
-          }
+          const emailResult = await sendEmail({ to: patient.email, subject, html: emailHtml });
+          if (delivered(emailResult)) sent = true;
         } catch (error) {
           console.error('Error sending document expiry email:', error);
         }
       }
-      
-      // Send in-app notification if patient has account
-      if (patient._id) {
-        try {
-          await createNotification({
-            userId: patient._id,
-            tenantId,
-            type: 'system',
-            priority: alert.warningLevel === 'urgent' ? 'urgent' : 'normal',
-            title: subject,
-            message,
-            relatedEntity: {
-              type: 'patient',
-              id: patient._id,
-            },
-            actionUrl: `/documents/${document._id}`,
-          }).catch(console.error);
-          
-          sent = true;
-        } catch (error) {
-          console.error('Error creating document expiry notification:', error);
-        }
-      }
     }
-    
-    // Also notify clinic staff (admin) for critical documents
-    if (alert.warningLevel === 'urgent' && (document.category === 'insurance' || document.category === 'id')) {
+
+    // Also notify clinic staff for critical documents
+    if (alert.warningLevel === 'urgent' && isCritical(document.documentType || '', document.category || '')) {
       try {
-        const { default: User } = await import('@/models/User');
-        
-        const userQuery: any = {};
-        if (tenantId) {
-          userQuery.tenantId = tenantId;
-        }
-        
-        const users = await User.find(userQuery)
-          .populate('role')
-          .exec();
-        
-        const admins = users.filter((user: any) => {
-          const role = user.role;
-          return role && (role.name === 'admin' || role.name === 'receptionist');
-        });
-        
-        for (const admin of admins) {
-          await createNotification({
+        const staff = await getTenantStaff(tenant.tenantObjectId, ['admin', 'receptionist']);
+        for (const admin of staff) {
+          const ok = await safeNotify({
             userId: admin._id,
-            tenantId,
+            tenantId: tenant.tenantObjectId,
             type: 'system',
             priority: 'urgent',
             title: `Patient Document Expiring: ${alert.patient ? `${alert.patient.firstName} ${alert.patient.lastName}` : 'Unknown'}`,
-            message: `${documentName} expiring in ${alert.daysUntilExpiry} days. Patient notification sent.`,
-            relatedEntity: {
-              type: 'patient',
-              id: alert.patient?._id || document.patient,
-            },
+            message: `${documentName} expiring in ${alert.daysUntilExpiry} days.`,
+            relatedEntity: alert.patient?._id || document.patient
+              ? { type: 'patient', id: alert.patient?._id || document.patient }
+              : undefined,
             actionUrl: `/documents/${document._id}`,
-          }).catch(console.error);
+          });
+          if (ok) sent = true;
         }
       } catch (error) {
         console.error('Error notifying clinic staff:', error);
       }
     }
-    
+
     return { sent };
   } catch (error: any) {
     console.error('Error sending document expiry alert:', error);
-    return { sent: false, error: error.message };
+    return { sent: false, error: errorMessage(error) };
   }
 }
 
-/**
- * Process documents and send expiry alerts
- * This should be called by a cron job
- */
-export async function processDocumentExpiryTracking(
-  tenantId?: string | Types.ObjectId
-): Promise<{
+type TrackingResult = {
   success: boolean;
   processed: number;
   alertsSent: number;
   errors: number;
   alerts: DocumentExpiryAlert[];
-}> {
-  try {
-    await connectDB();
-    
-    const settings = await getSettings();
-    const autoDocumentExpiryTracking = (settings.automationSettings as any)?.autoDocumentExpiryTracking !== false;
-    
-    if (!autoDocumentExpiryTracking) {
-      return {
-        success: true,
-        processed: 0,
-        alertsSent: 0,
-        errors: 0,
-        alerts: [],
-      };
-    }
-    
-    // Find documents with expiry dates
-    const query: any = {
-      expiryDate: { $exists: true, $ne: null },
-    };
-    
-    // Check documents expiring within 90 days
-    const ninetyDaysFromNow = new Date();
-    ninetyDaysFromNow.setDate(ninetyDaysFromNow.getDate() + 90);
-    const now = new Date();
-    
-    query.expiryDate = {
-      $gte: now,
-      $lte: ninetyDaysFromNow,
-    };
-    
-    if (tenantId) {
-      query.tenantId = typeof tenantId === 'string'
-        ? new Types.ObjectId(tenantId)
-        : tenantId;
-    }
-    
-    const documents = await Document.find(query)
-      .populate('patient', 'firstName lastName email phone');
-    
-    const alerts: DocumentExpiryAlert[] = [];
-    
-    // Process each document
-    for (const document of documents) {
+};
+
+async function processTenant(tenant: AutomationTenant): Promise<TrackingResult> {
+  const out: TrackingResult = { success: true, processed: 0, alertsSent: 0, errors: 0, alerts: [] };
+
+  const settings = await getSettings(tenant.tenantId);
+  if (!automationEnabled(settings, 'autoDocumentExpiryTracking')) return out;
+
+  const now = new Date();
+  const horizon = new Date(now.getTime() + 61 * 24 * 60 * 60 * 1000);
+
+  const documents = await Document.find({
+    tenantId: tenant.tenantObjectId,
+    status: { $ne: 'deleted' },
+    expiryDate: { $gte: new Date(now.getTime() - 24 * 60 * 60 * 1000), $lte: horizon },
+  })
+    .sort({ expiryDate: 1 })
+    .limit(BATCH_LIMIT)
+    .populate('patient', 'firstName lastName email phone');
+
+  for (const document of documents) {
+    out.processed++;
+    try {
       const expiryDate = new Date(document.expiryDate!);
-      const daysUntilExpiry = Math.floor((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      
-      // Only alert if expiring within 90 days
-      if (daysUntilExpiry > 90) continue;
-      
-      // Check if already alerted recently (prevent duplicate alerts)
-      // TODO: Track last alert date in document model or separate tracking table
-      
-      const warningLevel = determineWarningLevel(
-        daysUntilExpiry,
-        document.documentType || '',
-        document.category || ''
-      );
-      
-      // Skip if too early for reminder level (only warn/warn urgent for now)
-      if (warningLevel === 'reminder' && daysUntilExpiry > 30) {
-        // Only send reminders within 30 days
-        continue;
-      }
-      
-      alerts.push({
+      const daysUntilExpiry = daysUntilInTz(expiryDate, tenant.timezone, now);
+      if (daysUntilExpiry < 0) continue;
+
+      const documentType = document.documentType || '';
+      const category = document.category || '';
+      const due = pendingThreshold(daysUntilExpiry, alertThresholds(documentType, category), document.expiryAlertsSent);
+      if (!due) continue;
+
+      const alert: DocumentExpiryAlert = {
         documentId: document._id,
         document,
         patient: document.patient,
         expiryDate,
         daysUntilExpiry,
-        warningLevel,
-        documentType: document.documentType || document.category || 'unknown',
-      });
-    }
-    
-    // Send alerts
-    let alertsSent = 0;
-    let errors = 0;
-    
-    for (const alert of alerts) {
-      const result = await sendDocumentExpiryAlert(
-        alert,
-        tenantId ? (typeof tenantId === 'string' ? new Types.ObjectId(tenantId) : tenantId) : undefined
-      );
-      
+        warningLevel: determineWarningLevel(daysUntilExpiry, documentType, category),
+        documentType: documentType || category || 'unknown',
+      };
+
+      const result = await sendDocumentExpiryAlert(alert, tenant);
       if (result.sent) {
-        alertsSent++;
+        out.alertsSent++;
+        await Document.updateOne(
+          { _id: document._id, tenantId: tenant.tenantObjectId },
+          { $addToSet: { expiryAlertsSent: { $each: due.crossed } } }
+        );
       } else if (result.error) {
-        errors++;
+        out.errors++;
       }
+
+      out.alerts.push({ ...alert, document: { _id: document._id, title: document.title, category } });
+    } catch (error) {
+      out.errors++;
+      console.error('[document-expiry] document failed:', errorMessage(error));
     }
-    
-    return {
-      success: true,
-      processed: documents.length,
-      alertsSent,
-      errors,
-      alerts,
-    };
+  }
+
+  return out;
+}
+
+/**
+ * Process documents and send expiry alerts.
+ * Without a tenantId every active tenant is processed.
+ */
+export async function processDocumentExpiryTracking(
+  tenantId?: string | Types.ObjectId
+): Promise<TrackingResult> {
+  try {
+    await connectDB();
+    const runs = await forEachTenant(tenantId, processTenant);
+    const total: TrackingResult = { success: runs.every((r) => r.success), processed: 0, alertsSent: 0, errors: 0, alerts: [] };
+    for (const run of runs) {
+      if (!run.result) {
+        total.errors++;
+        continue;
+      }
+      total.processed += run.result.processed;
+      total.alertsSent += run.result.alertsSent;
+      total.errors += run.result.errors;
+      total.alerts.push(...run.result.alerts);
+    }
+    return total;
   } catch (error: any) {
     console.error('Error processing document expiry tracking:', error);
     return {

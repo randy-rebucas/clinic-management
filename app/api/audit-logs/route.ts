@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import AuditLog from '@/models/AuditLog';
-import { verifySession } from '@/app/lib/dal';
-import { unauthorizedResponse, isAdmin } from '@/app/lib/auth-helpers';
-import { getTenantContext } from '@/lib/tenant';
-import { Types } from 'mongoose';
+import { isAdmin } from '@/app/lib/auth-helpers';
+import {
+  requireTenantSession,
+  isTenantSessionError,
+  tenantFilter,
+  patientTenantFilter,
+  isValidId,
+} from '@/lib/api/tenant-session';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { parseDateParam } from '@/app/api/reports/_lib/report-range';
+
+const MAX_LIMIT = 200;
 
 export async function GET(request: NextRequest) {
-  const session = await verifySession();
-
-  if (!session) {
-    return unauthorizedResponse();
-  }
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantId } = ctx;
 
   // Only admin can view audit logs
   if (!isAdmin(session)) {
@@ -23,11 +29,7 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
-    
-    // Get tenant context from session or headers
-    const tenantContext = await getTenantContext();
-    const tenantId = session.tenantId || tenantContext.tenantId;
-    
+
     const searchParams = request.nextUrl.searchParams;
     const userId = searchParams.get('userId');
     const resource = searchParams.get('resource');
@@ -37,17 +39,16 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const isSensitive = searchParams.get('isSensitive');
-    const limit = parseInt(searchParams.get('limit') || '100', 10);
-    const page = parseInt(searchParams.get('page') || '1', 10);
+    const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(searchParams.get('limit') || '100', 10) || 100));
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
 
-    const query: any = {};
-    
-    // Add tenant filter
-    if (tenantId) {
-      query.tenantId = new Types.ObjectId(tenantId);
-    } else {
-      query.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
+    for (const value of [userId, resourceId, dataSubject]) {
+      if (value && !isValidId(value)) {
+        return NextResponse.json({ success: false, error: 'Invalid id filter' }, { status: 400 });
+      }
     }
+
+    const query: any = tenantFilter(tenantId);
 
     if (userId) {
       query.userId = userId;
@@ -74,37 +75,31 @@ export async function GET(request: NextRequest) {
     }
 
     if (startDate || endDate) {
+      const tz = await getTenantTimezone(tenantId);
+      const start = parseDateParam(startDate, tz, 'start');
+      const end = parseDateParam(endDate, tz, 'end');
+      if ((startDate && !start) || (endDate && !end)) {
+        return NextResponse.json({ success: false, error: 'Invalid date range' }, { status: 400 });
+      }
       query.timestamp = {};
-      if (startDate) {
-        query.timestamp.$gte = new Date(startDate);
-      }
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        query.timestamp.$lte = end;
-      }
+      if (start) query.timestamp.$gte = start;
+      if (end) query.timestamp.$lte = end;
     }
 
     const skip = (page - 1) * limit;
 
-    // Build populate options with tenant filter
-    const dataSubjectPopulateOptions: any = {
-      path: 'dataSubject',
-      select: 'firstName lastName patientCode',
-    };
-    if (tenantId) {
-      dataSubjectPopulateOptions.match = { tenantId: new Types.ObjectId(tenantId) };
-    } else {
-      dataSubjectPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-    }
-
     const [logs, total] = await Promise.all([
       AuditLog.find(query)
         .populate('userId', 'name email role')
-        .populate(dataSubjectPopulateOptions)
+        .populate({
+          path: 'dataSubject',
+          select: 'firstName lastName patientCode',
+          match: patientTenantFilter(tenantId),
+        })
         .sort({ timestamp: -1 })
         .limit(limit)
-        .skip(skip),
+        .skip(skip)
+        .lean(),
       AuditLog.countDocuments(query),
     ]);
 
@@ -126,4 +121,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

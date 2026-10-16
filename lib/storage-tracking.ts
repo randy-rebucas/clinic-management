@@ -45,99 +45,72 @@ export async function calculateStorageUsage(
       ? new Types.ObjectId(tenantId) 
       : tenantId;
 
-    // 1. Calculate storage from Document model
-    const documents = await Document.find({
-      tenantId: tenantIdObj,
-      status: { $ne: 'deleted' }, // Exclude deleted documents
-    }).select('size url metadata').lean();
+    // 1. Calculate storage from Document model (aggregated server-side; never loads base64 bodies)
+    const [docAgg] = await Document.aggregate([
+      { $match: { tenantId: tenantIdObj, status: { $ne: 'deleted' } } },
+      {
+        $project: {
+          size: { $ifNull: ['$size', 0] },
+          isBase64: { $eq: [{ $substrCP: [{ $ifNull: ['$url', ''] }, 0, 5] }, 'data:'] },
+          isCloudinary: {
+            $or: [
+              { $gt: [{ $ifNull: ['$metadata.cloudinaryPublicId', null] }, null] },
+              { $regexMatch: { input: { $ifNull: ['$url', ''] }, regex: /cloudinary\.com/ } },
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$size' },
+          cloudinary: { $sum: { $cond: [{ $and: [{ $not: ['$isBase64'] }, '$isCloudinary'] }, '$size', 0] } },
+        },
+      },
+    ]);
 
-    let documentsBytes = 0;
-    let cloudinaryBytes = 0;
-    let base64Bytes = 0;
-
-    for (const doc of documents) {
-      documentsBytes += doc.size || 0;
-
-      // Check if stored in Cloudinary or base64
-      if (doc.url && doc.url.startsWith('data:')) {
-        // Base64 stored in MongoDB
-        base64Bytes += doc.size || 0;
-      } else if (doc.metadata?.cloudinaryPublicId) {
-        // Stored in Cloudinary - size is already in doc.size
-        cloudinaryBytes += doc.size || 0;
-      } else if (doc.url && doc.url.includes('cloudinary.com')) {
-        // Cloudinary URL but no public ID in metadata - estimate from size
-        cloudinaryBytes += doc.size || 0;
-      } else {
-        // Assume base64 or other storage
-        base64Bytes += doc.size || 0;
-      }
-    }
+    const documentsBytes: number = docAgg?.total || 0;
+    let cloudinaryBytes: number = docAgg?.cloudinary || 0;
+    let base64Bytes: number = documentsBytes - cloudinaryBytes;
 
     // 2. Calculate storage from attachments in other models
     let attachmentsBytes = 0;
 
-    // Patient attachments
-    const patients = await Patient.find({
-      tenantId: tenantIdObj,
-    }).select('attachments').lean();
+    const attachmentTotals = async (model: any, match: Record<string, unknown>) => {
+      const [agg] = await model.aggregate([
+        { $match: match },
+        { $project: { attachments: 1 } },
+        { $unwind: '$attachments' },
+        { $match: { 'attachments.size': { $gt: 0 } } },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$attachments.size' },
+            base64: {
+              $sum: {
+                $cond: [
+                  { $eq: [{ $substrCP: [{ $ifNull: ['$attachments.url', ''] }, 0, 5] }, 'data:'] },
+                  '$attachments.size',
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ]);
+      return { total: agg?.total || 0, base64: agg?.base64 || 0 };
+    };
 
-    for (const patient of patients) {
-      if (patient.attachments && Array.isArray(patient.attachments)) {
-        for (const attachment of patient.attachments) {
-          if (attachment.size) {
-            attachmentsBytes += attachment.size;
-            // Check if base64
-            if (attachment.url && attachment.url.startsWith('data:')) {
-              base64Bytes += attachment.size;
-            } else {
-              cloudinaryBytes += attachment.size;
-            }
-          }
-        }
-      }
-    }
-
-    // Visit attachments
-    const visits = await Visit.find({
-      tenantId: tenantIdObj,
-    }).select('attachments').lean();
-
-    for (const visit of visits) {
-      if (visit.attachments && Array.isArray(visit.attachments)) {
-        for (const attachment of visit.attachments) {
-          if (attachment.size) {
-            attachmentsBytes += attachment.size;
-            // Check if base64
-            if (attachment.url && attachment.url.startsWith('data:')) {
-              base64Bytes += attachment.size;
-            } else {
-              cloudinaryBytes += attachment.size;
-            }
-          }
-        }
-      }
-    }
-
-    // LabResult attachments
-    const labResults = await LabResult.find({
-      tenantId: tenantIdObj,
-    }).select('attachments').lean();
-
-    for (const labResult of labResults) {
-      if (labResult.attachments && Array.isArray(labResult.attachments)) {
-        for (const attachment of labResult.attachments) {
-          if (attachment.size) {
-            attachmentsBytes += attachment.size;
-            // Check if base64
-            if (attachment.url && attachment.url.startsWith('data:')) {
-              base64Bytes += attachment.size;
-            } else {
-              cloudinaryBytes += attachment.size;
-            }
-          }
-        }
-      }
+    // Patient belongs to many tenants via `tenantIds`.
+    const totals = await Promise.all([
+      attachmentTotals(Patient, { tenantIds: tenantIdObj }),
+      attachmentTotals(Visit, { tenantId: tenantIdObj }),
+      attachmentTotals(LabResult, { tenantId: tenantIdObj }),
+    ]);
+    for (const t of totals) {
+      attachmentsBytes += t.total;
+      base64Bytes += t.base64;
+      cloudinaryBytes += t.total - t.base64;
     }
 
     // Total storage
