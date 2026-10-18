@@ -101,6 +101,14 @@ export interface ISettings extends Document {
     autoBroadcastMessaging: boolean;
     autoPeriodicReports: boolean;
     autoStaffPerformanceReports: boolean;
+    autoInsuranceVerification: boolean;
+    autoQueueOptimization: boolean;
+    autoDataRetention: boolean;
+    autoSmartAssignment: boolean;
+    autoInventoryReordering: boolean;
+    autoPrescriptionExpiryWarnings: boolean;
+    autoDocumentExpiryTracking: boolean;
+    autoCancellationPolicies: boolean;
   };
 
   // Display Settings

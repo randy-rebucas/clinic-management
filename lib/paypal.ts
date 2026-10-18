@@ -67,6 +67,11 @@ async function getPayPalAccessToken(): Promise<string> {
   }
 }
 
+/** Whether this server holds PayPal credentials, i.e. whether a plan can be paid for online. */
+export function isPayPalConfigured(): boolean {
+  return Boolean(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET);
+}
+
 /**
  * Create a PayPal order for subscription payment
  */
@@ -109,8 +114,10 @@ export async function createPayPalOrder(
           brand_name: 'MyClinicSoft',
           landing_page: 'BILLING',
           user_action: 'PAY_NOW',
-          return_url: `${resolvedAppUrl}/subscription/success?plan=${planName}&cycle=${billingCycle}`,
-          cancel_url: `${resolvedAppUrl}/subscription?canceled=true`,
+          // PayPal adds ?token=<order id>&PayerID=… to both. The return page captures the order;
+          // plan and cycle are read from the stored order, never from these URLs.
+          return_url: `${resolvedAppUrl}/admin/subscription/success`,
+          cancel_url: `${resolvedAppUrl}/admin/subscription?canceled=1`,
         },
       }),
     });

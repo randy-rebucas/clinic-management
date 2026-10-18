@@ -117,17 +117,22 @@ export async function PUT(
       { new: true, runValidators: true }
     ).populate({ path: 'permissions', select: 'resource actions', match: tenantFilter(tenantId) });
 
-    await createAuditLog({
-      userId: session.userId,
-      userEmail: session.email,
-      userRole: session.role,
-      tenantId,
-      action: 'update',
-      resource: 'user',
-      resourceId: id,
-      description: `Updated role: ${role.name}`,
-      changes: Object.entries(updates).map(([field, newValue]) => ({ field, newValue })),
-    });
+    const changes = Object.entries(updates)
+      .map(([field, newValue]) => ({ field, oldValue: (role as unknown as Record<string, unknown>)[field], newValue }))
+      .filter((c) => c.oldValue !== c.newValue);
+    if (changes.length > 0) {
+      await createAuditLog({
+        userId: session.userId,
+        userEmail: session.email,
+        userRole: session.role,
+        tenantId,
+        action: 'update',
+        resource: 'user',
+        resourceId: id,
+        description: `Changed the ${role.displayName || role.name} role’s details`,
+        changes,
+      });
+    }
 
     return NextResponse.json({ success: true, data: updatedRole });
   } catch (error: any) {
@@ -184,6 +189,7 @@ export async function DELETE(
     }
 
     await Role.deleteOne(tenantFilter(tenantId, { _id: id }));
+    await Permission.deleteMany(tenantFilter(tenantId, { role: role._id }));
 
     await createAuditLog({
       userId: session.userId,

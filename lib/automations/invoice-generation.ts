@@ -9,7 +9,7 @@ import { getSettings } from '@/lib/settings';
 import { calculateDiscounts, DiscountEligibility } from '@/lib/discount-calculator';
 import { createNotification } from '@/lib/notifications';
 import { sendEmail, escapeHtml } from '@/lib/email';
-import { escapeRegex } from '@/lib/api/validate';
+import { FALLBACK_VISIT_FEE, pickVisitFee } from '@/lib/services';
 import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
 import { Types } from 'mongoose';
 
@@ -75,7 +75,7 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
     const invoicePrefix =
       String(settings.billingSettings?.invoicePrefix || 'INV').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 10) || 'INV';
     const autoInvoiceEnabled = (settings.automationSettings as any)?.autoInvoiceGeneration !== false; // Default to true
-    const defaultConsultationFee = (settings.billingSettings as any)?.defaultConsultationFee || 500;
+    const defaultConsultationFee = (settings.billingSettings as any)?.defaultConsultationFee || FALLBACK_VISIT_FEE;
 
     if (!autoInvoiceEnabled) {
       return { 
@@ -94,16 +94,11 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
     // Build invoice items from visit
     const items: any[] = [];
 
-    // Add consultation fee based on visit type
-    const consultationService = await Service.findOne({
-      tenantId,
-      category: 'consultation',
-      active: true,
-      $or: [
-        { type: visit.visitType },
-        { name: { $regex: escapeRegex(String(visit.visitType || '')), $options: 'i' } }
-      ]
-    }).sort({ unitPrice: -1 }); // Get most expensive if multiple
+    // Add consultation fee based on visit type: the same rule /admin/services shows
+    const consultations = await Service.find({ tenantId, category: 'consultation', active: true })
+      .select('name code category type unitPrice active')
+      .lean<{ _id: Types.ObjectId; name: string; code: string; category: string; type?: string; unitPrice: number; active: boolean }[]>();
+    const consultationService = pickVisitFee(consultations, String(visit.visitType || ''))?.service ?? null;
 
     if (consultationService) {
       items.push({

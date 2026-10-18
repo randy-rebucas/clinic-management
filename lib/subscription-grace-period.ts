@@ -7,6 +7,7 @@ import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
 import { checkSubscriptionStatus } from '@/lib/subscription';
 import { Types } from 'mongoose';
+import { GRACE_DAYS } from '@/lib/subscription-period';
 
 export interface GracePeriodStatus {
   isInGracePeriod: boolean;
@@ -48,7 +49,7 @@ export async function checkGracePeriod(
     // If subscription is expired, check for grace period
     if (subscriptionStatus.isExpired && subscriptionStatus.expiresAt) {
       const expiresAt = new Date(subscriptionStatus.expiresAt);
-      const gracePeriodEndsAt = new Date(expiresAt.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      const gracePeriodEndsAt = new Date(expiresAt.getTime() + GRACE_DAYS * 24 * 60 * 60 * 1000);
       const now = new Date();
 
       if (now <= gracePeriodEndsAt) {

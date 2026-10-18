@@ -1,20 +1,27 @@
-import { getUser } from '@/app/lib/dal';
 import { redirect } from 'next/navigation';
-import StaffManagementClient from '@/components/StaffManagementClient';
+import { requireAdmin } from '@/app/lib/auth-helpers';
+import { verifySession } from '@/app/lib/dal';
+import { isEmailConfigured } from '@/lib/email';
+import { isStaffShow, isStaffStatus, isStaffType } from '@/lib/staff';
+import StaffPageClient from '@/components/admin/StaffPageClient';
 
-export default async function StaffManagementPage() {
-  const user = await getUser();
-  
-  if (!user || !('role' in user)) {
-    redirect('/login');
-  }
+export default async function StaffPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ show?: string; type?: string; status?: string }>;
+}) {
+  await requireAdmin();
+  const session = await verifySession();
+  if (!session) redirect('/login');
+  const { show, type, status } = await searchParams;
 
-  // Only admins can access staff management
-  if (user.role !== 'admin') {
-    redirect('/dashboard');
-  }
-
-  const safeUser = JSON.parse(JSON.stringify(user));
-  return <StaffManagementClient user={safeUser} />;
+  return (
+    <StaffPageClient
+      meId={session.userId}
+      emailReady={isEmailConfigured()}
+      initialShow={isStaffShow(show) ? show : ''}
+      initialType={isStaffType(type) ? type : ''}
+      initialStatus={isStaffStatus(status) ? status : ''}
+    />
+  );
 }
-

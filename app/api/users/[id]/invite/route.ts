@@ -62,9 +62,20 @@ export async function POST(
 
     await connectDB();
 
+    const target = tenantFilter(tenantId, profileField ? { [profileField]: id } : { _id: id });
+    const existing = await User.findOne(target).select('status').lean<{ status?: string } | null>();
+    if (!existing) return notFound('User');
+    // A link for a suspended or closed account would only lead to a refused sign-in.
+    if (existing.status !== 'active') {
+      return NextResponse.json(
+        { success: false, error: 'This account is suspended or closed. Reactivate it before sending a link.' },
+        { status: 409 }
+      );
+    }
+
     const invite = generateInviteToken();
     const user = await User.findOneAndUpdate(
-      tenantFilter(tenantId, profileField ? { [profileField]: id } : { _id: id }),
+      target,
       { $set: inviteUpdate(invite) },
       { new: true, projection: { email: 1, name: 1, tenantId: 1, mustSetPassword: 1 } }
     ).lean<{ _id: unknown; email: string; name: string; tenantId?: unknown; mustSetPassword?: boolean } | null>();

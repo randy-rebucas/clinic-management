@@ -8,8 +8,7 @@ import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId } f
 import { parseBody, isValidationError, zEmail, zObjectId } from '@/lib/api/validate';
 import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { validatePasswordPolicy } from '@/lib/user-invite';
-
-const USER_STATUSES = ['active', 'inactive', 'suspended'] as const;
+import { PROFILE_KEYS, USER_STATUSES, isUserShow, isUserSort, userShowFilter, type UserRow } from '@/lib/users';
 
 const createUserSchema = z.object({
   name: z.string().trim().min(2).max(200),
@@ -36,41 +35,71 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const role = searchParams.get('role');
     const search = searchParams.get('search');
+    const show = searchParams.get('show');
+    const sort = searchParams.get('sort');
     const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
     const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '50') || 50));
     const skip = (page - 1) * limit;
 
-    const extra: Record<string, unknown> = {};
-    if (status && (USER_STATUSES as readonly string[]).includes(status)) extra.status = status;
+    // Each condition is its own $and clause so a "show" $or and the search $or never overwrite each other.
+    const and: Record<string, unknown>[] = [];
+    if (status && (USER_STATUSES as readonly string[]).includes(status)) and.push({ status });
+    if (isUserShow(show)) and.push(userShowFilter(show));
     if (role) {
       if (!isValidId(role)) {
         return NextResponse.json({ success: true, data: [], pagination: { page, limit, total: 0, pages: 0 } });
       }
-      extra.role = role;
+      and.push({ role });
     }
-    if (search) {
-      const safeSearch = sanitizeSearch(search);
-      extra.$or = [
-        { name: { $regex: safeSearch, $options: 'i' } },
-        { email: { $regex: safeSearch, $options: 'i' } },
-      ];
+    if (search?.trim()) {
+      const safeSearch = sanitizeSearch(search.trim());
+      and.push({
+        $or: [
+          { name: { $regex: safeSearch, $options: 'i' } },
+          { email: { $regex: safeSearch, $options: 'i' } },
+        ],
+      });
     }
-    const query = tenantFilter(tenantId, extra);
+    const query = tenantFilter(tenantId, and.length ? { $and: and } : {});
+    const order: Record<string, 1 | -1> =
+      isUserSort(sort) && sort === 'last-sign-in'
+        ? { lastLogin: 1, name: 1 }
+        : isUserSort(sort) && sort === 'newest'
+          ? { createdAt: -1 }
+          : { name: 1 };
 
     const [users, total] = await Promise.all([
       User.find(query)
-        .populate({ path: 'role', select: 'name displayName level', match: tenantFilter(tenantId) })
-        .select('-password -totpSecret')
-        .sort({ createdAt: -1 })
+        .populate({ path: 'role', select: 'name displayName', match: tenantFilter(tenantId) })
+        .select(`name email role status mustSetPassword inviteExpiresAt totpEnabled lastLogin createdAt ${PROFILE_KEYS.join(' ')}`)
+        .sort(order)
+        .collation({ locale: 'en', strength: 2 })
         .skip(skip)
         .limit(limit)
-        .lean(),
+        .lean<Record<string, any>[]>(),
       User.countDocuments(query),
     ]);
 
+    const rows: UserRow[] = users.map((u) => {
+      const key = PROFILE_KEYS.find((k) => u[k]);
+      return {
+        _id: String(u._id),
+        name: u.name,
+        email: u.email,
+        role: u.role ? { _id: String(u.role._id), name: u.role.name, displayName: u.role.displayName } : null,
+        status: u.status,
+        mustSetPassword: !!u.mustSetPassword,
+        inviteExpiresAt: u.inviteExpiresAt ? new Date(u.inviteExpiresAt).toISOString() : null,
+        totpEnabled: !!u.totpEnabled,
+        lastLogin: u.lastLogin ? new Date(u.lastLogin).toISOString() : null,
+        createdAt: new Date(u.createdAt).toISOString(),
+        profile: key ? { key, id: String(u[key]) } : null,
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      data: users,
+      data: rows,
       pagination: {
         page,
         limit,

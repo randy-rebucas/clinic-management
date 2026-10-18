@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
-import { createPayPalOrder } from '@/lib/paypal';
-import { SUBSCRIPTION_PACKAGES, SubscriptionPlan } from '@/lib/subscription-packages';
+import { createPayPalOrder, isPayPalConfigured } from '@/lib/paypal';
+import { PAID_PLANS, isPaidPlan, planPrice } from '@/lib/subscription-period';
 import connectDB from '@/lib/mongodb';
 import PaypalOrder from '@/models/PaypalOrder';
 import { Types } from 'mongoose';
 
-const VALID_PLANS: SubscriptionPlan[] = ['basic', 'professional', 'enterprise'];
+/** The site this request came from, so PayPal sends the payer back to the same clinic host. */
+function appOrigin(request: NextRequest): string {
+  for (const value of [request.headers.get('origin'), request.headers.get('referer')]) {
+    if (!value || value === 'null') continue;
+    try {
+      return new URL(value).origin;
+    } catch {
+      // try the next one
+    }
+  }
+  return (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,30 +30,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await request.json().catch(() => ({}));
-    const planName = (typeof body?.plan === 'string' ? body.plan.toLowerCase() : '') as SubscriptionPlan;
-    const billingCycle: 'monthly' | 'yearly' = body.billingCycle === 'yearly' ? 'yearly' : 'monthly';
-
-    if (!planName || !VALID_PLANS.includes(planName)) {
+    if (!isPayPalConfigured()) {
       return NextResponse.json(
-        { success: false, error: `Invalid plan. Must be one of: ${VALID_PLANS.join(', ')}` },
+        { success: false, error: 'Online payment isn’t set up on this server, so no payment was started.' },
+        { status: 503 }
+      );
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const planName = typeof body?.plan === 'string' ? body.plan.toLowerCase() : '';
+    const billingCycle: 'monthly' | 'yearly' = body?.billingCycle === 'yearly' ? 'yearly' : 'monthly';
+
+    if (!isPaidPlan(planName)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid plan. Must be one of: ${PAID_PLANS.join(', ')}` },
         { status: 400 }
       );
     }
 
-    const pkg = SUBSCRIPTION_PACKAGES[planName];
-    const amount = billingCycle === 'yearly'
-      ? (pkg.price.yearly ?? pkg.price.monthly * 12)
-      : pkg.price.monthly;
-    const currency = pkg.price.currency || 'USD';
-
-    // Use the request origin so PayPal redirects back to the correct host (including subdomain)
-    const origin =
-      request.headers.get('origin') ||
-      request.headers.get('referer')?.replace(/\/[^/]*$/, '') ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      'http://localhost:3000';
-    const appUrl = origin.replace(/\/$/, '');
+    const { amount, currency } = planPrice(planName, billingCycle);
 
     // Create PayPal order — include billingCycle in the plan label
     const { orderId, approvalUrl } = await createPayPalOrder(
@@ -50,7 +56,7 @@ export async function POST(request: NextRequest) {
       amount,
       currency,
       tenantId,
-      appUrl,
+      appOrigin(request),
       billingCycle,
     );
 
@@ -78,8 +84,8 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error creating subscription order:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to create order' },
-      { status: 500 }
+      { success: false, error: 'PayPal couldn’t start the payment. Nothing was charged; try again in a few minutes.' },
+      { status: 502 }
     );
   }
 }

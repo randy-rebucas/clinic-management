@@ -1,20 +1,23 @@
-import { getUser } from '@/app/lib/dal';
 import { redirect } from 'next/navigation';
-import RoomsManagementClient from '@/components/RoomsManagementClient';
+import { requirePagePermission } from '@/app/lib/auth-helpers';
+import { verifySession } from '@/app/lib/dal';
+import { loadRoomsPage } from '@/lib/rooms-page';
+import { isRoomShow, isRoomType } from '@/lib/rooms';
+import RoomsPageClient from '@/components/admin/RoomsPageClient';
 
-export default async function RoomsManagementPage() {
-  const user = await getUser();
-  
-  if (!user || !('role' in user)) {
-    redirect('/login');
-  }
+export const dynamic = 'force-dynamic';
 
-  // Only admins can access rooms management
-  if (user.role !== 'admin') {
-    redirect('/dashboard');
-  }
+/** Whoever may change rooms (administrators and owners, and anyone granted rooms:write). */
+export default async function RoomsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ show?: string; type?: string }>;
+}) {
+  await requirePagePermission('rooms', 'write');
+  const session = await verifySession();
+  if (!session) redirect('/login');
+  const { show, type } = await searchParams;
 
-  const safeUser = JSON.parse(JSON.stringify(user));
-  return <RoomsManagementClient user={safeUser} />;
+  const data = await loadRoomsPage(session);
+  return <RoomsPageClient data={data} initialShow={isRoomShow(show) ? show : 'all'} initialType={isRoomType(type) ? type : ''} />;
 }
-

@@ -81,10 +81,21 @@ export async function optimizeQueue(
       status: 'active',
     }).select('firstName lastName specialization').lean();
 
-    const availableRooms = await Room.find({
-      tenantId: tenantIdObj,
-      status: 'available',
-    }).select('name capacity').lean();
+    // Open rooms ("occupied" was once set by hand and means open) nobody is being seen in now.
+    // Rooms are given out only when "Auto assign rooms" is on in the queue settings.
+    const autoAssignRooms = settings.queueSettings?.autoAssignRooms === true;
+    const roomsInUse = new Set(
+      (queueEntries as any[]).filter((e) => e.status === 'in-progress' && e.room?._id).map((e) => String(e.room._id))
+    );
+    const availableRooms = autoAssignRooms
+      ? ((await Room.find({
+          tenantId: tenantIdObj,
+          status: { $in: ['available', 'occupied'] },
+        })
+          .select('name capacity')
+          .sort({ name: 1 })
+          .lean()) as any[]).filter((r) => !roomsInUse.has(String(r._id)))
+      : [];
 
     const entries = (queueEntries || []) as any[];
     const doctors = (availableDoctors || []) as any[];

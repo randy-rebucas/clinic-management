@@ -2,263 +2,271 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import { Nurse, Receptionist, Accountant, User } from '@/models';
-import { isAdmin } from '@/app/lib/auth-helpers';
+import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
 import { revokeUserSessions } from '@/app/lib/dal';
-import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId } from '@/lib/api/tenant-session';
+import { createAuditLog } from '@/lib/audit';
+import { changeAccountStatus } from '@/lib/account-status';
+import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zEmail, zPhone, zShortText } from '@/lib/api/validate';
+import { STAFF_STATUS, STAFF_STATUSES, STAFF_TYPE, STAFF_TYPES, TYPE_FIELDS, isStaffType, type StaffType } from '@/lib/staff';
+import { USER_STATUSES } from '@/lib/users';
 
-const STAFF_TYPES = ['nurse', 'receptionist', 'accountant'] as const;
+const MODELS = { nurse: Nurse, receptionist: Receptionist, accountant: Accountant } as const;
 
-const optionalText = z.preprocess((v) => (v === null ? undefined : v), zShortText.optional());
+/** Optional text: '' clears the field, absent leaves it alone. */
+const clearable = (max: number) => z.preprocess((v) => (v === null ? '' : v), z.string().trim().max(max).optional());
 
 const updateStaffSchema = z.object({
   staffType: z.enum(STAFF_TYPES),
-  firstName: zShortText.min(1).optional(),
-  lastName: zShortText.min(1).optional(),
+  firstName: zShortText.min(1, 'First name is required').optional(),
+  lastName: zShortText.min(1, 'Last name is required').optional(),
   email: zEmail.optional(),
   phone: zPhone.optional(),
-  employeeId: optionalText,
-  department: optionalText,
-  specialization: optionalText,
-  licenseNumber: optionalText,
-  certification: optionalText,
-  title: optionalText,
-  address: z.preprocess((v) => (v === null ? undefined : v), z.string().trim().max(500).optional()),
-  bio: z.preprocess((v) => (v === null ? undefined : v), z.string().max(5000).optional()),
-  hireDate: z.preprocess(
-    (v) => (v === '' || v === null ? undefined : v),
-    z.coerce.date().optional()
-  ),
-  status: z.enum(['active', 'inactive', 'on-leave']).optional(),
+  title: clearable(200),
+  employeeId: clearable(200),
+  department: clearable(200),
+  specialization: clearable(200),
+  licenseNumber: clearable(200),
+  certification: clearable(200),
+  address: clearable(500),
+  hireDate: z.preprocess((v) => (v === null ? '' : v), z.union([z.literal(''), z.coerce.date()]).optional()),
+  status: z.enum(STAFF_STATUSES).optional(),
+  /** Change the linked login account's access in the same save (audited on the account). */
+  account: z
+    .object({ status: z.enum(USER_STATUSES), reason: z.string().trim().max(300).optional() })
+    .optional(),
 });
 
-function getModelByType(staffType: string | null) {
-  switch (staffType) {
-    case 'nurse': return Nurse;
-    case 'receptionist': return Receptionist;
-    case 'accountant': return Accountant;
-    default: return null;
-  }
+const COMMON_TEXT = ['employeeId', 'department', 'address'] as const;
+/** Changes to these are recorded by name only, never their values. */
+const PRIVATE_FIELDS = new Set(['address', 'phone', 'email']);
+
+const comparable = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v ?? ''));
+
+async function adminContext() {
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return { error: ctx };
+  if (!isAdmin(ctx.session)) return { error: forbiddenResponse('Admin access required') };
+  return { ctx };
 }
 
-function getProfileField(staffType: string | null) {
-  switch (staffType) {
-    case 'nurse': return 'nurseProfile';
-    case 'receptionist': return 'receptionistProfile';
-    case 'accountant': return 'accountantProfile';
-    default: return null;
-  }
-}
-
-async function revokeSessionsFor(userId: unknown) {
-  if (!userId) return;
-  await revokeUserSessions(String(userId));
-}
-
-// GET /api/staff/[id] - Get a specific staff member
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/** GET /api/staff/:id?type=nurse — admin only. One profile and its login account. */
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const ctx = await requireTenantSession();
-    if (isTenantSessionError(ctx)) return ctx;
+    const { ctx, error } = await adminContext();
+    if (error) return error;
     const { tenantId } = ctx;
 
-    await connectDB();
     const { id } = await params;
+    if (!isValidId(id)) return notFound('Staff member');
+    await connectDB();
 
-    if (!isValidId(id)) {
-      return NextResponse.json({ error: 'Invalid staff ID' }, { status: 400 });
+    const requested = request.nextUrl.searchParams.get('type');
+    const types: StaffType[] = isStaffType(requested) ? [requested] : [...STAFF_TYPES];
+    for (const type of types) {
+      const staff = await MODELS[type].findOne(tenantFilter(tenantId, { _id: id })).select('-internalNotes -performanceMetrics').lean();
+      if (!staff) continue;
+      const user = await User.findOne(tenantFilter(tenantId, { [STAFF_TYPE[type].profileField]: id }))
+        .select('email name status lastLogin mustSetPassword inviteExpiresAt')
+        .lean();
+      return NextResponse.json({ success: true, data: { staff: { ...staff, staffType: type }, user } });
     }
-
-    const { searchParams } = new URL(request.url);
-    const staffType = searchParams.get('type');
-    const filter = tenantFilter(tenantId, { _id: id });
-
-    let staff = null;
-    let foundType = staffType;
-
-    if (staffType) {
-      const Model = getModelByType(staffType);
-      if (Model) {
-        staff = await Model.findOne(filter).lean();
-      }
-    } else {
-      staff = await Nurse.findOne(filter).lean();
-      if (staff) {
-        foundType = 'nurse';
-      } else {
-        staff = await Receptionist.findOne(filter).lean();
-        if (staff) {
-          foundType = 'receptionist';
-        } else {
-          staff = await Accountant.findOne(filter).lean();
-          if (staff) {
-            foundType = 'accountant';
-          }
-        }
-      }
-    }
-
-    if (!staff) {
-      return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
-    }
-
-    const profileField = getProfileField(foundType);
-    const user = profileField
-      ? await User.findOne(tenantFilter(tenantId, { [profileField]: id })).select('email name status lastLogin').lean()
-      : null;
-
-    return NextResponse.json({
-      staff: { ...staff, staffType: foundType },
-      user,
-    });
-  } catch (error: any) {
+    return notFound('Staff member');
+  } catch (error) {
     console.error('Error fetching staff:', error);
-    return NextResponse.json({ error: 'Failed to fetch staff' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to load the staff member' }, { status: 500 });
   }
 }
 
-// PUT /api/staff/[id] - Update a staff member
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/**
+ * PUT /api/staff/:id — admin only. Updates the profile; blank optional fields are cleared.
+ * Name and email follow to the login account. Employment status no longer changes sign-in by
+ * itself (it used to reopen suspended and closed accounts unaudited); pass `account` to do that.
+ */
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const ctx = await requireTenantSession();
-    if (isTenantSessionError(ctx)) return ctx;
+    const { ctx, error } = await adminContext();
+    if (error) return error;
     const { session, tenantId } = ctx;
 
-    if (!isAdmin(session)) {
-      return NextResponse.json({ error: 'Only admins can update staff' }, { status: 403 });
-    }
-
-    await connectDB();
     const { id } = await params;
-
-    if (!isValidId(id)) {
-      return NextResponse.json({ error: 'Invalid staff ID' }, { status: 400 });
-    }
+    if (!isValidId(id)) return notFound('Staff member');
 
     const parsed = await parseBody(request, updateStaffSchema);
     if (isValidationError(parsed)) return parsed;
-    const { staffType, ...updateData } = parsed.data;
+    const { staffType, account, ...input } = parsed.data;
 
-    const Model = getModelByType(staffType)!;
-    const profileField = getProfileField(staffType)!;
+    await connectDB();
+    const Model = MODELS[staffType];
+    const profileField = STAFF_TYPE[staffType].profileField;
+    const filter = tenantFilter(tenantId, { _id: id });
 
-    if (updateData.email) {
-      const emailOwner = await User.findOne({ email: updateData.email })
+    const before = await Model.findOne(filter).lean<Record<string, unknown> | null>();
+    if (!before) return notFound('Staff member');
+
+    if (input.email && input.email !== before.email) {
+      const emailOwner = await User.findOne({ email: input.email })
         .select('tenantId ' + profileField)
         .lean<Record<string, unknown> | null>();
-      if (
-        emailOwner &&
-        (String(emailOwner.tenantId ?? '') !== tenantId || String(emailOwner[profileField] ?? '') !== id)
-      ) {
-        return NextResponse.json({ error: 'A user with this email already exists' }, { status: 400 });
+      if (emailOwner && (String(emailOwner.tenantId ?? '') !== tenantId || String(emailOwner[profileField] ?? '') !== id)) {
+        return NextResponse.json({ success: false, error: 'That email address is already used by another account.' }, { status: 409 });
       }
     }
 
-    const staff = await Model.findOneAndUpdate(
-      tenantFilter(tenantId, { _id: id }),
-      { $set: updateData },
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (!staff) {
-      return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
+    const $set: Record<string, unknown> = {};
+    const $unset: Record<string, ''> = {};
+    for (const key of ['firstName', 'lastName', 'email', 'phone', 'status'] as const) {
+      if (input[key] !== undefined) $set[key] = input[key];
+    }
+    // Only the fields this job's profile has; the others would be dropped by the model anyway.
+    for (const key of [...COMMON_TEXT, ...TYPE_FIELDS[staffType]]) {
+      const value = input[key];
+      if (value === undefined) continue;
+      if (value === '') $unset[key] = '';
+      else $set[key] = value;
+    }
+    if (input.hireDate !== undefined) {
+      if (input.hireDate === '') $unset.hireDate = '';
+      else $set.hireDate = input.hireDate;
     }
 
+    const changes = Object.keys({ ...$set, ...$unset })
+      .filter((field) => comparable(before[field]) !== comparable($set[field]))
+      .map((field) =>
+        PRIVATE_FIELDS.has(field) ? { field } : { field, oldValue: before[field] ?? null, newValue: $set[field] ?? null }
+      );
+
+    const update: Record<string, unknown> = {};
+    if (Object.keys($set).length) update.$set = $set;
+    if (Object.keys($unset).length) update.$unset = $unset;
+    const staff = Object.keys(update).length
+      ? await Model.findOneAndUpdate(filter, update, { new: true, runValidators: true }).lean<Record<string, unknown> | null>()
+      : before;
+    if (!staff) return notFound('Staff member');
+
+    const name = `${staff.firstName} ${staff.lastName}`.trim();
     const userUpdate: Record<string, unknown> = {};
-    if (updateData.email) userUpdate.email = updateData.email;
-    if (updateData.firstName || updateData.lastName) {
-      userUpdate.name = `${updateData.firstName || (staff as any).firstName} ${updateData.lastName || (staff as any).lastName}`.trim();
-    }
-    if (updateData.status) {
-      userUpdate.status = updateData.status === 'active' ? 'active' : 'inactive';
+    if (input.email && input.email !== before.email) userUpdate.email = input.email;
+    if (input.firstName !== undefined || input.lastName !== undefined) userUpdate.name = name;
+
+    const user = await User.findOne(tenantFilter(tenantId, { [profileField]: id })).select('_id').lean<{ _id: unknown } | null>();
+    if (user && Object.keys(userUpdate).length) {
+      await User.updateOne(tenantFilter(tenantId, { _id: user._id }), { $set: userUpdate });
+      // A new email address is a new sign-in identity; end sessions made with the old one.
+      if (userUpdate.email) await revokeUserSessions(String(user._id));
     }
 
-    if (Object.keys(userUpdate).length > 0) {
-      const user = await User.findOneAndUpdate(
-        tenantFilter(tenantId, { [profileField]: id }),
-        { $set: userUpdate },
-        { new: true }
-      ).select('_id status').lean<{ _id: unknown; status?: string } | null>();
+    if (changes.length) {
+      await createAuditLog({
+        userId: session.userId,
+        userEmail: session.email,
+        userRole: session.role,
+        tenantId,
+        action: 'update',
+        resource: 'staff',
+        resourceId: id,
+        description:
+          input.status && input.status !== before.status
+            ? `Marked ${name} as ${STAFF_STATUS[input.status].label.toLowerCase()}`
+            : `Updated ${name}’s staff details`,
+        changes,
+      });
+    }
 
-      if (user && (userUpdate.status === 'inactive' || userUpdate.email)) {
-        await revokeSessionsFor(user._id);
+    let accountError: string | null = null;
+    if (account) {
+      if (!user) accountError = 'They have no sign-in account, so there was no access to change.';
+      else {
+        const result = await changeAccountStatus({
+          tenantId,
+          actor: { userId: session.userId, email: session.email, role: session.role },
+          userId: String(user._id),
+          status: account.status,
+          reason: account.reason || undefined,
+        });
+        if (!result.ok) accountError = result.error;
       }
     }
 
     return NextResponse.json({
-      message: 'Staff member updated successfully',
-      staff: { ...staff, staffType },
+      success: true,
+      data: { staff: { ...staff, staffType }, changed: changes.length, accountError },
     });
-  } catch (error: any) {
-    console.error('Error updating staff:', error);
-    if (error.code === 11000) {
-      return NextResponse.json({ error: 'A staff member with this email already exists' }, { status: 400 });
+  } catch (err) {
+    console.error('Error updating staff:', err);
+    const error = err as { code?: number; name?: string } | null;
+    if (error?.code === 11000) {
+      return NextResponse.json({ success: false, error: 'Someone with this email is already on the staff list.' }, { status: 409 });
     }
-    if (error.name === 'ValidationError') {
-      return NextResponse.json({ error: 'Invalid staff data' }, { status: 400 });
+    if (error?.name === 'ValidationError') {
+      return NextResponse.json({ success: false, error: 'Some details aren’t valid. Check the form and try again.' }, { status: 400 });
     }
-    return NextResponse.json({ error: 'Failed to update staff' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to save the staff member' }, { status: 500 });
   }
 }
 
-// DELETE /api/staff/[id] - Delete a staff member
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/**
+ * DELETE /api/staff/:id?type=nurse — admin only. For someone added by mistake: removes the
+ * profile and its never-used account. Anyone who has set a password or signed in may be named
+ * on records, so they are marked inactive and their account closed instead (409).
+ */
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const ctx = await requireTenantSession();
-    if (isTenantSessionError(ctx)) return ctx;
+    const { ctx, error } = await adminContext();
+    if (error) return error;
     const { session, tenantId } = ctx;
 
-    if (!isAdmin(session)) {
-      return NextResponse.json({ error: 'Only admins can delete staff' }, { status: 403 });
+    const { id } = await params;
+    if (!isValidId(id)) return notFound('Staff member');
+    const staffType = request.nextUrl.searchParams.get('type');
+    if (!isStaffType(staffType)) {
+      return NextResponse.json({ success: false, error: 'Staff type is required' }, { status: 400 });
     }
 
     await connectDB();
-    const { id } = await params;
+    const Model = MODELS[staffType];
+    const profileField = STAFF_TYPE[staffType].profileField;
 
-    if (!isValidId(id)) {
-      return NextResponse.json({ error: 'Invalid staff ID' }, { status: 400 });
+    const staff = await Model.findOne(tenantFilter(tenantId, { _id: id })).select('firstName lastName').lean<{ firstName: string; lastName: string } | null>();
+    if (!staff) return notFound('Staff member');
+    const name = `${staff.firstName} ${staff.lastName}`.trim();
+
+    const user = await User.findOne(tenantFilter(tenantId, { [profileField]: id }))
+      .select('_id lastLogin mustSetPassword')
+      .lean<{ _id: unknown; lastLogin?: Date | null; mustSetPassword?: boolean } | null>();
+    if (user && String(user._id) === session.userId) {
+      return NextResponse.json({ success: false, error: 'You can’t remove your own profile.' }, { status: 400 });
+    }
+    if (user && (user.lastLogin || !user.mustSetPassword)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `${name} has used their account, so their name may be on records here. Mark them inactive and close their sign-in instead.`,
+        },
+        { status: 409 }
+      );
     }
 
-    const { searchParams } = new URL(request.url);
-    const staffType = searchParams.get('type');
-
-    if (!staffType) {
-      return NextResponse.json({ error: 'Staff type is required' }, { status: 400 });
+    await Model.deleteOne(tenantFilter(tenantId, { _id: id }));
+    if (user) {
+      await User.deleteOne(tenantFilter(tenantId, { _id: user._id }));
+      await revokeUserSessions(String(user._id));
     }
 
-    const Model = getModelByType(staffType);
-    const profileField = getProfileField(staffType);
-    if (!Model || !profileField) {
-      return NextResponse.json({ error: 'Invalid staff type' }, { status: 400 });
-    }
-
-    const staff = await Model.findOneAndDelete(tenantFilter(tenantId, { _id: id }));
-
-    if (!staff) {
-      return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
-    }
-
-    const deletedUser = await User.findOneAndDelete(tenantFilter(tenantId, { [profileField]: id }))
-      .select('_id')
-      .lean<{ _id: unknown } | null>();
-    if (deletedUser) {
-      await revokeSessionsFor(deletedUser._id);
-    }
-
-    return NextResponse.json({
-      message: 'Staff member deleted successfully',
+    await createAuditLog({
+      userId: session.userId,
+      userEmail: session.email,
+      userRole: session.role,
+      tenantId,
+      action: 'delete',
+      resource: 'staff',
+      resourceId: id,
+      description: `Removed ${name} (${STAFF_TYPE[staffType].label.toLowerCase()}) from the staff list${user ? ' with their unused account' : ''}`,
     });
-  } catch (error: any) {
+
+    return NextResponse.json({ success: true, data: { removed: id } });
+  } catch (error) {
     console.error('Error deleting staff:', error);
-    return NextResponse.json({ error: 'Failed to delete staff' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to remove the staff member' }, { status: 500 });
   }
 }

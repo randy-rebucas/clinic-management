@@ -1,42 +1,16 @@
-import { Suspense } from 'react';
-import { getUser } from '@/app/lib/dal';
-import { redirect } from 'next/navigation';
-import { getTenantContext } from '@/lib/tenant';
-import SubscriptionSuccessClient from '@/components/SubscriptionSuccessClient';
+import { requireAdmin } from '@/app/lib/auth-helpers';
+import { isValidPayPalOrderId } from '@/lib/paypal';
+import SubscriptionReturnClient from '@/components/admin/SubscriptionReturnClient';
 
-export default async function SubscriptionSuccessPage({
+export const dynamic = 'force-dynamic';
+
+/** PayPal returns here with the order id as `token`; plan and cycle come from the stored order. */
+export default async function SubscriptionReturnPage({
   searchParams,
 }: {
-  searchParams: Promise<{ token?: string; PayerID?: string; plan?: string }>;
+  searchParams: Promise<{ token?: string }>;
 }) {
-  const user = await getUser();
-
-  if (!user || !('role' in user)) {
-    redirect('/login');
-  }
-
-  const tenantContext = await getTenantContext();
-
-  if (!tenantContext.tenantId) {
-    redirect('/login');
-  }
-
-  const params = await searchParams;
-  // PayPal returns the order ID as the 'token' query param on redirect
-  const token = params.token;
-  const plan = params.plan;
-
-  const safeUser = user ? JSON.parse(JSON.stringify(user)) : null;
-  const safeTenant = tenantContext.tenant ? JSON.parse(JSON.stringify(tenantContext.tenant)) : null;
-
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <SubscriptionSuccessClient
-        user={safeUser as { role: string; [key: string]: any }}
-        tenant={safeTenant}
-        token={token}
-        plan={plan}
-      />
-    </Suspense>
-  );
+  await requireAdmin();
+  const { token } = await searchParams;
+  return <SubscriptionReturnClient orderId={isValidPayPalOrderId(token) ? token : null} />;
 }

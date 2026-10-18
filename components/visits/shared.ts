@@ -14,13 +14,4 @@ export const STATUS_BADGE: Record<VisitStatus, string> = {
   cancelled: 'bg-white text-gray-600 ring-gray-300',
 };
 
-export const VISIT_TYPES: { value: string; label: string }[] = [
-  { value: 'consultation', label: 'Consultation' },
-  { value: 'follow-up', label: 'Follow-up' },
-  { value: 'checkup', label: 'Check-up' },
-  { value: 'emergency', label: 'Emergency' },
-  { value: 'teleconsult', label: 'Teleconsult' },
-  { value: 'vaccination', label: 'Vaccination' },
-];
-
-export const visitTypeLabel = (v: string) => VISIT_TYPES.find((t) => t.value === v)?.label ?? v;
+export { VISIT_TYPES, visitTypeLabel } from '@/lib/visit-types';

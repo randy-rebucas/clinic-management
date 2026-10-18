@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Settings from '@/models/Settings';
+import Tenant from '@/models/Tenant';
 import { isAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { createAuditLog } from '@/lib/audit';
+import { resolveTimezone } from '@/lib/tz';
+import { CURRENCY_CODES, INVOICE_PREFIX, WEEKDAYS, minutesOf } from '@/lib/clinic-settings';
 import { clearSettingsCache, getDefaultSettings, getSettings } from '@/lib/settings';
 import { isSMSConfigured } from '@/lib/sms';
 import { isEmailConfigured } from '@/lib/email';
@@ -26,15 +30,26 @@ const settingsUpdateSchema = z.object({
   ptr: zStr(100).optional(),
   businessHours: z
     .array(
-      z.object({
-        day: z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']),
-        open: zTime,
-        close: zTime,
-        closed: z.boolean().optional(),
-      })
+      z
+        .object({
+          day: z.enum(WEEKDAYS),
+          open: zTime,
+          close: zTime,
+          closed: z.boolean().optional(),
+        })
+        .refine((d) => d.closed || minutesOf(d.close) > minutesOf(d.open), { message: 'Closing time must be after opening time.', path: ['close'] })
     )
-    .max(7)
+    .length(7)
+    .refine((days) => new Set(days.map((d) => d.day)).size === 7, 'Each day of the week once.')
     .optional(),
+  /** The clinic's time zone. Every clinic-day boundary reads it from the clinic record (Tenant). */
+  timezone: z
+    .string()
+    .max(64)
+    .refine((tz) => resolveTimezone(tz) === tz, 'Unknown time zone.')
+    .optional(),
+  /** Settings.updatedAt the change was made from; a newer save in between is refused. */
+  version: z.string().max(40).optional(),
   appointmentSettings: z
     .object({
       defaultDuration: zNum(1, 1440),
@@ -58,11 +73,11 @@ const settingsUpdateSchema = z.object({
     .optional(),
   billingSettings: z
     .object({
-      currency: z.string().trim().regex(/^[A-Za-z]{3}$/, 'Expected a 3-letter currency code'),
+      currency: z.enum(CURRENCY_CODES),
       taxRate: zNum(0, 100),
       paymentTerms: zNum(0, 3650),
       lateFeePercentage: zNum(0, 100),
-      invoicePrefix: zStr(20),
+      invoicePrefix: z.string().trim().regex(INVOICE_PREFIX, 'Use up to 10 letters, numbers, - or _.'),
       allowPartialPayments: z.boolean(),
     })
     .partial()
@@ -143,6 +158,10 @@ export async function GET() {
       settingsObj.prescriptionDigitalSignatureEnabled = true;
     }
 
+    // The clinic's zone lives on the clinic record; the copy in generalSettings is only a mirror.
+    const tenant = await Tenant.findById(ctx.tenantObjectId).select('settings.timezone').lean<{ settings?: { timezone?: string } } | null>();
+    settingsObj.generalSettings = { ...settingsObj.generalSettings, timezone: resolveTimezone(tenant?.settings?.timezone) };
+
     settingsObj.integrationStatus = {
       twilio: isSMSConfigured(),
       smtp: isEmailConfigured(),
@@ -170,6 +189,7 @@ export async function PUT(request: NextRequest) {
 
   const parsed = await parseBody(request, settingsUpdateSchema);
   if (isValidationError(parsed)) return parsed;
+  const { timezone, version, ...fields } = parsed.data;
 
   try {
     await connectDB();
@@ -177,7 +197,30 @@ export async function PUT(request: NextRequest) {
     // Ensures the tenant's settings document exists (created from defaults if missing).
     await getSettings(ctx.tenantId);
 
-    const $set = toSetPaths(parsed.data as Record<string, unknown>);
+    const before = await Settings.findOne(tenantFilter(ctx.tenantId)).lean<Record<string, any> | null>();
+    if (!before) return NextResponse.json({ success: false, error: 'Settings not found' }, { status: 404 });
+    if (version && before.updatedAt && new Date(before.updatedAt).toISOString() !== version) {
+      return NextResponse.json(
+        { success: false, error: 'Someone else saved the settings while you were editing. Reload to see their changes, then make yours again.' },
+        { status: 409 }
+      );
+    }
+
+    const $set = toSetPaths(fields as Record<string, unknown>);
+    const tenant = timezone
+      ? await Tenant.findById(ctx.tenantObjectId).select('settings.timezone').lean<{ settings?: { timezone?: string } } | null>()
+      : null;
+    const oldZone = resolveTimezone(tenant?.settings?.timezone);
+    if (timezone) $set['generalSettings.timezone'] = timezone;
+
+    // What actually changes, for the audit log.
+    const read = (obj: any, path: string) => path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
+    const norm = (v: unknown) => JSON.stringify(v ?? null, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).filter(([k]) => k !== '_id')) : x));
+    const changes = Object.entries($set)
+      .filter(([path, value]) => path !== 'generalSettings.timezone' && norm(read(before, path)) !== norm(value))
+      .map(([field, newValue]) => ({ field, oldValue: read(before, field) ?? null, newValue }));
+    if (timezone && timezone !== oldZone) changes.push({ field: 'timezone', oldValue: oldZone, newValue: timezone });
+
     const settings = Object.keys($set).length
       ? await Settings.findOneAndUpdate(tenantFilter(ctx.tenantId), { $set }, { new: true, runValidators: true })
       : await Settings.findOne(tenantFilter(ctx.tenantId));
@@ -188,10 +231,26 @@ export async function PUT(request: NextRequest) {
         { status: 404 }
       );
     }
+    if (timezone && timezone !== oldZone) {
+      await Tenant.updateOne({ _id: ctx.tenantObjectId }, { $set: { 'settings.timezone': timezone } });
+    }
 
     clearSettingsCache(ctx.tenantId);
 
-    return NextResponse.json(settings, { status: 200 });
+    if (changes.length) {
+      await createAuditLog({
+        userId: ctx.session.userId,
+        userEmail: ctx.session.email,
+        userRole: ctx.session.role,
+        tenantId: ctx.tenantId,
+        action: 'update',
+        resource: 'settings',
+        description: `Changed clinic settings: ${changes.map((c) => c.field).join(', ')}`,
+        changes,
+      });
+    }
+
+    return NextResponse.json({ success: true, data: { version: new Date(settings.updatedAt).toISOString(), changed: changes.length } }, { status: 200 });
   } catch (error: any) {
     console.error('Error updating settings:', error);
     if (error?.name === 'ValidationError' || error?.name === 'CastError') {
