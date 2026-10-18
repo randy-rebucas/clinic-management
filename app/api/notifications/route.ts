@@ -3,7 +3,7 @@ import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Notification from '@/models/Notification';
 import User from '@/models/User';
-import { isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
 import { requireNotificationScope, isNotificationScopeError } from './_lib/scope';
@@ -100,10 +100,7 @@ export async function POST(request: NextRequest) {
 
   // Only admin can create notifications for other users
   if (!isAdmin(session)) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    );
+    return refuseAccess(session, 'Unauthorized', 'notifications', 'write');
   }
 
   try {

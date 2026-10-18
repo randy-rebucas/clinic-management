@@ -12,6 +12,8 @@ export interface IMedicalRepresentativeVisit extends Document {
   duration: number;
   status: 'scheduled' | 'completed' | 'cancelled';
   notes?: string;
+  /** When the day-before push reminder went out (cleared when the date changes). */
+  reminderSentAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,6 +49,7 @@ const MedicalRepresentativeVisitSchema: Schema = new Schema(
       index: true,
     },
     notes: String,
+    reminderSentAt: Date,
   },
   { timestamps: true }
 );

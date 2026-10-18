@@ -7,7 +7,8 @@ import { verifySession } from '@/app/lib/dal';
 export default async function LoginPage() {
   const session = await verifySession();
 
-  if (session) {
+  // A medical representative's session is only good for the mobile API, not the web app.
+  if (session && session.role !== 'medical-representative') {
     redirect('/dashboard');
   }
 

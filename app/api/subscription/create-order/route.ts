@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { createPayPalOrder, isPayPalConfigured } from '@/lib/paypal';
 import { PAID_PLANS, isPaidPlan, planPrice } from '@/lib/subscription-period';
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
 
     // Only admin/owner may manage billing
     if (!['admin', 'owner'].includes(session.role)) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return refuseAccess(session, 'Forbidden', 'subscription', 'write');
     }
 
     if (!isPayPalConfigured()) {

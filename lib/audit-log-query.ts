@@ -73,6 +73,7 @@ export function buildAuditFilter(
 
   const search = params.get('search')?.trim().slice(0, 100);
   if (search) {
+    // userEmail also holds the address typed in a sign-in with no account, so those are findable.
     const re = new RegExp(escapeRegex(search), 'i');
     and.push({ $or: [{ description: re }, { userEmail: re }, { errorMessage: re }, { requestPath: re }] });
   }
@@ -133,6 +134,9 @@ export async function shapeAuditRows(logs: LeanLog[], tenantId: Types.ObjectId):
     const u = uid ? userById.get(uid) : undefined;
     const pid = l.dataSubject?.toString() ?? null;
     const p = pid ? patientById.get(pid) : undefined;
+    const patientName = p ? `${p.firstName ?? ''} ${p.lastName ?? ''}`.trim() || 'Unnamed patient' : null;
+    // The patient portal has no staff account: the patient is the one acting.
+    const byPatient = !uid && l.userRole === 'patient';
     return {
       _id: l._id.toString(),
       at: new Date(l.timestamp).toISOString(),
@@ -143,10 +147,14 @@ export async function shapeAuditRows(logs: LeanLog[], tenantId: Types.ObjectId):
       description: l.description?.trim() || null,
       errorMessage: l.errorMessage?.trim() || null,
       isSensitive: !!l.isSensitive,
-      user: { _id: uid, name: u?.name?.trim() || null, email: u?.email || l.userEmail || null, role: roleWords(l.userRole) },
-      patient: p
-        ? { _id: p._id.toString(), name: `${p.firstName ?? ''} ${p.lastName ?? ''}`.trim() || 'Unnamed patient', code: p.patientCode ?? null }
-        : null,
+      // No user id: a sign-in attempt with an email that has no account.
+      user: {
+        _id: uid,
+        name: u?.name?.trim() || (byPatient ? patientName : null),
+        email: u?.email || l.userEmail || null,
+        role: uid ? roleWords(l.userRole) : byPatient ? 'Patient, in the portal' : 'No account',
+      },
+      patient: p && patientName ? { _id: p._id.toString(), name: patientName, code: p.patientCode ?? null } : null,
       patientMissing: !!pid && !p,
       ipAddress: l.ipAddress && l.ipAddress !== 'unknown' ? l.ipAddress.split(',')[0].trim() : null,
       userAgent: l.userAgent && l.userAgent !== 'unknown' ? l.userAgent : null,

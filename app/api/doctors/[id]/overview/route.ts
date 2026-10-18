@@ -3,7 +3,7 @@ import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
 import Appointment from '@/models/Appointment';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { getPermissionChecker, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { getSettings } from '@/lib/settings';
@@ -31,7 +31,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
   const can = await getPermissionChecker(session);
   if (!can('doctors', 'read')) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
+    return refuseAccess(session, 'Unauthorized', 'doctors');
   }
 
   try {

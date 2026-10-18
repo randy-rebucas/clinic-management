@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import mongoose from 'mongoose';
+import { logRecordOpened } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
 import Patient from '@/models/Patient';
@@ -61,6 +62,9 @@ export async function GET(
       }
     }
 
+    after(() =>
+      logRecordOpened({ session, tenantId, resource: 'prescription', resourceId: id, patientId: prescriptionData.patient?._id, request })
+    );
     return NextResponse.json({ success: true, data: prescriptionData });
   } catch (error: any) {
     console.error('Error fetching prescription:', error);

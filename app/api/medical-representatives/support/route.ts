@@ -17,8 +17,49 @@ function escapeHtml(str: string): string {
 }
 
 /**
+ * GET /api/medical-representatives/support
+ * The rep's own support requests, newest first.
+ * Query params: page (default 1), limit (default 20, max 50)
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
+
+    const searchParams = request.nextUrl.searchParams;
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10) || 20));
+
+    await connectDB();
+
+    const [requests, total] = await Promise.all([
+      SupportRequestModel.find(rep.ownerFilter)
+        .select('email subject category message status createdAt updatedAt')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      SupportRequestModel.countDocuments(rep.ownerFilter),
+    ]);
+
+    return NextResponse.json({
+      success: true,
+      data: requests.map((r: any) => ({ ...r, reference: `SR-${r._id}` })),
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    });
+  } catch (error: any) {
+    console.error('List support requests error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * POST /api/medical-representatives/support
- * Submit a support request from medical representative
+ * Submit a support request. Body: { subject, message, category?, email? }
+ * `email` (reply-to) defaults to the signed-in rep's email.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -36,7 +77,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    const email = typeof body.email === 'string' && body.email.trim() ? body.email.trim() : session.email;
     const subject = typeof body.subject === 'string' ? body.subject.trim() : '';
     const message = typeof body.message === 'string' ? body.message.trim() : '';
     const category = typeof body.category === 'string' ? body.category.trim() : 'general';

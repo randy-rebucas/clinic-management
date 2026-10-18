@@ -93,28 +93,9 @@ export default function Sidebar({ navItems, user }: SidebarProps) {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [isMobileOpen, setIsMobileOpen]);
 
-  // Handle sidebar toggle with audit logging
-  const handleToggleSidebar = async () => {
-    const newState = !isCollapsed;
-    setIsCollapsed(newState);
-
-    // Log sidebar interaction
-    try {
-      await fetch('/api/audit/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'view',
-          resource: 'system',
-          description: `Sidebar ${newState ? 'collapsed' : 'expanded'}`,
-          metadata: { sidebarState: newState ? 'collapsed' : 'expanded' },
-        }),
-      }).catch(() => {
-        // Silently fail - don't break the UI
-      });
-    } catch (error) {
-      // Silently fail - don't break the UI
-    }
+  // Collapsing the sidebar is a display preference, not an audit event.
+  const handleToggleSidebar = () => {
+    setIsCollapsed(!isCollapsed);
   };
 
   /**

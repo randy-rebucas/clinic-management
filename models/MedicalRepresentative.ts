@@ -74,6 +74,11 @@ export interface IMedicalRepresentative extends Document {
   paymentMethod?: string; // Payment method used (credit card, bank transfer, etc.)
   paymentReference?: string; // Payment transaction reference or receipt number
 
+  lastLogin?: Date;
+  profileImage?: string | null; // base64 data URI, ≤ 2 MB
+  notificationsEnabled?: boolean; // push to the mobile app
+  emailNotifications?: boolean;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -197,6 +202,11 @@ const MedicalRepresentativeSchema: Schema = new Schema(
       trim: true,
     },
     lastLogin: { type: Date },
+    // Set from the rep's own profile/settings in the mobile app. These were assigned by the
+    // profile and notification routes but missing here, so Mongoose silently dropped them.
+    profileImage: { type: String },
+    notificationsEnabled: { type: Boolean, default: true },
+    emailNotifications: { type: Boolean, default: true },
   },
   {
     timestamps: true,

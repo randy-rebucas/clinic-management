@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import AuditLog from '@/models/AuditLog';
 import Patient from '@/models/Patient';
-import { isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import {
   requireTenantSession,
   isTenantSessionError,
@@ -22,10 +22,7 @@ export async function GET(request: NextRequest) {
 
   // Access history reveals who viewed a patient's record; restrict to clinic admins and doctors.
   if (!isAdmin(session) && session.role !== 'doctor') {
-    return NextResponse.json(
-      { success: false, error: 'Forbidden' },
-      { status: 403 }
-    );
+    return refuseAccess(session, 'Only administrators and doctors can see who opened a patient’s records', 'audit-log');
   }
 
   try {

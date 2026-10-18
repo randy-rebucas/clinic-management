@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
-import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { consumeRateLimit, getClientIp } from '@/lib/middleware/rate-limit';
@@ -35,7 +35,7 @@ export async function POST(
   const { session, tenantId } = ctx;
 
   if (!isAdmin(session)) {
-    return forbiddenResponse('Admin access required');
+    return refuseAccess(session, 'Admin access required');
   }
 
   try {

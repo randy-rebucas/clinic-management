@@ -6,6 +6,7 @@ import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import { issuePatientToken, revokePatientSessions, setPatientSessionCookie } from '@/app/lib/dal';
+import { issueRefreshToken, REFRESH_TOKEN_TTL_SECONDS } from '@/app/lib/refresh-tokens';
 
 export const MAX_OTP_ATTEMPTS = 5;
 
@@ -134,6 +135,34 @@ export function hashLoginQrToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+const LOGIN_QR_TOKEN_FORMAT = /^[A-Za-z0-9_-]{43,128}$/;
+
+/** Read the login token from scanned QR data ('{"type":"patient_login","token":"..."}'), or null. */
+export function readLoginQrToken(qrCode: unknown): string | null {
+  let data: unknown = qrCode;
+  if (typeof qrCode === 'string') {
+    try {
+      data = JSON.parse(qrCode);
+    } catch {
+      return null;
+    }
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const { type, token } = data as Record<string, unknown>;
+  if (type !== 'patient_login' || typeof token !== 'string' || !LOGIN_QR_TOKEN_FORMAT.test(token)) return null;
+  return token;
+}
+
+/** The active patient a login QR token belongs to, or null when invalid/expired. */
+export async function findPatientByLoginQr(token: string) {
+  await connectDB();
+  return Patient.findOne({
+    loginQrTokenHash: hashLoginQrToken(token),
+    loginQrTokenExpiry: { $gt: new Date() },
+    active: { $ne: false },
+  });
+}
+
 /**
  * Issue a new login QR for a patient. The QR carries a random 256-bit token; only its
  * SHA-256 is stored. Issuing a new one revokes the previous QR.
@@ -164,16 +193,28 @@ export async function revokePatientLoginQr(patientId: string | Types.ObjectId): 
 export async function rotatePatientSessionAfterPasswordChange(
   request: NextRequest,
   patientId: string
-): Promise<{ apply: (response: NextResponse) => NextResponse; token: string | null }> {
+): Promise<{
+  apply: (response: NextResponse) => NextResponse;
+  token: string | null;
+  /** Fields for the JSON body of a Bearer caller: the new token and refresh token. */
+  bodyFields: Record<string, unknown>;
+}> {
   await revokePatientSessions(patientId);
   await revokePatientLoginQr(patientId);
   const patient = await Patient.findById(patientId).select('patientCode email sessionVersion');
-  if (!patient) return { apply: (r) => r, token: null };
+  if (!patient) return { apply: (r) => r, token: null, bodyFields: {} };
 
   const token = await issuePatientToken(patient);
   const usedCookie = !!request.cookies.get('patient_session')?.value;
+  // Old refresh tokens die with the session version bump; the app gets a new one.
+  const refreshToken = usedCookie
+    ? null
+    : await issueRefreshToken('patient', patient._id, patient.sessionVersion ?? 0);
   return {
     token: usedCookie ? null : token,
+    bodyFields: usedCookie
+      ? {}
+      : { token, tokenType: 'Bearer', refreshToken, refreshExpiresIn: REFRESH_TOKEN_TTL_SECONDS },
     apply: (response) => {
       if (usedCookie) setPatientSessionCookie(response, token);
       return response;

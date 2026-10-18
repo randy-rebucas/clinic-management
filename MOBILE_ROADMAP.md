@@ -24,7 +24,7 @@ Recommendation: build a **dedicated patient-facing React Native (Expo) app** fir
 - **Keep the existing Next.js web app exactly as-is** for staff/admin/ops (doctors, nurses, receptionists, accountants, inventory, medical reps). This surface area is too dense and desktop-oriented (183 non-portal routes) to be worth re-platforming to mobile now.
 - **Phase 1 — Patient mobile app.** Patients are the role with the clearest mobile-native use case: check appointments, view queue position, see lab results/prescriptions, receive push reminders, pay invoices. The web `(patient-portal)/` route group and its API routes are the existing analog — reuse the domain logic, not the web session/UI layer.
 - **Phase 2 (optional, later) — Staff/doctor quick-access app.** Narrow scope: queue status, today's schedule, patient lookup, e-prescribing on the go. Do not attempt to port the full admin surface (billing, inventory, reports, tenant settings) to mobile — that stays web-only by design.
-- Medical representative portal: no mobile case is evident from the codebase (`MedicalRepresentativeDashboardClient.tsx` is desktop CRM-shaped); out of scope unless product tells us otherwise.
+- ~~Medical representative portal: out of scope.~~ **Superseded 2026-10-18:** both web portals (patient and medical representative) were removed. Patients and reps now use the mobile app only, and the full endpoint contract for both is in `MOBILE_API.md`.
 
 ---
 

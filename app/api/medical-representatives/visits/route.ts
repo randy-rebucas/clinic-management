@@ -7,22 +7,54 @@ const VALID_VISIT_STATUSES = ['scheduled', 'completed', 'cancelled'] as const;
 
 /**
  * GET /api/medical-representatives/visits
- * Get all visits for a medical representative
+ * The rep's visits, newest first.
+ * Query params: page (default 1), limit (default 50, max 100),
+ *   status? (scheduled | completed | cancelled), from? / to? (ISO dates, inclusive)
  */
 export async function GET(request: NextRequest) {
   try {
     const rep = await requireRepSession();
     if (isRepSessionError(rep)) return rep;
 
+    const searchParams = request.nextUrl.searchParams;
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10) || 50));
+
+    const query: Record<string, unknown> = { ...rep.ownerFilter };
+    const status = searchParams.get('status');
+    if (status) {
+      if (!VALID_VISIT_STATUSES.includes(status as typeof VALID_VISIT_STATUSES[number])) {
+        return NextResponse.json({ success: false, error: 'Invalid status value.' }, { status: 400 });
+      }
+      query.status = status;
+    }
+    const dateRange: Record<string, Date> = {};
+    for (const [param, op] of [['from', '$gte'], ['to', '$lte']] as const) {
+      const value = searchParams.get(param);
+      if (!value) continue;
+      const parsed = new Date(value);
+      if (isNaN(parsed.getTime())) {
+        return NextResponse.json({ success: false, error: `Invalid ${param} date.` }, { status: 400 });
+      }
+      dateRange[op] = parsed;
+    }
+    if (Object.keys(dateRange).length) query.date = dateRange;
+
     await connectDB();
 
-    const visits = await MedicalRepresentativeVisit.find(rep.ownerFilter)
-      .sort({ date: -1, createdAt: -1 })
-      .lean();
+    const [visits, total] = await Promise.all([
+      MedicalRepresentativeVisit.find(query)
+        .sort({ date: -1, createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      MedicalRepresentativeVisit.countDocuments(query),
+    ]);
 
     return NextResponse.json({
       success: true,
       data: visits,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error: any) {
     console.error('Get visits error:', error);

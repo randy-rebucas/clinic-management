@@ -3,7 +3,7 @@ import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import { sendBroadcastMessage } from '@/lib/automations/broadcast-messaging';
-import { isAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, patientTenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId, escapeRegex } from '@/lib/api/validate';
 
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   if (isTenantSessionError(ctx)) return ctx;
 
   if (!isAdmin(ctx.session)) {
-    return forbiddenResponse('Admin access required to send broadcasts');
+    return refuseAccess(ctx.session, 'Admin access required to send broadcasts');
   }
 
   const parsed = await parseBody(request, broadcastSchema);

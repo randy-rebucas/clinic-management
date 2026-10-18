@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 import { myDoctorProfileId } from '@/lib/doctor-access';
 
 export interface ReferralsPageContext {
@@ -27,7 +27,7 @@ async function checker() {
   const session = await verifySession();
   if (!session) redirect('/login');
   const can = await getPermissionChecker(session);
-  if (!can('referrals', 'read')) redirect('/dashboard?error=access_denied');
+  if (!can('referrals', 'read')) await denyPage(session, 'referrals', 'read', '/dashboard?error=access_denied');
   return { session, can };
 }
 
@@ -51,6 +51,6 @@ export async function loadReferralDetailPermissions(): Promise<ReferralDetailPer
 
 /** The new and edit pages. Roles grant `write`/`update` for referrals; there is no `create` action. */
 export async function requireReferralFormAccess(action: 'write' | 'update') {
-  const { can } = await checker();
-  if (!can('referrals', action)) redirect('/referrals?error=access_denied');
+  const { session, can } = await checker();
+  if (!can('referrals', action)) await denyPage(session, 'referrals', action, '/referrals?error=access_denied');
 }

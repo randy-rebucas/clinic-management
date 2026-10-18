@@ -3,7 +3,7 @@ import { Types } from 'mongoose';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Membership from '@/models/Membership';
-import { getPermissionChecker, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { getPermissionChecker, refuseAccess } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
@@ -48,7 +48,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const perms = membershipPermissions(await getPermissionChecker(ctx.session));
   if (transactionType === 'adjustment' ? !perms.canManage : !perms.canPoints) {
-    return forbiddenResponse(transactionType === 'adjustment' ? 'Only someone who manages memberships can correct points' : 'Cannot record points');
+    return refuseAccess(
+      ctx.session,
+      transactionType === 'adjustment' ? 'Only someone who manages memberships can correct points' : 'Cannot record points',
+      'memberships',
+      transactionType === 'adjustment' ? 'write' : 'update'
+    );
   }
 
   try {

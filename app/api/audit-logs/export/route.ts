@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import AuditLog from '@/models/AuditLog';
-import { isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { formatInTz } from '@/lib/tz';
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   if (isTenantSessionError(ctx)) return ctx;
   const { session, tenantObjectId: tenantId } = ctx;
   if (!isAdmin(session)) {
-    return NextResponse.json({ success: false, error: 'Only clinic administrators can download the audit log' }, { status: 403 });
+    return refuseAccess(session, 'Only clinic administrators can download the audit log', 'audit-log', 'export');
   }
 
   try {

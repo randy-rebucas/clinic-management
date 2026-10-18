@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { recordPatientRefused } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
@@ -9,8 +10,13 @@ import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
 import Document from '@/models/Document';
 import Referral from '@/models/Referral';
+import MobileDevice from '@/models/MobileDevice';
+import { Types } from 'mongoose';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { revokePatientSessions } from '@/app/lib/dal';
+import { readRefreshTokenFromBody, revokeRefreshToken } from '@/app/lib/refresh-tokens';
+import { revokePatientLoginQr } from '../auth/shared';
 
 // Ensure Doctor model is registered for populate calls
 void Doctor;
@@ -43,6 +49,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (patient.active === false) {
+      await recordPatientRefused(patient as any, request, 'access');
       return NextResponse.json(
         { success: false, error: 'Patient account is inactive. Please contact the clinic.' },
         { status: 403 }
@@ -258,12 +265,52 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Logout patient - clear session cookie
+ * DELETE /api/patients/session[?all=true][&deviceId=...]
+ * Sign out. Clears the patient_session cookie; a Bearer token stays valid until it expires
+ * unless `all=true`, which revokes every token, cookie and login QR issued to this patient
+ * ("sign out everywhere"). `deviceId` also unregisters that device from push.
+ * Optional JSON body `{ refreshToken }` revokes the app's refresh token.
  */
 export async function DELETE(request: NextRequest) {
+  const all = request.nextUrl.searchParams.get('all') === 'true';
+  const deviceId = request.nextUrl.searchParams.get('deviceId')?.trim();
+  const refreshToken = await readRefreshTokenFromBody(request);
+
+  if (refreshToken) {
+    try {
+      await revokeRefreshToken(refreshToken, 'patient');
+    } catch (error) {
+      logger.error('Error revoking patient refresh token', error as Error);
+      return NextResponse.json({ success: false, error: 'Failed to sign out' }, { status: 500 });
+    }
+  }
+
+  if (all || deviceId) {
+    const session = await verifyPatientAuth(request);
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Not authenticated. Please login.' }, { status: 401 });
+    }
+    try {
+      await connectDB();
+      if (deviceId) {
+        await MobileDevice.updateOne(
+          { patientId: new Types.ObjectId(session.patientId), deviceId },
+          { $set: { revokedAt: new Date(), pushToken: null } }
+        );
+      }
+      if (all) {
+        await revokePatientSessions(session.patientId);
+        await revokePatientLoginQr(session.patientId);
+      }
+    } catch (error) {
+      logger.error('Error signing patient out', error as Error);
+      return NextResponse.json({ success: false, error: 'Failed to sign out' }, { status: 500 });
+    }
+  }
+
   const response = NextResponse.json({
     success: true,
-    message: 'Logged out successfully',
+    message: all ? 'Signed out on every device' : 'Logged out successfully',
   });
 
   // Clear the patient session cookie

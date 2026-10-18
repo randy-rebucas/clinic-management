@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
 import User from '@/models/User';
-import { isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import {
   requireTenantSession,
   isTenantSessionError,
@@ -33,7 +33,7 @@ export async function GET(
         ? await User.findOne(tenantFilter(tenantId, { _id: session.userId })).select('doctorProfile').lean() as any
         : null;
       if (!user?.doctorProfile || String(user.doctorProfile) !== id) {
-        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
+        return refuseAccess(session, 'Unauthorized', 'reports');
       }
     }
 

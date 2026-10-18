@@ -4,7 +4,7 @@ import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
 import Prescription from '@/models/Prescription';
 import LabResult from '@/models/LabResult';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { getPermissionChecker, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, patientTenantFilter, tenantFilter } from '@/lib/api/tenant-session';
 
 /**
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const can = await getPermissionChecker(session);
   if (!can('visits', 'read')) {
-    return NextResponse.json({ success: false, error: 'Permission denied: Cannot read visits' }, { status: 403 });
+    return refuseAccess(session, 'Permission denied: Cannot read visits', 'visits');
   }
 
   try {

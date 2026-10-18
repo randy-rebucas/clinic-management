@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
-import { isAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
 import { cleanupOldFiles, bulkDeleteFiles } from '@/lib/storage-optimization';
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   if (isTenantSessionError(ctx)) return ctx;
 
   if (!isAdmin(ctx.session)) {
-    return forbiddenResponse('Admin access required for storage cleanup');
+    return refuseAccess(ctx.session, 'Admin access required for storage cleanup');
   }
 
   const parsed = await parseBody(request, cleanupSchema);

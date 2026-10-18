@@ -10,6 +10,7 @@ import LabResult from '@/models/LabResult';
 import Imaging from '@/models/Imaging';
 import Procedure from '@/models/Procedure';
 import { requirePermission } from '@/app/lib/auth-helpers';
+import { logRecordOpened } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { updateVisitSchema, signatureWithMetadata } from '@/lib/visit-schema';
@@ -51,6 +52,9 @@ export async function GET(
       .populate({ path: 'proceduresPerformed', match: sameTenant });
 
     if (!visit) return notFound('Visit');
+    after(() =>
+      logRecordOpened({ session, tenantId, resource: 'visit', resourceId: id, patientId: (visit.patient as any)?._id, request })
+    );
     return NextResponse.json({ success: true, data: visit });
   } catch (error: any) {
     console.error('Error fetching visit:', error);

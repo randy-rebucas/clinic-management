@@ -3,7 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
 import Appointment from '@/models/Appointment';
 import '@/models/Specialization';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { getPermissionChecker, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { getSettings } from '@/lib/settings';
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
   const can = await getPermissionChecker(session);
   if (!can('doctors', 'read')) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
+    return refuseAccess(session, 'Unauthorized', 'doctors');
   }
 
   try {

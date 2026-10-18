@@ -81,14 +81,6 @@ const quickLinks = [
     ),
   },
   {
-    href: '/patient/login',
-    title: 'Patient Portal',
-    desc: 'Access your records',
-    icon: (
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-    ),
-  },
-  {
     href: '/login',
     title: 'Staff Login',
     desc: 'MyClinicSoft',
@@ -168,9 +160,6 @@ export default async function HomePage() {
               >
                 <Link href="/medical-representatives/onboard" className="text-brand-blue font-medium hover:underline underline-offset-2">
                   Medical Rep Sign Up
-                </Link>
-                <Link href="/medical-representatives/login" className="text-gray-600 font-medium hover:text-gray-900 hover:underline underline-offset-2">
-                  Medical Rep Login
                 </Link>
               </div>
 

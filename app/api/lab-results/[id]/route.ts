@@ -4,6 +4,7 @@ import LabResult from '@/models/LabResult';
 import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
 import { requirePermission } from '@/app/lib/auth-helpers';
+import { logRecordOpened } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
 import { updateLabResultSchema } from '@/lib/lab-result-schema';
@@ -55,6 +56,9 @@ export async function GET(
           .lean()
       : [];
 
+    after(() =>
+      logRecordOpened({ session, tenantId, resource: 'lab_result', resourceId: id, patientId: (labResult.patient as any)?._id, request })
+    );
     return NextResponse.json({ success: true, data: labResult, history });
   } catch (error: any) {
     console.error('Error fetching lab result:', error);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { recordPatientRefused } from '@/lib/audit';
 import bcrypt from 'bcryptjs';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
@@ -92,6 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (patient.active === false) {
+      await recordPatientRefused(patient as any, request, 'access');
       return NextResponse.json(
         { success: false, error: 'Account is inactive.' },
         { status: 403 }
@@ -113,8 +115,9 @@ export async function POST(request: NextRequest) {
       const match = await bcrypt.compare(currentPassword, patient.password);
       if (!match) {
         return NextResponse.json(
-          { success: false, error: 'Current password is incorrect' },
-          { status: 401 }
+          { success: false, error: 'Current password is incorrect', code: 'WRONG_CURRENT_PASSWORD' },
+          // 400, not 401: the session is fine, so the app must not treat it as an expired token.
+          { status: 400 }
         );
       }
     }
@@ -172,7 +175,7 @@ export async function POST(request: NextRequest) {
       message:
         'Credentials saved. You can now log in with email and password on any supported application.',
       email: updates.email ?? patient.email ?? null,
-      ...(rotated.token ? { token: rotated.token } : {}),
+      ...rotated.bodyFields,
     }));
   } catch (error: any) {
     logger.error('Error setting up patient credentials', error as Error);

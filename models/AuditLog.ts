@@ -44,7 +44,7 @@ export interface IAuditLog extends Document {
   tenantId?: Types.ObjectId;
   
   // User information
-  userId: Types.ObjectId; // User who performed the action
+  userId?: Types.ObjectId; // User who performed the action; absent for sign-ins with an unknown email
   userEmail?: string; // Cached for quick reference
   userRole?: string; // Cached user role
   
@@ -104,7 +104,8 @@ const AuditLogSchema: Schema = new Schema(
       index: true,
     },
     
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    // Absent only for a sign-in attempt with an email that has no account (userEmail holds what was typed).
+    userId: { type: Schema.Types.ObjectId, ref: 'User' },
     userEmail: { type: String, index: true },
     userRole: { type: String, index: true },
     action: {

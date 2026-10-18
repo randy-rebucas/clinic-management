@@ -9,7 +9,7 @@ import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
 import Doctor from '@/models/Doctor';
 import User from '@/models/User';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { getPermissionChecker, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, patientTenantFilter, tenantFilter } from '@/lib/api/tenant-session';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { dayRangeInTz } from '@/lib/tz';
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const can = await getPermissionChecker(session);
   if (!can('patients', 'read')) {
-    return NextResponse.json({ success: false, error: 'Permission denied: Cannot read patients' }, { status: 403 });
+    return refuseAccess(session, 'Permission denied: Cannot read patients', 'patients');
   }
 
   try {

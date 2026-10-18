@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 import { loadClinicDoctors } from '@/lib/appointments-page';
 
 export interface QueuePermissions {
@@ -18,7 +18,7 @@ export async function loadQueuePageContext() {
   if (!session) redirect('/login');
 
   const can = await getPermissionChecker(session);
-  if (!can('queue', 'read')) redirect('/dashboard?error=access_denied');
+  if (!can('queue', 'read')) await denyPage(session, 'queue', 'read', '/dashboard?error=access_denied');
 
   const permissions: QueuePermissions = {
     canAdd: can('queue', 'write'),

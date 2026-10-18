@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { refuseAccess } from '@/app/lib/auth-helpers';
 import connectDB from '@/lib/mongodb';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 
@@ -77,10 +78,7 @@ export async function POST(request: NextRequest) {
 
   // Only admins can add pharmacies
   if (ctx.session.role !== 'admin' && ctx.session.role !== 'owner') {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    );
+    return refuseAccess(ctx.session, 'Unauthorized', 'pharmacies', 'write');
   }
 
   try {

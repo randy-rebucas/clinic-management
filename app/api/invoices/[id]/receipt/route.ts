@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
+import { logPrinted } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import mongoose, { Types } from 'mongoose';
 import Invoice from '@/models/Invoice';
@@ -112,6 +113,9 @@ export async function GET(
 
     // Generate HTML for printable receipt (EOR - Electronic Official Receipt)
     const html = await generateReceiptHTML(invoiceData, tenantId, seal);
+    after(() =>
+      logPrinted({ session, tenantId, resource: 'invoice', resourceId: id, patientId: invoiceData.patient?._id, what: 'an official receipt', seal, request })
+    );
 
     return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {

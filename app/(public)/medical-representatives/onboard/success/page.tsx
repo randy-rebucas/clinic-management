@@ -48,13 +48,11 @@ function SuccessContent() {
           </p>
         )}
 
+        <p className="text-sm text-gray-700 mb-6">
+          Sign in to the MyClinicSoft mobile app with the email you registered with.
+        </p>
+
         <div className="space-y-3">
-          <Link
-            href="/medical-representatives/login"
-            className="block w-full px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Sign In to Your Account
-          </Link>
           <Link
             href="/"
             className="block w-full px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"

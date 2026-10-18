@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { verifySession } from '@/app/lib/dal';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 
 export interface VisitsPageContext {
   canWrite: boolean;
@@ -18,7 +18,7 @@ export async function loadVisitsPageContext(): Promise<VisitsPageContext> {
   if (!session) redirect('/login');
 
   const can = await getPermissionChecker(session);
-  if (!can('visits', 'read')) redirect('/dashboard?error=access_denied');
+  if (!can('visits', 'read')) await denyPage(session, 'visits', 'read', '/dashboard?error=access_denied');
 
   const isDoctor = session.role === 'doctor';
   let doctorProfileId: string | null = null;
@@ -47,7 +47,7 @@ export async function loadVisitDetailPermissions(): Promise<VisitDetailPermissio
   if (!session) redirect('/login');
 
   const can = await getPermissionChecker(session);
-  if (!can('visits', 'read')) redirect('/dashboard?error=access_denied');
+  if (!can('visits', 'read')) await denyPage(session, 'visits', 'read', '/dashboard?error=access_denied');
 
   return { canUpdate: can('visits', 'update'), canSeePatient: can('patients', 'read'), canBook: can('appointments', 'write'), canSeeAppointments: can('appointments', 'read') };
 }

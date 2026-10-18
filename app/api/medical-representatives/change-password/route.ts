@@ -4,6 +4,7 @@ import User from '@/models/User';
 import bcrypt from 'bcryptjs';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { createSession, revokeUserSessions } from '@/app/lib/dal';
+import { issueRepAppTokens } from '../_lib/rep-login';
 import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
 import { validatePasswordPolicy } from '@/lib/user-invite';
 
@@ -60,8 +61,9 @@ export async function POST(request: NextRequest) {
     const passwordMatch = await bcrypt.compare(currentPassword, user.password);
     if (!passwordMatch) {
       return NextResponse.json(
-        { success: false, error: 'Current password is incorrect' },
-        { status: 401 }
+        { success: false, error: 'Current password is incorrect', code: 'WRONG_CURRENT_PASSWORD' },
+        // 400, not 401: the session is fine, so the app must not treat it as an expired token.
+        { status: 400 }
       );
     }
 
@@ -69,8 +71,18 @@ export async function POST(request: NextRequest) {
     user.password = hashedPassword;
     await user.save();
 
-    // Sign out every other device, then re-issue this device's session at the new version.
+    // Sign out every other device, then re-issue this device's session at the new version:
+    // a cookie for the browser, a new token in the body for the mobile app.
+    // Old refresh tokens die with the version bump too.
     await revokeUserSessions(String(user._id));
+    if (rep.viaBearer) {
+      const fresh = await User.findById(user._id).select('email sessionVersion');
+      return NextResponse.json({
+        success: true,
+        message: 'Password changed successfully',
+        ...(await issueRepAppTokens(fresh, rep.session.roleId)),
+      });
+    }
     await createSession(
       String(user._id),
       rep.session.email,

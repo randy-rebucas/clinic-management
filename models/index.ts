@@ -309,6 +309,7 @@ export function registerAllModels(): void {
   require('./PaypalOrder');
   require('./PushSubscription');
   require('./MobileDevice');
+  require('./RefreshToken');
 
   console.log('✅ All models registered successfully');
 }
@@ -370,6 +371,7 @@ const models = {
   PaypalOrder: require('./PaypalOrder').default,
   PushSubscription: require('./PushSubscription').default,
   MobileDevice: require('./MobileDevice').default,
+  RefreshToken: require('./RefreshToken').default,
 };
 
 export default models;

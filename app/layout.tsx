@@ -62,7 +62,8 @@ export const metadata: Metadata = {
  * that handles specific UI requirements.
  *
  * Route Groups:
- * - (public): Public pages with PublicLayout (onboard, book, patient/login)
+ * - (public): Public pages with PublicLayout (onboard, book, medical-representatives/onboard)
+ * Patients and medical representatives use the mobile app (see MOBILE_API.md).
  * - (auth): Authentication pages (login)
  * - (app): Authenticated app pages with sidebar (dashboard, patients, etc.)
  */

@@ -227,6 +227,32 @@ export async function revokeUserSessions(userId: string): Promise<void> {
   userStateCache.delete(String(userId));
 }
 
+export const SESSION_TTL_SECONDS = SESSION_TTL_MS / 1000;
+
+/**
+ * Sign a staff session JWT without setting a cookie. The same token works as the `session`
+ * cookie or as `Authorization: Bearer` (mobile app), and is revoked by revokeUserSessions().
+ */
+export async function issueSessionToken(
+  userId: string,
+  email: string,
+  role: StaffRole,
+  roleId?: string,
+  tenantId?: string,
+  sessionVersion?: number
+): Promise<{ token: string; expiresAt: Date }> {
+  let sv = sessionVersion;
+  if (sv === undefined) {
+    await connectDB();
+    const user = await User.findById(userId).select('sessionVersion').lean<{ sessionVersion?: number } | null>();
+    sv = user?.sessionVersion ?? 0;
+  }
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const token = await encrypt({ userId, email, role, roleId, tenantId, expiresAt, sv });
+  userStateCache.delete(userId);
+  return { token, expiresAt };
+}
+
 export async function createSession(
   userId: string,
   email: string,
@@ -236,18 +262,9 @@ export async function createSession(
   sessionVersion?: number
 ) {
   try {
-    let sv = sessionVersion;
-    if (sv === undefined) {
-      await connectDB();
-      const user = await User.findById(userId).select('sessionVersion').lean<{ sessionVersion?: number } | null>();
-      sv = user?.sessionVersion ?? 0;
-    }
-    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-    const session = await encrypt({ userId, email, role, roleId, tenantId, expiresAt, sv });
-
+    const { token, expiresAt } = await issueSessionToken(userId, email, role, roleId, tenantId, sessionVersion);
     const cookieStore = await cookies();
-    cookieStore.set('session', session, cookieOptions(expiresAt));
-    userStateCache.delete(userId);
+    cookieStore.set('session', token, cookieOptions(expiresAt));
   } catch (error) {
     console.error('Error creating session:', error);
     throw error;
@@ -413,23 +430,21 @@ export interface Pending2faPayload {
   tenantId?: string;
 }
 
-/** After a correct password for a 2FA user: remember who is mid-login for 5 minutes. */
-export async function createPending2fa(userId: string, tenantId?: string): Promise<void> {
+/**
+ * A 5-minute token naming who is mid-login after a correct password. The web login keeps it
+ * in a cookie; the mobile app receives it in the response body and sends it back with the code.
+ */
+export async function issuePending2faToken(userId: string, tenantId?: string): Promise<string> {
   validateSecret();
-  const expires = new Date(Date.now() + PENDING_2FA_TTL_MS);
-  const token = await new SignJWT({ typ: 'pending-2fa', userId, tenantId })
+  return new SignJWT({ typ: 'pending-2fa', userId, tenantId })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('5m')
     .sign(encodedKey);
-  const cookieStore = await cookies();
-  cookieStore.set(PENDING_2FA_COOKIE, token, { ...cookieOptions(expires), sameSite: 'strict' });
 }
 
-export async function readPending2fa(): Promise<Pending2faPayload | null> {
+export async function verifyPending2faToken(token: string | undefined): Promise<Pending2faPayload | null> {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get(PENDING_2FA_COOKIE)?.value;
     if (!token) return null;
     const { payload } = await jwtVerify(token, encodedKey, { algorithms: ['HS256'] });
     if (payload.typ !== 'pending-2fa' || typeof payload.userId !== 'string') return null;
@@ -437,6 +452,23 @@ export async function readPending2fa(): Promise<Pending2faPayload | null> {
       userId: payload.userId,
       tenantId: typeof payload.tenantId === 'string' ? payload.tenantId : undefined,
     };
+  } catch {
+    return null;
+  }
+}
+
+/** After a correct password for a 2FA user: remember who is mid-login for 5 minutes. */
+export async function createPending2fa(userId: string, tenantId?: string): Promise<void> {
+  const expires = new Date(Date.now() + PENDING_2FA_TTL_MS);
+  const token = await issuePending2faToken(userId, tenantId);
+  const cookieStore = await cookies();
+  cookieStore.set(PENDING_2FA_COOKIE, token, { ...cookieOptions(expires), sameSite: 'strict' });
+}
+
+export async function readPending2fa(): Promise<Pending2faPayload | null> {
+  try {
+    const cookieStore = await cookies();
+    return await verifyPending2faToken(cookieStore.get(PENDING_2FA_COOKIE)?.value);
   } catch {
     return null;
   }

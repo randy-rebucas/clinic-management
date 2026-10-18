@@ -18,6 +18,36 @@ const updateVisitSchema = z.object({
 });
 
 /**
+ * GET /api/medical-representatives/visits/[id]
+ * One of the rep's visits.
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
+
+    const { id: visitId } = await params;
+    if (!isValidId(visitId)) return notFound('Visit');
+
+    await connectDB();
+
+    const visit = await MedicalRepresentativeVisit.findOne({ ...rep.ownerFilter, _id: visitId }).lean();
+    if (!visit) return notFound('Visit');
+
+    return NextResponse.json({ success: true, data: visit });
+  } catch (error: any) {
+    console.error('Get visit error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * PUT /api/medical-representatives/visits/[id]
  * Update a visit
  */
@@ -38,9 +68,18 @@ export async function PUT(
 
     await connectDB();
 
+    // A moved visit gets a fresh day-before reminder.
+    const current = await MedicalRepresentativeVisit.findOne({ ...rep.ownerFilter, _id: visitId })
+      .select('date time')
+      .lean<{ date?: Date; time?: string } | null>();
+    if (!current) return notFound('Visit');
+    const rescheduled =
+      current.date?.getTime() !== body.date.getTime() || current.time !== body.time;
+
     const updatedVisit = await MedicalRepresentativeVisit.findOneAndUpdate(
       { ...rep.ownerFilter, _id: visitId },
       {
+        ...(rescheduled ? { $unset: { reminderSentAt: 1 } } : {}),
         $set: {
           clinicName: body.clinicName,
           clinicLocation: body.clinicLocation,

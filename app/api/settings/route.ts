@@ -3,7 +3,7 @@ import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Settings from '@/models/Settings';
 import Tenant from '@/models/Tenant';
-import { isAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { resolveTimezone } from '@/lib/tz';
 import { CURRENCY_CODES, INVOICE_PREFIX, WEEKDAYS, minutesOf } from '@/lib/clinic-settings';
@@ -184,7 +184,7 @@ export async function PUT(request: NextRequest) {
   if (isTenantSessionError(ctx)) return ctx;
 
   if (!isAdmin(ctx.session)) {
-    return forbiddenResponse('Unauthorized: Only admins can update settings');
+    return refuseAccess(ctx.session, 'Unauthorized: Only admins can update settings');
   }
 
   const parsed = await parseBody(request, settingsUpdateSchema);

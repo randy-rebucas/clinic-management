@@ -14,6 +14,8 @@ export interface IProduct extends Document {
   expiryDate: Date;
   status: 'active' | 'discontinued' | 'inactive';
   specifications: string[];
+  /** When the "expires soon" push went out (cleared when the expiry date changes). */
+  expiryAlertSentAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -51,6 +53,7 @@ const ProductSchema: Schema = new Schema(
       index: true,
     },
     specifications: { type: [String], default: [] },
+    expiryAlertSentAt: Date,
   },
   { timestamps: true }
 );

@@ -42,12 +42,6 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
                   Register
                 </Link>
                 <Link
-                  href="/patient/login"
-                  className="px-3.5 py-2 text-sm text-gray-600 hover:text-gray-900 font-medium transition-colors rounded-md hover:bg-gray-100"
-                >
-                  Patient Login
-                </Link>
-                <Link
                   href="/login"
                   className="ml-2 px-4 py-2 text-sm bg-brand-teal text-white font-semibold rounded-md hover:bg-brand-teal-dark transition-colors"
                 >
@@ -104,13 +98,6 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
                     className="px-4 py-3 text-base text-gray-600 hover:text-gray-900 font-medium transition-colors rounded-lg hover:bg-gray-100"
                   >
                     Book Appointment
-                  </Link>
-                  <Link
-                    href="/patient/login"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="px-4 py-3 text-base text-gray-600 hover:text-gray-900 font-medium transition-colors rounded-lg hover:bg-gray-100"
-                  >
-                    Patient Login
                   </Link>
                   <Link
                     href="/login"

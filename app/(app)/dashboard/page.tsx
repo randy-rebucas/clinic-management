@@ -9,8 +9,9 @@ export default async function Dashboard() {
     redirect('/login');
   }
 
+  // Medical representatives use the mobile app; the login page does not bounce them back here.
   if (session.role === 'medical-representative') {
-    redirect('/medical-representative/portal');
+    redirect('/login');
   }
 
   return <DashboardRouter role={session.role} />;

@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
+import { logRecordOpened } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
 import Doctor from '@/models/Doctor';
@@ -65,6 +66,16 @@ export async function GET(
       .populate(pop.patient)
       .populate(pop.doctor);
     if (!appointment) return notFound('Appointment');
+    after(() =>
+      logRecordOpened({
+        session: ctx.session,
+        tenantId: ctx.tenantId,
+        resource: 'appointment',
+        resourceId: id,
+        patientId: (appointment.patient as any)?._id,
+        request,
+      })
+    );
     return NextResponse.json({ success: true, data: appointment });
   } catch (error) {
     console.error('Error fetching appointment:', error);

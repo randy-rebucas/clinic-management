@@ -25,6 +25,7 @@ import { verifyUserTotp } from '@/app/api/auth/2fa/totp';
 
 const INVALID_CREDENTIALS = 'Invalid email or password.';
 const SET_PASSWORD_FIRST = 'Check your email to set your password.';
+const MOBILE_APP_ONLY = 'Medical representative accounts sign in through the MyClinicSoft mobile app.';
 const INVALID_INVITE = 'This link is invalid or has expired. Ask your administrator to send a new one.';
 
 // Generous per-IP cap: a whole clinic may share one public IP
@@ -187,6 +188,29 @@ async function auditFailedLogin(user: any, reason: string, ip: string, tenantId:
   }
 }
 
+/**
+ * A sign-in with an email that has no account in this clinic: logged with the email exactly
+ * as typed (trimmed to 254 characters), so guessing addresses shows up in the audit log.
+ */
+async function auditUnknownEmail(email: string, ip: string, tenantId: string | null) {
+  try {
+    const { createAuditLog } = await import('@/lib/audit');
+    await createAuditLog({
+      userEmail: email.slice(0, 254),
+      tenantId: tenantId ?? undefined,
+      action: 'login',
+      resource: 'system',
+      success: false,
+      errorMessage: 'No account with this email',
+      ipAddress: ip,
+      userAgent: (await headers()).get('user-agent') ?? undefined,
+      description: 'Sign-in refused: no account with this email',
+    });
+  } catch (error) {
+    console.error('Error logging unknown-email sign-in:', error);
+  }
+}
+
 function tenantUserQuery(email: string, tenantId: string | null): Record<string, unknown> {
   // Find user by email within tenant scope if tenant exists
   return tenantId
@@ -240,8 +264,9 @@ export async function login(
     // Always run bcrypt so response time does not reveal whether the account exists
     const passwordMatch = await bcrypt.compare(password, user?.password || getDummyHash());
     if (!user || !user.password || !passwordMatch) {
-      // Not awaited: the response time must not reveal that the account exists.
+      // Not awaited either way: the response time must not reveal whether the account exists.
       if (user) void auditFailedLogin(user, user.password ? 'Wrong password' : 'No password set yet', ip, tenantId);
+      else void auditUnknownEmail(sanitizedEmail, ip, tenantId);
       return { errors: { email: [INVALID_CREDENTIALS] } };
     }
 
@@ -257,6 +282,11 @@ export async function login(
           email: ['Your account is not active. Please contact your administrator.'],
         },
       };
+    }
+
+    if ((user.role as any)?.name === 'medical-representative' || user.medicalRepresentativeProfile) {
+      await auditFailedLogin(user, 'Medical representative account on the staff web login', ip, tenantId);
+      return { errors: { email: [MOBILE_APP_ONLY] } };
     }
 
     await resetRateLimit(rateLimiters.authAccount.config, ip, accountKey);
@@ -342,6 +372,7 @@ export async function verifyLoginTotp(
     }
 
     if (!(await verifyUserTotp(user._id.toString(), code))) {
+      await auditFailedLogin(user, 'Wrong two-step code', ip, tenantId);
       return { errors: { code: ['Invalid or already used code. Please try again.'] } };
     }
 
@@ -374,6 +405,8 @@ export type SetPasswordFormState =
       message?: string;
       success?: boolean;
       loginPath?: string;
+      /** The account signs in through the mobile app (medical representatives). */
+      mobileApp?: boolean;
     }
   | undefined;
 
@@ -463,22 +496,13 @@ export async function setPasswordWithToken(
 
     return {
       success: true,
-      loginPath: user.medicalRepresentativeProfile ? '/medical-representatives/login' : '/login',
+      // Medical representatives sign in through the mobile app; there is no web page to send them to.
+      ...(user.medicalRepresentativeProfile ? { mobileApp: true } : { loginPath: '/login' }),
     };
   } catch (error: any) {
     console.error('Set password error:', { message: error?.message, name: error?.name });
     return { message: 'An error occurred. Please try again.' };
   }
-}
-
-export async function loginMedicalRep() {
-  try {
-    await deleteSession();
-    revalidatePath('/');
-  } catch (error) {
-    console.error('Error during medical representative login:', error);
-  }
-  redirect('/medical-representatives/login');
 }
 
 export async function logout() {

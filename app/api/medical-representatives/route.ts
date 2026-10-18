@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import { MedicalRepresentative, User } from '@/models';
-import { isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { sanitizeSearch } from '@/lib/utils';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zEmail } from '@/lib/api/validate';
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     const { session, tenantObjectId } = ctx;
 
     if (!isAdmin(session)) {
-      return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
+      return refuseAccess(session, 'Admin access required', 'medical-representatives');
     }
 
     await connectDB();

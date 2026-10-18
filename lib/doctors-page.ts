@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import connectDB from '@/lib/mongodb';
 import { verifySession } from '@/app/lib/dal';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 import { canSeeDoctorActivity, myDoctorProfileId } from '@/lib/doctor-access';
 
 export interface DoctorPermissions {
@@ -26,7 +26,7 @@ export async function loadDoctorPermissions(required: 'read' | 'write' | 'update
   const session = await verifySession();
   if (!session) redirect('/login');
   const can = await getPermissionChecker(session);
-  if (!can('doctors', required)) redirect(required === 'read' ? '/dashboard?error=access_denied' : '/doctors?error=access_denied');
+  if (!can('doctors', required)) await denyPage(session, 'doctors', required, required === 'read' ? '/dashboard?error=access_denied' : '/doctors?error=access_denied');
 
   await connectDB();
   const myDoctorId = session.tenantId ? await myDoctorProfileId(session.tenantId, session.userId) : null;

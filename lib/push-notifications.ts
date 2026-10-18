@@ -24,6 +24,8 @@ export interface PushPayload {
   icon?: string;
   url?: string;
   tag?: string;
+  /** Mobile app only: routing hints delivered in the Expo message's `data`. */
+  data?: Record<string, string>;
 }
 
 /**
@@ -81,10 +83,28 @@ export async function sendPushToPatientDevices(
   patientId: string,
   payload: PushPayload
 ): Promise<{ sent: boolean }> {
+  return sendToMobileDevices({ patientId: new Types.ObjectId(patientId) }, payload);
+}
+
+/**
+ * Send a push notification to a staff user's registered mobile devices (today: medical
+ * representatives signed in to the mobile app). Same Expo delivery as patients.
+ */
+export async function sendPushToUserDevices(
+  userId: string,
+  payload: PushPayload
+): Promise<{ sent: boolean }> {
+  return sendToMobileDevices({ userId: new Types.ObjectId(userId) }, payload);
+}
+
+async function sendToMobileDevices(
+  owner: { patientId: Types.ObjectId } | { userId: Types.ObjectId },
+  payload: PushPayload
+): Promise<{ sent: boolean }> {
   await connectDB();
 
   const devices = await MobileDevice.find({
-    patientId: new Types.ObjectId(patientId),
+    ...owner,
     revokedAt: null,
     pushToken: { $ne: null },
   }).lean();
@@ -96,7 +116,7 @@ export async function sendPushToPatientDevices(
     to: d.pushToken as string,
     title: payload.title,
     body: payload.body,
-    data: payload.url ? { url: payload.url, tag: payload.tag } : { tag: payload.tag },
+    data: { ...payload.data, ...(payload.url ? { url: payload.url } : {}), tag: payload.tag },
   }));
 
   const chunks = expo.chunkPushNotifications(messages);

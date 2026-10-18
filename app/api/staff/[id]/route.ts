@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import { Nurse, Receptionist, Accountant, User } from '@/models';
-import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { revokeUserSessions } from '@/app/lib/dal';
 import { createAuditLog } from '@/lib/audit';
 import { changeAccountStatus } from '@/lib/account-status';
@@ -46,7 +46,7 @@ const comparable = (v: unknown) => (v instanceof Date ? v.toISOString() : String
 async function adminContext() {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return { error: ctx };
-  if (!isAdmin(ctx.session)) return { error: forbiddenResponse('Admin access required') };
+  if (!isAdmin(ctx.session)) return { error: await refuseAccess(ctx.session, 'Admin access required') };
   return { ctx };
 }
 

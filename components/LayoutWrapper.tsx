@@ -15,7 +15,7 @@ interface LayoutWrapperProps {
 
 export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   const pathname = usePathname();
-  const isAuthPage = pathname === '/login' || pathname === '/book' || pathname === '/onboard' || pathname === '/patient/login';
+  const isAuthPage = pathname === '/login' || pathname === '/book' || pathname === '/onboard';
   const { isCollapsed } = useSidebar();
   const [user, setUser] = useState<{ id: string; name: string; role: string; email?: string } | null>(null);
 

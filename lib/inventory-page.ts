@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 
 export interface InventoryPermissions {
   /** Add items, restock, adjust, count and edit (inventory:write, the API's check). */
@@ -17,13 +17,17 @@ export async function loadInventoryPermissions(): Promise<InventoryPermissions> 
   const session = await verifySession();
   if (!session) redirect('/login');
   const can = await getPermissionChecker(session);
-  if (!can('inventory', 'read')) redirect('/dashboard?error=access_denied');
+  if (!can('inventory', 'read')) await denyPage(session, 'inventory', 'read', '/dashboard?error=access_denied');
   return { canWrite: can('inventory', 'write'), canDelete: can('inventory', 'delete') };
 }
 
 /** Pages that change stock or items: inventory:write. */
 export async function requireInventoryWriter(): Promise<InventoryPermissions> {
   const permissions = await loadInventoryPermissions();
-  if (!permissions.canWrite) redirect('/inventory?error=access_denied');
+  if (!permissions.canWrite) {
+    const session = await verifySession();
+    if (!session) redirect('/login');
+    await denyPage(session, 'inventory', 'write', '/inventory?error=access_denied');
+  }
   return permissions;
 }
